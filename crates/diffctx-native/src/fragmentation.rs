@@ -443,7 +443,7 @@ fn fragment_one(
     // Changed files also get 10x cap headroom: the biggest-N truncation below
     // keeps the LONGEST fragments, and the edited hunk is typically a small
     // leaf that would be dropped first (hunks are only known later, in core
-    // identification). max_changed_file_size still bounds cost.
+    // identification).
     let cap = if generated {
         LIMITS.max_generated_fragments
     } else if is_changed {
@@ -452,13 +452,17 @@ fn fragment_one(
         LIMITS.max_fragments
     };
     if raw_frags.len() > cap {
-        raw_frags = cap_fragments(raw_frags, cap, file_path, generated, hunks);
+        let capped = cap_fragments(raw_frags, cap, file_path, generated, hunks);
         if !generated {
             ctx.note_file(
-                crate::resource::LimitReason::FragmentLimit,
+                match capped {
+                    Some(_) => crate::resource::LimitReason::FragmentLimit,
+                    None => crate::resource::LimitReason::FileTooLarge,
+                },
                 crate::paths::display_rel_or_abs(root_dir, file_path),
             );
         }
+        raw_frags = capped.unwrap_or_default();
     }
     if generated {
         raw_frags = truncate_generated_fragments(raw_frags);
@@ -491,14 +495,16 @@ fn is_added_data_document(
 /// what says it is a manifest at all, and dropping them as the shortest made a
 /// generated Deployment invisible to the selector channel (#258). Resource
 /// headers survive the cut, and so does anything the diff touched; the cap
-/// applies to everything else.
+/// applies to everything else. `None` when what the diff touched is itself past
+/// the cap: such a file is over the size cap, whatever its bytes — added whole,
+/// 60 000 definitions kept every later phase busy past the deadline (gh#619).
 fn cap_fragments(
     raw_frags: Vec<Fragment>,
     cap: usize,
     file_path: &Path,
     generated: bool,
     hunks: &[crate::types::DiffHunk],
-) -> Vec<Fragment> {
+) -> Option<Vec<Fragment>> {
     let key = file_path.to_string_lossy();
     let (kept, mut rest): (Vec<Fragment>, Vec<Fragment>) = raw_frags.into_iter().partition(|f| {
         (generated && is_resource_header(&f.content))
@@ -506,11 +512,14 @@ fn cap_fragments(
                 .iter()
                 .any(|h| h.path.as_ref() == key.as_ref() && overlaps_hunk(f, h))
     });
+    if !generated && kept.len() > cap {
+        return None;
+    }
     rest.sort_by(|a, b| b.line_count().cmp(&a.line_count()));
     rest.truncate(cap);
     rest.extend(kept);
     rest.sort_by(|a, b| a.id.cmp(&b.id));
-    rest
+    Some(rest)
 }
 
 fn overlaps_hunk(fragment: &Fragment, hunk: &crate::types::DiffHunk) -> bool {

@@ -1337,9 +1337,9 @@ fn unanalysed_files(state: &ScoredState, changed: &[String]) -> Vec<UnanalysedFi
         .run
         .limited_by(crate::resource::LimitReason::FileTooLarge);
     let layout = layout_files(state);
-    let mut out: Vec<UnanalysedFile> = state
-        .run
-        .bounded(changed)
+    let mut out: Vec<UnanalysedFile> = changed
+        .iter()
+        .filter(|path| too_large.contains(*path) || state.run.check())
         .filter_map(|path| {
             // Only the lines naming the file by path are searched for it. A
             // document or a binary has no other consumer, a schema is listed
@@ -1378,8 +1378,8 @@ fn unanalysed_files(state: &ScoredState, changed: &[String]) -> Vec<UnanalysedFi
             // `changed`; a code file over the size cap or one that could not
             // be read was never analysed, and saying nothing made its callers
             // a clean zero. An empty file has nothing to analyse.
-            // Over the cap on either side: a head read in full still had its
-            // removals skipped when the base was too large to parse.
+            // Over the cap on either side (a head read in full had its removals skipped
+            // when the base was too large to parse); named past the deadline too (gh#619).
             if too_large.contains(path) {
                 return Some(UnanalysedFile {
                     path: path.clone(),
