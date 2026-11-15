@@ -1,0 +1,30 @@
+name: gh743_new_record_is_read_by_the_readers_of_its_siblings_keys
+mode: impact
+source: gh#743
+issue_state: open
+tags: [config, data, keys]
+repo:
+  initial_files:
+    build/cards.ts: |
+      interface Card { title: string; nav_label: string }
+      export function render(p: Card): string {
+        return p.title + " / " + p.nav_label;
+      }
+    data/001-alpha.yaml: |
+      title: Alpha
+      nav_label: Alpha
+    data/003-gamma.yaml: |
+      title: Gamma
+      nav_label: Gamma
+    notes/plan.yaml: |
+      owner: ops
+      nav_label: Ops
+  changed_files:
+    data/002-beta.yaml: |
+      title: Beta card
+expect:
+  exact: true
+  relations:
+    - {from: build/cards.ts, to: data/002-beta.yaml, kind: references_path, resolution: candidate, site: 1}
+  decoys:
+    data/002-beta.yaml: [data/001-alpha.yaml, data/003-gamma.yaml, notes/plan.yaml]

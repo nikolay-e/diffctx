@@ -867,3 +867,72 @@ pub(super) fn untouched_terms(state: &ScoredState, path: &str) -> rustc_hash::Fx
         .flat_map(|(_, l)| terms(l))
         .collect()
 }
+
+/// The run's limits for a read of the snapshot's files.
+pub(super) fn read_budget(state: &ScoredState) -> crate::snapshot::RunBudget {
+    let (deadline, cancel) = state.run.io_limits();
+    crate::snapshot::RunBudget {
+        deadline,
+        cancel: Some(cancel),
+        read_fault: None,
+    }
+}
+
+/// Records beside a new one that are read as one schema at most this many of.
+const MAX_SCHEMA_SIBLINGS: usize = 16;
+
+/// The keys every record beside a new one holds at its top level: a directory
+/// of records one schema reads (`data/001-alpha.yaml`, `data/003-gamma.yaml`),
+/// whose reader names those keys as fields and reads the new record too,
+/// whether it spells them or lacks one (gh#743). Two siblings make a
+/// collection; one is a pair, whose shared keys say nothing of a schema.
+pub(super) fn schema_keys(state: &ScoredState, path: &str, tree: &[String]) -> Vec<String> {
+    use crate::facts::config::{Dialect, Options, read};
+    let (dir, name) = path.rsplit_once('/').unwrap_or(("", path));
+    let Some((_, ext)) = name.rsplit_once('.') else {
+        return Vec::new();
+    };
+    let dialect = match ext {
+        "yaml" | "yml" => Dialect::Yaml,
+        "json" => Dialect::Json,
+        "toml" => Dialect::Toml,
+        _ => return Vec::new(),
+    };
+    let changed: rustc_hash::FxHashSet<String> = super::changed_rels(state).collect();
+    let siblings: Vec<&String> = tree
+        .iter()
+        .filter(|p| {
+            let (d, n) = p.rsplit_once('/').unwrap_or(("", p.as_str()));
+            d == dir && n.rsplit_once('.').is_some_and(|(_, e)| e == ext) && !changed.contains(*p)
+        })
+        .take(MAX_SCHEMA_SIBLINGS)
+        .collect();
+    if siblings.len() < 2 {
+        return Vec::new();
+    }
+    let source = state.run.source();
+    let budget = read_budget(state);
+    let mut shared: Option<rustc_hash::FxHashSet<String>> = None;
+    for sibling in siblings {
+        let Some(text) = source.read_to_string(&state.root_dir.join(sibling.as_str())) else {
+            return Vec::new();
+        };
+        let reading = read(dialect, text.as_bytes(), Options::default(), &budget);
+        let [document] = reading.documents.as_slice() else {
+            return Vec::new();
+        };
+        let keys: rustc_hash::FxHashSet<String> = document
+            .entries()
+            .iter()
+            .filter(|e| !e.key.templated && key_like(&e.key.text))
+            .map(|e| e.key.text.clone())
+            .collect();
+        shared = Some(match shared {
+            Some(before) => before.intersection(&keys).cloned().collect(),
+            None => keys,
+        });
+    }
+    let mut keys: Vec<String> = shared.unwrap_or_default().into_iter().collect();
+    keys.sort();
+    keys
+}
