@@ -447,17 +447,38 @@ enum Declares {
     Regex,
     /// Glob patterns of files that are not tests (`exclude`, `testIgnore`).
     Excludes,
+    /// Regular expressions any part of the path may match, of files that are not
+    /// tests (jest's `testPathIgnorePatterns`).
+    RegexExcludes,
+    /// The directories the runner collects tests beneath, and nowhere else
+    /// (Playwright's `testDir`, jest's `roots`): a file outside them is never run,
+    /// whatever its name, as an argument on the command line only filters what was
+    /// collected. Pytest's `testpaths` is no such key: `pytest path/x.py` runs a
+    /// file outside them.
+    Scope,
+}
+
+/// What a pattern without a regular expression is matched against.
+#[derive(Clone, Copy)]
+enum Against {
+    /// The path beneath the configuration's directory.
+    Path,
+    /// The file's name (pytest's `python_files`).
+    Name,
+    /// Any tail of the path: Playwright puts `**/` before a pattern that does not
+    /// start with it.
+    Tail,
 }
 
 /// A test runner whose configuration decides which files are tests: the
-/// configuration files, the keys, and the files the patterns judge. A runner is a
-/// row; a pattern with no `/` judges the file's name where `names_only`. A
-/// configuration file name ending in `.*` stands for any script extension.
+/// configuration files, the keys, the files the patterns judge and what of a path
+/// they are matched against. A runner is a row. A configuration file name ending in
+/// `.*` stands for any script extension.
 struct Runner {
     config_files: &'static [(&'static str, Holder)],
     keys: &'static [(&'static str, Declares)],
     extensions: &'static [&'static str],
-    names_only: bool,
+    against: Against,
 }
 
 const SCRIPT_EXTENSIONS: &[&str] = &["js", "jsx", "mjs", "cjs", "ts", "tsx", "mts", "cts"];
@@ -477,7 +498,7 @@ static RUNNERS: &[Runner] = &[
         // and a file outside them is still a test (`pytest path/test_x.py`).
         keys: &[("python_files", Declares::Globs)],
         extensions: &["py"],
-        names_only: true,
+        against: Against::Name,
     },
     Runner {
         config_files: &[
@@ -488,9 +509,11 @@ static RUNNERS: &[Runner] = &[
         keys: &[
             ("testMatch", Declares::Globs),
             ("testRegex", Declares::Regex),
+            ("testPathIgnorePatterns", Declares::RegexExcludes),
+            ("roots", Declares::Scope),
         ],
         extensions: SCRIPT_EXTENSIONS,
-        names_only: false,
+        against: Against::Path,
     },
     Runner {
         config_files: &[
@@ -502,7 +525,7 @@ static RUNNERS: &[Runner] = &[
             ("exclude", Declares::Excludes),
         ],
         extensions: SCRIPT_EXTENSIONS,
-        names_only: false,
+        against: Against::Path,
     },
     Runner {
         config_files: &[
@@ -514,16 +537,17 @@ static RUNNERS: &[Runner] = &[
         ],
         keys: &[("spec", Declares::Globs)],
         extensions: SCRIPT_EXTENSIONS,
-        names_only: false,
+        against: Against::Path,
     },
     Runner {
         config_files: &[("playwright.config.*", Holder::Script)],
         keys: &[
             ("testMatch", Declares::Globs),
             ("testIgnore", Declares::Excludes),
+            ("testDir", Declares::Scope),
         ],
         extensions: SCRIPT_EXTENSIONS,
-        names_only: false,
+        against: Against::Tail,
     },
     Runner {
         config_files: &[("cypress.config.*", Holder::Script)],
@@ -532,13 +556,13 @@ static RUNNERS: &[Runner] = &[
             ("excludeSpecPattern", Declares::Excludes),
         ],
         extensions: SCRIPT_EXTENSIONS,
-        names_only: false,
+        against: Against::Path,
     },
     Runner {
         config_files: &[("Cargo.toml", Holder::Toml(&["test"]))],
         keys: &[("path", Declares::Globs)],
         extensions: &["rs"],
-        names_only: false,
+        against: Against::Path,
     },
 ];
 
@@ -556,9 +580,11 @@ fn is_config_named(config: &str, name: &str) -> bool {
 struct Declared {
     dir: String,
     extensions: &'static [&'static str],
-    names_only: bool,
+    against: Against,
     include: Vec<regex::Regex>,
     exclude: Vec<regex::Regex>,
+    /// The directories beneath `dir` the runner collects from; none: all of `dir`.
+    scopes: Vec<String>,
 }
 
 /// The test files the repository's runner configurations declare, beyond the
@@ -585,9 +611,10 @@ impl DeclaredTests {
                 let mut rules = Declared {
                     dir: dir.to_string(),
                     extensions: runner.extensions,
-                    names_only: runner.names_only,
+                    against: runner.against,
                     include: Vec::new(),
                     exclude: Vec::new(),
+                    scopes: Vec::new(),
                 };
                 for &(key, how) in runner.keys {
                     for (value, literal) in values_of(holder, &text, key) {
@@ -617,26 +644,45 @@ impl DeclaredTests {
             let judges =
                 |pattern: &regex::Regex| pattern.is_match(beneath) || pattern.is_match(&rooted);
             let name = beneath.rsplit('/').next().unwrap_or(beneath);
+            let collected = declared.scopes.is_empty()
+                || declared.scopes.iter().any(|scope| {
+                    beneath
+                        .strip_prefix(scope.as_str())
+                        .is_some_and(|rest| rest.starts_with('/'))
+                });
             declared.extensions.contains(&extension)
+                && collected
                 && declared.include.iter().any(|pattern| {
-                    pattern.is_match(if declared.names_only { name } else { beneath })
-                        || pattern.is_match(&rooted)
+                    pattern.is_match(match declared.against {
+                        Against::Name => name,
+                        Against::Path | Against::Tail => beneath,
+                    }) || pattern.is_match(&rooted)
                 })
                 && !declared.exclude.iter().any(judges)
         })
+    }
+
+    /// Whether a runner runs `path` (repository-relative) as a test: by the naming
+    /// convention, or by a runner's configuration.
+    pub(crate) fn runs(&self, path: &str) -> bool {
+        is_test_path(Path::new(path)) || self.is_test(path)
     }
 }
 
 impl Declared {
     fn add(&mut self, value: &str, literal: bool, how: Declares) {
+        let tail = matches!(self.against, Against::Tail);
         let pattern = |glob: &str| {
             if literal {
-                regex::Regex::new(glob).ok()
+                return regex::Regex::new(glob).ok();
+            }
+            let glob = glob
+                .trim_start_matches("<rootDir>/")
+                .trim_start_matches("./");
+            if tail && !glob.starts_with("**/") {
+                glob_regex(&format!("**/{glob}"))
             } else {
-                glob_regex(
-                    glob.trim_start_matches("<rootDir>/")
-                        .trim_start_matches("./"),
-                )
+                glob_regex(glob)
             }
         };
         match how {
@@ -646,6 +692,18 @@ impl Declared {
             },
             Declares::Regex => self.include.extend(regex::Regex::new(value).ok()),
             Declares::Excludes => self.exclude.extend(pattern(value)),
+            Declares::RegexExcludes => self
+                .exclude
+                .extend(regex::Regex::new(&value.replace("<rootDir>", "")).ok()),
+            Declares::Scope => {
+                let dir = value
+                    .trim_start_matches("<rootDir>")
+                    .trim_start_matches("./")
+                    .trim_matches('/');
+                if !(dir.is_empty() || dir == "." || dir.contains("..")) {
+                    self.scopes.push(dir.to_string());
+                }
+            }
         }
     }
 }
