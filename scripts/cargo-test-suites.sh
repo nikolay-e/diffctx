@@ -4,12 +4,14 @@
 # corpus on the release profile the wheel ships with. The suites are read off
 # the directory: a list named in each caller left the 1.20.0 gates (unknowns,
 # lane_*) running in no job, after the same list had already hidden the
-# binary-level suites until 2026-10-11.
+# binary-level suites until 2026-10-11. The two corpus suites (yaml_cases and
+# class_completeness_corpus, which runs the class-completeness properties over
+# every case) are the exception: they run on the release profile.
 # A failing run does not stop the ones after it; the script still exits
 # non-zero.
 # DIFFCTX_YAML_CASES_LIMIT, when set, samples the corpus.
 # An argument runs a part, for a runner that cannot hold them all inside its
-# time limit: `corpus` is the YAML corpus alone, `rest:K/N` the K-th of N
+# time limit: `corpus` is the two corpus suites alone, `rest:K/N` the K-th of N
 # shards of everything else, and `rest` is `rest:1/1`. No argument runs it all.
 # The shards balance expected seconds, not binary counts: `weights` below,
 # heaviest first onto the lightest shard (ties by name), so every caller gets
@@ -90,7 +92,7 @@ shard_suites() {
   {
     echo "$weights"
     echo lib
-    for file in tests/*.rs; do basename "$file" .rs; done | grep -vx yaml_cases
+    for file in tests/*.rs; do basename "$file" .rs; done | grep -vxE 'yaml_cases|class_completeness_corpus'
   } | awk -v fallback="$default_weight" '
     NF == 2 { seconds[$1] = $2; next }
     NF == 1 { print (($1 in seconds) ? seconds[$1] : fallback), $1 }' |
@@ -127,6 +129,6 @@ if ((run_rest)); then
 fi
 
 if ((run_corpus)); then
-  run cargo test --release --locked --test yaml_cases
+  run cargo test --release --locked --no-fail-fast --test yaml_cases --test class_completeness_corpus
 fi
 exit "$status"

@@ -6,6 +6,7 @@
 #![allow(dead_code)]
 
 pub(crate) mod answer;
+pub(crate) mod classes;
 pub(crate) mod fake_git;
 pub(crate) mod families;
 pub(crate) mod seeds;
