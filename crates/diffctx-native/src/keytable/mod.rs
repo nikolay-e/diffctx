@@ -60,6 +60,8 @@ pub(crate) struct Rec {
     mechanism: &'static str,
     /// 1-based; 0 stands for the file as a whole.
     line: usize,
+    /// The last line the record spans.
+    end: usize,
     dir: String,
     unit: String,
     /// The change touched this record's file.
@@ -165,6 +167,7 @@ fn place(
                 role: raw.role,
                 mechanism: raw.mechanism,
                 line: raw.line,
+                end: raw.end.max(raw.line),
                 dir: raw.anchor.clone().unwrap_or_else(|| own_dir.to_string()),
                 unit: unit.clone(),
                 file_changed: is_changed(*file),
@@ -185,6 +188,7 @@ fn place(
                     role: Role::Artifact,
                     mechanism: "build-context",
                     line: 0,
+                    end: 0,
                     dir: dir_of(&rels[target]).to_string(),
                     unit: unit_of(target),
                     file_changed: is_changed(target),
@@ -890,6 +894,94 @@ pub(crate) fn counterparts_of_change(
     })
 }
 
+/// The files that run an image no build in the tree declares, under a name
+/// ending in the directory of a changed Dockerfile (`registry.example.com/
+/// images/foo` for `images/foo/Dockerfile`): the pipeline that builds it lies
+/// outside the tree, and the convention that names an image after its build
+/// context is all that ties the two, so a row is a candidate, not a link
+/// (fj#128). A one-component name is an upstream image (`nginx`), and an image
+/// the Dockerfile builds from is its base, not its output.
+pub(crate) fn runs_named_after(
+    fragments: &[Fragment],
+    repo_root: Option<&Path>,
+    dockerfiles: &[String],
+) -> Vec<Counterpart> {
+    let contexts: Vec<(&str, Vec<&str>)> = dockerfiles
+        .iter()
+        .filter(|d| matches!(classify(d), Some(FileClass::Dockerfile)) && !dir_of(d).is_empty())
+        .map(|d| (d.as_str(), dir_of(d).split('/').collect()))
+        .collect();
+    if contexts.is_empty() {
+        return Vec::new();
+    }
+    let table = Table::from_fragments(fragments, repo_root);
+    let rel = |file: usize| index_key_of(table.paths[file], repo_root);
+    let images: Vec<&Rec> = table
+        .recs
+        .iter()
+        .filter(|r| r.kind == Kind::Image && r.strength == Strength::Strong)
+        .collect();
+    let built: FxHashSet<&str> = images
+        .iter()
+        .filter(|r| r.role == Role::Build)
+        .map(|r| r.key.as_str())
+        .collect();
+    let mut out = Vec::new();
+    for rec in images
+        .iter()
+        .filter(|r| r.role == Role::Consume && !built.contains(r.key.as_str()))
+    {
+        let name: Vec<&str> = rec.key.split('/').collect();
+        let file = rel(rec.file);
+        for (dockerfile, context) in &contexts {
+            let shared = name
+                .iter()
+                .rev()
+                .zip(context.iter().rev())
+                .take_while(|(a, b)| a.eq_ignore_ascii_case(b))
+                .count();
+            if shared == 0 || upstream(&rec.key) || file == *dockerfile {
+                continue;
+            }
+            let from_base = images
+                .iter()
+                .any(|r| r.role == Role::Consume && r.key == rec.key && rel(r.file) == *dockerfile);
+            if from_base {
+                continue;
+            }
+            let spelled = name[name.len() - shared..].join("/");
+            out.push(Counterpart {
+                kind: Kind::Image.as_str(),
+                key: rec.key.clone(),
+                changed_path: (*dockerfile).to_string(),
+                path: table.paths[rec.file].to_string(),
+                line: spelling_line(fragments, table.paths[rec.file], rec, &spelled),
+            });
+        }
+    }
+    out
+}
+
+/// A Docker Hub official image (`nginx`, `library/nginx`, `docker.io/nginx`):
+/// one name under no namespace of a registry's own.
+fn upstream(key: &str) -> bool {
+    let name = key.strip_prefix("docker.io/").unwrap_or(key);
+    !name.strip_prefix("library/").unwrap_or(name).contains('/')
+}
+
+/// The line of the record's span that spells `name`: a Helm `image:` block
+/// names its repository on a line below the key.
+fn spelling_line(fragments: &[Fragment], path: &str, rec: &Rec, name: &str) -> usize {
+    let in_file: Vec<&Fragment> = fragments.iter().filter(|f| f.path() == path).collect();
+    let text = file_text(&in_file);
+    text.lines()
+        .enumerate()
+        .skip(rec.line.saturating_sub(1))
+        .take(rec.end.saturating_sub(rec.line) + 1)
+        .find(|(_, l)| l.to_ascii_lowercase().contains(name))
+        .map_or(rec.line, |(at, _)| at + 1)
+}
+
 /// A line that builds a Dockerfile: the Dockerfile's repo-relative path, the
 /// file and 1-based line, and the line's text.
 pub(crate) struct BuildSite {
@@ -1056,6 +1148,7 @@ mod tests {
             role: Role::Set,
             mechanism: "spring-yaml-key",
             line: 1,
+            end: 1,
             dir: dir.to_string(),
             unit: unit.to_string(),
             file_changed: true,
