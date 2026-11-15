@@ -28,3 +28,7 @@ expect:
     hello: not_modelled
   discloses: true
   no_negative_claims: true
+  partial:
+    src/main/scala/app/Greeter.scala::Greeter.hello:
+      calls: not_traced
+      reads: not_traced

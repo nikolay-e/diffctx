@@ -39,3 +39,6 @@ expect:
     - {from: "tool/entry.py::entry", to: "tool/cli.py::main", kind: calls, resolution: resolved, site: 7}
   decoys:
     tool/cli.py::main: [tool/runner.py::invoke]
+  partial:
+    tool/cli.py::main:
+      calls: not_traced

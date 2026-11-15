@@ -28,3 +28,7 @@ expect:
     resolution: candidate
     site: 5
   discloses: true
+  partial:
+    src/clamp.h::CLAMP:
+      calls: macros
+      reads: macros

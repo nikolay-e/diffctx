@@ -51,3 +51,10 @@ expect:
   - src/Cache.cs::Cache.Drop
   discloses: true
   no_negative_claims: true
+  partial:
+    src/Cache.cs::Cache.Drop:
+      calls: not_traced
+      reads: not_traced
+    src/Pool.cs::Pool.Drop:
+      calls: not_traced
+      reads: not_traced

@@ -4,8 +4,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use super::case::{Case, Compiled, Coverage};
-use super::engine::{Answer, absence_claims};
-use super::model::{Kind, Node, Relation, UnknownClass};
+use super::engine::{Answer, GroupCoverage, absence_claims};
+use super::model::{Class, Kind, Node, Relation, Resolution, UnknownClass};
 use super::report::{CaseReport, TargetReport};
 
 #[derive(Default)]
@@ -348,6 +348,126 @@ fn check_unknowns(case: &Case, answer: &Answer, failures: &mut Vec<String>) {
             ));
         }
     }
+}
+
+/// The coverage gate. A subject definition is one the case names in `changed`
+/// (impact) or `definitions` (symbol), or the target of a listed code relation.
+/// In an `exact` case each of its coverage groups holds no gap beyond the sites a
+/// listed candidate or unresolved relation already names, unless
+/// `expect.partial` declares the group: the group must then be incomplete and
+/// name exactly the declared gap kinds.
+pub(crate) fn gate(case: &Case, compiled: &Compiled, answer: &Answer) -> Vec<String> {
+    let expect = &case.expect;
+    let subjects: Vec<Node> = match case.mode {
+        super::case::Mode::Impact => expect.changed.as_deref(),
+        super::case::Mode::Symbol => expect.definitions.as_deref(),
+    }
+    .unwrap_or_default()
+    .iter()
+    .map(|text| Node::target(text))
+    .chain(
+        compiled
+            .listed
+            .iter()
+            .filter(|(_, class)| *class == Class::Code)
+            .map(|(to, _)| to.clone()),
+    )
+    .collect();
+    let mut failures = Vec::new();
+    let known: BTreeSet<&Node> = answer.definitions.iter().collect();
+    for (target, _) in &compiled.partial {
+        if !known.iter().any(|node| target.covers(node)) {
+            failures.push(format!(
+                "partial of `{target}`: the answer reports no such definition"
+            ));
+        }
+    }
+    for node in known {
+        let declared: Vec<&BTreeMap<&'static str, BTreeSet<String>>> = compiled
+            .partial
+            .iter()
+            .filter(|(target, _)| target.covers(node))
+            .map(|(_, groups)| groups)
+            .collect();
+        let gated = expect.exact && subjects.iter().any(|subject| subject.covers(node));
+        if declared.is_empty() && !gated {
+            continue;
+        }
+        let candidate_files: BTreeSet<&str> = compiled
+            .relations
+            .iter()
+            .filter(|r| {
+                r.kind.class() == Class::Code
+                    && r.resolution != Resolution::Resolved
+                    && r.to.covers(node)
+            })
+            .map(|r| r.from.path.as_str())
+            .collect();
+        for group in ["calls", "reads"] {
+            let named = named_gaps(&answer.coverage, node, group, &candidate_files);
+            let wanted: Option<BTreeSet<&str>> = declared
+                .iter()
+                .filter_map(|groups| groups.get(group))
+                .flat_map(|reasons| reasons.iter().map(String::as_str))
+                .fold(None, |all, reason| {
+                    let mut all: BTreeSet<&str> = all.unwrap_or_default();
+                    all.insert(reason);
+                    Some(all)
+                });
+            let declared_group = declared.iter().any(|groups| groups.contains_key(group));
+            match (named, declared_group) {
+                (None, false) => {}
+                (Some(got), false) => {
+                    if gated {
+                        failures.push(format!(
+                            "`{node}` {group}: the answer hedges ({}) but the case declares no partial for it",
+                            got.into_iter().collect::<Vec<_>>().join(", ")
+                        ));
+                    }
+                }
+                (None, true) => failures.push(format!(
+                    "`{node}` {group}: declared partial ({}) but the answer calls it complete",
+                    wanted
+                        .unwrap_or_default()
+                        .into_iter()
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )),
+                (Some(got), true) => {
+                    let wanted = wanted.unwrap_or_default();
+                    if got != wanted {
+                        failures.push(format!(
+                            "`{node}` {group}: declared partial ({}), the answer names ({})",
+                            wanted.into_iter().collect::<Vec<_>>().join(", "),
+                            got.into_iter().collect::<Vec<_>>().join(", ")
+                        ));
+                    }
+                }
+            }
+        }
+    }
+    failures
+}
+
+/// The gap kinds a group of a definition names once the gaps whose every site
+/// lies in a file the case lists as a candidate are set aside; `None` when the
+/// group is complete or nothing is left.
+fn named_gaps<'a>(
+    coverage: &'a [GroupCoverage],
+    node: &Node,
+    group: &str,
+    candidate_files: &BTreeSet<&str>,
+) -> Option<BTreeSet<&'a str>> {
+    let kinds: BTreeSet<&str> = coverage
+        .iter()
+        .filter(|entry| entry.group == group && entry.node == *node)
+        .flat_map(|entry| entry.gaps.iter())
+        .filter(|(_, files)| {
+            files.is_empty() || !files.iter().all(|f| candidate_files.contains(f.as_str()))
+        })
+        .map(|(kind, _)| kind.as_str())
+        .collect();
+    (!kinds.is_empty()).then_some(kinds)
 }
 
 fn check_coverage(case: &Case, answer: &Answer, failures: &mut Vec<String>) {

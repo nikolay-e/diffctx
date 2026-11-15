@@ -46,3 +46,7 @@ expect:
     site: 8
   exact: true
   no_negative_claims: true
+  partial:
+    src/Point.cs::Point.Twice:
+      calls: not_traced
+      reads: not_traced

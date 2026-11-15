@@ -41,3 +41,6 @@ expect:
       site: 8
   decoys:
     pkg/hooks.py::print_headers: [pkg/legacy.py::run]
+  partial:
+    pkg/hooks.py::print_headers:
+      calls: not_traced

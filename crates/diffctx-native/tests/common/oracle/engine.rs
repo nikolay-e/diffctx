@@ -58,7 +58,17 @@ pub(crate) struct Answer {
     pub counted_not_listed: u64,
     /// A limit, an unanalysed or withheld file, or a name no file defines.
     pub run_disclosure: bool,
+    /// Every definition's incomplete coverage group, with the gaps it names.
+    pub coverage: Vec<GroupCoverage>,
     pub markdown: Option<String>,
+}
+
+/// One coverage group (`calls` or `reads`) of a definition the answer does not
+/// call complete: the gaps it names, each with the files of its sites.
+pub(crate) struct GroupCoverage {
+    pub node: Node,
+    pub group: &'static str,
+    pub gaps: Vec<(String, Vec<String>)>,
 }
 
 /// Phrases the text form uses to claim an absence.
@@ -575,6 +585,30 @@ pub(crate) fn extract(doc: &Value) -> Result<Answer, String> {
                     }
                 }
             }
+        }
+        for group in ["calls", "reads"] {
+            let coverage = &definition_doc["coverage"][group];
+            if coverage["complete"].as_bool() != Some(false) {
+                continue;
+            }
+            let mut gaps: Vec<(String, Vec<String>)> = items(coverage, "gaps")
+                .iter()
+                .map(|gap| {
+                    let files = items(gap, "sites")
+                        .iter()
+                        .filter_map(|site| text(site, "path").map(str::to_string))
+                        .collect();
+                    (text(gap, "kind").unwrap_or("unnamed").to_string(), files)
+                })
+                .collect();
+            if gaps.is_empty() {
+                gaps.push(("unnamed".to_string(), Vec::new()));
+            }
+            answer.coverage.push(GroupCoverage {
+                node: definition.clone(),
+                group,
+                gaps,
+            });
         }
         for gap in items(definition_doc, "gaps") {
             answer.gapped.push(definition.clone());
