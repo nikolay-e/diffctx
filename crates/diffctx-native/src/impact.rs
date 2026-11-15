@@ -830,6 +830,18 @@ pub struct UnanalysedFile {
     pub lines: Vec<u32>,
 }
 
+impl UnanalysedFile {
+    pub(crate) fn new(path: String, reason: &'static str, lines: Vec<u32>) -> Self {
+        let language = crate::languages::get_language_for_file(&path);
+        Self {
+            path,
+            language,
+            reason,
+            lines,
+        }
+    }
+}
+
 #[derive(Debug, Serialize, JsonSchema, Clone)]
 pub struct Contract {
     pub path: String,
@@ -1367,12 +1379,11 @@ fn unanalysed_files(state: &ScoredState, changed: &[String]) -> Vec<UnanalysedFi
                 {
                     return None;
                 }
-                return Some(UnanalysedFile {
-                    path: path.clone(),
-                    language: crate::languages::get_language_for_file(path),
-                    reason: "content_untraced",
-                    lines: Vec::new(),
-                });
+                return Some(UnanalysedFile::new(
+                    path.clone(),
+                    "content_untraced",
+                    Vec::new(),
+                ));
             }
             // No fragment at all. A deleted or withheld file never reaches
             // `changed`; a code file over the size cap or one that could not
@@ -1381,12 +1392,7 @@ fn unanalysed_files(state: &ScoredState, changed: &[String]) -> Vec<UnanalysedFi
             // Over the cap on either side (a head read in full had its removals skipped
             // when the base was too large to parse); named past the deadline too (gh#619).
             if too_large.contains(path) {
-                return Some(UnanalysedFile {
-                    path: path.clone(),
-                    language: crate::languages::get_language_for_file(path),
-                    reason: "too_large",
-                    lines: Vec::new(),
-                });
+                return Some(UnanalysedFile::new(path.clone(), "too_large", Vec::new()));
             }
             let Some(&has_definition) = fragmented.get(path) else {
                 let reason = if source.read_bytes(&state.root_dir.join(path)).is_none() {
@@ -1394,22 +1400,12 @@ fn unanalysed_files(state: &ScoredState, changed: &[String]) -> Vec<UnanalysedFi
                 } else {
                     return None;
                 };
-                return Some(UnanalysedFile {
-                    path: path.clone(),
-                    language: crate::languages::get_language_for_file(path),
-                    reason,
-                    lines: Vec::new(),
-                });
+                return Some(UnanalysedFile::new(path.clone(), reason, Vec::new()));
             };
             let (reason, lines) = crate::parsers::unanalysed_reason(path, has_definition, || {
                 source.read_bytes(&state.root_dir.join(path))
             })?;
-            Some(UnanalysedFile {
-                path: path.clone(),
-                language: crate::languages::get_language_for_file(path),
-                reason,
-                lines,
-            })
+            Some(UnanalysedFile::new(path.clone(), reason, lines))
         })
         .collect();
     // A deleted file over the size cap had its removals skipped: as unanalysed as a
@@ -1419,12 +1415,7 @@ fn unanalysed_files(state: &ScoredState, changed: &[String]) -> Vec<UnanalysedFi
             .deleted_files
             .iter()
             .filter(|p| too_large.contains(*p) && !changed.contains(p))
-            .map(|p| UnanalysedFile {
-                path: p.clone(),
-                language: crate::languages::get_language_for_file(p),
-                reason: "too_large",
-                lines: Vec::new(),
-            }),
+            .map(|p| UnanalysedFile::new(p.clone(), "too_large", Vec::new())),
     );
     out.sort_by(|a, b| {
         a.language
@@ -1587,12 +1578,7 @@ impl UntracedNamers {
                 sets_variable && extension(p) == "hcl"
             })
             .into_iter()
-            .map(|(path, line)| UnanalysedFile {
-                language: crate::languages::get_language_for_file(&path),
-                path,
-                reason: "not_traced",
-                lines: vec![line],
-            });
+            .map(|(path, line)| UnanalysedFile::new(path, "not_traced", vec![line]));
         let spelled: Vec<UnanalysedFile> = self
             .literal_files(name)
             .into_iter()
@@ -1617,12 +1603,7 @@ impl UntracedNamers {
         self.literal
             .naming(literal_base(name))
             .into_iter()
-            .map(|(path, line)| UnanalysedFile {
-                language: crate::languages::get_language_for_file(&path),
-                path,
-                reason: "not_traced",
-                lines: vec![line],
-            })
+            .map(|(path, line)| UnanalysedFile::new(path, "not_traced", vec![line]))
             .collect()
     }
 
@@ -1653,12 +1634,7 @@ impl UntracedNamers {
                 || (unread_code(p) && crate::vocabulary::family::Group::of_path(p) != own)
         })
         .into_iter()
-        .map(|(path, line)| UnanalysedFile {
-            language: crate::languages::get_language_for_file(&path),
-            path,
-            reason: "not_traced",
-            lines: vec![line],
-        })
+        .map(|(path, line)| UnanalysedFile::new(path, "not_traced", vec![line]))
         .collect()
     }
 
@@ -1733,12 +1709,11 @@ fn unaccounted_rows(verdict: &decide::Verdict, own: &str) -> Vec<UnanalysedFile>
                 },
                 _ => return None,
             };
-            Some(UnanalysedFile {
-                language: crate::languages::get_language_for_file(file.as_str()),
-                path: file.as_str().to_string(),
+            Some(UnanalysedFile::new(
+                file.as_str().to_string(),
                 reason,
                 lines,
-            })
+            ))
         })
         .collect();
     rows.sort_by(|a, b| a.path.cmp(&b.path));
@@ -3368,6 +3343,11 @@ pub fn build_impact(
     let mut cores = cores;
     let mut cell_defs: FxHashMap<&FragmentId, decide::Changed> = FxHashMap::default();
     let mut cell_apart: Vec<decide::Changed> = Vec::new();
+    // A file over the size cap is named as such; its definitions, one per
+    // unanchored entry, are not each traced apart (gh#619).
+    let over_the_cap = state
+        .run
+        .limited_by(crate::resource::LimitReason::FileTooLarge);
     let mut cell_removed: Vec<decide::Changed> = Vec::new();
     let mut cell_untracked: Vec<&Fragment> = Vec::new();
     // A queried name in a file its cell lost (a syntax error, a read): the
@@ -3432,6 +3412,7 @@ pub fn build_impact(
                     cores.push(f);
                     cell_defs.insert(&f.id, entry);
                 }
+                None if over_the_cap.contains(&entry.file) => {}
                 _ => cell_apart.push(entry),
             }
         }
@@ -4622,12 +4603,11 @@ pub fn build_impact(
                     == Some(decide::Reason::TooLarge)
             };
             if (over(old) || over(new)) && !others.iter().any(|f| f.path == new) {
-                others.push(UnanalysedFile {
-                    path: new.to_string(),
-                    language: crate::languages::get_language_for_file(new),
-                    reason: "too_large",
-                    lines: Vec::new(),
-                });
+                others.push(UnanalysedFile::new(
+                    new.to_string(),
+                    "too_large",
+                    Vec::new(),
+                ));
             }
         }
         // A changed file a cell read whole is traced: what it holds outside every
@@ -5416,12 +5396,7 @@ fn key_references(
         .filter(|path| {
             !changed.contains(*path) && class_of(&state.root_dir, &source, path, "", None).reads()
         })
-        .map(|path| UnanalysedFile {
-            path: path.clone(),
-            language: crate::languages::get_language_for_file(path),
-            reason: "too_large",
-            lines: Vec::new(),
-        })
+        .map(|path| UnanalysedFile::new(path.clone(), "too_large", Vec::new()))
         .collect();
     let wanted: FxHashSet<&str> = needles.iter().map(String::as_str).collect();
     let phrases: Vec<&String> = needles.iter().filter(|n| keys::is_phrase(n)).collect();
