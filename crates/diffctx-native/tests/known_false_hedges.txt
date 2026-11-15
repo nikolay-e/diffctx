@@ -26,15 +26,12 @@ impact/kotlin/kotlin_callable_reference_is_a_use  # B: alias.rs:211-214: the cal
 impact/php/php_trait_method_reaches_the_class_using_it  # D: a trait member is unowned though its caller row is resolved
 impact/python/py_attribute_names_do_not_bind_across_packages  # A: attribute of another package's object with the same name
 impact/python/py_attribute_read_through_a_local_alias_is_a_read_of_the_member  # A: attribute of an unrelated object with the same name (decoy other.py)
-impact/python/py_fallback_of_an_outside_import_keeps_its_users  # B: outcome.rs:759: `import fastjson as codec` is the declaration of the name itself
 impact/python/py_local_variable_is_not_a_reference_to_a_removed_property  # C: a local variable named like the removed property
 impact/python/py_member_shared_with_third_party_types_is_not_resolved_by_name  # A: df.columns: a third-party type's attribute, a decoy
 impact/python/py_never_imported_script_method_has_no_sibling_hedge  # A: client.call in a decoy script that never imports the module
 impact/python/py_table_registered_tool_a_test_calls_by_name_has_a_test_link  # B: the tuple member `("get_x", get_x, ...)` is a resolved row and also unlanded
-impact/rust/rust_local_closure_named_like_a_definition  # C: a local closure binding shadows the definition; the oracle names loader.rs a decoy
 impact/rust/rust_removed_private_duplicate_has_no_callers  # C: absorb(x) in a.rs binds to the imported absorb that replaced the removed private fn
 impact/shell/shell_changed_library_function_names_the_scripts_that_source_it  # A: `msg="login"` is a string, counted as a call and a read of login; the source_flag part is honest
-impact/sql/sql_body_only_change_reaches_callers  # A: comment, string, dollar-quote and a table of the same name in a decoy file
 impact/sql/sql_create_or_replace_keeps_the_routines_callers  # A,B: comment, string and other-schema calls in a decoy file; resolved sites counted again as reads
 impact/terraform/tf_changed_output_reaches_the_callers_of_its_module  # A: "vpc-${var.cidr}": a string literal counted as a read of output.vpc
 impact/terraform/tf_every_traversal_form_reaches_its_variable  # C: the for-expression variable `n` shadows var.n
@@ -43,15 +40,10 @@ impact/typescript/ts_destructured_static_method_is_called_through_its_alias  # B
 impact/typescript/ts_later_declarator_of_a_multi_declarator_const_is_the_changed_one  # A: hooks.MODEL: an object member of the same name, not the constant
 impact/typescript/ts_lazy_import_is_a_caller  # B: `m.MobileFullPlayer` is the site of the resolved import row
 impact/typescript/ts_lazy_import_through_a_tsconfig_alias_is_a_caller  # B: `m.Lazy` is the site of the resolved import row
-impact/typescript/ts_module_constant_read_by_its_own_file_is_referenced  # B: `PANEL_LINE.exec` is the site of the resolved read row
 impact/web/web_classic_script_global_is_called_by_the_pages_other_scripts  # A: standalone.html does not load lib.js: a decoy page
 symbol/kotlin/gh490_companion_factory_and_elvis_return_receivers_resolve  # B: both unlanded sites are the resolved rows
 symbol/python/py_call_as_the_value_of_a_same_named_keyword_is_a_caller  # A,B: the keyword name `agreement=` is counted as a read next to the resolved call (gh#708 family)
-symbol/python/py_local_function_symbol_lists_its_uses_in_the_enclosing_function  # D: decide.rs:596-604: a nested function is unowned though its uses are listed
 symbol/shell/shell_symbol_hyphenated_library_and_built_source_path  # A: `msg="login"` is a string; the source_flag part is honest
 symbol/sql/sql_call_in_a_host_code_string_is_a_candidate  # A: comment, string and table decoys; the unaccounted host-code part is honest
-symbol/sql/sql_symbol_function_callers_across_migrations  # A: comment, string and table decoys in V4__decoys.sql
 symbol/typescript/gh661_arrow_const_inside_a_component_is_a_definition  # D: a function nested in a component is unowned
-symbol/typescript/ts_declarations_nested_in_a_factory_closure_call_each_other  # D: a function nested in a factory closure is unowned
 symbol/web/web_symbol_astro_frontmatter_and_template_calls  # B: the template call site is the resolved row
-symbol/web/web_symbol_module_script_in_a_page_consumes_a_shared_module  # A: an HTML comment and paragraph text in a decoy page
