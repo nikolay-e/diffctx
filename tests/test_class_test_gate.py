@@ -184,7 +184,14 @@ class TestAFixNeedsItsClassTest:
         """The case is green on the base: it would have passed without the fix."""
         result = _run_gate(tmp_path, [("fix: stop the false clean", {ENGINE: "v2\n", **GREEN_CASE})])
         assert result.returncode == 1
-        assert "expected red on the base" in result.stdout + result.stderr
+        assert "no class test is red on the base" in result.stdout + result.stderr
+
+    def test_a_guard_case_beside_a_red_one_passes(self, tmp_path):
+        """A guard keeps a right answer: green on the base by design."""
+        result = _run_gate(tmp_path, [("fix: stop the false clean", {ENGINE: "v2\n", **RED_CASE, **GREEN_CASE})])
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert "case impact/python/unrelated is green on the base" in result.stdout
+        assert "case impact/python/body_only is red on the base" in result.stdout
 
     def test_a_case_the_fix_does_not_turn_green_is_refused(self, tmp_path):
         result = _run_gate(tmp_path, [("fix: a fix that fixes nothing", {ENGINE: "v1 again\n", **RED_CASE})])
