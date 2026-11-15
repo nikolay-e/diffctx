@@ -1,0 +1,37 @@
+name: au_go_call_in_unread_files_is_named_not_empty
+mode: impact
+source: synthetic
+tags: [go, au-unread, unread-file, literal-name]
+repo:
+  initial_files:
+    go.mod: |
+      module example.com/app
+
+      go 1.22
+    pricing/pricing.go: |
+      package pricing
+
+      func total(items []int) int {
+          return len(items)
+      }
+    notes.xyz: |
+      before shipping run total(x) by hand
+    runner: |
+      total(x)
+  changed_files:
+    pricing/pricing.go: |
+      package pricing
+
+      func total(items []int) int {
+          return len(items) + 1
+      }
+  commit_message: "pricing: total adds one"
+expect:
+  exact: false
+  discloses: true
+  never_empty: true
+  no_negative_claims: true
+  coverage: {total: {calls: partial}}
+  relations:
+    - {from: notes.xyz, to: pricing/pricing.go::total, kind: calls, resolution: unresolved}
+    - {from: runner, to: pricing/pricing.go::total, kind: calls, resolution: unresolved}

@@ -1,0 +1,54 @@
+name: au_go_plain_name_as_a_string_argument_is_named_not_empty
+mode: impact
+source: synthetic
+tags: [go, au-literal, literal-name, short-name]
+repo:
+  initial_files:
+    go.mod: |
+      module example.com/app
+
+      go 1.22
+    pricing/pricing.go: |
+      package pricing
+
+      type Pricing struct{}
+
+      func (Pricing) Total(items []int) int {
+          return len(items)
+      }
+
+      func (Pricing) Run(items []int) int {
+          return len(items)
+      }
+    app/dispatch.go: |
+      package app
+
+      import "reflect"
+
+      func Go(p any) {
+          reflect.ValueOf(p).MethodByName("Total").Call(nil)
+          reflect.ValueOf(p).MethodByName("Run").Call(nil)
+      }
+  changed_files:
+    pricing/pricing.go: |
+      package pricing
+
+      type Pricing struct{}
+
+      func (Pricing) Total(items []int) int {
+          return len(items) + 1
+      }
+
+      func (Pricing) Run(items []int) int {
+          return len(items) + 1
+      }
+  commit_message: "pricing: both add one"
+expect:
+  exact: false
+  discloses: true
+  never_empty: true
+  no_negative_claims: true
+  coverage: {Total: {calls: partial}, Run: {calls: partial}}
+  relations:
+    - {from: app/dispatch.go, to: pricing/pricing.go::Total, kind: calls, resolution: unresolved}
+    - {from: app/dispatch.go, to: pricing/pricing.go::Run, kind: calls, resolution: unresolved}

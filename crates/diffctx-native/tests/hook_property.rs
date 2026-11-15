@@ -686,6 +686,34 @@ fn scenario_under(kind: Scenario, struck: Option<(usize, usize)>) -> (String, [u
     (shown.join("\n"), calls)
 }
 
+/// The reasons of every `(partial: a, b; …)` list in the output, in the order
+/// the engine names them.
+fn partial_reasons(printed: &str) -> Vec<&str> {
+    printed
+        .split("(partial: ")
+        .skip(1)
+        .filter_map(|rest| rest.split([';', ')']).next())
+        .flat_map(|list| list.split(',').map(str::trim))
+        .collect()
+}
+
+#[test]
+fn a_stop_is_read_from_anywhere_in_the_partial_list() {
+    let honest = "impact for uncommitted changes: 1 changed file(s)\n\
+                  (partial: discovery_truncated, deadline, read_failed; callers may be missing)";
+    assert_eq!(
+        partial_reasons(honest),
+        ["discovery_truncated", "deadline", "read_failed"]
+    );
+    assert!(a_review_or_not_reviewed(honest).is_ok());
+    let tail = "(partial: discovery_truncated, read_failed)";
+    assert!(a_review_or_not_reviewed(tail).is_ok());
+    let unnamed = "(partial: discovery_truncated; callers may be missing)";
+    assert!(a_review_or_not_reviewed(unnamed).is_err());
+    assert!(a_review_or_not_reviewed("a deadline was mentioned, no list").is_err());
+    assert!(a_review_or_not_reviewed("").is_err());
+}
+
 /// What the agent was shown is a review of the change, or says in words that
 /// there was none. Never nothing, and never that the change reaches nothing
 /// or touches no file.
@@ -698,14 +726,12 @@ fn a_review_or_not_reviewed(printed: &str) -> Result<(), String> {
             return Err(format!("[clean] the output says `{clean}`:\n{printed}"));
         }
     }
-    let said = [
-        "did not review",
-        "did not analyse",
-        "(partial: read_failed",
-        "(partial: deadline",
-    ]
-    .iter()
-    .any(|words| printed.contains(words));
+    let said = ["did not review", "did not analyse"]
+        .iter()
+        .any(|words| printed.contains(words))
+        || partial_reasons(printed)
+            .iter()
+            .any(|reason| matches!(*reason, "read_failed" | "deadline"));
     if !said && !printed.contains("charge") {
         return Err(format!(
             "[unnamed] neither the review's callers nor a reason were printed:\n{printed}"
