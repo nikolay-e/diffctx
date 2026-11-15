@@ -5324,6 +5324,23 @@ fn typed_readers(state: &ScoredState, untraced: &[String]) -> Vec<(String, Strin
     })
     .filter(|(target, ..)| untraced.contains(target))
     .collect();
+    rows.extend(
+        crate::keytable::runs_named_after(
+            &state.all_fragments,
+            Some(state.root_dir.as_path()),
+            untraced,
+        )
+        .into_iter()
+        .map(|c| {
+            let key = format!("{} {}", c.kind, c.key);
+            (
+                c.changed_path,
+                key,
+                rel(state, &c.path),
+                c.line.max(1) as u32,
+            )
+        }),
+    );
     rows.sort();
     rows.dedup_by(|a, b| a.0 == b.0 && a.1 == b.1 && a.2 == b.2);
     rows
