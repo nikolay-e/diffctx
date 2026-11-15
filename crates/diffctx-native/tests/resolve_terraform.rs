@@ -808,12 +808,18 @@ fn a_module_is_called_when_a_call_sources_its_directory_whatever_its_depth() {
             "module \"net\" {\n  source = \"../../modules/net\"\n}\n",
         ),
         ("modules/net/main.tf", NET),
+        ("infra/stage/main.tf", NET),
         ("modules/spare/main.tf", NET),
+        ("modules/spare/examples/basic/main.tf", NET),
     ]);
     assert!(fx.head.is_called("modules/net/main.tf"));
     // fj#193: a directory no call sources is a root module, deep or not.
     assert!(!fx.head.is_called("infra/prod/main.tf"));
-    assert!(!fx.head.is_called("modules/spare/main.tf"));
+    assert!(!fx.head.is_called("infra/stage/main.tf"));
+    // The standard module structure nests a module only a module block calls;
+    // its example is a root module again.
+    assert!(fx.head.is_called("modules/spare/main.tf"));
+    assert!(!fx.head.is_called("modules/spare/examples/basic/main.tf"));
 }
 
 #[test]
