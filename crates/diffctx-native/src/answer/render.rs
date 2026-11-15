@@ -143,6 +143,11 @@ fn list(out: &mut String, heading: &str, lines: &[String], shown: usize, omitted
     if page.total == 0 {
         return;
     }
+    // A heading over nothing but a count is one line: the count is the item.
+    if page.shown.is_empty() {
+        let _ = writeln!(out, "{heading} {} not listed", page.rest());
+        return;
+    }
     let _ = writeln!(out, "{heading}");
     for line in page.shown {
         let _ = writeln!(out, "  - {line}");

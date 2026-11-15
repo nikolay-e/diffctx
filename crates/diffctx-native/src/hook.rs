@@ -71,6 +71,18 @@ pub const PIPELINE_SECS: u64 = 20;
 /// which prints nothing.
 const TAIL_GRACE_SECS: u64 = 10;
 
+/// The ceiling of this run: `HOOK_DEADLINE_SECS`, unless a test sets its own.
+#[allow(
+    clippy::disallowed_methods,
+    reason = "a test knob: one that is no number leaves the ceiling as shipped"
+)]
+fn ceiling_secs() -> u64 {
+    std::env::var(crate::resource::TEST_HOOK_CEILING_SECS_ENV)
+        .ok()
+        .and_then(|secs| secs.parse().ok())
+        .unwrap_or(HOOK_DEADLINE_SECS)
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Event {
     PreToolUse,
@@ -1090,14 +1102,23 @@ impl Fnv {
 /// changes nothing; a read git refused is an error, never "nothing": an
 /// unknown set of files changed.
 pub fn result_identity(root: &Path, range: &str) -> Result<Option<String>, Silence> {
-    identity_of(root, range).map(|(identity, _)| identity)
+    identity_of(root, range).map(|found| found.id)
 }
 
-/// `result_identity` and, for the working tree, the untracked directories
-/// its collapsed read left unread (a budget of entries bounds it, so a
-/// checkout of a million untracked files costs what its top levels cost):
-/// they are in the identity by name, and the review says it did not read them.
-fn identity_of(root: &Path, range: &str) -> Result<(Option<String>, Vec<String>), Silence> {
+/// A range's identity, the paths it changes and, for the working tree, the
+/// untracked directories its collapsed read left unread (a budget of entries
+/// bounds it, so a checkout of a million untracked files costs what its top
+/// levels cost): they are in the identity by name, and the review says it did
+/// not read them.
+#[derive(Default)]
+struct Identity {
+    id: Option<String>,
+    /// Every path the identity covers; a directory it did not read ends in `/`.
+    paths: Vec<String>,
+    unread: Vec<String>,
+}
+
+fn identity_of(root: &Path, range: &str) -> Result<Identity, Silence> {
     let (base, head) = match snap::split_diff_range(range) {
         (Some(b), h) => (b, h),
         _ => (range.to_string(), None),
@@ -1122,7 +1143,10 @@ fn identity_of(root: &Path, range: &str) -> Result<(Option<String>, Vec<String>)
         unread = untracked.unread;
     }
     if entries.is_empty() {
-        return Ok((None, unread));
+        return Ok(Identity {
+            unread,
+            ..Identity::default()
+        });
     }
     hash_working_tree_blobs(root, &mut entries);
     entries.sort();
@@ -1143,7 +1167,11 @@ fn identity_of(root: &Path, range: &str) -> Result<(Option<String>, Vec<String>)
             .feed(mode.as_bytes())
             .feed(oid.as_bytes());
     }
-    Ok((Some(format!("{:016x}", h.0)), unread))
+    Ok(Identity {
+        id: Some(format!("{:016x}", h.0)),
+        paths: entries.into_iter().map(|(path, _, _)| path).collect(),
+        unread,
+    })
 }
 
 /// `(path, mode, blob id)` of every path `base..head` changes (`head` absent:
@@ -1769,8 +1797,9 @@ fn pending_review(event: Event, session: Option<&str>, started: Instant) -> Opti
             Ok(found) if !found.is_empty() => {
                 reviewed = true;
                 for p in found {
+                    let root = p.root.clone();
                     if let Ok(a) = answer(event, p, false, started, &mut trace) {
-                        answers.push(a);
+                        answers.push((root, a));
                     }
                 }
             }
@@ -1784,7 +1813,7 @@ fn pending_review(event: Event, session: Option<&str>, started: Instant) -> Opti
     if reviewed {
         log_outcome(event, &trace, "late", started.elapsed());
     }
-    joined(answers)
+    one_budget(answers)
 }
 
 /// Several answers of one event as one hook output: the last one's (a
@@ -1809,6 +1838,62 @@ fn joined(answers: Vec<String>) -> Option<String> {
     }))
 }
 
+/// One range's answer: what the hook prints for it, and the line that stands
+/// for it when the answers of one call share a budget.
+struct Answered {
+    json: String,
+    headline: Option<String>,
+}
+
+impl From<String> for Answered {
+    fn from(json: String) -> Self {
+        Self {
+            json,
+            headline: None,
+        }
+    }
+}
+
+/// The answers of one call's ranges under one budget (#741): the first in
+/// full, every other as the line naming its work tree and what it found, so
+/// that a call committing in several work trees costs one cap, not one each.
+#[allow(
+    clippy::disallowed_methods,
+    reason = "every answer is `hook_json`'s own output: one that carries no context has no line"
+)]
+fn one_budget(mut answers: Vec<(PathBuf, Answered)>) -> Option<String> {
+    if answers.is_empty() {
+        return None;
+    }
+    let (_, first) = answers.remove(0);
+    if answers.is_empty() {
+        return Some(first.json);
+    }
+    let lines: Vec<String> = answers
+        .into_iter()
+        .map(|(root, answered)| {
+            let context = serde_json::from_str::<serde_json::Value>(&answered.json)
+                .ok()
+                .and_then(|d| {
+                    d["hookSpecificOutput"]["additionalContext"]
+                        .as_str()
+                        .map(str::to_string)
+                })
+                .unwrap_or_default();
+            let line = answered
+                .headline
+                .unwrap_or_else(|| context.lines().next().unwrap_or("").to_string());
+            format!("- {}: {line}", root.display())
+        })
+        .collect();
+    let note = format!(
+        "diffctx also reviewed {} other range(s) this call changed, one line each; `diffctx <repo> --diff <range> --mode impact` gives the whole review:\n{}",
+        lines.len(),
+        lines.join("\n")
+    );
+    Some(with_notice(&first.json, &note))
+}
+
 fn prepared(
     root: PathBuf,
     range: String,
@@ -1817,7 +1902,11 @@ fn prepared(
     trace: &mut Trace,
 ) -> Result<Prepared, Silence> {
     trace.range = Some(range.clone());
-    let (identity, unread) = identity_of(&root, &range)?;
+    let Identity {
+        id: identity,
+        unread,
+        ..
+    } = identity_of(&root, &range)?;
     let identity = identity.ok_or("clean")?;
     let session = trace.session.as_deref();
     let key = session_key(&format!("id-{identity}"), session);
@@ -2466,7 +2555,8 @@ fn range_name(trigger: &Trigger, range: &str) -> Option<String> {
     reason = "the pending text of files the review reads as committed; one that cannot be read is named in the hedge"
 )]
 fn named_in_unread(root: &Path, own: &Owned) -> Option<String> {
-    let Ok(names) = edited_definitions(root, Some(&own.files)) else {
+    let run = crate::resource::RunContext::unbounded();
+    let Ok(names) = edited_definitions(root, Some(&own.files), &run) else {
         return Some(
             "(callers may be missing: the names this session's edits change could not be read, so the changed files read as committed were not checked for them)"
                 .to_string(),
@@ -2575,6 +2665,24 @@ fn stopped_note(
     format!(
         "diffctx stopped at the hook's budget before it finished {range}.{which} `diffctx <repo> --diff {range} --mode impact` runs the review to the end.\n"
     )
+}
+
+/// What the engine says of a range with no code in it, said without running
+/// it: nothing reached, or the files it was not allowed to read (as
+/// `impact::unread_line` words them).
+fn no_code_reply(range: &str, withheld: usize) -> Result<Reply, Silence> {
+    if withheld == 0 {
+        return Err("empty");
+    }
+    let line = format!(
+        "diffctx: {range} reaches nothing outside the diff in the files it read; not analysed: {} (what they name is unknown).",
+        crate::decide::Gap::Withheld { files: withheld }
+    );
+    Ok(Reply {
+        context: line.clone(),
+        headline: line,
+        partial: false,
+    })
 }
 
 fn impact_context(
@@ -2786,11 +2894,22 @@ fn search_scope(payload: &serde_json::Value, search: &Searched, root: &Path) -> 
 /// working tree, the way impact names its changed symbols. Only the changed
 /// files are parsed, so a search for any other name stops here without
 /// running the pipeline.
-fn edited_definitions(root: &Path, within: Option<&[String]>) -> Result<Vec<String>, Silence> {
+fn edited_definitions(
+    root: &Path,
+    within: Option<&[String]>,
+    run: &crate::resource::RunContext,
+) -> Result<Vec<String>, Silence> {
+    let _phase = crate::profile::phase("hook.edited_definitions");
     // The pending change as impact reads it, untracked files included: a
     // name defined only in a new file is still the change's (#448).
-    let run = crate::resource::RunContext::unbounded();
-    let analysis = crate::source::Analysis::at_working_tree(root, &run).map_err(|_| "error:git")?;
+    let stopped = |e: snap::SnapshotError| {
+        if e.is_interruption() {
+            "timeout"
+        } else {
+            "error:git"
+        }
+    };
+    let analysis = crate::source::Analysis::at_working_tree(root, run).map_err(stopped)?;
     run.set_source(analysis.head());
     let (mut hunks, _) = crate::pipeline::collect_hunks_with_untracked(
         root,
@@ -2814,7 +2933,7 @@ fn edited_definitions(root: &Path, within: Option<&[String]>) -> Result<Vec<Stri
         root,
         &mut rustc_hash::FxHashSet::default(),
         true,
-        &run,
+        run,
         &hunks,
     );
     let mut names = Vec::new();
@@ -2983,17 +3102,36 @@ fn search_answer(
     let scope = search_scope(payload, search, &root);
     // A pending change git would not read leaves unknown which names it
     // edits: said, never answered as if nothing were edited.
-    let (identity, mut unread) = match result_identity(&root, "HEAD") {
-        Ok(identity) => (identity, false),
-        Err(_) => (None, true),
+    let (pending, mut unread) = match identity_of(&root, "HEAD") {
+        Ok(pending) => (pending, false),
+        Err(_) => (Identity::default(), true),
     };
-    let edited = match &identity {
-        Some(_) => edited_definitions(&root, None).unwrap_or_else(|_| {
-            unread = true;
-            Vec::new()
-        }),
-        None => Vec::new(),
+    // The analysis of the pending change runs only when a changed file could
+    // define a searched name: a search of prose, or of a name no changed file
+    // spells, is settled from the names alone.
+    let maybe = may_edit(&root, &pending.paths, &names);
+    let edited = match &pending.id {
+        Some(identity) if !maybe.is_empty() => match edited_names(&root, identity, started) {
+            Ok(edited) => edited,
+            // Said, never silence: the name was searched, and the reader
+            // cannot tell a quiet analysis from one that did not finish.
+            Err("timeout") => {
+                trace.noted = Some("timeout");
+                return Ok(format!(
+                    "diffctx: the pending change may edit {}; the analysis of what references {} ran past the hook's deadline and was not finished. `diffctx . --symbol {} -f md` runs it without one.",
+                    quoted(&maybe),
+                    if maybe.len() == 1 { "it" } else { "them" },
+                    maybe[0],
+                ));
+            }
+            Err(_) => {
+                unread = true;
+                Vec::new()
+            }
+        },
+        _ => Vec::new(),
     };
+    let identity = pending.id;
     let (edited, others): (Vec<String>, Vec<String>) =
         names.into_iter().partition(|n| edited.contains(n));
     let mut answers = Vec::new();
@@ -3034,6 +3172,56 @@ fn search_answer(
         return Err(silence);
     }
     Ok(answers.join("\n"))
+}
+
+/// The searched names a file of the pending change could define: none of a
+/// file of prose, which defines nothing, and those a file's text spells
+/// otherwise. A file that cannot be read whole could define any of them.
+#[allow(
+    clippy::disallowed_methods,
+    reason = "a pre-filter: a file it cannot read keeps every name, and the analysis decides"
+)]
+fn may_edit<'a>(root: &Path, paths: &[String], names: &'a [String]) -> Vec<&'a String> {
+    const MAX_READ: u64 = 1024 * 1024;
+    let mut maybe: Vec<&String> = Vec::new();
+    for p in paths.iter().filter(|p| !p.ends_with('/')) {
+        let path = root.join(p);
+        if crate::config::extensions::DOC_EXTENSIONS.contains(file_ext(&path).as_str()) {
+            continue;
+        }
+        let text = std::fs::metadata(&path)
+            .ok()
+            .filter(|meta| meta.len() <= MAX_READ)
+            .and_then(|_| std::fs::read_to_string(&path).ok());
+        let Some(text) = text else {
+            return names.iter().collect();
+        };
+        let words: rustc_hash::FxHashSet<&str> = text
+            .split(|c: char| !(c.is_alphanumeric() || c == '_' || c == '$'))
+            .collect();
+        for name in names {
+            if words.contains(name.as_str()) && !maybe.contains(&name) {
+                maybe.push(name);
+            }
+        }
+    }
+    maybe
+}
+
+/// The names the pending change edits, read once per identity: the analysis is
+/// within the hook's ceiling, and an answer is kept for every later search of
+/// the same change.
+fn edited_names(root: &Path, identity: &str, started: Instant) -> Result<Vec<String>, Silence> {
+    let key = format!("edn-{identity}");
+    if let Some(kept) = seen_headline(&key, SEEN_TTL) {
+        return Ok(kept.lines().map(str::to_string).collect());
+    }
+    let root = root.to_path_buf();
+    let names = within_budget(started, move |secs| {
+        edited_definitions(&root, None, &crate::resource::RunContext::for_run(secs))
+    })?;
+    mark_seen_with(&key, &names.join("\n"));
+    Ok(names)
 }
 
 /// Names the pending change edits, answered from its impact once per name
@@ -3286,13 +3474,14 @@ fn within_budget<T: Send + 'static>(
     started: Instant,
     work: impl FnOnce(u64) -> Result<T, Silence> + Send + 'static,
 ) -> Result<T, Silence> {
-    let left = HOOK_DEADLINE_SECS.saturating_sub(started.elapsed().as_secs());
+    let ceiling = ceiling_secs();
+    let left = ceiling.saturating_sub(started.elapsed().as_secs());
     if left == 0
         || std::env::var(crate::resource::TEST_HOOK_CEILING_EXPIRED_ENV).as_deref() == Ok("1")
     {
         return Err("timeout");
     }
-    let engine_secs = (left * PIPELINE_SECS / HOOK_DEADLINE_SECS).max(1);
+    let engine_secs = (left.saturating_mul(PIPELINE_SECS) / ceiling).max(1);
     let (tx, rx) = std::sync::mpsc::channel();
     std::thread::spawn(crate::profile::carry(move || {
         let _ = tx.send(work(engine_secs));
@@ -3314,14 +3503,41 @@ fn withheld_clause(paths: &snap::NamedChanges) -> String {
     }
 }
 
+fn range_changes(
+    root: &Path,
+    spec: snap::RangeSpec,
+) -> Result<snap::ChangeSet, snap::SnapshotError> {
+    let budget = snap::RunBudget::default();
+    Ok(snap::AnalysisContext::new(snap::open(root)?, spec, budget)?.changes)
+}
+
 fn named_changes(
     root: &Path,
     spec: snap::RangeSpec,
 ) -> Result<snap::NamedChanges, snap::SnapshotError> {
-    let budget = snap::RunBudget::default();
-    Ok(snap::AnalysisContext::new(snap::open(root)?, spec, budget)?
-        .changes
-        .named())
+    Ok(range_changes(root, spec)?.named())
+}
+
+/// What a range changes and nothing else: prose files added or edited and
+/// files the ignore rules withhold. Nothing in it defines a name, so the
+/// engine would only read the whole repository to say it reaches nothing,
+/// and a large one stopped at the hook's ceiling saying "partial" (fj#170,
+/// fj#194).
+fn changes_no_code(changes: &snap::ChangeSet) -> bool {
+    (!changes.changes.is_empty() || changes.withheld > 0)
+        && changes.gitignored.is_empty()
+        && changes.changes.iter().all(|c| {
+            matches!(c.kind, snap::ChangeKind::Added | snap::ChangeKind::Modified)
+                && crate::config::extensions::DOC_EXTENSIONS
+                    .contains(file_ext(Path::new(c.path.as_str())).as_str())
+        })
+}
+
+/// A range's changed files, read before its review begins, and whether they
+/// leave nothing for the engine to read.
+struct RangeFiles {
+    named: snap::NamedChanges,
+    no_code: bool,
 }
 
 /// The files a range changes, read before its review begins: past the
@@ -3332,20 +3548,25 @@ fn named_changes(
     clippy::disallowed_methods,
     reason = "None is a listing git refused, which the answer says: \"Its changed files could not be listed.\""
 )]
-fn range_paths(
-    root: &Path,
-    range: &str,
-    spec: Option<&snap::RangeSpec>,
-) -> Option<snap::NamedChanges> {
+fn range_paths(root: &Path, range: &str, spec: Option<&snap::RangeSpec>) -> Option<RangeFiles> {
     let spec = match spec {
         Some(spec) => spec.clone(),
         None => snap::resolve(&snap::open(root).ok()?, range).ok()?,
     };
     if matches!(spec, snap::RangeSpec::WorkingTree { .. }) {
         let args = ["diff", "--name-only", "-z", "--no-renames", range, "--"];
-        return snap::name_working_tree_changes(root, snap::run_git_z(root, &args).ok()?).ok();
+        let named =
+            snap::name_working_tree_changes(root, snap::run_git_z(root, &args).ok()?).ok()?;
+        return Some(RangeFiles {
+            named,
+            no_code: false,
+        });
     }
-    named_changes(root, spec).ok()
+    let changes = range_changes(root, spec).ok()?;
+    Some(RangeFiles {
+        no_code: changes_no_code(&changes),
+        named: changes.named(),
+    })
 }
 
 /// The hook's whole decision on one stdin payload. An answer is marked
@@ -3519,12 +3740,13 @@ fn review(
     let mut answers = Vec::new();
     let mut silence = None;
     for p in prepared {
+        let root = p.root.clone();
         match answer(event, p, gate, started, trace) {
-            Ok(a) => answers.push(a),
+            Ok(a) => answers.push((root, a)),
             Err(why) => silence = silence.or(Some(why)),
         }
     }
-    joined(answers).ok_or(silence.unwrap_or("empty"))
+    one_budget(answers).ok_or_else(|| silence.unwrap_or("empty"))
 }
 
 /// The marker that this session's own hook reviewed `oid` when it landed.
@@ -3580,7 +3802,7 @@ fn answer(
     gate: bool,
     started: Instant,
     trace: &mut Trace,
-) -> Result<String, Silence> {
+) -> Result<Answered, Silence> {
     if event == Event::PreToolUse && is_seen(&prepared.record_key) {
         return Err("seen");
     }
@@ -3610,7 +3832,8 @@ fn answer(
                     prepared.range
                 ),
                 false,
-            ));
+            )
+            .into());
         }
     }
     match (&prepared.shown, event) {
@@ -3622,7 +3845,7 @@ fn answer(
             }
             note_reviewed(&made, trace);
             if landed {
-                return Ok(nothing_reached(event, landed, trace));
+                return Ok(nothing_reached(event, landed, trace).into());
             }
             return Err("empty");
         }
@@ -3632,7 +3855,7 @@ fn answer(
             mark_seen(&prepared.record_key);
             note_reviewed(&made, trace);
             trace.noted = Some("reminder");
-            return Ok(hook_json(event, &reminder(event, &d.headline), false));
+            return Ok(hook_json(event, &reminder(event, &d.headline), false).into());
         }
         (Some(d), Event::PostToolUse { .. }) if !d.partial => return Err("seen"),
         _ => {}
@@ -3646,7 +3869,8 @@ fn answer(
                 "retry-exhausted",
                 Some(&snap::NamedChanges::NONE),
                 trace,
-            ));
+            )
+            .into());
         }
         return Err("retry-exhausted");
     }
@@ -3663,12 +3887,18 @@ fn answer(
         ..
     } = prepared;
     let reviewed = range.clone();
-    let paths = range_paths(&root, &range, spec.as_ref());
+    let files = range_paths(&root, &range, spec.as_ref());
+    let no_code = files.as_ref().is_some_and(|f| f.no_code);
+    let paths = files.map(|f| f.named);
     let named = paths.clone();
     let recorded = !matches!(trigger, Trigger::Inspect { .. });
-    let answer = within_budget(started, move |secs| {
-        impact_context(event, &trigger, &root, &range, spec, secs, named.as_ref())
-    });
+    let answer = if no_code {
+        no_code_reply(&range, paths.as_ref().map_or(0, |p| p.withheld))
+    } else {
+        within_budget(started, move |secs| {
+            impact_context(event, &trigger, &root, &range, spec, secs, named.as_ref())
+        })
+    };
     let answer = with_unread(answer, &unread);
     match &answer {
         // Nothing to say is a complete answer, delivered as silence.
@@ -3687,9 +3917,9 @@ fn answer(
         // An inspection too says so when git or the engine failed: only a
         // limit it stopped at (a timeout) stays silent there.
         Err(why) if recorded || why.starts_with("error:") => {
-            return Ok(not_reviewed(event, &reviewed, why, paths.as_ref(), trace));
+            return Ok(not_reviewed(event, &reviewed, why, paths.as_ref(), trace).into());
         }
-        Err(_) => return answer.map(|_| String::new()),
+        Err(why) => return Err(why),
     }
     // A partial answer keeps its attempt: it is retried, but not forever.
     if !matches!(&answer, Ok(a) if a.partial) {
@@ -3700,7 +3930,7 @@ fn answer(
     }
     match answer {
         Err("empty") if event == Event::PreToolUse || landed => {
-            Ok(nothing_reached(event, landed, trace))
+            Ok(nothing_reached(event, landed, trace).into())
         }
         answer => answer.map(|a| {
             let deny = gate && !a.partial;
@@ -3711,7 +3941,10 @@ fn answer(
                 // log either (fj#127).
                 trace.noted = Some("partial");
             }
-            hook_json(event, &a.context, deny)
+            Answered {
+                json: hook_json(event, &a.context, deny),
+                headline: Some(a.headline),
+            }
         }),
     }
 }
@@ -3926,7 +4159,7 @@ pub fn respond_within_deadline(event: Event, stdin_json: String, gate: bool) -> 
     let mut trace = Trace::default();
     // The git calls that pick the range run on this thread before any
     // pipeline does; the hook's own context bounds them together.
-    let hook_run = crate::resource::RunContext::for_run(HOOK_DEADLINE_SECS);
+    let hook_run = crate::resource::RunContext::for_run(ceiling_secs());
     let _in_hook = hook_run.enter();
     let answer = decide(event, &stdin_json, gate, started, &mut trace);
     let outcome = match &answer {
