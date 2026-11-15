@@ -1078,9 +1078,9 @@ impl<'w> Engine<'w> {
         if depth > MAX_DEPTH {
             return Ent::Unknown;
         }
-        let found = self.visible(f, name, |k| {
-            matches!(k, DefKind::Struct | DefKind::TypeAlias | DefKind::Enum)
-        });
+        let is_type =
+            |k: DefKind| matches!(k, DefKind::Struct | DefKind::TypeAlias | DefKind::Enum);
+        let found = self.visible(f, name, is_type);
         let concrete = found
             .iter()
             .copied()
@@ -1097,9 +1097,16 @@ impl<'w> Engine<'w> {
                 let rec = &self.ix.defs[alias.unwrap_or(0)];
                 self.struct_named(rec.file, &next, depth + 1)
             }
-            _ if found.is_empty() => Ent::Foreign,
+            // A type the project declares but no include of this file reaches is not
+            // the library's: the include may be one this model cannot follow.
+            _ if found.is_empty() && !self.declares(name, is_type) => Ent::Foreign,
             _ => Ent::Unknown,
         }
+    }
+
+    /// Whether the project declares a file-scope definition of the name, reached or not.
+    fn declares(&self, name: &str, wanted: fn(DefKind) -> bool) -> bool {
+        (self.ix.top.get(name).into_iter().flatten()).any(|id| wanted(self.ix.defs[*id].def.kind))
     }
 
     fn field_of(&self, structure: usize, name: &str) -> Vec<usize> {

@@ -490,12 +490,12 @@ impl<'a> Reading<'a> {
     }
 
     fn claims(&self, occurrence: &Occurrence) -> Vec<Claim> {
+        self.claims_at(occurrence, occurrence.bytes.start, occurrence.bytes.end)
+    }
+
+    fn claims_at(&self, occurrence: &Occurrence, start: u32, end: u32) -> Vec<Claim> {
         let spelled = self.spelled(occurrence);
-        let at = (
-            occurrence.file.clone(),
-            occurrence.bytes.start,
-            occurrence.bytes.end,
-        );
+        let at = (occurrence.file.clone(), start, end);
         self.view
             .at(&at)
             .filter(|binding| same(binding.name.as_str(), spelled, self.case))
@@ -1119,10 +1119,24 @@ impl<'a> Reading<'a> {
             .is_some_and(|def| self.file.path != self.subject.file || !def.span.bytes.contains(&at))
     }
 
+    /// The literal a mention stands alone in: a string-keyed member (`r["load"]`)
+    /// binds at the literal, quotes included.
+    fn quoted(&self, mention: &Occurrence) -> Option<(u32, u32)> {
+        let (start, end) = (mention.bytes.start, mention.bytes.end);
+        let open = *self.text.get(start.checked_sub(1)? as usize)?;
+        (matches!(open, b'"' | b'\'' | b'`') && self.text.get(end as usize) == Some(&open))
+            .then_some((start - 1, end + 1))
+    }
+
     /// A mention is an entry only when a binding at its span explains it; it is
     /// then code.
     fn explained(&self, mention: Occurrence) -> Option<Entry> {
-        let claims = self.claims(&mention);
+        let mut claims = self.claims(&mention);
+        if claims.is_empty() {
+            claims = self.quoted(&mention).map_or_else(Vec::new, |(start, end)| {
+                self.claims_at(&mention, start, end)
+            });
+        }
         (!claims.is_empty()).then(|| {
             let code = Occurrence {
                 class: Class::Code,

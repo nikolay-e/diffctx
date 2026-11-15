@@ -1,0 +1,61 @@
+name: rsx_a_path_head_no_manifest_declares_is_a_gap
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [rust, workspace, extern-crate, gap, absence-claim]
+repo:
+  initial_files:
+    Cargo.toml: |
+      [workspace]
+      members = ["crates/*"]
+      resolver = "2"
+    crates/core-lib/Cargo.toml: |
+      [package]
+      name = "core-lib"
+      version = "0.1.0"
+      edition = "2021"
+    crates/core-lib/src/lib.rs: |
+      pub mod engine;
+    crates/core-lib/src/engine.rs: |
+      pub fn step(x: i32) -> i32 {
+          x + 1
+      }
+    crates/old/Cargo.toml: |
+      [package]
+      name = "old"
+      version = "0.1.0"
+      edition = "2015"
+
+      [dependencies]
+      core-lib = { path = "../core-lib" }
+    crates/old/src/lib.rs: |
+      pub fn from_2015() -> i32 {
+          eng::engine::step(1)
+      }
+    crates/other/Cargo.toml: |
+      [package]
+      name = "other"
+      version = "0.1.0"
+      edition = "2021"
+
+      [dependencies]
+      remote = "1"
+    crates/other/src/lib.rs: |
+      pub fn from_remote() -> i32 {
+          remote::engine::step(1)
+      }
+  changed_files:
+    crates/core-lib/src/engine.rs: |
+      pub fn step(x: i32) -> i32 {
+          x + 2
+      }
+  commit_message: "engine: add two"
+expect:
+  changed: [crates/core-lib/src/engine.rs::step]
+  callers:
+    step: []
+  coverage:
+    crates/core-lib/src/engine.rs::step:
+      calls: partial
+  no_negative_claims: true
+  never_empty: true

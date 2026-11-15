@@ -1023,7 +1023,8 @@ fn variants_unit_structs_and_macros_are_found() {
 }
 
 /// A path dependency the manifest declares is a crate this one may name; a
-/// package nothing declares is not, and an outside crate is no repository code.
+/// head its manifest does not declare binds nothing the model can see, so it is
+/// no proof the call is an outside crate's.
 #[test]
 fn a_declared_path_dependency_is_found_and_an_undeclared_one_is_not() {
     let app = "use shop_core::total;\n\npub fn charge() -> u32 {\n    total()\n}\n\npub fn again() -> u32 {\n    shop_core::total()\n}\n";
@@ -1056,7 +1057,7 @@ fn a_declared_path_dependency_is_found_and_an_undeclared_one_is_not() {
     );
     assert_eq!(
         fx.lands_at("stray/src/lib.rs", "total", 2),
-        "unresolved(External)"
+        "unresolved(NoBinding)"
     );
 }
 
