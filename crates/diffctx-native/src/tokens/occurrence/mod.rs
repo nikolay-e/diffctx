@@ -224,6 +224,9 @@ pub enum Witness {
     /// `other_project`: the file's project cannot reference the definition's file, the
     /// manifests read whole.
     OtherProject(RepoPath),
+    /// `statement`: the name follows a keyword that declares it or names an object of another
+    /// namespace (`DROP FUNCTION f`, `INSERT INTO f` for a routine `f`): the keyword.
+    Statement(Name),
 }
 
 impl Witness {
@@ -238,6 +241,7 @@ impl Witness {
             Self::Manifests(..) => "manifests",
             Self::BareName(_) => "bare_name",
             Self::OtherProject(_) => "other_project",
+            Self::Statement(_) => "statement",
         }
     }
 }
@@ -280,6 +284,8 @@ pub struct Entry {
     pub relation: Option<Relation>,
     pub outcome: Outcome,
     pub basis: Basis,
+    /// A leak into an argument list: the callee the value is handed to, when the text names it.
+    pub passed_to: Option<Name>,
 }
 
 impl Entry {
@@ -409,6 +415,7 @@ impl Account {
                             file: at.file.clone(),
                             line: at.line,
                             place: *place,
+                            callee: entry.passed_to.clone(),
                         });
                     }
                 }
@@ -473,6 +480,7 @@ pub enum Hedge {
         file: RepoPath,
         line: u32,
         place: ValuePlace,
+        callee: Option<Name>,
     },
     Unread {
         file: RepoPath,
@@ -528,4 +536,4 @@ impl Verdict {
 
 mod alias;
 
-pub use alias::{close_aliases, value_use};
+pub use alias::{callee_of, close_aliases, value_use};

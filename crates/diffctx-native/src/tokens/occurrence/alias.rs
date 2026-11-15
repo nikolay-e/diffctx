@@ -51,10 +51,11 @@ where
 }
 
 /// Families whose extractors read a name handed to a call as `PassAsValue`.
-const ARGUMENT_FAMILIES: [Language; 7] = [
+const ARGUMENT_FAMILIES: [Language; 8] = [
     Language::Python,
     Language::Rust,
     Language::Go,
+    Language::Kotlin,
     Language::JavaScript,
     Language::TypeScript,
     Language::Html,
@@ -128,6 +129,42 @@ fn assigned_to(file: &FileFacts, text: &[u8], at: &Range<u32>) -> Option<(Name, 
         (matches!(gap.as_slice(), b"=" | b":=" | b"=::" | b"=&") && before != Some(b'='))
             .then(|| (name.clone(), scope, store || before == Some(b'.')))
     })
+}
+
+/// The callee whose argument list holds the occurrence at `at`: the dotted path before
+/// the nearest unclosed `(`, when the text names one.
+pub fn callee_of(text: &[u8], at: &Range<u32>) -> Option<Name> {
+    const REACH: usize = 2000;
+    let start = (at.start as usize).min(text.len());
+    let mut depth = 0usize;
+    let open = (text[start.saturating_sub(REACH)..start])
+        .iter()
+        .enumerate()
+        .rev()
+        .find_map(|(index, byte)| match byte {
+            b')' | b']' | b'}' => {
+                depth += 1;
+                None
+            }
+            b'(' | b'[' | b'{' if depth > 0 => {
+                depth -= 1;
+                None
+            }
+            b'(' => Some(index),
+            _ => None,
+        })?
+        + start.saturating_sub(REACH);
+    let before = &text[..open];
+    let head = before.len() - before.trim_ascii_end().len();
+    let word = &before[..before.len() - head];
+    let begin = word
+        .iter()
+        .rposition(|byte| !(byte.is_ascii_alphanumeric() || b"_$.:".contains(byte)))
+        .map_or(0, |at| at + 1);
+    let path = std::str::from_utf8(&word[begin..])
+        .ok()?
+        .trim_matches(['.', ':']);
+    (!path.is_empty()).then(|| Name::new(path))
 }
 
 /// What the `ours` occurrence at `at` (a byte range of `text`) of a definition of

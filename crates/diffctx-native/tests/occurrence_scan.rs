@@ -396,6 +396,7 @@ fn entry(line: u32, relation: Option<Relation>, outcome: Outcome, basis: Basis) 
         relation,
         outcome,
         basis,
+        passed_to: None,
     }
 }
 
@@ -561,6 +562,7 @@ fn a_not_ours_names_its_row_by_its_witness() {
         (Witness::OtherProject(path("app/x.py")), "other_project"),
         (Witness::BareName(vec![Name::new("C")]), "bare_name"),
         (Witness::Namespace(Name::new("f")), "other_module"),
+        (Witness::Statement(Name::new("drop")), "statement"),
     ];
     for (witness, row) in witnesses {
         let entry = entry(1, None, Outcome::NotOurs(witness), Basis::Witnessed);

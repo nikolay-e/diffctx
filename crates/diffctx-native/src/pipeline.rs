@@ -1020,6 +1020,7 @@ fn local_uses(
                 enclosing,
                 line: local.site.lines.0,
                 uses,
+                lossy: !blob.losses.is_empty(),
             });
         }
     }

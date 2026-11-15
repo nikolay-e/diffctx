@@ -4067,7 +4067,15 @@ pub fn build_impact(
         let unresolved = verdict
             .as_ref()
             .and_then(decide::Verdict::gap)
-            .filter(|gap| !(routed && *gap == decide::Gap::NotTraced))
+            .filter(|gap| {
+                !(routed
+                    && matches!(
+                        gap,
+                        decide::Gap::NotTraced
+                            | decide::Gap::PassedAsValue { .. }
+                            | decide::Gap::ImplicitlyConstructed
+                    ))
+            })
             .map(|gap| cell_unknown(&gap, &shown))
             .or(unresolved);
         // Read after the search: a stop noted while it ran, or before it
@@ -6305,6 +6313,8 @@ pub(crate) struct LocalOf {
     pub enclosing: String,
     pub line: u32,
     pub uses: Vec<LocalUse>,
+    /// The file was read in part.
+    pub lossy: bool,
 }
 
 /// The answer of a `--symbol` query that has blocks of its own to fill in, and no
@@ -6378,35 +6388,64 @@ pub(crate) fn symbol_local_output(
     let mut output = symbol_blocks_output(root_dir, query);
     output.changed = locals
         .into_iter()
-        .map(|local| ChangedSymbol {
-            callers: local
-                .uses
-                .iter()
-                .map(|u| {
-                    Caller::at_line(
-                        local.path.clone(),
-                        u.inside.clone(),
-                        format!("{0}-{0}", u.line),
-                        "resolved",
-                        if u.call { "call" } else { "reference" },
-                        u.line,
-                    )
-                })
-                .collect(),
-            unresolved: Some(Unknown::LocalOf {
-                name: local.name.clone(),
-                enclosing: local.enclosing,
-            }),
-            ..ChangedSymbol::bare(
-                local.path,
-                Some(local.name),
-                format!("{0}-{0}", local.line),
-                "local",
-                decide::Coverages::partial(decide::Gap::NotTraced),
-            )
+        .map(|local| {
+            let coverage = local_coverage(&local);
+            ChangedSymbol {
+                callers: local
+                    .uses
+                    .iter()
+                    .map(|u| {
+                        Caller::at_line(
+                            local.path.clone(),
+                            u.inside.clone(),
+                            format!("{0}-{0}", u.line),
+                            "resolved",
+                            if u.call { "call" } else { "reference" },
+                            u.line,
+                        )
+                    })
+                    .collect(),
+                unresolved: Some(Unknown::LocalOf {
+                    name: local.name.clone(),
+                    enclosing: local.enclosing,
+                }),
+                ..ChangedSymbol::bare(
+                    local.path,
+                    Some(local.name),
+                    format!("{0}-{0}", local.line),
+                    "local",
+                    coverage,
+                )
+            }
         })
         .collect();
     output
+}
+
+/// A local's uses all lie in its enclosing body: its calls and reads are complete unless the
+/// file was read in part, or a use hands the local on (returned, stored, passed), where the
+/// receiver may call it.
+fn local_coverage(local: &LocalOf) -> decide::Coverages {
+    let handed: Vec<decide::Site> = (local.uses.iter().filter(|u| !u.call))
+        .map(|u| decide::Site {
+            path: local.path.clone(),
+            line: u.line,
+            via: decide::Via::Read,
+        })
+        .collect();
+    let mut gaps = Vec::new();
+    if local.lossy {
+        gaps.push(decide::Gap::Unaccounted {
+            reason: decide::Reason::Unparsed,
+            files: 1,
+        });
+    }
+    if !handed.is_empty() {
+        let uses = handed.len();
+        let sites = handed.into_iter().take(MAX_CANDIDATES_SHOWN).collect();
+        gaps.push(decide::Gap::Candidates { uses, sites });
+    }
+    decide::Coverages::local(gaps)
 }
 
 /// Candidates shown per changed symbol before they are counted instead.

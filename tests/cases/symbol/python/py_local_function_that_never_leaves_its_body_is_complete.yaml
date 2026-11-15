@@ -1,0 +1,23 @@
+name: py_local_function_that_never_leaves_its_body_is_complete
+mode: symbol
+source: synthetic
+issue_state: closed
+tags: [python, nested-function, local-of-definition, coverage]
+repo:
+  initial_files:
+    src/pricing.py: |
+      def total(items):
+          def tax(x):
+              return x * 0.2
+
+          net = sum(i.price for i in items)
+          return net + tax(net)
+  commit_message: Add pricing
+query:
+  symbol: tax
+expect:
+  definitions: [src/pricing.py::tax]
+  coverage:
+    src/pricing.py::tax:
+      calls: complete
+      reads: complete

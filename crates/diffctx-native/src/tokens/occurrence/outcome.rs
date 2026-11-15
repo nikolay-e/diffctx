@@ -8,9 +8,10 @@ use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
 use super::rows::{
-    BARE_HEADS, CLASS_CANDIDATES, COMMAND_ARGUMENTS, DECLARING_LOCALS, IMPL_HEADS,
-    KEYWORD_ARGUMENTS, MODULE_PATHS, NAMED_LOCALS, OFFERING_MODULES, PACKAGE_HEADS,
-    PAIRED_PROTOTYPES, PATH_SEPARATORS, SCOPED_LOCALS,
+    BARE_HEADS, CLASS_CANDIDATES, COMMAND_ARGUMENTS, DECLARING_KEYWORDS, DECLARING_LOCALS,
+    IMPL_HEADS, KEYWORD_ARGUMENTS, LOCAL_CALLS, MEMBER_OBJECTS, MODULE_PATHS, NAMED_LOCALS,
+    OFFERING_MODULES, PACKAGE_HEADS, PAIRED_PROTOTYPES, PATH_SEPARATORS, SCOPED_LOCALS,
+    STATEMENT_NAMES,
 };
 use super::scanner::dollar_joins;
 use super::{
@@ -337,6 +338,7 @@ impl Claim {
             relation: self.relation,
             outcome: self.outcome,
             basis: self.basis,
+            passed_to: None,
         }
     }
 }
@@ -457,7 +459,12 @@ impl<'a> Reading<'a> {
                         || (!writable(subject)
                             && (DECLARING_LOCALS.iter().any(|(family, kind)| {
                                 *kind == local.kind && family.has(file.language())
-                            }) || (local.kind == LocalKind::Variable && named)));
+                            }) || (local.kind == LocalKind::Variable && named)))
+                        || DECLARING_KEYWORDS.iter().any(|(family, kind, keyword)| {
+                            *kind == local.kind
+                                && family.has(file.language())
+                                && follows_keyword(text, local.site.bytes.start, keyword)
+                        });
                     if declares {
                         let site = &local.site.bytes;
                         let sigil = !dollar_joins(file.language())
@@ -729,6 +736,7 @@ impl<'a> Reading<'a> {
             .impl_type(occurrence)
             .or_else(|| self.keyword_field(occurrence))
             .or_else(|| self.scoped_site(occurrence, spelled))
+            .or_else(|| self.member_object(occurrence))
         {
             return claim;
         }
@@ -738,7 +746,9 @@ impl<'a> Reading<'a> {
             .or_else(|| self.package_clause(occurrence))
             .or_else(|| self.path_qualifier(occurrence))
             .or_else(|| self.plain_read(occurrence, spelled))
+            .or_else(|| self.local_call(occurrence, spelled))
             .or_else(|| self.command_argument(occurrence))
+            .or_else(|| self.statement_name(occurrence))
         {
             return Claim::not_ours(None, witness);
         }
@@ -795,9 +805,12 @@ impl<'a> Reading<'a> {
                 )
             });
         }
-        (import.names.iter())
+        let declares = import
+            .names
+            .iter()
             .any(|(_, alias)| alias.as_ref().is_some_and(named))
-            .then(|| Claim::new(None, Outcome::Declaration, Basis::RenamedImport))
+            || import.default.as_ref().is_some_and(named);
+        declares.then(|| Claim::new(None, Outcome::Declaration, Basis::RenamedImport))
     }
 
     /// A bare name heading a chain (`name.x`) is a local, an import or the file's own
@@ -843,10 +856,13 @@ impl<'a> Reading<'a> {
         }
     }
 
-    /// The innermost definition that holds `start`.
+    /// The innermost definition that holds `start`; a member's declaration (`self.x = …`) holds no locals.
     fn scope_at(&self, start: u32) -> Scope {
         (self.file.defs())
-            .filter(|def| def.span.bytes.contains(&start))
+            .filter(|def| {
+                def.span.bytes.contains(&start)
+                    && !matches!(def.kind, DefKind::Field | DefKind::Property)
+            })
             .min_by_key(|def| def.span.bytes.len())
             .map_or(Scope::Module, |def| Scope::Def(def.local.clone()))
     }
@@ -892,7 +908,8 @@ impl<'a> Reading<'a> {
     fn shadowed(&self, start: u32, spelled: &[u8], until: u32) -> Option<Span> {
         let scope = self.scope_at(start);
         let joins = dollar_joins(self.file.language());
-        if writable(self.subject) {
+        // A module-level name may be written through a `global`; a member is never reached bare.
+        if writable(self.subject) && self.subject.key.local.container.is_empty() {
             return None;
         }
         self.locals
@@ -939,6 +956,71 @@ impl<'a> Reading<'a> {
             return None;
         }
         self.shadowed(at, spelled, at).map(Witness::Local)
+    }
+
+    /// The object of `name.member` whose member's binding resolves to the subject: the object
+    /// is the read that binding states, never a second, unplaced use.
+    fn member_object(&self, occurrence: &Occurrence) -> Option<Claim> {
+        if !MEMBER_OBJECTS.iter().any(|f| f.has(self.file.language())) {
+            return None;
+        }
+        let rest = &self.text[occurrence.bytes.end as usize..];
+        let skipped = rest.len() - rest.trim_ascii_start().len();
+        let member = rest.trim_ascii_start().strip_prefix(b".")?;
+        let gap = member.len() - member.trim_ascii_start().len();
+        let length = member
+            .trim_ascii_start()
+            .iter()
+            .take_while(|b| b.is_ascii_alphanumeric() || **b == b'_' || **b == b'$')
+            .count();
+        let start = occurrence.bytes.end as usize + skipped + 1 + gap;
+        let at = (
+            occurrence.file.clone(),
+            u32::try_from(start).ok()?,
+            u32::try_from(start + length).ok()?,
+        );
+        self.view
+            .at(&at)
+            .find_map(|binding| match &binding.resolution {
+                Resolution::Resolved { target, .. } if *target == self.subject.key => Some(
+                    Claim::new(Some(binding.relation), Outcome::Ours, Basis::Resolved),
+                ),
+                _ => None,
+            })
+    }
+
+    /// A call of a bare name that a local of that name holds at the call (`let read = |p| …;
+    /// read(x)`): never the definition of that name.
+    fn local_call(&self, occurrence: &Occurrence, spelled: &[u8]) -> Option<Witness> {
+        if !LOCAL_CALLS.iter().any(|f| f.has(self.file.language())) {
+            return None;
+        }
+        let (start, end) = (occurrence.bytes.start, occurrence.bytes.end);
+        let called = self.text[end as usize..]
+            .trim_ascii_start()
+            .starts_with(b"(");
+        let after_path = self.text[..start as usize]
+            .trim_ascii_end()
+            .last()
+            .is_some_and(|b| b".:>".contains(b));
+        if !called || after_path {
+            return None;
+        }
+        let scope = self.scope_at(start);
+        self.locals
+            .iter()
+            .find(|local| {
+                let site = &local.site.bytes;
+                same(local.name.as_str(), spelled, self.case)
+                    && site.end <= start
+                    && matches!(local.enclosing, Scope::Def(_))
+                    && encloses(&local.enclosing, &scope)
+                    && in_force(
+                        local.kind == LocalKind::Parameter,
+                        &self.text[site.end as usize..start as usize],
+                    )
+            })
+            .map(|local| Witness::Local(local.site.clone()))
     }
 
     /// A segment of the module path an import names is a module, never a definition.
@@ -1107,6 +1189,33 @@ impl<'a> Reading<'a> {
             .then(|| Witness::CommandWord(call.name.clone()))
     }
 
+    /// A name after a keyword that declares it, or names an object of another namespace than
+    /// the subject's (`DROP FUNCTION IF EXISTS s.f`, `INSERT INTO f`): no use of the subject.
+    fn statement_name(&self, occurrence: &Occurrence) -> Option<Witness> {
+        let (_, _, words) = STATEMENT_NAMES.iter().find(|(family, kinds, _)| {
+            family.has(self.file.language()) && kinds.contains(&self.subject.kind)
+        })?;
+        let mut head = &self.text[..occurrence.bytes.start as usize];
+        head = head.strip_suffix(b"\"").unwrap_or(head);
+        if let Some(dotted) = head.strip_suffix(b".") {
+            head = match dotted.strip_suffix(b"\"") {
+                Some(quoted) => &quoted[..quoted.iter().rposition(|b| *b == b'"').unwrap_or(0)],
+                None => last_word(dotted).1,
+            };
+        }
+        let (mut last, mut rest) = last_word(head);
+        for skipped in [&b"exists"[..], b"if"] {
+            if last.eq_ignore_ascii_case(skipped) {
+                (last, rest) = last_word(rest);
+            }
+        }
+        let keyword = String::from_utf8_lossy(last).to_ascii_lowercase();
+        words
+            .split(' ')
+            .any(|listed| listed == keyword)
+            .then(|| Witness::Statement(Name::new(keyword)))
+    }
+
     /// Whether the subject is a member of a class, and `at` is not in the class body.
     fn outside_class(&self, at: u32) -> bool {
         let home = self.view.file(&self.subject.file);
@@ -1145,6 +1254,47 @@ impl<'a> Reading<'a> {
             settle(claims).at(code)
         })
     }
+}
+
+/// Whether a local is in force after its site, `between` being the text from there to a use: its
+/// block is still open and, but for a parameter, its own statement is over (`let f = f(x)` reads
+/// the outer `f`).
+fn in_force(parameter: bool, between: &[u8]) -> bool {
+    let mut depth = 0_i32;
+    let mut ended = parameter;
+    for byte in between {
+        match byte {
+            b'{' => depth += 1,
+            b'}' => depth -= 1,
+            b';' if depth == 0 => ended = true,
+            _ => {}
+        }
+        if depth < 0 {
+            return false;
+        }
+    }
+    ended
+}
+
+/// Whether the word `keyword`, with an optional `mut` between, stands right before `at`.
+fn follows_keyword(text: &[u8], at: u32, keyword: &str) -> bool {
+    let (word, before) = last_word(&text[..at as usize]);
+    let (word, _) = if word == b"mut" {
+        last_word(before)
+    } else {
+        (word, before)
+    };
+    word == keyword.as_bytes()
+}
+
+/// The last word of `head` and what lies before it, trailing white space left out.
+fn last_word(head: &[u8]) -> (&[u8], &[u8]) {
+    let head = head.trim_ascii_end();
+    let at = head
+        .iter()
+        .rposition(|b| !(b.is_ascii_alphanumeric() || *b == b'_'))
+        .map_or(0, |at| at + 1);
+    (&head[at..], &head[..at])
 }
 
 /// The outcome of each spelling of `names` in `file` (read from `text`, the bytes

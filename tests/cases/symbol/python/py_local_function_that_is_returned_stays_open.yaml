@@ -1,0 +1,21 @@
+name: py_local_function_that_is_returned_stays_open
+mode: symbol
+source: synthetic
+issue_state: closed
+tags: [python, nested-function, local-of-definition, coverage]
+repo:
+  initial_files:
+    src/pricing.py: |
+      def make_tax(rate):
+          def tax(x):
+              return x * rate
+
+          return tax
+  commit_message: Add pricing
+query:
+  symbol: tax
+expect:
+  definitions: [src/pricing.py::tax]
+  coverage:
+    src/pricing.py::tax:
+      calls: partial

@@ -1,0 +1,36 @@
+name: rust_let_pattern_is_the_declaration_of_the_alias_it_names
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [rust, alias, coverage]
+repo:
+  initial_files:
+    Cargo.toml: |
+      [package]
+      name = "demo"
+      version = "0.1.0"
+      edition = "2021"
+    src/lib.rs: |
+      pub mod limits;
+      pub mod build;
+    src/limits.rs: |
+      pub const TOTAL: u32 = 10;
+    src/build.rs: |
+      use crate::limits::TOTAL;
+
+      pub struct W {
+          pub total: u32,
+      }
+
+      pub fn make() -> W {
+          let total = TOTAL;
+          W { total }
+      }
+  changed_files:
+    src/limits.rs: |
+      pub const TOTAL: u32 = 12;
+  commit_message: "limits: raise the total"
+expect:
+  coverage:
+    src/limits.rs::TOTAL:
+      reads: complete

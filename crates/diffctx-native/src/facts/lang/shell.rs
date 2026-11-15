@@ -51,6 +51,11 @@ pub const SCRIPT: &str = "<script>";
 const MAX_DEPTH: usize = 120;
 /// Nodes between two looks at the run's deadline.
 const POLL_EVERY: usize = 256;
+/// Commands that run what their arguments name, so a variable they expand may hold a command.
+const RUNNERS: &[&str] = &[
+    "eval", "exec", "command", "builtin", "time", "nohup", "sudo", "doas", "env", "xargs", "nice",
+    "timeout", "watch", "setsid", "stdbuf", "bash", "sh", "source", ".",
+];
 
 #[cfg(feature = "tree-sitter-bash")]
 fn grammar() -> Option<TsLanguage> {
@@ -120,6 +125,7 @@ impl Extractor for ShellExtractor {
         walker.prepare(root);
         walker.script(root);
         walker.visit(root, &Scope::Module, None, 0);
+        walker.text_values(root);
         if walker.halted {
             blob.deadline();
         }
@@ -261,6 +267,81 @@ impl<'a> Walker<'a> {
                     .or_default()
                     .push(value);
             }
+        }
+    }
+
+    /// The literal text a script assigns to a variable is text, unless the variable
+    /// holds a command: one expanded as, or after a command that runs its arguments, or
+    /// exported to a program that may expand it.
+    fn text_values(&mut self, root: TsNode<'a>) {
+        let mut runs = HashSet::new();
+        let mut values = Vec::new();
+        let mut stack = vec![root];
+        while let Some(node) = stack.pop() {
+            let mut cursor = node.walk();
+            stack.extend(node.children(&mut cursor));
+            match node.kind() {
+                "command" => {
+                    let Some(name) = node.child_by_field_name("name") else {
+                        continue;
+                    };
+                    let word = self.text_of(name);
+                    if !RUNNERS.contains(&word) && !word.starts_with('$') && !word.starts_with('"')
+                    {
+                        continue;
+                    }
+                    let mut nested = vec![node];
+                    while let Some(inner) = nested.pop() {
+                        let mut cursor = inner.walk();
+                        nested.extend(inner.children(&mut cursor));
+                        if inner.kind() == "variable_name" {
+                            runs.insert(self.text_of(inner));
+                        }
+                    }
+                }
+                "declaration_command" => {
+                    let mut cursor = node.walk();
+                    for child in node.children(&mut cursor) {
+                        let name = match child.kind() {
+                            "variable_name" => Some(child),
+                            "variable_assignment" => child.child_by_field_name("name"),
+                            _ => None,
+                        };
+                        if let Some(name) =
+                            name.filter(|_| self.text_of(node).starts_with("export"))
+                        {
+                            runs.insert(self.text_of(name));
+                        }
+                    }
+                }
+                "variable_assignment" if node.parent().is_some_and(|p| p.kind() != "command") => {
+                    if let (Some(name), Some(value)) = (
+                        node.child_by_field_name("name"),
+                        node.child_by_field_name("value"),
+                    ) {
+                        if self.is_literal(value) {
+                            values.push((self.text_of(name), value));
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+        self.prose.extend(
+            values
+                .into_iter()
+                .filter(|(name, _)| !runs.contains(name))
+                .map(|(_, value)| value.start_byte() as u32..value.end_byte() as u32),
+        );
+    }
+
+    fn is_literal(&self, value: TsNode<'a>) -> bool {
+        match value.kind() {
+            "word" | "raw_string" => true,
+            "string" => syntax::children(value)
+                .iter()
+                .all(|part| part.kind() == "string_content" || part.kind() == "\""),
+            _ => false,
         }
     }
 
