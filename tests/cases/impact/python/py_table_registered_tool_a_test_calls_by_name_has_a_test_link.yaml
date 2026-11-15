@@ -78,5 +78,8 @@ expect:
   untested:
   - get_unlisted
   partial:
+    # get_x escapes as a value into TOOLS and is called by name through
+    # `server[name](**args)`: a call no model traces. Its one read, the tuple
+    # member, is the resolved row.
     tools.py::get_x:
-      reads: unaccounted
+      calls: not_traced
