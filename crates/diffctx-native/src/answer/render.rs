@@ -597,7 +597,7 @@ pub fn tail(out: &mut String, a: &Answer) {
     let doc = a.doc;
     listed(
         out,
-        "Lock files changed (dependency versions moved; what that reaches is not traced):",
+        "Lock files changed (what that reaches is not traced):",
         &doc.inventory.lockfiles,
         usize::MAX,
         Clone::clone,

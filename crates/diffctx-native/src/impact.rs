@@ -209,9 +209,10 @@ pub struct ImpactOutput {
     /// traced (#370): `path::symbol (lines)` each. Unsaid, a comment edit
     /// read "no resolved static callers" while the function had three (#498).
     pub layout_only: Vec<String>,
-    /// Lock files the range changes: dependency versions moved, and what that
-    /// reaches is not traced. Dropped from every count, a dependency bump
-    /// answered "No changes to analyse" (#495).
+    /// Lock files the range changes; what that reaches is not traced. Dropped
+    /// from every count, a dependency bump answered "No changes to analyse"
+    /// (#495); named "dependency versions moved", a lock whose only change was
+    /// a local path source claimed a bump nobody made (#593).
     pub lockfile_changes: Vec<String>,
     /// `layout_only` entries left out to fit the cap; the count is whole.
     pub layout_only_omitted: usize,
@@ -1898,13 +1899,22 @@ fn spelled_lines(
     )
 }
 
-/// The files whose change is layout alone.
+/// Files whose change no reader sees: a layout edit, and a file git renames byte
+/// for byte (#593), whose stale namers are the stale list's.
 fn layout_files(state: &ScoredState) -> FxHashSet<&str> {
+    let edited: FxHashSet<&str> = state.hunk_texts.iter().map(|h| h.path.as_str()).collect();
     state
         .change_classes
         .iter()
         .filter(|(_, class, _)| *class == crate::change_class::ChangeClass::Layout)
         .map(|(p, _, _)| p.as_str())
+        .chain(
+            state
+                .renamed_files
+                .iter()
+                .map(|(_, new)| new.as_str())
+                .filter(|new| !edited.contains(new)),
+        )
         .collect()
 }
 
@@ -4410,10 +4420,14 @@ pub fn build_impact(
         }
         // A run already stopped when the callers phase began may have lost
         // fragments before it: a changed code file with no definition in
-        // view is not known to have none.
+        // view is not known to have none. A file renamed byte for byte or only
+        // relaid changed none.
         if stopped_early && query.is_none() {
             let covered: FxHashSet<String> = cores.iter().map(|c| rel(state, c.path())).collect();
-            for path in changed_rels(state).filter(|p| is_code_file(p) && !covered.contains(p)) {
+            let unseen = layout_files(state);
+            for path in changed_rels(state)
+                .filter(|p| is_code_file(p) && !covered.contains(p) && !unseen.contains(p.as_str()))
+            {
                 changed.push(unfinished_symbol(
                     path,
                     None,

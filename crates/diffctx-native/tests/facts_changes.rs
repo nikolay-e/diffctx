@@ -215,6 +215,33 @@ fn a_file_moved_unchanged_to_another_module_is_a_move_of_each_definition() {
 }
 
 #[test]
+fn a_directory_moved_with_its_manifest_pairs_its_definitions_across_projects() {
+    let repo = Repo::init();
+    repo.write(
+        "group/app/pyproject.toml",
+        "[project]\nname = \"app\"\nversion = \"0\"\n",
+    );
+    repo.write("group/app/core.py", APP);
+    let base = repo.commit("base");
+    repo.git(&["mv", "group/app", "app"]);
+    let head = repo.commit("head");
+    let set = changes(&repo, &base, &head);
+    assert_eq!(set.defs.len(), 2, "{:?}", set.defs);
+    for def in &set.defs {
+        let DefChange::Changed {
+            origin: Origin::Moved { from },
+            delta,
+        } = &def.change
+        else {
+            panic!("expected a move, got {:?}", def.change);
+        };
+        assert_ne!(from.project, def.key.project, "the move crosses projects");
+        assert_eq!(from.local, def.key.local);
+        assert_eq!(*delta, Delta::default());
+    }
+}
+
+#[test]
 fn a_moved_file_with_identical_trivial_methods_pairs_them_by_container() {
     let both = "class A:\n    def get(self):\n        return 0\nclass B:\n    def get(self):\n        return 0\n";
     let repo = Repo::init();
