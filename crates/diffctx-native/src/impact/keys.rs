@@ -932,7 +932,10 @@ pub(super) fn schema_keys(state: &ScoredState, path: &str, tree: &[String]) -> V
             None => keys,
         });
     }
-    let mut keys: Vec<String> = shared.unwrap_or_default().into_iter().collect();
+    let Some(shared) = shared else {
+        return Vec::new();
+    };
+    let mut keys: Vec<String> = shared.into_iter().collect();
     keys.sort();
     keys
 }
