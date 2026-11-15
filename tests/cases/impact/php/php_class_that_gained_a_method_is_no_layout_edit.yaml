@@ -1,0 +1,47 @@
+name: php_class_that_gained_a_method_is_no_layout_edit
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [php, layout, added-definition, decoys]
+repo:
+  initial_files:
+    src/Cart.php: |
+      <?php
+
+      class Cart
+      {
+          public function total(): int
+          {
+              return 0;
+          }
+      }
+    src/Checkout.php: |
+      <?php
+
+      class Checkout
+      {
+          public function pay(Cart $cart): int
+          {
+              return $cart->total();
+          }
+      }
+  changed_files:
+    src/Cart.php: |
+      <?php
+
+      class Cart
+      {
+          public function total(): int
+          {
+              return 0;
+          }
+
+          public function itemCount(): int
+          {
+              return 0;
+          }
+      }
+  commit_message: "cart: add itemCount"
+expect:
+  changed: [src/Cart.php::itemCount]
+  decoys: {Cart: [src/Checkout.php]}

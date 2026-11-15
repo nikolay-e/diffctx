@@ -1,0 +1,29 @@
+name: fj176_php_class_that_lost_a_property_is_no_layout_edit
+mode: impact
+source: fj#176
+issue_state: open
+tags: [php, layout, removed-definition, absence-claim]
+repo:
+  initial_files:
+    src/Ctx.php: |
+      <?php
+
+      class Ctx
+      {
+          public $request;
+          public $user;
+      }
+  changed_files:
+    src/Ctx.php: |
+      <?php
+
+      class Ctx
+      {
+          public $user;
+      }
+  commit_message: "ctx: drop the request property"
+expect:
+  removed: [src/Ctx.php::request]
+  changed: [src/Ctx.php::request]
+  never_empty: true
+  no_negative_claims: true
