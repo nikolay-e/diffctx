@@ -219,6 +219,7 @@ jobs:
   # ============================================================================
   cargo-publish-dry-run:
     name: Crate packages for crates.io
+    if: ${{ !(startsWith(github.base_ref, 'ci-base/') && github.head_ref != 'ci/head') }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -256,9 +257,10 @@ jobs:
     # The base images come from dhi.io, which needs a login, and a fork's or Dependabot's PR gets no
     # secrets: its image is built by the push to main after the merge, as the release's is.
     if: >-
-      github.event_name != 'pull_request' ||
+      (github.event_name != 'pull_request' ||
       (github.event.pull_request.head.repo.full_name == github.repository &&
-      github.actor != 'dependabot[bot]')
+      github.actor != 'dependabot[bot]')) &&
+      !(startsWith(github.base_ref, 'ci-base/') && github.head_ref != 'ci/head')
     permissions:
       contents: read
     steps:
@@ -420,15 +422,10 @@ jobs:
           - {part: "rest:1/2", label: "1/2"}
           - {part: "rest:2/2", label: "2/2"}
           - {part: corpus, label: corpus}
-        # A stream check (a PR into ci-base/*) leaves macOS to the head check
-        # (ci/head) and to main: the account runs five macOS jobs at once,
-        # and seven per stream run queued every stream behind them. exclude
-        # drops only combinations of the os and part vectors, never an
-        # include-only cell, so the legs are vectors.
-        exclude: >-
-          ${{ fromJSON(
-            (startsWith(github.base_ref, 'ci-base/') && github.head_ref != 'ci/head')
-            && '[{"os":"macos-latest"}]' || '[]') }}
+    # A stream check (a PR into ci-base/*) runs Linux only and leaves the other
+    # platforms to the head check (ci/head) and to main: the account runs 20
+    # jobs at once (5 macOS), and six streams of ~27 jobs queued for hours.
+    if: ${{ !(startsWith(github.base_ref, 'ci-base/') && github.head_ref != 'ci/head') }}
     runs-on: ${{ matrix.os }}
     # The hang guard of #510, no longer the margin of a whole run.
     timeout-minutes: 90
@@ -482,20 +479,20 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
         python-version: ['3.11', '3.12', '3.13', '3.14']
-        # A stream check (a PR into ci-base/*) leaves macOS to the head check
-        # (ci/head) and to main: the account runs five macOS jobs at once,
-        # and seven per stream run queued every stream behind them.
+        # A stream check (a PR into ci-base/*, see rust-diffctx-test-cross)
+        # runs one Linux interpreter; exclude never drops an include-only
+        # cell, so the ARM legs are an expression too.
         exclude: >-
-          ${{ fromJSON(
-            (startsWith(github.base_ref, 'ci-base/') && github.head_ref != 'ci/head')
-            && '[{"os":"macos-latest"}]' || '[]') }}
+          ${{ fromJSON((startsWith(github.base_ref, 'ci-base/') && github.head_ref != 'ci/head')
+            && '[{"os":"macos-latest"},{"os":"windows-latest"},
+                 {"python-version":"3.11"},{"python-version":"3.12"},{"python-version":"3.14"}]'
+            || '[]') }}
         # The ARM legs of the release matrix. Windows on ARM has native
         # CPython only from 3.11, so one current interpreter each.
-        include:
-          - os: ubuntu-22.04-arm
-            python-version: '3.13'
-          - os: windows-11-arm
-            python-version: '3.13'
+        include: >-
+          ${{ fromJSON((startsWith(github.base_ref, 'ci-base/') && github.head_ref != 'ci/head') && '[]'
+            || '[{"os":"ubuntu-22.04-arm","python-version":"3.13"},
+                 {"os":"windows-11-arm","python-version":"3.13"}]') }}
 
     runs-on: ${{ matrix.os }}
     # The suite's hang guard (#529): no test carries a per-test timeout, whose
@@ -611,6 +608,7 @@ jobs:
   # ============================================================================
   docs-pwa:
     name: Landing page installs and opens offline
+    if: ${{ !(startsWith(github.base_ref, 'ci-base/') && github.head_ref != 'ci/head') }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
