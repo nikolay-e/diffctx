@@ -41,6 +41,9 @@ expect:
     hashicorp/consul/aws/main.tf::output.addr:
       reads: partial
   partial:
+    # No module block in the repository sources the directory (the registry
+    # source is no path), so it is also a root module, whose outputs whoever
+    # applies it reads (fj#193).
     hashicorp/consul/aws/main.tf::output.addr:
-      calls: external_source
+      calls: [external_source, not_traced]
       reads: external_source
