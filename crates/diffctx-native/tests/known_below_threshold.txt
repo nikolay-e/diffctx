@@ -176,3 +176,5 @@ symbol/python/gh482_dict_key_readers_across_languages_are_listed  # gh#482 open:
 symbol/python/gh718_loop_variable_over_an_annotated_list_is_typed  # gh#718 open: a loop variable over list[Frame] stays untyped, its reads are unresolved
 symbol/rust/gh488_struct_field_is_a_definition_with_its_readers  # gh#488 open: a Rust struct field is no definition and its readers are not listed
 symbol/sql/fj185_mysql_backticked_function_is_one_name_with_its_bare_calls  # fj#185 open: a backticked MySQL function name is not seeded as a definition
+impact/python/py_dict_entry_of_a_parameter_named_like_a_function_registers_nothing  # red until the next commit: a parameter named like a function reads as registering it
+impact/python/py_dispatcher_that_registers_and_calls_a_handler_is_its_caller  # red until the next commit: the registry entry drops the call beside it
