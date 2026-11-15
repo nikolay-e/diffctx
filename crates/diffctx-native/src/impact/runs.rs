@@ -137,6 +137,36 @@ pub(super) fn curried_registrations(f: &Fragment) -> impl Iterator<Item = (&str,
         })
 }
 
+/// The entries of name-keyed dicts in `f` (`{"log_vital": domain.log_vital}`), a
+/// registry a dispatcher reads by key: each key and the name its value spells.
+pub(super) fn dict_registrations(f: &Fragment) -> impl Iterator<Item = (&str, &str)> {
+    static ENTRY: once_cell::sync::Lazy<regex::Regex> = once_cell::sync::Lazy::new(|| {
+        regex::Regex::new(
+            r#"["']([\w.:/-]{3,})["']\s*:\s*([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)\s*[,}]"#,
+        )
+        .expect("dict registration regex")
+    });
+    let python = f.path().ends_with(".py");
+    ENTRY
+        .captures_iter(if python { &f.content } else { "" })
+        .filter_map(|c| Some((c.get(1)?.as_str(), c.get(2)?.as_str())))
+}
+
+/// The dict entry of `f` that registers `name`, the definition `target`: a value
+/// of its own file that names it, or one that names it through its module
+/// (`domain.log_vital` for `srv/domain.py`).
+pub(super) fn dict_registration<'f>(
+    f: &'f Fragment,
+    target: &Fragment,
+    name: &str,
+) -> Option<(&'f str, &'f str)> {
+    let stem = Path::new(target.path()).file_stem()?.to_str()?;
+    dict_registrations(f).find(|(_, value)| match value.rsplit_once('.') {
+        Some((module, last)) => last == name && module.rsplit('.').next() == Some(stem),
+        None => *value == name && f.path() == target.path(),
+    })
+}
+
 /// The Rust binaries in the analysed fragments, keyed by their entry file
 /// as fragments spell it, each run by one test of its crate that runs
 /// the built binary. `src/main.rs` is the package's binary, named in
@@ -770,6 +800,46 @@ fn framework_runs(
                     file: f.path().to_string(),
                     symbol: symbol.to_string(),
                     spelling: Spelling::keyed(key, &[&word]),
+                    needle: key.to_string(),
+                });
+            }
+        }
+    }
+    // A handler a name-keyed dict registers is spelled by its key beside a
+    // function the registry's file defines (`call_tool("log_vital", …)`).
+    for f in &state.all_fragments {
+        for (key, value) in dict_registrations(f) {
+            let name = value.rsplit('.').next().unwrap_or(value);
+            let Some(target) = state.all_fragments.iter().find(|t| {
+                t.kind.is_definition_kind()
+                    && t.symbol_name.as_deref().map(base_symbol) == Some(name)
+                    && dict_registration(f, t, name).is_some()
+            }) else {
+                continue;
+            };
+            let source = state.run.source().read_to_string(Path::new(f.path()));
+            let words: Vec<String> = source
+                .iter()
+                .flat_map(|text| text.lines())
+                .filter_map(|l| {
+                    l.trim_start()
+                        .trim_start_matches("async ")
+                        .strip_prefix("def ")
+                })
+                .filter_map(|l| l.split('(').next())
+                .map(|n| n.trim().to_lowercase())
+                .filter(|n| n.len() >= 3)
+                .collect();
+            if seen.insert((
+                target.path().to_string(),
+                name.to_string(),
+                EntryKind::Tool,
+                key.to_string(),
+            )) {
+                entries.push(Entry {
+                    file: target.path().to_string(),
+                    symbol: name.to_string(),
+                    spelling: Spelling::Keyed(key.to_string(), words),
                     needle: key.to_string(),
                 });
             }
