@@ -582,6 +582,9 @@ fn event_with_failing_git(
         .env("PATH", path)
         .env("REAL_GIT", real_git())
         .env("FAKE_GIT_MODE", "none")
+        // Past any run under load: the sweep decides on what each failed git
+        // call leaves, never on the hook's wall-clock ceiling.
+        .env("DIFFCTX_TEST_HOOK_CEILING_SECS", "86400")
         .env("FAKE_GIT_CALLS", world.root().join("calls"))
         .env("FAKE_GIT_PIDS", world.root().join("pids"))
         .env("FAKE_GIT_SLOTS", &slots)

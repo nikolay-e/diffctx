@@ -121,6 +121,13 @@ pub const TEST_DEADLINE_AFTER_POLLS_ENV: &str = "DIFFCTX_TEST_DEADLINE_AFTER_POL
 /// the hook says then without waiting for a clock. Semantic, like the deadline.
 pub const TEST_HOOK_CEILING_EXPIRED_ENV: &str = "DIFFCTX_TEST_HOOK_CEILING_EXPIRED";
 
+/// Test hook: the hook's wall-clock ceiling in seconds, in place of
+/// `HOOK_DEADLINE_SECS`, for the git calls it makes and for every analysis it
+/// waits on. A gate that drives the hook under load sets it past any run, so
+/// no verdict rests on a clock; `0` is a hook that is past its ceiling before
+/// its first call.
+pub const TEST_HOOK_CEILING_SECS_ENV: &str = "DIFFCTX_TEST_HOOK_CEILING_SECS";
+
 impl ResourceBudget {
     pub fn resolve(timeout_secs: u64) -> Self {
         let limits = &*crate::config::limits::LIMITS;

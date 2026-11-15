@@ -4674,3 +4674,383 @@ fn the_note_on_an_unread_directory_names_only_the_directories_this_session_wrote
     );
     assert!(h.stdout.contains("bulk"), "{}", h.stdout);
 }
+
+/// A `git` ahead of the real one on `PATH` that records each call's arguments
+/// in the returned log, so a test can say which work a hook did.
+#[cfg(unix)]
+fn recording_git(dir: &Path) -> (std::ffi::OsString, std::path::PathBuf) {
+    use std::os::unix::fs::PermissionsExt as _;
+    let real = Command::new("sh")
+        .args(["-c", "command -v git"])
+        .output()
+        .expect("locate git");
+    let real = String::from_utf8(real.stdout).unwrap().trim().to_string();
+    let bin = dir.join("recording-bin");
+    std::fs::create_dir_all(&bin).unwrap();
+    let log = dir.join("git-calls.log");
+    let shim = bin.join("git");
+    std::fs::write(
+        &shim,
+        format!(
+            "#!/bin/sh\necho \"$*\" >> '{}'\nexec '{real}' \"$@\"\n",
+            log.display()
+        ),
+    )
+    .unwrap();
+    std::fs::set_permissions(&shim, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let mut paths = vec![bin];
+    paths.extend(std::env::split_paths(
+        &std::env::var_os("PATH").unwrap_or_default(),
+    ));
+    (std::env::join_paths(paths).unwrap(), log)
+}
+
+/// What a search hook did: its answer, the work phases it profiled and the
+/// git calls it made. The search ran for real, so its output is the one the
+/// hook is handed.
+#[cfg(unix)]
+struct Worked {
+    hook: Hook,
+    phases: String,
+    git_calls: String,
+}
+
+#[cfg(unix)]
+fn search_worked(repo: &Path, cache: &Path, session: &str, query: &str) -> Worked {
+    let tools = TempDir::new().unwrap();
+    let (path, log) = recording_git(tools.path());
+    let profile = tools.path().join("profile.jsonl");
+    let ran = scrubbed_sh(repo, query).output().unwrap();
+    let mut payload: serde_json::Value =
+        serde_json::from_str(&in_session(session, &search_payload(repo, "Bash", query))).unwrap();
+    payload["tool_response"] =
+        serde_json::json!({"stdout": String::from_utf8_lossy(&ran.stdout), "stderr": ""});
+    let hook = hook_in_env(
+        repo,
+        cache,
+        "posttooluse",
+        &[],
+        &[
+            ("PATH", Path::new(&path)),
+            ("DIFFCTX_PROFILE", profile.as_path()),
+        ],
+        &payload.to_string(),
+    );
+    Worked {
+        hook,
+        phases: std::fs::read_to_string(&profile).unwrap_or_default(),
+        git_calls: std::fs::read_to_string(&log).unwrap_or_default(),
+    }
+}
+
+/// `check-ignore` is the snapshot's admission of a whole working tree: a
+/// search the hook settles from the names alone never asks for it.
+#[cfg(unix)]
+fn assert_no_analysis(worked: &Worked) {
+    assert!(
+        !worked.git_calls.contains("check-ignore")
+            && !worked.phases.contains("hook.edited_definitions"),
+        "the working tree was analysed:\n{}\n{}",
+        worked.phases,
+        worked.git_calls
+    );
+}
+
+/// fj#203, fj#220, #740: a search is settled from the names alone, without
+/// analysing the working tree, when no changed file could define what it
+/// names, however much is pending: here a code change that never spells the
+/// name, and a prose-only repository with a prose edit pending. Each analysis
+/// the hook does run is kept for the same change.
+#[cfg(unix)]
+#[test]
+fn a_search_no_pending_file_could_answer_analyses_nothing() {
+    let tmp = repo_with_pending_change();
+    let cache = TempDir::new().unwrap();
+    let repo = tmp.path();
+    write(repo, "notes/tasks.py", "# restock the shelf nightly\n");
+    git(repo, &["add", "notes"]);
+    git(repo, &["commit", "-q", "-m", "notes"]);
+    let worked = search_worked(repo, cache.path(), "s1", "grep -n restock notes/tasks.py");
+    assert_eq!(worked.hook.stdout, "");
+    assert!(
+        last_log_line(cache.path()).contains(" out-of-scope "),
+        "{}",
+        last_log_line(cache.path())
+    );
+    assert_no_analysis(&worked);
+
+    let prose = TempDir::new().unwrap();
+    let notes = prose.path();
+    git(notes, &["init", "-q", "."]);
+    git(notes, &["config", "user.email", "test@example.com"]);
+    git(notes, &["config", "user.name", "diffctx tests"]);
+    for n in 0..30 {
+        write(notes, &format!("notes/p{n}.md"), "the budget decision\n");
+    }
+    commit_all(notes, "notes");
+    write(
+        notes,
+        "notes/p3.md",
+        "the budget decision\nand a new paragraph about the budget\n",
+    );
+    let cache = TempDir::new().unwrap();
+    let worked = search_worked(notes, cache.path(), "s1", "git grep -n budget -- notes");
+    assert_eq!(worked.hook.stdout, "");
+    assert!(
+        last_log_line(cache.path()).contains(" out-of-scope "),
+        "{}",
+        last_log_line(cache.path())
+    );
+    assert_no_analysis(&worked);
+}
+
+/// #740: the names a pending change edits are read once per change: a second
+/// search of the same pending change, in another session, analyses nothing.
+#[cfg(unix)]
+#[test]
+fn the_names_a_pending_change_edits_are_read_once_per_change() {
+    let tmp = repo_with_pending_change();
+    let cache = TempDir::new().unwrap();
+    let repo = tmp.path();
+    let first = search_worked(repo, cache.path(), "s1", r"rg -n 'def total\(' shop/");
+    assert!(
+        context_of(&first.hook).contains("shop/checkout.py::charge"),
+        "{}",
+        first.hook.stdout
+    );
+    assert!(
+        first.phases.contains("hook.edited_definitions"),
+        "{}",
+        first.phases
+    );
+    let second = search_worked(repo, cache.path(), "s2", r"rg -n 'def total\(' shop/");
+    assert!(
+        context_of(&second.hook).contains("shop/checkout.py::charge"),
+        "{}",
+        second.hook.stdout
+    );
+    assert!(
+        !second.phases.contains("hook.edited_definitions"),
+        "{}",
+        second.phases
+    );
+}
+
+/// #741: the answer cap is one per event. A call that commits in several work
+/// trees gets the first range in full and each other as one line naming its
+/// work tree, so the output does not grow with the number of work trees.
+#[cfg(unix)]
+#[test]
+fn a_call_committing_in_several_work_trees_shares_one_answer_cap() {
+    let tmp = repo_with_wide_change(40);
+    let repo = tmp.path();
+    git(repo, &["checkout", "-q", "--", "."]);
+    let trees = TempDir::new().unwrap();
+    let script = trees.path().join("wide.sh");
+    std::fs::write(
+        &script,
+        "cd \"$1\" || exit 1\nfor f in pkg/m*.py; do n=$(basename $f .py | tr -d m)\n  printf \"def f$n(x):\\n    return x + 2\\n\" > $f\ndone\ngit commit -qam wide\n",
+    )
+    .unwrap();
+    let mut command = Vec::new();
+    for name in ["wt-one", "wt-two", "wt-three"] {
+        git(
+            repo,
+            &[
+                "worktree",
+                "add",
+                "-q",
+                trees.path().join(name).to_str().unwrap(),
+                "-b",
+                name,
+            ],
+        );
+        command.push(format!(
+            "sh '{}' '{}'",
+            script.display(),
+            trees.path().join(name).display()
+        ));
+    }
+    let output_of_call = |lines: &[String]| {
+        let cache = TempDir::new().unwrap();
+        context_of(&line_in("s1", repo, cache.path(), &[], &lines.join("; ")))
+    };
+    let one = output_of_call(&command[..1]);
+    git(
+        &trees.path().join("wt-one"),
+        &["reset", "-q", "--hard", "HEAD~1"],
+    );
+    let three = output_of_call(&command);
+    assert_eq!(
+        three
+            .matches("diffctx reviewed what this commit recorded")
+            .count(),
+        1,
+        "{three}"
+    );
+    assert!(
+        three.contains("wt-two") && three.contains("wt-three"),
+        "{three}"
+    );
+    assert!(
+        three.len() < one.len() + 3 * 400,
+        "one tree {} chars, three trees {} chars:\n{three}",
+        one.len(),
+        three.len()
+    );
+}
+
+/// fj#170, fj#194: a range of prose, or of files the ignore rules withhold,
+/// has nothing for the engine to read: its answer is what the engine says of
+/// it at once, and the run's deadline (here cut at its third poll) never
+/// reaches it, so nothing is "partial".
+#[test]
+fn a_range_of_prose_or_withheld_files_is_answered_without_the_engine() {
+    let tmp = repo_with_pending_change();
+    let repo = tmp.path();
+    git(repo, &["checkout", "-q", "--", "."]);
+    write(repo, "deploy/server.key", "key v1\n");
+    write(repo, "private/notes.md", "# notes v1\n");
+    write(repo, ".diffctx/ignore", "private/\n");
+    git(repo, &["add", "deploy", "private", ".diffctx"]);
+    git(repo, &["commit", "-q", "-m", "seed"]);
+    let cut = [("DIFFCTX_TEST_DEADLINE_AFTER_POLLS", Path::new("3"))];
+    let cache = TempDir::new().unwrap();
+    write(repo, "README.md", "# shop\n\nA paragraph.\n");
+    let prose = context_of(&line_in(
+        "s1",
+        repo,
+        cache.path(),
+        &cut,
+        "git commit -qam prose",
+    ));
+    assert!(
+        prose.contains("reaches nothing outside the diff"),
+        "{prose}"
+    );
+    assert!(!prose.contains("partial"), "{prose}");
+    write(repo, "private/notes.md", "# notes v2\n");
+    let withheld = context_of(&line_in(
+        "s1",
+        repo,
+        cache.path(),
+        &cut,
+        "git commit -qam private",
+    ));
+    assert!(
+        withheld.contains("not analysed: 1 file(s) withheld by ignore rules"),
+        "{withheld}"
+    );
+    assert!(
+        !withheld.contains("partial") && !withheld.contains("notes.md"),
+        "{withheld}"
+    );
+}
+
+/// fj#218: a heading is never left over nothing but "and N more". The cap
+/// sheds the files that name a changed script one by one, then the list's
+/// count line, and where its fit stops decides what is left of the heading:
+/// one caller's name is lengthened a few characters at a time to walk that
+/// stop across the whole range, and at no length may the heading stand over
+/// an overflow line alone. Some length must leave every item shed and the
+/// count on the heading's own line, or the walk proved nothing.
+#[test]
+fn a_heading_whose_items_the_cap_shed_carries_its_count() {
+    let mut counted = 0;
+    for pad in (0..48).step_by(4) {
+        let tmp = TempDir::new().unwrap();
+        let repo = tmp.path();
+        git(repo, &["init", "-q", "."]);
+        git(repo, &["config", "user.email", "test@example.com"]);
+        git(repo, &["config", "user.name", "diffctx tests"]);
+        for i in 0..12 {
+            write(
+                repo,
+                &format!("pkg/m{i:02}.py"),
+                &format!("def f{i:02}(x):\n    return x + 1\n"),
+            );
+            let long = if i == 0 {
+                "q".repeat(pad)
+            } else {
+                String::new()
+            };
+            write(
+                repo,
+                &format!("app/use{i:02}.py"),
+                &format!(
+                    "from pkg.m{i:02} import f{i:02}\n\n\ndef run{long}{i:02}(x):\n    return f{i:02}(x)\n"
+                ),
+            );
+        }
+        write(repo, "scripts/deploy.sh", "#!/bin/sh\necho deploy 1\n");
+        for k in 0..14 {
+            write(
+                repo,
+                &format!(".github/workflows/w{k:02}.yml"),
+                &format!(
+                    "name: w{k}\non: push\njobs:\n  j:\n    runs-on: x\n    steps:\n      - run: sh scripts/deploy.sh\n"
+                ),
+            );
+        }
+        commit_all(repo, "initial");
+        for i in 0..12 {
+            write(
+                repo,
+                &format!("pkg/m{i:02}.py"),
+                &format!("def f{i:02}(x):\n    return x + 2\n"),
+            );
+        }
+        write(repo, "scripts/deploy.sh", "#!/bin/sh\necho deploy 2\n");
+        let cache = TempDir::new().unwrap();
+        let context = context_of(&run_line(repo, cache.path(), "git commit -qam change"));
+        assert!(
+            !context.contains(":\n  - and "),
+            "pad {pad}: a heading over an overflow line alone\n{context}"
+        );
+        if context.contains("another runtime): 14 not listed\n") {
+            counted += 1;
+        }
+    }
+    assert!(counted > 0, "no length left the count alone on its heading");
+}
+
+/// The hook's one wall-clock ceiling is set by the test, never by the clock:
+/// past it (`0`) its git calls are refused and a review says what it could
+/// not do, in words; with a ceiling no run reaches, nothing changes.
+#[test]
+fn a_hook_past_its_ceiling_says_it_did_not_review() {
+    let tmp = repo_with_pending_change();
+    let repo = tmp.path();
+    let past = [("DIFFCTX_TEST_HOOK_CEILING_SECS", Path::new("0"))];
+    let cache = TempDir::new().unwrap();
+    let command = "git commit -qam vat";
+    let recorded = hook_in_env(
+        repo,
+        cache.path(),
+        "pretooluse",
+        &[],
+        &[],
+        &payload_in_session("s1", repo, command),
+    );
+    assert_eq!(recorded.stdout, "", "recording is not the call under test");
+    sh(repo, &[], command);
+    let after = in_session("s1", &payload_for("PostToolUse", repo, command));
+    let past_ceiling = hook_in_env(repo, cache.path(), "posttooluse", &[], &past, &after);
+    let context = context_of(&past_ceiling);
+    assert!(
+        context.contains("diffctx did not analyse this command: git refused a read"),
+        "{context}"
+    );
+    let other = repo_with_pending_change();
+    let repo = other.path();
+    let cache = TempDir::new().unwrap();
+    let far = [("DIFFCTX_TEST_HOOK_CEILING_SECS", Path::new("86400"))];
+    let reviewed = context_of(&line_in(
+        "s2",
+        repo,
+        cache.path(),
+        &far,
+        "git commit -qam vat",
+    ));
+    assert!(reviewed.contains("shop/checkout.py::charge"), "{reviewed}");
+}
