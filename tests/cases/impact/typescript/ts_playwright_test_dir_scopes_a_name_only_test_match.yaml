@@ -1,0 +1,98 @@
+name: ts_playwright_test_dir_scopes_a_name_only_test_match
+mode: impact
+source: fj#216
+issue_state: open
+tags:
+- typescript
+- tests-reach
+- playwright-config
+- decoy
+repo:
+  initial_files:
+    playwright.config.ts: |
+      import { defineConfig } from "@playwright/test";
+
+      export default defineConfig({
+        testDir: "./e2e",
+        testMatch: "*.e2e.ts",
+        testIgnore: "drafts/**",
+      });
+    e2e/flows/header.e2e.ts: |
+      import { test, expect } from "@playwright/test";
+      import { header } from "../../src/header";
+
+      test("header", async () => expect(header()).toBe("B"));
+    e2e/drafts/legend.e2e.ts: |
+      import { test, expect } from "@playwright/test";
+      import { legend } from "../../src/legend";
+
+      test("legend", async () => expect(legend()).toBe("b"));
+    scratch/footer.e2e.ts: |
+      import { test, expect } from "@playwright/test";
+      import { footer } from "../src/footer";
+
+      test("footer", async () => expect(footer()).toBe("b"));
+    src/format.ts: |
+      export function shout(s: string): string {
+        return s.toUpperCase();
+      }
+
+      export function whisper(s: string): string {
+        return s.toLowerCase();
+      }
+
+      export function mutter(s: string): string {
+        return s.trim();
+      }
+    src/header.ts: |
+      import { shout } from "./format";
+
+      export function header() {
+        return shout("b");
+      }
+    src/footer.ts: |
+      import { whisper } from "./format";
+
+      export function footer() {
+        return whisper("B");
+      }
+    src/legend.ts: |
+      import { mutter } from "./format";
+
+      export function legend() {
+        return mutter(" b ");
+      }
+    tests/unit/other.test.ts: |
+      test("s", () => expect(1).toBe(1));
+  changed_files:
+    src/format.ts: |
+      export function shout(s: string): string {
+        return s.toLocaleUpperCase();
+      }
+
+      export function whisper(s: string): string {
+        return s.toLocaleLowerCase();
+      }
+
+      export function mutter(s: string): string {
+        return s.trimStart();
+      }
+  commit_message: change all three
+expect:
+  changed:
+  - src/format.ts::shout
+  - src/format.ts::whisper
+  - src/format.ts::mutter
+  exact: false
+  tested_by:
+    src/header.ts: e2e/flows/header.e2e.ts
+  not_untested:
+  - shout
+  untested:
+  - whisper
+  - mutter
+  decoys:
+    src/footer.ts:
+    - scratch/footer.e2e.ts
+    src/legend.ts:
+    - e2e/drafts/legend.e2e.ts
