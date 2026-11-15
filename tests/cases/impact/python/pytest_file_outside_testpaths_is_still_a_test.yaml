@@ -1,0 +1,46 @@
+name: pytest_file_outside_testpaths_is_still_a_test
+mode: impact
+source: synthetic
+issue_state: open
+tags:
+- python
+- tests-reach
+- pytest-config
+repo:
+  initial_files:
+    pytest.ini: |
+      [pytest]
+      python_files = check_*.py
+      testpaths = tests
+    pkg/__init__.py: ""
+    pkg/core.py: |
+      def widget(x):
+          return x + 1
+    pkg/use.py: |
+      from pkg.core import widget
+
+
+      def use_widget():
+          return widget(1)
+    scripts/check_widget.py: |
+      from pkg.use import use_widget
+
+
+      def test_use_widget():
+          assert use_widget() == 2
+    tests/test_other.py: |
+      def test_nothing():
+          assert True
+  changed_files:
+    pkg/core.py: |
+      def widget(x):
+          return x + 2
+  commit_message: change widget
+expect:
+  changed:
+  - pkg/core.py::widget
+  exact: false
+  tested_by:
+    pkg/use.py: scripts/check_widget.py
+  not_untested:
+  - widget
