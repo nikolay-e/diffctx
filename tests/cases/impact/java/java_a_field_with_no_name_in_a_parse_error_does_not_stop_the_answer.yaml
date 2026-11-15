@@ -1,0 +1,73 @@
+name: java_a_field_with_no_name_in_a_parse_error_does_not_stop_the_answer
+mode: impact
+source: synthetic
+issue_state: open
+tags: [java, parse, coverage, nameless-declaration]
+repo:
+  initial_files:
+    src/main/java/com/acme/lib/Lib.java: |
+      package com.acme.lib;
+
+      public class Lib {
+          public static class SNested {
+              public int nestedM() {
+                  return 1;
+              }
+          }
+      }
+    src/main/java/com/acme/app/Use.java: |
+      package com.acme.app;
+
+      import com.acme.lib.Lib;
+
+      public class Use {
+          private final Lib.held= new Lib.SNested();
+
+          public int local() {
+              Lib.s= new Lib.SNested();
+              return s.nestedM();
+          }
+
+          public int param(Lib.s) {
+              return s.nestedM();
+          }
+
+          public int field() {
+              return held.nestedM();
+          }
+
+          Lib.SNested make() {
+              return new Lib.SNested();
+          }
+
+          public int returned() {
+              return make().nestedM();
+          }
+      }
+  changed_files:
+    src/main/java/com/acme/lib/Lib.java: |
+      package com.acme.lib;
+
+      public class Lib {
+          public static class SNested {
+              public int nestedM() {
+                  return 2;
+              }
+          }
+      }
+  commit_message: "lib: nestedM returns 2, a caller file has a parse error"
+expect:
+  changed:
+  - src/main/java/com/acme/lib/Lib.java::nestedM
+  relations:
+  - from: src/main/java/com/acme/app/Use.java::returned
+    to: src/main/java/com/acme/lib/Lib.java::nestedM
+    kind: calls
+    resolution: resolved
+    site: 26
+  exact: false
+  never_empty: true
+  coverage:
+    src/main/java/com/acme/lib/Lib.java::nestedM:
+      calls: partial
+  discloses: true
