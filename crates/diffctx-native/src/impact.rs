@@ -2572,7 +2572,7 @@ enum Entered {
 /// A statement of `f` that enters the definition `name` of its own file:
 /// the module's `if __name__ == "__main__":` guard calling it, or a curried
 /// registration call naming it. Both are how it is run, not who calls it;
-/// so is the entry of a name-keyed dict (`runs::dict_registration`).
+/// so is the entry of a name-keyed dict (`runs::dict_registrations_of`).
 fn entered_by(f: &Fragment, name: &str) -> Option<Entered> {
     let first = f.content.lines().find(|l| !l.trim().is_empty())?.trim();
     let guard = first.starts_with("if __name__ ==")
@@ -3809,18 +3809,27 @@ pub fn build_impact(
                 .iter()
                 .find_map(|f| entered_by(f, name))
                 .or_else(|| {
-                    let (key, value) = state
-                        .all_fragments
-                        .iter()
-                        .find_map(|f| runs::dict_registration(f, core, name))?;
+                    let (key, value, _) = state.all_fragments.iter().find_map(|f| {
+                        runs::dict_registrations_of(state, &cells, f, core, name)
+                            .into_iter()
+                            .next()
+                    })?;
                     Some(Entered::Registered(format!("\"{key}\": {value}")))
                 })
         });
+        // A dict entry is no call: the fragment that holds it stays a caller
+        // for a use on any other line (a dispatcher that also calls the handler).
         if let Some(name) = symbol.filter(|_| entered.is_some()) {
             let name = base_symbol(name);
-            sources.retain(|(f, _, _)| {
+            sources.retain(|(f, _, reach)| {
+                let entries = runs::dict_registrations_of(state, &cells, f, core, name);
                 (f.path() != core.path() || entered_by(f, name).is_none())
-                    && runs::dict_registration(f, core, name).is_none()
+                    && (entries.is_empty()
+                        || reach.as_ref().is_none_or(|r| {
+                            r.lines
+                                .iter()
+                                .any(|l| !entries.iter().any(|(_, _, at)| at == l))
+                        }))
             });
         }
         let kept = sources.len();
