@@ -2898,6 +2898,8 @@ impl Cell {
                 .or_else(|| moving.about(file.as_str()));
             found.map(|(_, loss)| loss.clone())
         };
+        #[cfg(debug_assertions)]
+        let pathspec = |file: &str| within_scope(&self.scope, file);
         let shadow = Shadow {
             ctx: &self.ctx,
             cache: &self.cache,
@@ -2913,6 +2915,11 @@ impl Cell {
             gaps,
             held: held.len(),
             nested,
+            #[cfg(debug_assertions)]
+            identity: write.then(|| crate::tokens::occurrence::identity::Bounds {
+                pathspec: &pathspec,
+                own_file: changed.local.then_some(changed.file.as_str()),
+            }),
         };
         let heads = changed
             .subjects

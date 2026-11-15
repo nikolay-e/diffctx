@@ -7,6 +7,8 @@
 //! until it is decided.
 
 pub mod debug;
+#[cfg(debug_assertions)]
+pub mod identity;
 mod implicit;
 mod outcome;
 mod rows;
