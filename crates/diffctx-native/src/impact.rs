@@ -5376,6 +5376,18 @@ fn key_references(
         return (Vec::new(), 0, Vec::new(), 0, Vec::new());
     }
     let typed = typed_readers(state, untraced);
+    // A record a change adds to a directory of records is read by what reads
+    // its siblings' keys; only code reads them, a sibling is a peer.
+    let added: FxHashSet<&str> = state
+        .hunk_texts
+        .iter()
+        .filter(|h| h.old_start == 0 && h.old_len == 0)
+        .map(|h| h.path.as_str())
+        .collect();
+    let tree = std::cell::LazyCell::new(|| {
+        read_or_note(state, state.run.source().list_paths(&state.root_dir))
+    });
+    let mut schema: FxHashSet<(String, String)> = FxHashSet::default();
     let mut candidates: Vec<(usize, &String, Vec<String>, Vec<String>)> = untraced
         .iter()
         .enumerate()
@@ -5385,7 +5397,16 @@ fn key_references(
                 .filter(|(target, ..)| target == path)
                 .map(|(_, key, ..)| key.clone())
                 .collect();
-            (index, path, changed_keys(state, path, nameless), readers)
+            let mut words = changed_keys(state, path, nameless);
+            if added.contains(path.as_str()) {
+                for key in keys::schema_keys(state, path, &tree) {
+                    if !words.contains(&key) {
+                        schema.insert((path.clone(), key.clone()));
+                        words.push(key);
+                    }
+                }
+            }
+            (index, path, words, readers)
         })
         .filter(|(_, _, words, readers)| !words.is_empty() || !readers.is_empty())
         .collect();
@@ -5479,10 +5500,26 @@ fn key_references(
     let mut searches: Vec<KeySearch> = Vec::new();
     let mut omitted = 0;
     let mut claimed: FxHashSet<&str> = FxHashSet::default();
+    // A sibling record spells its collection's keys as a peer, not a reader.
+    let rows_of = |target: &String, key: &String| -> Vec<(String, u32)> {
+        let peers_left_out = schema.contains(&(target.clone(), key.clone()));
+        let mut rows: Vec<(String, u32)> = by_key
+            .get(key)
+            .into_iter()
+            .flatten()
+            .filter(|(path, _)| {
+                !peers_left_out
+                    || class_of(&state.root_dir, &source, path, "", None) == MentionClass::Code
+            })
+            .cloned()
+            .collect();
+        rows.sort();
+        rows
+    };
     for (target, target_keys) in &keys {
         let searchable: Vec<&String> = target_keys
             .iter()
-            .filter(|k| by_key.get(*k).map_or(0, Vec::len) <= MAX_UNTRACED_NAMERS)
+            .filter(|k| rows_of(target, *k).len() <= MAX_UNTRACED_NAMERS)
             .collect();
         if searchable.is_empty() {
             continue;
@@ -5493,9 +5530,7 @@ fn key_references(
             if !claimed.insert(key.as_str()) {
                 continue;
             }
-            let mut rows = by_key.get(*key).map_or_else(Vec::new, |rows| rows.clone());
-            rows.sort();
-            for (path, line) in rows {
+            for (path, line) in rows_of(target, *key) {
                 if !listed.insert((path.clone(), line)) {
                     continue;
                 }
