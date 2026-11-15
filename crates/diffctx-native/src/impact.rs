@@ -3517,13 +3517,13 @@ pub fn build_impact(
             && core_hunks
                 .iter()
                 .all(|h| h.layout || moved_verbatim(h, &state.hunk_texts));
-        // A decorated definition is never set aside as layout or doc: a decorator
-        // may read what the edit touched. A comment-only edit is traced and its rows
-        // fold as no code change, a docstring edit lists them.
+        // A decorated definition (a decorator may read what the edit touched) or a
+        // type whose data members swapped places is never set aside as layout. A
+        // comment-only edit is traced and folds as no code change; a doc edit is listed.
         let layout = match py {
             Some(def) => {
                 (matches!(def.how, decide::How::Edited { layout_only: true }) || hunk_layout)
-                    && !def.decorated
+                    && !def.not_layout
             }
             None => hunk_layout,
         };
