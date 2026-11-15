@@ -26,12 +26,22 @@ def _rust_jobs() -> list[dict]:
 
 
 def _cells(job: dict) -> list[dict[str, str]]:
+    """GitHub's expansion: the product of the vectors, then each include entry
+    extends every cell it agrees with, or becomes a cell of its own."""
     matrix = job.get("strategy", {}).get("matrix", {})
-    if "include" in matrix:
-        return [dict(cell) for cell in matrix["include"]]
-    if "os" in matrix:
-        return [{"os": os_name} for os_name in matrix["os"]]
-    return [{"os": job["runs-on"]}]
+    vectors = {k: v for k, v in matrix.items() if k not in ("include", "exclude")}
+    cells: list[dict[str, str]] = [{}]
+    for key, values in vectors.items():
+        cells = [{**cell, key: value} for cell in cells for value in values]
+    if not vectors:
+        cells = []
+    for extra in matrix.get("include", []):
+        matching = [c for c in cells if vectors and all(c[k] == v for k, v in extra.items() if k in vectors)]
+        for cell in matching:
+            cell.update(extra)
+        if not matching:
+            cells.append(dict(extra))
+    return cells or [{"os": job["runs-on"]}]
 
 
 def _expanded(text: object, cell: dict[str, str]) -> str:
