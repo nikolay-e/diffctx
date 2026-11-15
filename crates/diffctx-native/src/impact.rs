@@ -5292,6 +5292,10 @@ fn changed_keys(state: &ScoredState, path: &str, nameless: &[Nameless]) -> Vec<S
         removed.into_iter(),
         added.into_iter().chain(kept),
     ));
+    // A term the file also spells on a line the change left alone was read from
+    // it before: a file spelling it elsewhere is no reader of the change (#309).
+    let untouched = keys::untouched_terms(state, path);
+    keys.retain(|k| !untouched.contains(k));
     keys.sort();
     keys.dedup();
     keys

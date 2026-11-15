@@ -802,6 +802,25 @@ pub(super) fn named_by_path(
             }
         }
     }
+    // A field that selects files by a pattern names none of them by path.
+    for (path, line, target) in selected_by_glob(state, &targets) {
+        if candidates
+            .iter()
+            .any(|r| r.path == path && r.line == line && r.target == target)
+        {
+            continue;
+        }
+        let class = class_of(&state.root_dir, &source, &path, "", None);
+        if class.reads() {
+            candidates.push(PathReference {
+                path,
+                line,
+                target,
+                key: None,
+                class,
+            });
+        }
+    }
     // A build names its Dockerfile by its context (`build: ./svc`,
     // `docker build ./svc`), which no text search for the Dockerfile's path sees.
     for site in crate::keytable::build_sites(&state.all_fragments, Some(state.root_dir.as_path())) {
@@ -862,3 +881,63 @@ pub(super) static PATH_TOKEN: once_cell::sync::Lazy<regex::Regex> =
         regex::Regex::new(r"[A-Za-z0-9_./@~$+-]*[A-Za-z0-9_$][A-Za-z0-9_./@~$+-]*")
             .expect("path token regex")
     });
+
+/// `(file, line, target)` for each changed file a glob of another file selects
+/// (`include snippets/*.conf;`, ruff's `src = ["*/*/*"]`, #309, #522). A root
+/// selects only an entry the change adds: an edit inside a package it already
+/// held moves nothing the tool sees.
+fn selected_by_glob(state: &ScoredState, targets: &[String]) -> Vec<(String, u32, String)> {
+    let source = state.run.source();
+    let tree = read_or_note(state, source.list_paths(&state.root_dir));
+    let added: FxHashSet<&str> = state
+        .hunk_texts
+        .iter()
+        .filter(|h| h.old_start == 0 && h.old_len == 0)
+        .map(|h| h.path.as_str())
+        .chain(state.renamed_files.iter().map(|(_, new)| new.as_str()))
+        .collect();
+    let new_entry = |entry: &str| {
+        let under = format!("{entry}/");
+        tree.iter()
+            .filter(|p| *p == entry || p.starts_with(&under))
+            .all(|p| added.contains(p.as_str()))
+    };
+    let (deadline, cancel) = state.run.io_limits();
+    let budget = crate::snapshot::RunBudget {
+        deadline,
+        cancel: Some(cancel),
+        read_fault: None,
+    };
+    let mut found = Vec::new();
+    let selectors = tree.iter().filter(|p| crate::facts::config::may_select(p));
+    for path in state.run.bounded(selectors) {
+        let Some(text) = source.read_to_string(&state.root_dir.join(path.as_str())) else {
+            continue;
+        };
+        for glob in crate::facts::config::globs_of(path, &text, &budget) {
+            let Some(pattern) = crate::testfiles::glob_regex(&glob.pattern) else {
+                continue;
+            };
+            for target in targets.iter().filter(|t| *t != path) {
+                let hit = match glob.selects {
+                    crate::facts::config::Selects::Files => pattern.is_match(target),
+                    crate::facts::config::Selects::Roots => std::iter::once(0)
+                        .chain(target.match_indices('/').map(|(at, _)| at + 1))
+                        .any(|start| {
+                            let root = target[..start].trim_end_matches('/');
+                            let end = target[start..]
+                                .find('/')
+                                .map_or(target.len(), |n| start + n);
+                            (start > 0 || glob.pattern.is_empty())
+                                && pattern.is_match(root)
+                                && new_entry(&target[..end])
+                        }),
+                };
+                if hit {
+                    found.push((path.clone(), glob.line, target.clone()));
+                }
+            }
+        }
+    }
+    found
+}
