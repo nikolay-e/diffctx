@@ -112,12 +112,12 @@ pub enum Trigger {
     /// What a commit, merge, cherry-pick, revert or push recorded, read off
     /// git's own reflog once the line ran. Predicting it from the command
     /// text took fifteen parser commits in nine days and still reviewed another
-    /// session's staged file for `--pathspec-from-file` (#508). `also`
-    /// counts the other refs one push moved, which are not reviewed; `late`
-    /// is a background line's, answered at a later event (#617).
+    /// session's staged file for `--pathspec-from-file` (#508). `refs` names
+    /// the refs one push moved, the reviewed one first, the rest unreviewed;
+    /// `late` is a background line's, answered at a later event (#617).
     Landed {
         verb: &'static str,
-        also: usize,
+        refs: Vec<String>,
         late: bool,
         /// Commits a push published that this session's calls did not make.
         unmade: Vec<String>,
@@ -131,8 +131,23 @@ pub enum Trigger {
     /// `git diff` / `git status` the agent ran itself: the working tree
     /// (`--cached`/`--staged` narrows it to the index). `own` is what this
     /// session's transcript shows it edited, read once the repository is
-    /// known; `None` when no transcript could tell (#404).
-    Inspect { staged: bool, own: Option<Owned> },
+    /// known; `None` when no transcript could tell (#404). `narrowed` is the
+    /// part a pathspec on the line showed, `None` for the whole checkout.
+    Inspect {
+        staged: bool,
+        own: Option<Owned>,
+        narrowed: Option<Narrowed>,
+    },
+}
+
+/// What a pathspec narrowed an inspection to: what git showed and nothing
+/// else is reviewed, never the rest of the checkout (gh#508).
+#[derive(Debug, PartialEq, Eq)]
+pub struct Narrowed {
+    /// The pathspecs, relative to the repository root.
+    pub pathspecs: Vec<String>,
+    /// The changed files under them.
+    pub files: Vec<String>,
 }
 
 /// The changed files an inspecting session wrote itself, in a checkout
@@ -283,7 +298,13 @@ fn range_for(root: &Path, trigger: &Trigger) -> Result<String, Silence> {
         Trigger::Inspect {
             staged,
             own: Some(own),
+            ..
         } if !own.others.is_empty() => own_range(root, *staged, &own.files)?,
+        Trigger::Inspect {
+            staged,
+            narrowed: Some(narrowed),
+            ..
+        } => own_range(root, *staged, &narrowed.files)?,
         Trigger::Inspect { staged: false, .. } => "HEAD".to_string(),
         Trigger::Inspect { staged: true, .. } => staged_range(root, None)?,
         Trigger::Commit { amend, .. } => {
@@ -555,8 +576,9 @@ struct Landing {
     /// record gave, not the text above read again.
     spec: Option<snap::RangeSpec>,
     verb: &'static str,
-    /// Other ranges the same push moved: counted, not reviewed.
-    also: usize,
+    /// The refs a push moved, one entry per range, the reviewed one first:
+    /// the rest are named, not reviewed.
+    refs: Vec<String>,
     /// Commits a push published that no call of this session was seen to
     /// make, `<abbreviated id> '<subject>'` each (gh#669).
     unmade: Vec<String>,
@@ -615,22 +637,38 @@ fn landed(
     } else {
         Ok(Vec::new())
     };
-    let mut pushed: Vec<(String, snap::RangeSpec)> = Vec::new();
+    // Each range a push moved, with the refs it moved over it.
+    let mut pushed: Vec<(Vec<String>, String, snap::RangeSpec)> = Vec::new();
     // Remote-tracking refs are shared by every work tree of a repository:
     // the call's own work tree reads the pushes, once, and says which other
     // work trees there are.
     if let Some(others) = pushes {
         let now = refs_of(&repo)?;
-        for range in pushed_ranges(&repo, before, &now, output, others)? {
-            if !pushed.contains(&range) {
-                pushed.push(range);
+        for (name, range, spec) in pushed_ranges(&repo, before, &now, output, others)? {
+            match pushed
+                .iter_mut()
+                .find(|(_, r, s)| *r == range && *s == spec)
+            {
+                Some((names, ..)) if names.contains(&name) => {}
+                Some((names, ..)) => names.push(name),
+                None => pushed.push((vec![name], range, spec)),
             }
         }
+        // Git reports a push's refs in the remote's order, and the tracking
+        // refs are sorted: the ref reviewed is the first the line names.
+        let rank = |names: &[String]| {
+            names
+                .iter()
+                .filter_map(|n| output.named.iter().position(|m| m == n))
+                .min()
+                .unwrap_or(usize::MAX)
+        };
+        pushed.sort_by_key(|(names, ..)| rank(names));
     }
     // The tip the first push published: a commit the line made that this
     // tip holds is part of that review.
     let mut published: Option<String> = None;
-    if let Some((range, spec)) = pushed.first() {
+    if let Some((_, range, spec)) = pushed.first() {
         let rewritten = matches!(spec, snap::RangeSpec::Rewritten { .. });
         // A push that cannot tell what this call committed says nothing of
         // who made what it published.
@@ -649,7 +687,7 @@ fn landed(
             range: range.clone(),
             spec: Some(spec.clone()),
             verb: if rewritten { "force-push" } else { "push" },
-            also: pushed.len() - 1,
+            refs: pushed.iter().map(|(names, ..)| names.join(", ")).collect(),
             unmade,
         });
     }
@@ -756,7 +794,7 @@ fn landed(
         range: format!("{start}..{end}"),
         spec: None,
         verb,
-        also: 0,
+        refs: Vec::new(),
         unmade: Vec::new(),
     });
     Ok(found)
@@ -835,6 +873,8 @@ fn unmade_commits(
 /// quiet push does — and the remote-tracking refs' reflogs say instead.
 struct Output {
     updates: Option<Vec<Update>>,
+    /// The remote branches the line's pushes name, in its order.
+    named: Vec<String>,
 }
 
 struct Update {
@@ -847,7 +887,10 @@ struct Update {
 
 impl Output {
     fn none() -> Self {
-        Self { updates: None }
+        Self {
+            updates: None,
+            named: Vec::new(),
+        }
     }
 
     fn of(payload: &serde_json::Value) -> Self {
@@ -867,6 +910,9 @@ impl Output {
             updates: text
                 .filter(|t| !t.trim().is_empty())
                 .map(|t| t.lines().filter_map(update_of).collect()),
+            named: payload["tool_input"]["command"]
+                .as_str()
+                .map_or_else(Vec::new, intent::pushed_refs),
         }
     }
 }
@@ -948,7 +994,7 @@ fn pushed_ranges(
     now: &Before,
     output: &Output,
     others: &[PathBuf],
-) -> Result<Vec<(String, snap::RangeSpec)>, Silence> {
+) -> Result<Vec<(String, String, snap::RangeSpec)>, Silence> {
     let root = repo.work_tree.as_path();
     let started = |name: &str| before.tracking.iter().find(|t| t.name == name);
     let Some(updates) = output.updates.as_ref() else {
@@ -964,8 +1010,8 @@ fn pushed_ranges(
             if checked_out_in(others, &moved.branch)? {
                 continue;
             }
-            if let Some(range) = first_push_since(repo, before, now, moved)? {
-                ranges.push(range);
+            if let Some((range, spec)) = first_push_since(repo, before, now, moved)? {
+                ranges.push((moved.branch.clone(), range, spec));
             }
         }
         return Ok(ranges);
@@ -976,15 +1022,18 @@ fn pushed_ranges(
             .any(|u| u.to == branch && now.tracking.iter().any(|t| t.branch == branch))
     };
     let mut ranges = Vec::new();
-    for (old, new) in updates
-        .iter()
-        .filter_map(|u| u.range.as_ref().filter(|_| pushed_to(&u.to)))
-    {
+    for (to, (old, new)) in updates.iter().filter_map(|u| {
+        u.range
+            .as_ref()
+            .filter(|_| pushed_to(&u.to))
+            .map(|r| (&u.to, r))
+    }) {
         // A tip this clone does not hold names no range to review; a read git
         // could not answer is the hook's error.
         let held = |rev: &str| snap::rev_oid(root, rev).map_err(|_| "error:git");
         if let (Some(old), Some(new)) = (held(old)?, held(new)?) {
-            ranges.push(push_range(repo, &old, &new)?);
+            let (range, spec) = push_range(repo, &old, &new)?;
+            ranges.push((to.clone(), range, spec));
         }
     }
     // Created by this line: not a ref the line started with.
@@ -993,8 +1042,8 @@ fn pushed_ranges(
         .iter()
         .filter(|t| started(&t.name).is_none() && pushed_to(&t.branch))
     {
-        if let Some(range) = first_push_since(repo, before, now, created)? {
-            ranges.push(range);
+        if let Some((range, spec)) = first_push_since(repo, before, now, created)? {
+            ranges.push((created.branch.clone(), range, spec));
         }
     }
     Ok(ranges)
@@ -1381,34 +1430,46 @@ fn attempts(key: &str) -> u32 {
         .unwrap_or(0)
 }
 
-/// A delivered answer: its headline, and whether the run behind it stopped
-/// at a limit.
+/// A delivered answer: its headline, what it asked the reader to check
+/// (`None` when nothing), and whether the run behind it stopped at a limit.
 struct Delivered {
     headline: String,
+    check: Option<String>,
     partial: bool,
 }
 
 const PARTIAL_MARK: &str = "partial:";
 
 fn delivered(key: &str, ttl: Duration) -> Option<Delivered> {
-    seen_headline(key, ttl).map(|text| match text.strip_prefix(PARTIAL_MARK) {
-        Some(rest) => Delivered {
-            headline: rest.to_string(),
-            partial: true,
-        },
-        None => Delivered {
-            headline: text,
-            partial: false,
-        },
+    seen_headline(key, ttl).map(|text| {
+        let (partial, rest) = match text.strip_prefix(PARTIAL_MARK) {
+            Some(rest) => (true, rest),
+            None => (false, text.as_str()),
+        };
+        let (headline, check) = match rest.split_once('\n') {
+            Some((headline, check)) => (headline, Some(check.to_string())),
+            None => (rest, None),
+        };
+        Delivered {
+            headline: headline.to_string(),
+            check,
+            partial,
+        }
     })
 }
 
-fn mark_delivered(key: &str, headline: &str, partial: bool) {
-    let text = if partial {
+/// The marker is the headline, with what the answer asked to check on a
+/// line of its own: a reminder repeats that, and nothing it did not ask.
+fn mark_delivered(key: &str, headline: &str, check: Option<&str>, partial: bool) {
+    let mut text = if partial {
         format!("{PARTIAL_MARK}{headline}")
     } else {
         headline.to_string()
     };
+    if let Some(check) = check {
+        text.push('\n');
+        text.push_str(check);
+    }
     mark_seen_with(key, &text);
 }
 
@@ -1441,6 +1502,7 @@ pub fn mark_range_reviewed(root: &Path, range: &str, output: &crate::impact::Imp
         mark_delivered(
             &format!("id-{identity}"),
             rendered.lines().next().unwrap_or(""),
+            what_to_check(output, false).as_deref(),
             !output.limits.is_empty(),
         );
     }
@@ -1545,16 +1607,40 @@ fn prepare(
         .ok_or("no-trigger")?;
     let intent =
         intent::of(matches!(event, Event::PostToolUse { .. }), command).ok_or("no-trigger")?;
+    let mut pathspecs = Vec::new();
     let mut trigger = match intent {
         Intent::Commit { amend, plain } => Trigger::Commit { amend, plain },
         Intent::PullRequest { base, head } => Trigger::PullRequest { base, head },
-        Intent::Inspect { staged } => Trigger::Inspect { staged, own: None },
+        Intent::Inspect { staged, paths } => {
+            pathspecs = paths;
+            Trigger::Inspect {
+                staged,
+                own: None,
+                narrowed: None,
+            }
+        }
     };
     trace.verb = Some(verb_of(&trigger));
     let root = repo_root_checked(payload, None)?.ok_or("not-git")?;
     trace.root = Some(root.clone());
-    if let Trigger::Inspect { staged, own } = &mut trigger {
-        *own = own_changes(&root, payload, *staged)?;
+    if let Trigger::Inspect {
+        staged,
+        own,
+        narrowed,
+    } = &mut trigger
+    {
+        let pathspecs = rooted_pathspecs(payload, &root, &pathspecs);
+        let changed = changed_paths(&root, *staged, &pathspecs)?.named;
+        if changed.is_empty() {
+            return Err("clean");
+        }
+        *own = own_changes(&root, payload, &changed)?;
+        if !pathspecs.is_empty() {
+            *narrowed = Some(Narrowed {
+                pathspecs,
+                files: changed,
+            });
+        }
     }
     let range = range_for(&root, &trigger)?;
     prepared(root, range, None, trigger, trace)
@@ -1686,7 +1772,7 @@ fn landed_in(
                 range,
                 spec,
                 verb,
-                also,
+                refs,
                 unmade,
             } = landing;
             if found.is_empty() {
@@ -1699,7 +1785,7 @@ fn landed_in(
             ranges.push(range.clone());
             let trigger = Trigger::Landed {
                 verb,
-                also,
+                refs,
                 late,
                 unmade,
             };
@@ -1922,12 +2008,8 @@ const EDIT_TOOLS: [&str; 4] = ["Edit", "Write", "MultiEdit", "NotebookEdit"];
 fn own_changes(
     root: &Path,
     payload: &serde_json::Value,
-    staged: bool,
+    changed: &[String],
 ) -> Result<Option<Owned>, Silence> {
-    let changed = changed_paths(root, staged)?.named;
-    if changed.is_empty() {
-        return Err("clean");
-    }
     let ledger = bracketed(payload["session_id"].as_str(), root);
     let Some(writes) = payload["transcript_path"]
         .as_str()
@@ -1937,7 +2019,7 @@ fn own_changes(
     };
     let top = canonical(root);
     let (files, others): (Vec<String>, Vec<String>) =
-        changed.into_iter().partition(|p| writes.wrote(&top, p));
+        changed.iter().cloned().partition(|p| writes.wrote(&top, p));
     if files.is_empty() {
         return Err(if writes.unbracketed > 0 {
             "unbracketed"
@@ -1958,19 +2040,76 @@ fn own_changes(
     }))
 }
 
-/// Every path an answer may name that the inspected snapshot changes: the index
-/// against `HEAD`, or the working tree with its untracked files, read collapsed:
-/// an unreached directory is one entry with a trailing `/`. A listing git
-/// refused is an error, not a smaller change.
-fn changed_paths(root: &Path, staged: bool) -> Result<snap::NamedChanges, Silence> {
+/// An inspection's pathspecs as the repository root reads them: git resolved
+/// them against the directory the line ran in. Empty for the whole checkout,
+/// and for a pathspec this cannot place (magic other than `:/`, a path
+/// outside the repository): the review then covers more than was shown,
+/// never less.
+fn rooted_pathspecs(payload: &serde_json::Value, root: &Path, paths: &[String]) -> Vec<String> {
+    let top = canonical(root);
+    // A path outside the repository has no place under its root.
+    let under_top = |path: &Path| match canonical(path).strip_prefix(&top) {
+        Ok(rel) => Some(rel.to_string_lossy().replace('\\', "/")),
+        Err(_) => None,
+    };
+    let Some(here) = payload_cwd(payload).and_then(|cwd| under_top(&cwd)) else {
+        return Vec::new();
+    };
+    let mut rooted = Vec::new();
+    for path in paths {
+        let joined = if let Some(from_top) = path.strip_prefix(":/") {
+            Some(from_top.to_string())
+        } else if path.starts_with(':') {
+            None
+        } else if Path::new(path).is_absolute() {
+            under_top(Path::new(path))
+        } else {
+            Some(format!("{here}/{path}"))
+        };
+        match joined.as_deref().and_then(snap::normalize_lexical) {
+            Some(rooted_path) if !rooted_path.is_empty() => rooted.push(rooted_path),
+            _ => return Vec::new(),
+        }
+    }
+    rooted
+}
+
+/// Every path an answer may name that the inspected snapshot changes under
+/// `pathspecs` (all of it when empty): the index against `HEAD`, or the
+/// working tree with its untracked files, read collapsed: an unreached
+/// directory is one entry with a trailing `/`. A listing git refused is an
+/// error, not a smaller change.
+fn changed_paths(
+    root: &Path,
+    staged: bool,
+    pathspecs: &[String],
+) -> Result<snap::NamedChanges, Silence> {
     let changed = if staged {
         snap::open(root)
             .and_then(|repo| snap::staged(&repo))
             .and_then(|spec| named_changes(root, spec))
+            .and_then(|mut changed| {
+                if !pathspecs.is_empty() {
+                    let mut args = vec![
+                        "diff",
+                        "--cached",
+                        "--name-only",
+                        "-z",
+                        "--no-renames",
+                        "--",
+                    ];
+                    args.extend(pathspecs.iter().map(String::as_str));
+                    let under: rustc_hash::FxHashSet<String> =
+                        snap::run_git_z(root, &args)?.into_iter().collect();
+                    changed.named.retain(|p| under.contains(p));
+                }
+                Ok(changed)
+            })
     } else {
-        let args = ["diff", "--name-only", "-z", "--no-renames", "HEAD", "--"];
+        let mut args = vec!["diff", "--name-only", "-z", "--no-renames", "HEAD", "--"];
+        args.extend(pathspecs.iter().map(String::as_str));
         snap::run_git_z(root, &args).and_then(|mut paths| {
-            let untracked = snap::untracked(root, &[])?;
+            let untracked = snap::untracked(root, pathspecs)?;
             paths.extend(untracked.names);
             paths.extend(untracked.unread.into_iter().map(|dir| format!("{dir}/")));
             snap::name_working_tree_changes(root, paths)
@@ -2345,20 +2484,27 @@ fn canonical(path: &Path) -> PathBuf {
         .unwrap_or_else(|| path.to_path_buf())
 }
 
-fn reminder(event: Event, headline: &str) -> String {
-    let what = if headline.trim().is_empty() {
+/// One line pointing at a review already shown: what it asked to check still
+/// applies, and nothing it did not ask is claimed (a review with no caller
+/// has no callers that "still apply", fj#127).
+fn reminder(event: Event, shown: &Delivered) -> String {
+    let headline = shown.headline.trim();
+    let what = if headline.is_empty() {
         "reviewed earlier".to_string()
     } else {
-        format!("shown earlier in this session: {}", headline.trim())
+        format!("shown earlier in this session: {headline}")
     };
     let records = if event == Event::PreToolUse {
         "records"
     } else {
         "recorded"
     };
-    format!(
-        "diffctx: this command {records} a change whose impact was {what}. Those callers still apply; confirm they were checked before going on."
-    )
+    let check = shown.check.as_deref().map_or_else(String::new, |c| {
+        format!(
+            " What it asked to check still applies: {c}; confirm it was checked before going on."
+        )
+    });
+    format!("diffctx: this command {records} a change whose impact was {what}.{check}")
 }
 
 fn run_impact(
@@ -2400,6 +2546,9 @@ struct Reply {
     context: String,
     /// The line a later reminder repeats.
     headline: String,
+    /// What the answer asks the reader to check, which a later reminder
+    /// repeats; `None` when it asks for nothing.
+    check: Option<String>,
     /// The run stopped at a limit: delivered as partial, retried later.
     partial: bool,
 }
@@ -2411,7 +2560,7 @@ fn lead_of(event: Event, trigger: &Trigger, range: &str) -> String {
             _,
             Trigger::Landed {
                 verb,
-                also,
+                refs,
                 late,
                 unmade,
             },
@@ -2425,13 +2574,18 @@ fn lead_of(event: Event, trigger: &Trigger, range: &str) -> String {
                 format!(
                     "diffctx reviewed what this push changed on the remote ({range}): the ref was rewritten, so this is the tree delta from the old tip to the new one, not the whole rewritten commit."
                 )
-            } else if *also == 0 {
+            } else if refs.len() < 2 {
                 format!("diffctx reviewed what {which} {verb} recorded.")
             } else {
-                format!(
-                    "diffctx reviewed the first ref {which} {verb} moved; {also} other pushed ref(s) are not analysed."
-                )
+                format!("diffctx reviewed the push to {}.", refs[0])
             };
+            if let Some(rest) = refs.get(1..).filter(|rest| !rest.is_empty()) {
+                lead = format!(
+                    "{lead} {} other pushed ref(s) are not analysed: {}.",
+                    rest.len(),
+                    some_of(rest)
+                );
+            }
             // Git alone cannot tell a commit another session makes in the
             // same checkout meanwhile from this call's own (T19).
             lead.push_str(if *late {
@@ -2449,8 +2603,21 @@ fn lead_of(event: Event, trigger: &Trigger, range: &str) -> String {
             return lead;
         }
         (Event::PreToolUse, _) => "diffctx reviewed the commits this pull request proposes.",
-        (Event::PostToolUse { .. }, Trigger::Inspect { own: None, .. }) => {
-            "diffctx reviewed every pending change in this checkout, which you just inspected; without a readable transcript it cannot tell this session's edits from another session's."
+        (
+            Event::PostToolUse { .. },
+            Trigger::Inspect {
+                own: None,
+                narrowed,
+                ..
+            },
+        ) => {
+            return format!(
+                "diffctx reviewed every pending change {}, which you just inspected; without a readable transcript it cannot tell this session's edits from another session's.",
+                narrowed.as_ref().map_or_else(
+                    || "in this checkout".to_string(),
+                    |n| format!("under {}", some_of(&n.pathspecs))
+                )
+            );
         }
         (Event::PostToolUse { .. }, Trigger::Inspect { own: Some(own), .. })
             if !own.others.is_empty() =>
@@ -2515,9 +2682,19 @@ fn range_name(trigger: &Trigger, range: &str) -> Option<String> {
         Trigger::Inspect {
             staged,
             own: Some(own),
+            ..
         } if !own.others.is_empty() => format!(
             "this session's {}edits (snapshot tree {tree})",
             if *staged { "staged " } else { "" }
+        ),
+        Trigger::Inspect {
+            staged,
+            narrowed: Some(narrowed),
+            ..
+        } => format!(
+            "{} changes under {} (snapshot tree {tree})",
+            if *staged { "staged" } else { "uncommitted" },
+            some_of(&narrowed.pathspecs)
         ),
         Trigger::Inspect { staged: true, .. } | Trigger::Commit { amend: false, .. } => {
             format!("staged changes (index tree {tree})")
@@ -2663,6 +2840,7 @@ fn no_code_reply(range: &str, withheld: usize) -> Result<Reply, Silence> {
     Ok(Reply {
         context: line.clone(),
         headline: line,
+        check: None,
         partial: false,
     })
 }
@@ -2692,6 +2870,7 @@ fn impact_context(
         return Ok(Reply {
             context: line.clone(),
             headline: line,
+            check: None,
             partial: false,
         });
     }
@@ -2706,11 +2885,12 @@ fn impact_context(
             "{} What it reaches outside the diff:\n{text}\n{stopped}{}{}",
             lead_of(event, trigger, range),
             hedge.map_or_else(String::new, |h| format!("{h}\n")),
-            check.map_or_else(String::new, |c| format!(
+            check.as_ref().map_or_else(String::new, |c| format!(
                 "Check {c} before going on, or tell the user why they are unaffected."
             )),
         ),
         headline,
+        check,
         partial,
     })
 }
@@ -3273,7 +3453,7 @@ fn edited_answer(
             ),
             None => continue,
         };
-        mark_delivered(&key(name), &answer, known.partial);
+        mark_delivered(&key(name), &answer, None, known.partial);
         answers.push(answer);
     }
     if answers.is_empty() {
@@ -3841,7 +4021,7 @@ fn answer(
             mark_seen(&prepared.record_key);
             note_reviewed(&made, trace);
             trace.noted = Some("reminder");
-            return Ok(Answered::note(event, &reminder(event, &d.headline)));
+            return Ok(Answered::note(event, &reminder(event, d)));
         }
         (Some(d), Event::PostToolUse { .. }) if !d.partial => return Err("seen"),
         _ => {}
@@ -3888,11 +4068,11 @@ fn answer(
     match &answer {
         // Nothing to say is a complete answer, delivered as silence.
         Err("empty") => {
-            mark_delivered(&key, "", false);
+            mark_delivered(&key, "", None, false);
             note_reviewed(&made, trace);
         }
         Ok(a) => {
-            mark_delivered(&key, &a.headline, a.partial);
+            mark_delivered(&key, &a.headline, a.check.as_deref(), a.partial);
             if !a.partial {
                 note_reviewed(&made, trace);
             }
@@ -3971,6 +4151,7 @@ fn with_unread(answer: Result<Reply, Silence>, unread: &[String]) -> Result<Repl
         Err("empty") => Ok(Reply {
             context: note.clone(),
             headline: note,
+            check: None,
             partial: true,
         }),
         other => other,
