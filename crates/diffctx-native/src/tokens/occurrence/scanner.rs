@@ -53,6 +53,8 @@ pub struct Scan {
     pub code: Vec<Occurrence>,
     /// Occurrences in string literals, by start byte.
     pub mentions: Vec<Occurrence>,
+    /// Spellings inside comments: no occurrence, counted so each is a record.
+    pub comments: usize,
     /// The blob has a loss: its comment and string
     /// ranges are not trusted, every spelling is in `code`, and the caller makes
     /// each a candidate.
@@ -219,7 +221,10 @@ pub fn scan(file: &FileFacts, text: &[u8], names: &[&str], case: Case) -> Scan {
             Class::Code
         } else {
             match standing_at(&file.blob, &bytes) {
-                Standing::Comment => continue,
+                Standing::Comment => {
+                    scan.comments += 1;
+                    continue;
+                }
                 Standing::Mention => Class::Mention,
                 Standing::Code => Class::Code,
             }
