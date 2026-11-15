@@ -39,12 +39,12 @@ def _expanded(text: object, cell: dict[str, str]) -> str:
 
 
 def _part_suites(part: str) -> set[str]:
-    corpus = "yaml_cases"
-    rest = sorted(_suites() - {corpus})
+    corpus = {"yaml_cases", "class_completeness_corpus"}
+    rest = sorted(_suites() - corpus)
     if part == "all":
         return _suites()
     if part == "corpus":
-        return {corpus}
+        return corpus
     if part == "rest":
         return set(rest)
     shard, shards = map(int, part.removeprefix("rest:").split("/"))
