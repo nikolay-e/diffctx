@@ -1,0 +1,55 @@
+name: java_removed_field_with_a_typed_reader_is_named_as_removed
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [java, removed-definition, removed-api, absence-claim, contract]
+repo:
+  initial_files:
+    src/main/java/demo/Item.java: |
+      package demo;
+
+      public class Item {
+          public int id;
+          public String text;
+          public int size;
+          public String source;
+      }
+    src/main/java/demo/Reader.java: |
+      package demo;
+
+      public class Reader {
+          public static String typed(Item item) {
+              return item.text + item.size;
+          }
+      }
+    src/test/java/demo/ReaderTest.java: |
+      package demo;
+
+      import org.junit.jupiter.api.Test;
+
+      class ReaderTest {
+          @Test
+          void typed() {
+              Reader.typed(new Item());
+          }
+      }
+  changed_files:
+    src/main/java/demo/Item.java: |
+      package demo;
+
+      public class Item {
+          public int id;
+          public String source;
+      }
+  commit_message: "item: drop the text and size fields"
+expect:
+  removed: [src/main/java/demo/Item.java::text, src/main/java/demo/Item.java::size]
+  contracts: [src/main/java/demo/Item.java]
+  relations:
+    - {from: src/main/java/demo/Reader.java::typed,
+       to: src/main/java/demo/Item.java::text, kind: reads, site: 5}
+    - {from: src/main/java/demo/Reader.java::typed,
+       to: src/main/java/demo/Item.java::size, kind: reads, site: 5}
+  exact: false
+  never_empty: true
+  no_negative_claims: true

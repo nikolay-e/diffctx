@@ -748,9 +748,15 @@ const RED: &[(&str, &str)] = &[
     ),
     (
         "impact/python/py_removed_field_lists_its_readers_only",
-        "gh#400: the reader of a removed field is reported under the class, and the class's own \
-         module-level instantiation is an extra caller; decide() maps a removed member to its \
-         container, the resolver binds `settings.b` to the field",
+        "gh#400: the reader of a removed field is reported under the removed field, and the \
+         class's construction sites under the class whose generated constructor lost the \
+         parameter; decide() names both, the resolver binds `settings.b` to the field",
+    ),
+    (
+        "impact/python/py_removed_middle_field_with_a_typed_reader_is_named_as_removed",
+        "the untyped reader's candidate is the removal side's: a read through a receiver nothing \
+         types is `UntypedRead` for the resolver, and decide() names the surviving read of a \
+         removed member's name as a possible use; no binding states it",
     ),
     (
         "impact/python/py_pytest_fixture_is_used_by_the_tests_that_name_it",
