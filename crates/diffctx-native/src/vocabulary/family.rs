@@ -366,6 +366,15 @@ impl Resolver {
             _ => 0,
         }
     }
+
+    /// Whether a module call of the snapshot sources the module `file` is in: what
+    /// sets its variables is that call, not the world outside.
+    pub(crate) fn module_called(&self, file: &str) -> bool {
+        match self {
+            Self::Terraform(r) => r.is_called(file),
+            _ => false,
+        }
+    }
 }
 
 /// `context` for a reader that holds no `ScoredState`: the root and the run's

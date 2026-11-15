@@ -9,11 +9,14 @@ use crate::tokens::occurrence::Implicit;
 use crate::vocabulary::family::Family;
 
 /// What `decide` already knows of a definition: `dispatched` is `dispatched_via`,
-/// `consumed_outside` is `consumed_outside` of its family.
+/// `consumed_outside` is `consumed_outside` of its family, `module_called` that a
+/// module call of the repository sources its directory (`module_called` of the
+/// resolver).
 #[derive(Clone, Copy, Default, Debug)]
 pub struct Known {
     pub dispatched: bool,
     pub consumed_outside: bool,
+    pub module_called: bool,
 }
 
 /// Where a row looks: the definition's name, its decorators and the words of its
@@ -186,8 +189,9 @@ pub fn implicit_kinds(file: &FileFacts, def: &Def, known: Known) -> Vec<Implicit
             _ => {}
         }
     }
-    // Only the root module is set from outside; a module in a directory is set by its caller.
-    let rooted = !file.path.as_str().contains('/');
+    // A root module is set from outside; a module a call sources is set by its
+    // caller. Which is which the calls say, not the depth of the path (fj#193).
+    let rooted = !known.module_called;
     for (family, part, kind, patterns) in TABLE {
         let hit = patterns.split_ascii_whitespace().any(|pattern| {
             tags.iter().any(|(at, tag)| {

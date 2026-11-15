@@ -801,6 +801,22 @@ fn a_module_call_reaches_its_directory_and_a_source_that_is_no_path_reaches_noth
 }
 
 #[test]
+fn a_module_is_called_when_a_call_sources_its_directory_whatever_its_depth() {
+    let fx = snapshot(&[
+        (
+            "infra/prod/main.tf",
+            "module \"net\" {\n  source = \"../../modules/net\"\n}\n",
+        ),
+        ("modules/net/main.tf", NET),
+        ("modules/spare/main.tf", NET),
+    ]);
+    assert!(fx.head.is_called("modules/net/main.tf"));
+    // fj#193: a directory no call sources is a root module, deep or not.
+    assert!(!fx.head.is_called("infra/prod/main.tf"));
+    assert!(!fx.head.is_called("modules/spare/main.tf"));
+}
+
+#[test]
 fn an_argument_of_a_call_is_a_write_of_the_variable_of_the_called_module() {
     let fx = snapshot(&[("main.tf", CALLER), ("modules/net/main.tf", NET)]);
     let written = fx.at("main.tf", "cidr", 3);
