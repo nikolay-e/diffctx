@@ -1,0 +1,27 @@
+name: fj176_c_struct_that_lost_a_field_is_no_layout_edit
+mode: impact
+source: fj#176
+issue_state: open
+tags: [c, layout, removed-definition, absence-claim]
+repo:
+  initial_files:
+    src/ctx.h: |
+      struct req;
+
+      struct ctx {
+          struct req *request;
+          int user;
+      };
+  changed_files:
+    src/ctx.h: |
+      struct req;
+
+      struct ctx {
+          int user;
+      };
+  commit_message: "ctx: drop the request field"
+expect:
+  removed: [src/ctx.h::request]
+  changed: [src/ctx.h::request]
+  never_empty: true
+  no_negative_claims: true

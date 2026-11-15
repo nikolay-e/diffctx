@@ -1,0 +1,41 @@
+name: gh724_constants_class_that_gained_a_constant_is_no_layout_edit
+mode: impact
+source: gh#724
+issue_state: open
+tags: [java, layout, constants, granularity, decoys]
+repo:
+  initial_files:
+    src/main/java/app/Keys.java: |
+      package app;
+
+      public final class Keys {
+          public static final String USER = "user";
+          public static final String ORDER = "order";
+
+          private Keys() {
+          }
+      }
+    src/main/java/app/UserView.java: |
+      package app;
+
+      public class UserView {
+          public String key() {
+              return Keys.USER;
+          }
+      }
+  changed_files:
+    src/main/java/app/Keys.java: |
+      package app;
+
+      public final class Keys {
+          public static final String USER = "user";
+          public static final String ORDER = "order";
+          public static final String COUPON = "coupon";
+
+          private Keys() {
+          }
+      }
+  commit_message: "keys: add COUPON"
+expect:
+  changed: [src/main/java/app/Keys.java::COUPON]
+  decoys: {Keys: [src/main/java/app/UserView.java]}
