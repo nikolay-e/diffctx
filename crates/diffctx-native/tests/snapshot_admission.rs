@@ -6,8 +6,8 @@ mod snapshot_fixture;
 use std::sync::Arc;
 
 use _diffctx::snapshot::{
-    Admission, AdmissionPolicy, Decision, NotAnalysedReason, Side, SnapshotError, SnapshotReader,
-    UntrackedPolicy, WithholdReason,
+    Admission, AdmissionPolicy, Decision, Loss, NotAnalysedReason, Side, SnapshotError,
+    SnapshotReader, UntrackedPolicy, WithholdReason,
 };
 use snapshot_fixture::{Repo, names};
 
@@ -143,6 +143,18 @@ fn a_symlink_is_its_target_name_and_is_followed_only_inside_the_snapshot() {
             ("chain".to_string(), NotAnalysedReason::Symlink),
             ("up".to_string(), NotAnalysedReason::Symlink),
         ]
+    );
+    // A link that ends at an admitted file is read as that file; only the one
+    // that leaves the snapshot is a loss (#603).
+    let mut followed: Vec<&str> = listing.followed.iter().map(|p| p.as_str()).collect();
+    followed.sort_unstable();
+    assert_eq!(followed, ["alias.py", "chain"]);
+    assert_eq!(
+        listing.losses(),
+        [Loss::NotAnalysed {
+            path: path("up"),
+            reason: NotAnalysedReason::Symlink,
+        }]
     );
 
     let text = reader

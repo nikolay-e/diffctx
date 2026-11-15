@@ -7410,3 +7410,85 @@ fn a_default_export_that_changes_only_its_form_is_one_export() {
         "{widened:#}"
     );
 }
+
+/// #603: a symlink committed with the file it names is that file, read under
+/// its own path: the edit is the file's, an import of the link reaches it, and
+/// the link is neither an unread file of the group nor a contract.
+#[cfg(unix)]
+#[test]
+fn a_symlink_committed_with_its_target_is_read_as_the_target() {
+    let tmp = TempDir::new().expect("tempdir");
+    let repo = tmp.path();
+    init_repo(repo);
+    let lib = |greeting: &str| {
+        format!("export function greet(name) {{\n  return \"{greeting} \" + name;\n}}\n")
+    };
+    write(repo, "src/lib.js", &lib("hi"));
+    write(
+        repo,
+        "src/main.js",
+        "import { greet } from \"./alias.js\";\n\nexport function run() {\n  return greet(\"x\");\n}\n",
+    );
+    commit_all(repo, "base");
+    write(repo, "src/lib.js", &lib("hello"));
+    std::os::unix::fs::symlink("lib.js", repo.join("src/alias.js")).expect("symlink");
+    commit_all(repo, "link the module and change it");
+    let doc = impact(repo, "HEAD~1..HEAD");
+    let definitions = doc["definitions"].as_array().expect("definitions");
+    let named: Vec<String> = definitions
+        .iter()
+        .map(|d| {
+            format!(
+                "{}::{}",
+                d["path"].as_str().unwrap_or(""),
+                d["symbol"].as_str().unwrap_or("")
+            )
+        })
+        .collect();
+    assert_eq!(named, ["src/lib.js::greet"], "{doc:#}");
+    assert!(definitions[0].get("gaps").is_none(), "{doc:#}");
+    assert!(
+        definitions[0]["rows"]
+            .as_array()
+            .is_some_and(|rows| rows.iter().any(|r| r["path"] == "src/main.js")),
+        "{doc:#}"
+    );
+    assert!(
+        !contract_symbols(&doc)
+            .iter()
+            .any(|c| c.contains("alias.js")),
+        "{doc:#}"
+    );
+    let md = impact_markdown(repo, "HEAD~1..HEAD");
+    assert!(
+        !md.contains("not read") && !md.contains("could not be read"),
+        "{md}"
+    );
+}
+
+/// #744: a deleted file named through a symlinked directory (`link/t.sh`,
+/// `link -> real`) is still named; a same-named file of another directory is
+/// a different file.
+#[cfg(unix)]
+#[test]
+fn a_deleted_file_named_through_a_symlinked_directory_is_stale() {
+    let tmp = TempDir::new().expect("tempdir");
+    let repo = tmp.path();
+    init_repo(repo);
+    write(repo, "real/t.sh", "#!/bin/sh\necho tool\n");
+    write(repo, "other/t.sh", "#!/bin/sh\necho other\n");
+    write(repo, "d.md", "run link/t.sh\n");
+    write(repo, "e.md", "run other/t.sh\n");
+    std::os::unix::fs::symlink("real", repo.join("link")).expect("symlink");
+    commit_all(repo, "base");
+    git(repo, &["rm", "-q", "real/t.sh"]);
+    commit_all(repo, "drop the tool");
+    let doc = impact(repo, "HEAD~1..HEAD");
+    let stale: Vec<&str> = doc["stale"]["items"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|r| r["path"].as_str())
+        .collect();
+    assert_eq!(stale, ["d.md"], "{doc:#}");
+}
