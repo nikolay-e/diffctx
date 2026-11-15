@@ -22,8 +22,9 @@ pub(super) enum Intent {
         base: Option<String>,
         head: Option<String>,
     },
-    /// `git diff` / `git status` whose output the agent reads.
-    Inspect { staged: bool },
+    /// `git diff` / `git status` whose output the agent reads, and the
+    /// pathspecs it narrows that output to, as the line spells them (gh#508).
+    Inspect { staged: bool, paths: Vec<String> },
 }
 
 /// A text search a line runs.
@@ -781,6 +782,40 @@ pub(super) fn places(command: &str) -> Vec<Place> {
         .collect()
 }
 
+/// `git push` options whose value is the next word.
+const PUSH_VALUE_FLAGS: &[&str] = &["-o", "--push-option", "--repo", "--receive-pack", "--exec"];
+
+/// The remote branches the line's pushes name, in the order it names them:
+/// `src:dst` names `dst`, a lone `src` itself. It orders what git's record
+/// says was pushed and decides nothing about what was (#508): a push of
+/// every branch or of the current one names none.
+pub(super) fn pushed_refs(command: &str) -> Vec<String> {
+    let mut named: Vec<String> = Vec::new();
+    for st in statements(command)
+        .into_iter()
+        .filter(|st| st.git && st.verb == "push")
+    {
+        let mut skip = false;
+        let specs = st.args.iter().filter(|a| {
+            if std::mem::take(&mut skip) {
+                return false;
+            }
+            skip = PUSH_VALUE_FLAGS.contains(&a.as_str());
+            !a.starts_with('-')
+        });
+        // The first word is the remote.
+        for spec in specs.skip(1) {
+            let spec = spec.trim_start_matches('+');
+            let dst = spec.rsplit_once(':').map_or(spec, |(_, dst)| dst);
+            let dst = dst.strip_prefix("refs/heads/").unwrap_or(dst);
+            if !dst.is_empty() && dst != "HEAD" && !named.iter().any(|n| n == dst) {
+                named.push(dst.to_string());
+            }
+        }
+    }
+    named
+}
+
 /// `~` and `~/…` as the shell expands them, with this process's `HOME`:
 /// `cd ~/repo && grep x .` is the most common way an agent names a
 /// directory (#377).
@@ -986,9 +1021,16 @@ fn of_statement(after: bool, st: &Statement) -> Option<Intent> {
             }
             Intent::Inspect {
                 staged: has("--cached") || has("--staged"),
+                paths: pathspecs(args)
+                    .into_iter()
+                    .filter(|p| p != "HEAD")
+                    .collect(),
             }
         }
-        (true, "status") if !st.piped_out => Intent::Inspect { staged: false },
+        (true, "status") if !st.piped_out => Intent::Inspect {
+            staged: false,
+            paths: pathspecs(args),
+        },
         _ => return None,
     })
 }
@@ -1051,7 +1093,17 @@ mod tests {
     }
 
     fn inspection(staged: bool) -> Option<Intent> {
-        Some(Intent::Inspect { staged })
+        Some(Intent::Inspect {
+            staged,
+            paths: Vec::new(),
+        })
+    }
+
+    fn inspection_of(paths: &[&str]) -> Intent {
+        Intent::Inspect {
+            staged: false,
+            paths: paths.iter().map(|p| p.to_string()).collect(),
+        }
     }
 
     /// A commit the gate can review from the index (`plain`), or one that
@@ -1172,8 +1224,16 @@ mod tests {
         assert!(post("git diff HEAD~1 HEAD").is_none());
         assert!(post("git diff main").is_none());
         assert_eq!(post("git diff HEAD"), inspection(false));
-        assert_eq!(post("git diff -- src/"), inspection(false));
-        assert_eq!(post("git diff src/a.py"), inspection(false));
+        assert_eq!(post("git diff -- src/"), Some(inspection_of(&["src/"])));
+        assert_eq!(
+            post("git diff src/a.py"),
+            Some(inspection_of(&["src/a.py"]))
+        );
+        assert_eq!(
+            post("git diff HEAD -- a b"),
+            Some(inspection_of(&["a", "b"]))
+        );
+        assert_eq!(post("git status -s -- ."), Some(inspection_of(&["."])));
         // What a commit recorded is read off the reflog, not detected.
         assert!(post("git commit -m x").is_none());
         assert!(pre("git diff").is_none());
