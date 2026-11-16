@@ -1835,7 +1835,7 @@ fn settle_layout(
             .par_iter_mut()
             .zip(texts.par_iter())
             .for_each(|(runs, text)| {
-                crate::change_class::settle_layout(runs, text.as_deref(), run);
+                crate::change_class::settle_layout(runs, text.as_deref(), &|| run.check());
             });
     }
 }
