@@ -4,7 +4,9 @@ green on the head, or says in the PR body why it needs none.
 Real git repositories and the real script. Only `cargo` is replaced: building
 the engine is outside this test's reach, so a stand-in answers the way cargo
 would for a tree whose engine is fixed (`src/lib.rs` holds `v2`) or not
-(`v1`): a case or suite that reads `needs_fix` fails on a tree that is not.
+(`v1`): a case or suite that reads `needs_fix` fails on a tree that is not, and
+a case that reads `awaits_engine` fails on every tree. Like the corpus harness,
+it honours the tree's two lists unless DIFFCTX_YAML_IGNORE_BASELINE is set.
 """
 
 import os
@@ -63,7 +65,19 @@ if "--exact" in args:
     if "crash" in engine or "setup_error" in text:
         print("thread panicked before any assertion")
         sys.exit(101)
-    if "needs_fix" in text and "v2" not in engine:
+    red = ("needs_fix" in text and "v2" not in engine) or "awaits_engine" in text
+    listed = set()
+    if "DIFFCTX_YAML_IGNORE_BASELINE" not in os.environ:
+        for name in ("known_below_threshold.txt", "known_false_hedges.txt"):
+            rows = crate / "tests" / name
+            if rows.exists():
+                listed |= {{line.split("#", 1)[0].strip() for line in rows.read_text().splitlines()}}
+    if args[args.index("--exact") + 1] in listed:
+        if red:
+            sys.exit(0)
+        print("case now passes but is still listed")
+        sys.exit(101)
+    if red:
         print(MARKER)
         sys.exit(101)
     sys.exit(0)
@@ -203,6 +217,39 @@ class TestAFixNeedsItsClassTest:
             tmp_path, [("fix: stop the false clean", {ENGINE: "v2\n", "tests/cases/impact/python/existing.yaml": None})]
         )
         assert result.returncode == 1
+
+
+MOVED_CASE = {"tests/cases/impact/python/moved.yaml": "awaits_engine\n"}
+FALSE_HEDGES = f"{CRATE}/tests/known_false_hedges.txt"
+BASELINE = f"{CRATE}/tests/known_below_threshold.txt"
+
+
+class TestACaseTheHeadLists:
+    """An expectation lands before the engine change that meets it, listed until then (D2)."""
+
+    def test_it_is_judged_with_the_lists_and_another_case_is_the_witness(self, tmp_path):
+        lists = {FALSE_HEDGES: "impact/python/moved  # the engine fix lands later\n"}
+        result = _run_gate(tmp_path, [("fix: stop the false clean", {ENGINE: "v2\n", **RED_CASE, **MOVED_CASE, **lists})])
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert "case impact/python/moved (listed on the head) is green on the head" in result.stdout
+        assert "case impact/python/body_only is red on the base" in result.stdout
+
+    def test_it_is_never_the_witness_red_on_the_base(self, tmp_path):
+        lists = {BASELINE: "  impact/python/moved#fj#1\n"}
+        result = _run_gate(tmp_path, [("fix: stop the false clean", {ENGINE: "v2\n", **MOVED_CASE, **lists})])
+        assert result.returncode == 1
+        assert "case impact/python/moved (listed on the head) is red on the base" in result.stdout
+        assert "no class test is red on the base" in result.stdout + result.stderr
+
+    def test_it_excuses_no_unlisted_case_red_on_the_head(self, tmp_path):
+        unlisted = {"tests/cases/impact/python/unlisted.yaml": "awaits_engine\n"}
+        lists = {FALSE_HEDGES: "impact/python/moved\n# impact/python/unlisted\nimpact/python/unlisted_too\n"}
+        result = _run_gate(
+            tmp_path, [("fix: stop the false clean", {ENGINE: "v2\n", **RED_CASE, **MOVED_CASE, **unlisted, **lists})]
+        )
+        assert result.returncode == 1
+        assert "case impact/python/moved (listed on the head) is green on the head" in result.stdout
+        assert "case impact/python/unlisted: expected green on the head" in result.stdout + result.stderr
 
 
 class TestWhereEachKindOfTestRuns:
