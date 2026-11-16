@@ -168,8 +168,5 @@ impact/config/config_k8s_referrer_without_a_namespace_reaches_every_namespace_as
 impact/typescript/au_ts_plain_name_as_an_index_key_is_named_not_empty  # `obj["total"](items)` on an `any` receiver is an unlanded gap at dispatch.ts:5, not a candidate row of `go`: the only caller is named by no relation
 impact/python/py_removed_field_lists_its_readers_only  # gh#400: a removed defaulted field lists the class's construction `settings = AppSettings()` as a caller
 impact/python/k4b_pytest_python_files_declare_check_modules_wherever_they_sit  # `smoke_b` in a declared check module is taken for a test function; pytest collects only `test*`
-impact/kotlin/kt_gradle_shared_source_dir_across_projects_is_a_caller  # a Gradle `srcDir` pointing into another project adds its sources; the model calls the project foreign and the answer claims "nothing calls them"
-impact/java/java_maven_extra_source_dir_across_projects_is_a_caller  # a build-helper `add-source` pointing into another module adds its sources; the model calls the module foreign and the answer claims "nothing calls them"
 impact/typescript/ts_package_json_imports_map_across_projects_is_a_caller  # a package.json `imports` map targets another project's sources; the model calls it foreign and the answer claims "nothing calls them"
 impact/typescript/ts_bundler_alias_namespace_import_across_projects_is_a_caller  # a bundler alias into another project read through a namespace import is taken for a foreign file and the answer claims "nothing calls them"
-impact/kotlin/kt_gradle_source_dir_the_script_computes_is_not_a_complete_answer  # a Gradle srcDir the script computes may add another project's sources, yet the answer claims "nothing calls them" instead of hedging

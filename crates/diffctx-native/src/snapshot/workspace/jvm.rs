@@ -67,9 +67,22 @@ pub(super) fn discover(files: &Files, draft: &mut Draft) -> Result<()> {
                     "a project dependency names a module no settings file includes".to_string(),
                 );
             }
+            let workspace = build.map_or("", |b| b.root.as_str());
+            let (sources, computed) = gradle_source_dirs(&text, root, workspace);
+            if computed {
+                draft.unknown(
+                    root,
+                    Ecosystem::Gradle,
+                    path,
+                    "a source directory is computed by the script".to_string(),
+                );
+            }
             let project = draft.project(root, Ecosystem::Gradle);
             for dir in dirs {
                 project.link_dir(dir);
+            }
+            for dir in sources {
+                project.link_elsewhere(root, dir);
             }
         }
     }
@@ -79,8 +92,28 @@ pub(super) fn discover(files: &Files, draft: &mut Draft) -> Result<()> {
         let Some(text) = files.read(path)? else {
             continue;
         };
-        let (artifact, modules, dependencies) = read_pom(&text);
+        let (artifact, modules, dependencies, source_dirs) = read_pom(&text);
+        let vars = [("${project.basedir}", root), ("${basedir}", root)];
+        let (mut sources, mut computed) = (Vec::new(), false);
+        for literal in &source_dirs {
+            match place(root, literal, &vars) {
+                Placed::Dir(dir) => sources.push(dir),
+                Placed::Generated => {}
+                Placed::Unknown => computed = true,
+            }
+        }
+        if computed {
+            draft.unknown(
+                root,
+                Ecosystem::Maven,
+                path,
+                "a source directory is computed by the pom".to_string(),
+            );
+        }
         let project = draft.project(root, Ecosystem::Maven);
+        for dir in sources {
+            project.link_elsewhere(root, dir);
+        }
         if let Some(artifact) = artifact {
             project.name(Ecosystem::Maven, artifact);
         }
@@ -391,8 +424,73 @@ fn tag_text<'a>(text: &'a str, tag: &str) -> Option<&'a str> {
     blocks(text, tag).into_iter().next().map(str::trim)
 }
 
-/// `(artifactId, module directories, artifactIds depended on)` of a pom.
-fn read_pom(text: &str) -> (Option<String>, Vec<String>, Vec<String>) {
+/// A directory a build file names, against the project directory.
+enum Placed {
+    Dir(String),
+    /// Under the build output, which holds no source of another project.
+    Generated,
+    /// Only the build tool can say where.
+    Unknown,
+}
+
+/// `literal` as a build file writes a directory: plain, or led by one of
+/// `vars` (`$projectDir`, `${basedir}`); any other variable is the build
+/// tool's.
+fn place(project: &str, literal: &str, vars: &[(&str, &str)]) -> Placed {
+    let found = if literal.contains('$') {
+        vars.iter().find_map(|(var, base)| {
+            literal
+                .strip_prefix(var)
+                .map(|rest| join(base, rest.trim_start_matches('/')))
+        })
+    } else {
+        Some(join(project, literal))
+    };
+    match found {
+        Some(Some(dir)) => Placed::Dir(dir),
+        None if literal.contains("build") => Placed::Generated,
+        _ => Placed::Unknown,
+    }
+}
+
+/// The directories a build script adds to a source set (`srcDir("../shared")`,
+/// `srcDirs = [...]`), and whether one is computed.
+fn gradle_source_dirs(text: &str, project: &str, workspace: &str) -> (Vec<String>, bool) {
+    let vars = [("$projectDir", project), ("$rootDir", workspace)];
+    let lines: Vec<&str> = text.lines().collect();
+    let (mut dirs, mut computed) = (Vec::new(), false);
+    for (index, line) in lines.iter().enumerate() {
+        if !line.contains("rcDir") {
+            continue;
+        }
+        let code = statement(&lines, index).replace("${", "$").replace('}', "");
+        for key in ["srcDirs", "srcDir", "setSrcDirs"] {
+            let mut at = 0;
+            while let Some(found) = code[at..].find(key) {
+                let (start, end) = (at + found, at + found + key.len());
+                at = end;
+                let word = |c: Option<char>| c.is_some_and(|c| c.is_alphanumeric() || c == '_');
+                if word(code[..start].chars().next_back()) || word(code[end..].chars().next()) {
+                    continue;
+                }
+                let literals = quoted(&code[end..]);
+                computed |= literals.is_empty() && !code[end..].contains("build");
+                for literal in literals {
+                    match place(project, &literal, &vars) {
+                        Placed::Dir(dir) => dirs.push(dir),
+                        Placed::Generated => {}
+                        Placed::Unknown => computed = true,
+                    }
+                }
+            }
+        }
+    }
+    (dirs, computed)
+}
+
+/// `(artifactId, module directories, artifactIds depended on, source
+/// directories)` of a pom: a build-helper `add-source`, `sourceDirectory`.
+fn read_pom(text: &str) -> (Option<String>, Vec<String>, Vec<String>, Vec<String>) {
     let mut own = text.to_string();
     for tag in [
         "parent",
@@ -421,5 +519,15 @@ fn read_pom(text: &str) -> (Option<String>, Vec<String>, Vec<String>) {
         .flat_map(|d| blocks(d, "dependency"))
         .filter_map(|d| tag_text(&without(d, "exclusions"), "artifactId").map(str::to_string))
         .collect();
-    (artifact, modules, dependencies)
+    let helper = blocks(text, "plugin")
+        .into_iter()
+        .filter(|plugin| plugin.contains("build-helper-maven-plugin"))
+        .flat_map(|plugin| blocks(plugin, "source"));
+    let own = blocks(text, "build").into_iter().flat_map(|build| {
+        ["sourceDirectory", "testSourceDirectory"]
+            .into_iter()
+            .flat_map(move |tag| blocks(build, tag))
+    });
+    let sources = helper.chain(own).map(|d| d.trim().to_string()).collect();
+    (artifact, modules, dependencies, sources)
 }
