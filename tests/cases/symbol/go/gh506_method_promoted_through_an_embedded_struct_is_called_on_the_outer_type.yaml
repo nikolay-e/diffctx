@@ -1,0 +1,46 @@
+name: gh506_method_promoted_through_an_embedded_struct_is_called_on_the_outer_type
+mode: symbol
+source: gh#506
+issue_state: open
+tags: [go, embedding, promotion, receiver, decoy]
+repo:
+  initial_files:
+    go.mod: |
+      module example.com/embed
+
+      go 1.22
+    base.go: |
+      package embed
+
+      type Base struct{}
+
+      func (b *Base) syncChains() int { return 1 }
+    impl.go: |
+      package embed
+
+      type Impl struct {
+      	Base
+      }
+
+      func (i *Impl) fullSync() int { return i.syncChains() }
+    other.go: |
+      package embed
+
+      type Other struct{}
+
+      func (o *Other) syncChains() int { return 2 }
+
+      func (o *Other) fullSync() int { return o.syncChains() }
+query:
+  symbol: base.go:syncChains
+expect:
+  definitions:
+    - base.go::syncChains
+  # `i` is an `*Impl`, which embeds `Base` and declares no `syncChains`, so
+  # the call is `Base.syncChains` by promotion. `o` is an `*Other`, which
+  # embeds nothing: its own method is the one it calls.
+  relations:
+    - {from: "impl.go::fullSync", to: "base.go::syncChains", kind: calls, resolution: resolved, site: 7}
+  exact: true
+  decoys:
+    "base.go::syncChains": [other.go]
