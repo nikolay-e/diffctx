@@ -1,0 +1,43 @@
+name: rs_cargo_paths_override_makes_a_registry_dependency_a_local_caller
+mode: impact
+source: synthetic
+issue_state: open
+tags: [rust, external-name, manifests, absence-claim]
+repo:
+  initial_files:
+    ledger/Cargo.toml: |
+      [package]
+      name = "ledger"
+      version = "0.1.0"
+      edition = "2021"
+    ledger/src/lib.rs: |
+      pub fn total(x: i32) -> i32 {
+          x
+      }
+    web/Cargo.toml: |
+      [package]
+      name = "web"
+      version = "0.1.0"
+      edition = "2021"
+
+      [dependencies]
+      ledger = "0.1"
+    web/src/lib.rs: |
+      pub fn show(x: i32) -> i32 {
+          ledger::total(x)
+      }
+    web/.cargo/config.toml: |
+      paths = ["../ledger"]
+  changed_files:
+    ledger/src/lib.rs: |
+      pub fn total(x: i32) -> i32 {
+          x + 0
+      }
+  commit_message: change
+expect:
+  changed: ['ledger/src/lib.rs::total']
+  relations:
+  - {from: 'web/src/lib.rs::show', to: 'ledger/src/lib.rs::total', kind: calls, resolution: resolved}
+  exact: false
+  never_empty: true
+  no_negative_claims: true
