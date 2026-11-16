@@ -12,6 +12,7 @@
 //! and a link between two projects exists only through a declared dependency.
 //! `may_reference` is that predicate.
 
+mod dockerfile;
 mod go;
 mod jvm;
 mod node;
@@ -246,6 +247,15 @@ impl Pending {
         self.links.push(Link::Dir(dir));
     }
 
+    /// A directory the manifest of `home` names as code of its own: another
+    /// project's when a manifest holds it, and what holds `home` is only its
+    /// surroundings.
+    pub(crate) fn link_elsewhere(&mut self, home: &str, dir: String) {
+        if !surrounds(&dir, home) {
+            self.links.push(Link::Dir(dir));
+        }
+    }
+
     pub(crate) fn link_name(&mut self, ecosystem: Ecosystem, name: String) {
         self.links.push(Link::Name(ecosystem, name));
     }
@@ -282,6 +292,11 @@ pub(crate) enum Late {
     },
     PythonPackage {
         dir: String,
+    },
+    /// A requirements file names a local directory to install.
+    Editable {
+        file: String,
+        literal: String,
     },
     TsConfig {
         dir: String,
@@ -753,6 +768,19 @@ fn implicit_home(
     dir.to_string()
 }
 
+/// Whether `dir` is the directory `home` sits in or one above it.
+fn surrounds(dir: &str, home: &str) -> bool {
+    dir.is_empty() || home == dir || home.starts_with(&format!("{dir}/"))
+}
+
+/// The first directory `literal` names against one of `bases`.
+fn existing_dir(files: &Files, bases: &[&str], literal: &str) -> Option<String> {
+    bases
+        .iter()
+        .filter_map(|base| join(base, literal))
+        .find(|dir| !dir.is_empty() && files.is_dir(dir))
+}
+
 /// The directory a `paths` or alias target names: the part before its wildcard.
 fn target_dir_of(target: &str) -> String {
     match target.find('*') {
@@ -776,12 +804,7 @@ impl Draft {
                     let Some(home) = owner(&roots, dir_of(&file)) else {
                         continue;
                     };
-                    let candidates = [join(dir_of(&file), &literal), join(&home, &literal)];
-                    let Some(dir) = candidates
-                        .into_iter()
-                        .flatten()
-                        .find(|d| !d.is_empty() && files.is_dir(d))
-                    else {
+                    let Some(dir) = existing_dir(files, &[dir_of(&file), &home], &literal) else {
                         continue;
                     };
                     let other = owner(&roots, &dir);
@@ -790,6 +813,18 @@ impl Draft {
                         if other.as_deref() != Some(home.as_str()) {
                             project.link_dir(dir);
                         }
+                    }
+                }
+                Late::Editable { file, literal } => {
+                    let Some(home) = owner(&roots, dir_of(&file)) else {
+                        continue;
+                    };
+                    let bases = [dir_of(&file), home.as_str(), ""];
+                    if let (Some(dir), Some(project)) = (
+                        existing_dir(files, &bases, &literal),
+                        self.projects.get_mut(&home),
+                    ) {
+                        project.link_elsewhere(&home, dir);
                     }
                 }
                 Late::Reexport { file, reexport } => {
@@ -813,12 +848,12 @@ impl Draft {
                     let home = implicit_home(&mut self.projects, &mut roots, &dir);
                     // A target that holds the project (`baseUrl: ".."`) is the
                     // project's surroundings, not another project's code.
-                    let holds_home =
-                        |d: &str| d.is_empty() || home == d || home.starts_with(&format!("{d}/"));
                     let crossing: Vec<String> = configured
                         .iter()
                         .chain(&references)
-                        .filter(|d| !holds_home(d) && owner(&roots, d).is_some_and(|o| o != home))
+                        .filter(|d| {
+                            !surrounds(d, &home) && owner(&roots, d).is_some_and(|o| o != home)
+                        })
                         .cloned()
                         .collect();
                     if let Some(project) = self.projects.get_mut(&home) {
@@ -847,8 +882,6 @@ impl Draft {
                     incomplete,
                 } => {
                     let home = implicit_home(&mut self.projects, &mut roots, &dir);
-                    let holds_home =
-                        |d: &str| d.is_empty() || home == d || home.starts_with(&format!("{d}/"));
                     let crossing: Vec<String> = aliases
                         .iter()
                         .flat_map(|a| {
@@ -857,7 +890,9 @@ impl Draft {
                                 .filter(|t| t.contains('*'))
                                 .map(|t| target_dir_of(t))
                         })
-                        .filter(|d| !holds_home(d) && owner(&roots, d).is_some_and(|o| o != home))
+                        .filter(|d| {
+                            !surrounds(d, &home) && owner(&roots, d).is_some_and(|o| o != home)
+                        })
                         .collect();
                     if let Some(project) = self.projects.get_mut(&home) {
                         for alias in aliases {
