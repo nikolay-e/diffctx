@@ -5805,6 +5805,55 @@ fn symbol_doc(repo: &Path, name: &str) -> serde_json::Value {
     serde_json::from_slice(&out.stdout).expect("symbol JSON")
 }
 
+/// fj#107, fj#147: the files that name a definition and that no cell traces are
+/// listed up to a cap and counted past it. Past it they vanished: twelve configs
+/// naming a function were "12 named only textually", sixteen were nothing, and
+/// the answer said one caller, whole.
+#[test]
+fn files_naming_a_symbol_past_the_cap_are_counted_and_never_dropped() {
+    for configs in [12, 13, 16, 40] {
+        let named: Vec<(String, String)> = (0..configs)
+            .map(|i| {
+                (
+                    format!("deploy/cfg{i:03}.yaml"),
+                    "job:\n  run: seed_rows\n".to_string(),
+                )
+            })
+            .collect();
+        let mut files: Vec<(&str, &str)> = vec![
+            (
+                "svc/seeds.py",
+                "def seed_rows(n):\n    return list(range(n))\n",
+            ),
+            (
+                "svc/tests/test_seeds.py",
+                "from svc.seeds import seed_rows\n\n\ndef test_seed():\n    assert seed_rows(2) == [0, 1]\n",
+            ),
+        ];
+        files.extend(
+            named
+                .iter()
+                .map(|(path, text)| (path.as_str(), text.as_str())),
+        );
+        let tmp = repo(&files, &[]);
+        let doc = symbol_doc(tmp.path(), "seed_rows");
+        let def = &doc["definitions"][0];
+        let listed = def["missed_in"].as_array().map_or(0, Vec::len);
+        let counted = def["shed"]["name"].as_u64().unwrap_or(0) as usize;
+        assert_eq!(listed + counted, configs, "{configs} configs: {doc:#}");
+        let out = diffctx_unclocked()
+            .current_dir(tmp.path())
+            .args(["--symbol", "seed_rows", "-q", "-f", "md"])
+            .output()
+            .expect("run diffctx");
+        let md = String::from_utf8(out.stdout).expect("utf8");
+        assert!(
+            md.contains(&format!("{configs} named only textually")),
+            "{configs} configs: {md}"
+        );
+    }
+}
+
 /// A queried name has no diff: `exports.f = f` is another definition named `f`
 /// whose lines the run anchors on, and the use of `f` there is a caller of the
 /// function, never "changed in this diff".
