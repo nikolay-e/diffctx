@@ -243,6 +243,7 @@ fn callers_phrase(a: &Answer, scope: &str) -> String {
     } else {
         // A count of nothing is an absence: said as one only with the scope whole.
         let mut p = match (tally.callers.exact, callers) {
+            (false, 0) if scope.ends_with("analysed files") => format!("no caller found{scope}"),
             (false, 0) => format!("no caller found{scope} in the analysed scope"),
             // A count without its witness is the least there are: said as that.
             (false, n) => format!("at least {n} caller(s){scope}{folded_note}"),
