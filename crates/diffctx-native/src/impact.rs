@@ -1903,20 +1903,13 @@ fn unread_namers(state: &ScoredState, diff_range: Option<&str>, mut names: Vec<S
         ),
     );
     // A changed file the policy withholds is counted by the change set already.
-    let diffed: FxHashSet<std::path::PathBuf> = read_or_note(
-        state,
-        crate::diff_parse::diff_names(&state.root_dir, diff_range, &state.scope),
-    )
-    .changed
-    .into_iter()
-    .collect();
     state.run.note_withheld(
         grepped
             .withheld
             .into_iter()
             .filter(|path| {
                 let at = crate::paths::repo_join(&state.root_dir, path);
-                !diffed.contains(&at)
+                !state.diffed_files.contains(&at)
             })
             .collect(),
     );
