@@ -1,5 +1,5 @@
-// The two class-level properties of the black-box rounds (relay arch, R28,
-// sharpened by R32):
+// The two class-level properties every impact and symbol answer holds, each
+// a class of false absence or false hedge black-box testing found:
 //
 //   A  enumeration, two-sided. The subject's name written into a file of the
 //      snapshot is either a spelling the engine cannot read as a use or a
