@@ -1593,6 +1593,7 @@ pub fn compute_scored_state_anchored(
     let mut config = PipelineConfig::from_mode(mode);
     config.ppr_alpha = alpha;
     let provenance = crate::run_provenance::RunProvenance::new(
+        &run,
         &root_dir,
         diff_range,
         crate::effective_config::EffectiveConfigV1::resolve(&config, timeout),
@@ -1833,7 +1834,9 @@ fn settle_layout(
         chunk
             .par_iter_mut()
             .zip(texts.par_iter())
-            .for_each(|(runs, text)| crate::change_class::settle_layout(runs, text.as_deref()));
+            .for_each(|(runs, text)| {
+                crate::change_class::settle_layout(runs, text.as_deref(), run)
+            });
     }
 }
 
@@ -2890,17 +2893,7 @@ fn empty_scored_state(
     let config = PipelineConfig::from_mode(ScoringMode::Ego);
     let effective = crate::effective_config::EffectiveConfigV1::resolve(&config, timeout);
     let provenance =
-        match crate::run_provenance::RunProvenance::new(&root_dir, diff_range, effective.clone()) {
-            Ok(provenance) => provenance,
-            // The deadline stopped the run before its revisions were read: the
-            // artifact is the partial one that names the limit, its record says no
-            // revision was resolved.
-            Err(e) if e.is_interruption() => {
-                run.note(crate::resource::reason_for(&e));
-                crate::run_provenance::RunProvenance::without_revisions(diff_range, effective)
-            }
-            Err(e) => return Err(e.into()),
-        };
+        crate::run_provenance::RunProvenance::new(&run, &root_dir, diff_range, effective)?;
     Ok(ScoredState {
         commit_count: 0,
         root_dir,
