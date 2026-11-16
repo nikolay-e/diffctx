@@ -21,7 +21,7 @@ use crate::facts::{
     BlobFacts, Def, DefKind, Disambig, Extractor, Fact, Language, LocalKey, Name, Namespace, Scope,
     Span, Visibility, hash_text, hash_tokens,
 };
-use crate::snapshot::RunBudget;
+use crate::snapshot::{RepoPath, RunBudget};
 
 use super::config::{blob_of, facts_of_reading, slice, tree_hash};
 
@@ -47,6 +47,26 @@ impl Extractor for HelmTemplateExtractor {
             },
         )
     }
+}
+
+pub fn is_template(path: &str) -> bool {
+    Language::from_path(&RepoPath::unchecked(path.to_string())) == Some(Language::HelmTemplate)
+}
+
+/// The named templates a template file defines, as `(name, lines)`: the
+/// definitions a symbol run lays over the file's text chunks.
+pub fn defined(text: &str) -> Vec<(String, (u32, u32))> {
+    HelmTemplateExtractor
+        .extract(text.as_bytes(), &RunBudget::default())
+        .facts
+        .into_iter()
+        .filter_map(|fact| match fact {
+            Fact::Definition(d) if d.kind == DefKind::Function => {
+                Some((d.local.name.as_str().to_string(), d.span.lines))
+            }
+            _ => None,
+        })
+        .collect()
 }
 
 fn template_facts(reading: &config::Reading, source: &str) -> Vec<Fact> {

@@ -3,6 +3,7 @@
 //! something to anchor the cells' definitions on; what a use reaches is the cells'
 //! (`decide.rs`), never read from here.
 
+mod helm;
 mod javascript;
 mod python;
 mod shell;
@@ -68,6 +69,7 @@ fn declarations_of(path: &str) -> Option<Declarations> {
         Some(Reader::Python) => Some(|_, text| python_assignments(text)),
         Some(Reader::Js) => Some(javascript::declarations),
         None if sql::is_sql(path) => Some(|_, text| sql::declarations(text)),
+        None if helm::is_template(path) => Some(|_, text| helm::declarations(text)),
         None => None,
     }
 }
