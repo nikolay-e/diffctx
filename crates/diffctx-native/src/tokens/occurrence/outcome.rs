@@ -133,6 +133,8 @@ pub struct View<'a> {
     family_unproven: bool,
     /// Where the base resolved a use to a removed definition, and how sure it was.
     stale: HashMap<Place, Standing>,
+    /// Those of them the range's own new lines moved: the head lands them where it means to.
+    moved: HashSet<Place>,
 }
 
 /// Where a use is written, free of byte offsets: a changed file's differ by side.
@@ -162,6 +164,7 @@ impl<'a> View<'a> {
             bindings,
             family_unproven: false,
             stale: HashMap::new(),
+            moved: HashSet::new(),
         }
     }
 
@@ -206,6 +209,7 @@ impl<'a> View<'a> {
         base: Option<&[Binding]>,
         removed: &[DefKey],
         standing: impl Fn(&Binding) -> Standing,
+        moved: impl Fn(&Binding) -> bool,
     ) -> Self {
         match base {
             Some(bindings) => {
@@ -213,6 +217,9 @@ impl<'a> View<'a> {
                     (binding.targets().into_iter()).any(|target| removed.contains(target))
                 };
                 for binding in bindings.iter().filter(named) {
+                    if moved(binding) {
+                        self.moved.insert(place(binding));
+                    }
                     let standing = standing(binding);
                     (self.stale.entry(place(binding)))
                         .and_modify(|known| {
@@ -235,6 +242,13 @@ impl<'a> View<'a> {
         let files: HashSet<&RepoPath> = self.stale.keys().map(|(file, ..)| file).collect();
         (files.into_iter().flat_map(|file| self.in_file(file)))
             .filter_map(|binding| Some((binding, *self.stale.get(&place(binding))?)))
+    }
+
+    /// Whether the base resolved a use here to a removed definition and the range left it
+    /// where it was.
+    fn stranded_at(&self, binding: &Binding) -> bool {
+        let at = place(binding);
+        self.stale.contains_key(&at) && !self.moved.contains(&at)
     }
 
     /// What `key` overrides or is overridden by, transitively; not `key`.
@@ -562,7 +576,7 @@ impl<'a> Reading<'a> {
         if *target == self.subject.key || self.paired(target) {
             Claim::new(relation, Outcome::Ours, Basis::Resolved)
         } else if binding.relation != Relation::Overrides
-            && (self.family.contains(target) || self.view.stale.contains_key(&place(binding)))
+            && (self.family.contains(target) || self.view.stranded_at(binding))
         {
             Claim::candidate(relation, Reason::Dispatch)
         } else if self.view.family_unproven
@@ -769,9 +783,24 @@ impl<'a> Reading<'a> {
         self.renamed(occurrence, spelled, wide).unwrap_or_else(|| {
             wide.map_or_else(
                 || Claim::candidate(None, Reason::Unexplained),
-                |binding| Claim::candidate(Some(binding.relation), Reason::WideBinding),
+                |binding| self.held(binding, spelled),
             )
         })
+    }
+
+    /// A use that holds the occurrence inside a wider site and names it: what it resolved to is
+    /// the occurrence's claim, the subject's or another definition's. An import states no name
+    /// of its own, and any other resolution leaves a candidate of the binding's relation.
+    fn held(&self, binding: &Binding, spelled: &[u8]) -> Claim {
+        let claim = self.claim(binding, spelled);
+        match claim.outcome {
+            Outcome::Ours | Outcome::NotOurs(Witness::OtherDefinition(_))
+                if !matches!(binding.relation, Relation::Imports | Relation::Reexports) =>
+            {
+                claim
+            }
+            _ => Claim::candidate(Some(binding.relation), Reason::WideBinding),
+        }
     }
 
     /// In an import that renames (`import f as g`): `f`, when the import is the subject's, is
