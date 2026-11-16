@@ -3365,11 +3365,15 @@ impl Cell {
     }
 
     /// The trait a Rust definition belongs to: the one it implements, or the one
-    /// that declares it.
+    /// that declares it. A PHP trait's method is copied into the class that uses it,
+    /// so a call of it is a resolved call, not a dispatch.
     fn dispatched_via(&self, def: &crate::resolve::Definition) -> Option<String> {
         let last = |name: &str| name.rsplit("::").next().unwrap_or(name).to_string();
         if let Some(Disambig::ImplOf(tr)) = &def.key.local.disambig {
             return Some(last(tr.as_str()));
+        }
+        if self.family != Family::Rust {
+            return None;
         }
         let (name, outer) = def.key.local.container.split_last()?;
         self.defs_by_file
