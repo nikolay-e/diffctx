@@ -19,6 +19,7 @@ mod python;
 mod rust;
 mod source;
 
+use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 
@@ -355,6 +356,9 @@ pub(crate) struct Files<'a> {
     source: &'a dyn ManifestSource,
     paths: BTreeSet<String>,
     dirs: BTreeSet<String>,
+    /// Files the source listed and could not produce: each is a named loss of
+    /// the model, not the end of the run (fj#205).
+    unread: RefCell<Vec<(String, String)>>,
 }
 
 impl<'a> Files<'a> {
@@ -374,6 +378,7 @@ impl<'a> Files<'a> {
             source,
             paths: listed.into_iter().collect(),
             dirs,
+            unread: RefCell::new(Vec::new()),
         })
     }
 
@@ -424,6 +429,18 @@ impl<'a> Files<'a> {
                     .to_string(),
             )),
             Ok(None) => Ok(None),
+            // A file that cannot be read is a loss the model names; a read cut
+            // short by the run's deadline or cancellation still stops it.
+            Err(cause)
+                if cause
+                    .downcast_ref::<crate::snapshot::SnapshotError>()
+                    .is_some_and(|error| !error.is_interruption()) =>
+            {
+                self.unread
+                    .borrow_mut()
+                    .push((path.to_string(), format!("not read: {cause}")));
+                Ok(None)
+            }
             Err(cause) => Err(Error {
                 path: path.to_string(),
                 cause,
@@ -574,6 +591,9 @@ impl WorkspaceModel {
             path: String::new(),
             cause,
         })?;
+        for (path, reason) in files.unread.take() {
+            draft.lose(&path, reason);
+        }
         Ok(draft.finish(&files, &symlinks))
     }
 
