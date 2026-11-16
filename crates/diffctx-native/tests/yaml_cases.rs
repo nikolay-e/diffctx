@@ -623,7 +623,7 @@ fn run_case_with_scoring(
     match (passing, baselined) {
         (true, false) => Ok(()),
         (false, true) => Ok(()),
-        (true, true) => Err(Failed::from(format!(
+        (true, true) => Err(oracle::assertion_failed(format!(
             "case now scores {:.1}% >= min {min_score:.1}% but is still listed in \
              tests/known_below_threshold.txt — remove it from that file, otherwise a \
              future regression here would be silently absorbed",
@@ -756,7 +756,7 @@ fn run_oracle_case(
         (true, true) => ("baselined_red", Ok(())),
         (false, true) => (
             "stale_baseline",
-            Err(Failed::from(
+            Err(oracle::assertion_failed(
                 "case now passes but is still listed in tests/known_below_threshold.txt — \
                  remove it from that file, otherwise a future regression here would be \
                  silently absorbed",
@@ -774,7 +774,7 @@ fn run_oracle_case(
             (true, true) => ("false_hedge", Ok(())),
             (false, true) => (
                 "stale_false_hedge",
-                Err(Failed::from(
+                Err(oracle::assertion_failed(
                     "case no longer hedges falsely but is still listed in \
                      tests/known_false_hedges.txt — remove it from that file, otherwise a \
                      future false hedge here would be silently absorbed",

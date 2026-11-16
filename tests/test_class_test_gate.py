@@ -75,6 +75,7 @@ if "--exact" in args:
     if args[args.index("--exact") + 1] in listed:
         if red:
             sys.exit(0)
+        print(MARKER)
         print("case now passes but is still listed")
         sys.exit(101)
     if red:
@@ -250,6 +251,14 @@ class TestACaseTheHeadLists:
         assert result.returncode == 1
         assert "case impact/python/moved (listed on the head) is green on the head" in result.stdout
         assert "case impact/python/unlisted: expected green on the head" in result.stdout + result.stderr
+
+    def test_a_stale_entry_is_red_on_the_head_not_a_gate_error(self, tmp_path):
+        fixed = {"tests/cases/impact/python/fixed.yaml": "needs_fix\n"}
+        lists = {FALSE_HEDGES: "impact/python/fixed\n"}
+        result = _run_gate(tmp_path, [("fix: stop the false clean", {ENGINE: "v2\n", **RED_CASE, **fixed, **lists})])
+        assert result.returncode == 1, result.stdout + result.stderr
+        assert "case impact/python/fixed (listed on the head): expected green on the head" in result.stdout + result.stderr
+        assert "without a failed assertion" not in result.stdout + result.stderr
 
 
 class TestWhereEachKindOfTestRuns:
