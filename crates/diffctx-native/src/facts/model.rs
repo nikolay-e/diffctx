@@ -384,6 +384,11 @@ pub enum Fact {
     ConfigRelease(Release),
     /// A file a shell script sources or a script it runs, by the path it spells.
     ShellPath(ShellPath),
+    /// A `terraform` block's `backend` or `cloud` block: the module keeps a state
+    /// of its own, so it is applied as a root.
+    StateBackend {
+        site: Span,
+    },
 }
 
 impl Fact {
@@ -409,6 +414,7 @@ impl Fact {
             Self::ConfigUse(used) => &used.site,
             Self::ConfigRelease(release) => &release.site,
             Self::ShellPath(path) => &path.site,
+            Self::StateBackend { site } => site,
         }
     }
 
@@ -431,6 +437,7 @@ impl Fact {
             Self::ConfigUse(_) => 13,
             Self::ConfigRelease(_) => 14,
             Self::ShellPath(_) => 15,
+            Self::StateBackend { .. } => 16,
         }
     }
 }
