@@ -30,11 +30,8 @@ fn named(def: &Value) -> String {
     )
 }
 
+// Judged under DIFFCTX_BIN too: the class test must see a base binary that loses a definition.
 fn judged(doc: &Value) -> bool {
-    // A released binary is judged by the corpus it shipped with.
-    if std::env::var_os("DIFFCTX_BIN").is_some() {
-        return false;
-    }
     let cap = doc["fit"]["cap"].as_u64().unwrap_or(0);
     let needs = doc["fit"]["needs"].as_u64().unwrap_or(0);
     let stopped =
