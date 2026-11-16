@@ -77,13 +77,19 @@ _DEFAULT_MAX_TOKENS = 25_000
 # deadline here a single tool call can wedge the server for as long as a
 # pathological repository takes.
 _DEFAULT_TIMEOUT_SECONDS: int = _ENGINE_DEFAULT_TIMEOUT
+# The engine stops at its own deadline and then folds and renders the partial
+# answer it holds. A guard that fires at that same instant cancels the call
+# first and throws the answer away, so the guard around the engine waits this
+# long past it, as the CLI's watchdog does (`_app._WATCHDOG_GRACE_SECONDS`);
+# it still ends an engine that does not stop.
+_ENGINE_GRACE_SECONDS = 30
 # A default is a guess; ten seconds of git status is all it may cost the call.
 _DEFAULT_DIFF_REF_TIMEOUT_SECONDS = 10
 
 
-def _deadline_message(tool: str, hint: str = "") -> str:
+def _deadline_message(tool: str, wait: int, hint: str = "") -> str:
     return (
-        f"{tool}: exceeded the {_DEFAULT_TIMEOUT_SECONDS}s deadline. "
+        f"{tool}: exceeded the {wait}s deadline. "
         "Narrow the request (an explicit diff_range, a subdirectory, tighter patterns) "
         f"or run on a smaller subtree.{hint}"
     )
@@ -106,18 +112,19 @@ def _scoping(paths: list[str] | None, engine_paths: list[str], question: str) ->
     return _Scoping(engine_paths, f" {advice}, or run the scoped CLI from the repository: diffctx {children} {question}")
 
 
-async def _run_with_deadline(tool: str, work: Callable[[], _T], hint: str = "") -> _T:
+async def _run_with_deadline(tool: str, work: Callable[[], _T], hint: str = "", grace: int = 0) -> _T:
     # The call fails fast and the worker is abandoned rather than awaited, so
     # the server stays responsive; the token then stops the native run at its
     # next poll and kills its git children, so the abandoned worker does not
     # run on to completion.
     token = CancelToken()
+    wait = _DEFAULT_TIMEOUT_SECONDS + grace
     try:
-        with anyio.fail_after(_DEFAULT_TIMEOUT_SECONDS):
+        with anyio.fail_after(wait):
             result: _T = await anyio.to_thread.run_sync(partial(token.scope, work), abandon_on_cancel=True)
             return result
     except TimeoutError as e:
-        raise ValueError(_deadline_message(tool, hint)) from e
+        raise ValueError(_deadline_message(tool, wait, hint)) from e
     finally:
         token.cancel()
 
@@ -203,6 +210,7 @@ async def _reply(
                     overflow=include_overflow,
                 ),
                 scoping.deadline_hint,
+                _ENGINE_GRACE_SECONDS,
             )
         except GitError as e:
             raise _git_failure(diff_range, e) from e
