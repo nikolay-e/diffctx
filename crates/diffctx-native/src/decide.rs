@@ -2788,12 +2788,15 @@ impl Cell {
             }
         };
         if !changed.stale.is_empty() {
-            view = view.removed_sites(base.map(Resolver::bindings), &changed.stale, |b| {
-                match (self.family, standing_of(&b.resolution)) {
+            view = view.removed_sites(
+                base.map(Resolver::bindings),
+                &changed.stale,
+                |b| match (self.family, standing_of(&b.resolution)) {
                     (Family::Python, _) | (_, None) => Standing::Resolved,
                     (_, Some(standing)) => standing,
-                }
-            });
+                },
+                |b| self.moved(b),
+            );
         }
         let names = self.reference_names(changed);
         let reach = |file: &str| {
@@ -2876,6 +2879,17 @@ impl Cell {
         all
     }
 
+    /// Whether the range's own new lines spell the use's name in its file: they moved the use
+    /// themselves.
+    fn moved(&self, b: &Binding) -> bool {
+        self.added.get(b.file.as_str()).is_some_and(|lines| {
+            (lines.iter()).any(|(_, text)| {
+                (text.split(|c: char| !(c.is_alphanumeric() || c == '_')))
+                    .any(|word| word == b.name.as_str())
+            })
+        })
+    }
+
     /// Where a removed definition's callers stand now. A head line at a place the base
     /// resolved a use to it is a caller whatever the head lands it on: nothing (a
     /// name that finds nothing) or another definition (a re-export, an inherited or
@@ -2886,14 +2900,6 @@ impl Cell {
             return (Vec::new(), false);
         }
         let ours: Vec<&DefKey> = changed.subjects.iter().map(|s| &s.key).collect();
-        let moved = |b: &Binding| {
-            self.added.get(b.file.as_str()).is_some_and(|lines| {
-                (lines.iter()).any(|(_, text)| {
-                    (text.split(|c: char| !(c.is_alphanumeric() || c == '_')))
-                        .any(|word| word == b.name.as_str())
-                })
-            })
-        };
         let mut found: Vec<(&Binding, Standing)> = view
             .stranded()
             .filter(|(b, _)| {
@@ -2904,7 +2910,7 @@ impl Cell {
             })
             .filter_map(|(b, standing)| match b.resolution {
                 Resolution::Unresolved { .. } => Some((b, standing)),
-                _ if standing == Standing::Resolved && !moved(b) => {
+                _ if standing == Standing::Resolved && !self.moved(b) => {
                     Some((b, Standing::Candidate(REBOUND)))
                 }
                 _ => None,
