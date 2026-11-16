@@ -1,0 +1,20 @@
+name: gh638_unfollowed_config_change_is_not_an_exact_zero_callers
+mode: impact
+source: gh#638
+issue_state: open
+tags: [config, absence-claim]
+repo:
+  initial_files:
+    deploy/values.cfg: |
+      [pool]
+      size = 4
+    app.py: |
+      def connect():
+          return 1
+  changed_files:
+    deploy/values.cfg: |
+      [pool]
+      size = 8
+expect:
+  exact: false
+  no_negative_claims: true
