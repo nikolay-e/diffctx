@@ -2247,6 +2247,17 @@ impl<'a> Engine<'a> {
 
     // ---- members
 
+    /// The members the repository declares on a global type (`interface String { shout(): string }`
+    /// under `declare global`): a call on a builtin receiver may run one of them.
+    fn augmenting(&self, name: &Name) -> Vec<usize> {
+        (self.ix.members.get(name).into_iter().flatten().copied())
+            .filter(|id| {
+                matches!(&self.ix.defs[*id].def.local.container[..],
+                    [owner] if is_global(owner.as_str()))
+            })
+            .collect()
+    }
+
     fn member(&self, f: usize, entity: &Entity, name: &Name) -> Lookup {
         match entity {
             Entity::Module(g) => {
@@ -2321,7 +2332,14 @@ impl<'a> Engine<'a> {
             Entity::Dynamic => Lookup::Any,
             Entity::Maybe(_) => Lookup::Untyped,
             Entity::External => Lookup::Absent(UnresolvedReason::External),
-            Entity::Builtin => Lookup::Absent(UnresolvedReason::Builtin),
+            Entity::Builtin => {
+                let augmenting = self.augmenting(name);
+                if augmenting.is_empty() {
+                    Lookup::Absent(UnresolvedReason::Builtin)
+                } else {
+                    Lookup::Dispatch(augmenting)
+                }
+            }
             Entity::Outside => Lookup::Absent(UnresolvedReason::OutsideProject),
             Entity::Unknown => Lookup::Untyped,
         }
