@@ -1,0 +1,34 @@
+name: ts_unresolved_call_on_the_line_of_a_resolved_one_stays_a_candidate
+mode: impact
+source: synthetic
+issue_state: open
+tags: [typescript, candidate, same-line, coverage]
+repo:
+  initial_files:
+    src/box.ts: |
+      export class Box {
+        area(): number {
+          return 1;
+        }
+      }
+    src/total.ts: |
+      import { Box } from "./box";
+
+      export function total(other) {
+        const mine = new Box();
+        return mine.area() + other.area();
+      }
+  changed_files:
+    src/box.ts: |
+      export class Box {
+        area(): number {
+          return 2;
+        }
+      }
+  commit_message: "box: area is two"
+expect:
+  relations:
+    - {from: "src/total.ts::total", to: "src/box.ts::Box.area", kind: calls, resolution: resolved, site: 5}
+  partial:
+    src/box.ts::Box.area:
+      calls: unlanded
