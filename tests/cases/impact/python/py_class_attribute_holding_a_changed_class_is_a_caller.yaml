@@ -43,8 +43,11 @@ repo:
   commit_message: Allow a tilde in a url
 expect:
   changed:
+  - shop/highlight.py::ReprHighlighter
   - shop/highlight.py::highlights
   exact: false
-  callers:
-    highlights:
-    - shop/handler.py::HIGHLIGHTER_CLASS
+  relations:
+  - from: shop/handler.py::Handler
+    to: shop/highlight.py::ReprHighlighter
+    kind: passes_as_value
+    resolution: resolved
