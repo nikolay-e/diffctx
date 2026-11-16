@@ -389,7 +389,7 @@ fn known_below_threshold() -> &'static std::collections::BTreeSet<String> {
 
 /// `known_false_hedges.txt`: cases whose answer hedges a definition the case
 /// proves is fully resolved (the coverage gate). Bidirectional like the
-/// baseline above; a released binary (`DIFFCTX_BIN`) is judged by its own corpus.
+/// baseline above, a binary named by `DIFFCTX_BIN` included.
 fn known_false_hedges() -> &'static std::collections::BTreeSet<String> {
     static LIST: std::sync::OnceLock<std::collections::BTreeSet<String>> =
         std::sync::OnceLock::new();
