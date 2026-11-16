@@ -127,6 +127,7 @@ fn entry_seed(kind: EntryKind) -> &'static str {
         EntryKind::Scheduled => "java_spring_scheduled",
         EntryKind::Tool => "python_mcp_tool",
         EntryKind::Fixture => "python_pytest_fixture",
+        EntryKind::Migration => "python_alembic_migration",
     }
 }
 
@@ -162,6 +163,7 @@ fn an_implicit_call_is_never_nobody() {
         EntryKind::Scheduled,
         EntryKind::Tool,
         EntryKind::Fixture,
+        EntryKind::Migration,
     ] {
         let name = entry_seed(kind);
         assert!(
