@@ -30,6 +30,7 @@ pub struct ScoredState {
     pub scoring_result: ScoringResult,
     pub needs: Vec<InformationNeed>,
     pub changed_files: Vec<PathBuf>,
+    pub diffed_files: FxHashSet<PathBuf>,
     /// The `changed_files` git does not track yet: new work in a working
     /// tree, named apart so a count of changed files is what git would
     /// commit (#418).

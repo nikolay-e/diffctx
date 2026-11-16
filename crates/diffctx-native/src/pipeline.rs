@@ -291,10 +291,12 @@ fn count_text_lines(source: &Source, path: &Path) -> Option<u32> {
 /// Extracted so the four policy stances (#85, #188, #214: gitignore = list
 /// paths, `.diffctx/ignore` = count only, secrets = count only, lockfiles =
 /// paths sans churn) are readable as one unit.
+#[derive(Default)]
 struct ChangeSetData {
     hunks: Vec<crate::types::DiffHunk>,
     diff_text: String,
     changed_files: Vec<PathBuf>,
+    diffed_files: FxHashSet<PathBuf>,
     untracked_files: Vec<PathBuf>,
     deleted_display: Vec<String>,
     renamed_display: Vec<(String, String)>,
@@ -651,6 +653,7 @@ fn resolve_change_set(
         hunks,
         diff_text,
         changed_files,
+        diffed_files: names.changed.into_iter().collect(),
         untracked_files,
         deleted_display,
         renamed_display,
@@ -1315,22 +1318,13 @@ fn resolve_symbol_change_set(
         .collect();
 
     Ok(ChangeSet::Ready(Box::new(ChangeSetData {
-        commit_count: 0,
         hunks,
         diff_text,
         changed_files,
-        untracked_files: Vec::new(),
-        deleted_display: Vec::new(),
-        renamed_display: Vec::new(),
-        lockfile_display: Vec::new(),
-        ignored_display: Vec::new(),
         policy_excluded: withheld.len(),
-        commit_message: None,
-        commit_messages: Vec::new(),
-        head_rev: None,
-        history_rev: None,
         named_files,
         pre_phase_ms: t_entry.elapsed().as_secs_f64() * 1000.0,
+        ..ChangeSetData::default()
     })))
 }
 
@@ -1520,6 +1514,7 @@ pub fn compute_scored_state_anchored(
         hunks,
         diff_text,
         changed_files,
+        diffed_files,
         untracked_files,
         deleted_display,
         renamed_display,
@@ -1779,6 +1774,7 @@ pub fn compute_scored_state_anchored(
         needs,
         discovery_source,
         changed_files,
+        diffed_files,
         untracked_files,
         deleted_files: deleted_display,
         renamed_files: renamed_display,
@@ -2920,6 +2916,7 @@ fn empty_scored_state(
         },
         needs: Vec::new(),
         changed_files: Vec::new(),
+        diffed_files: FxHashSet::default(),
         untracked_files: Vec::new(),
         deleted_files: Vec::new(),
         renamed_files: Vec::new(),
