@@ -2,21 +2,21 @@
 
 use std::path::Path;
 
-use crate::facts::lang::shell::SCRIPT;
+use crate::facts::lang::shell::SHEBANG;
 use crate::facts::{Def, EntryKind, Fact, FileFacts, Scope, UseKind};
 use crate::testfiles::is_test_path;
 use crate::tokens::occurrence::Implicit;
 use crate::vocabulary::family::Family;
 
 /// What `decide` already knows of a definition: `dispatched` is `dispatched_via`,
-/// `consumed_outside` is `consumed_outside` of its family, `module_called` that a
-/// module call of the repository sources its directory (`module_called` of the
+/// `consumed_outside` is `consumed_outside` of its family, `root_module` that its
+/// directory is a Terraform root, applied from outside (`root_module` of the
 /// resolver).
 #[derive(Clone, Copy, Default, Debug)]
 pub struct Known {
     pub dispatched: bool,
     pub consumed_outside: bool,
-    pub module_called: bool,
+    pub root_module: bool,
 }
 
 /// Where a row looks: the definition's name, its decorators and the words of its
@@ -135,7 +135,7 @@ const TABLE: &[Row] = &[
         Implicit::Outside,
         "variable output",
     ),
-    (Family::Shell, Part::Name, Implicit::Outside, SCRIPT),
+    (Family::Shell, Part::Word, Implicit::Outside, SHEBANG),
     (
         Family::Sql,
         Part::Word,
@@ -196,8 +196,9 @@ pub fn implicit_kinds(file: &FileFacts, def: &Def, known: Known) -> Vec<Implicit
         }
     }
     // A root module is set from outside; a module a call sources is set by its
-    // caller. Which is which the calls say, not the depth of the path (fj#193).
-    let rooted = !known.module_called;
+    // caller. Which is which the calls and the files of the directory say, not the
+    // depth of the path (fj#193).
+    let rooted = known.root_module;
     for (family, part, kind, patterns) in TABLE {
         let names = |pattern: &str| {
             tags.iter().any(|(at, tag)| {

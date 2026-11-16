@@ -823,6 +823,37 @@ fn a_module_is_called_when_a_call_sources_its_directory_whatever_its_depth() {
 }
 
 #[test]
+fn a_directory_no_call_sources_is_a_root_only_with_what_a_root_holds() {
+    let fx = snapshot(&[
+        ("bare/main.tf", NET),
+        ("vars/main.tf", NET),
+        ("vars/prod.tfvars", "cidr = \"10.0.0.0/16\"\n"),
+        ("locked/main.tf", NET),
+        ("locked/.terraform.lock.hcl", "# lock\n"),
+        (
+            "state/main.tf",
+            "terraform {\n  backend \"s3\" {}\n}\n\nvariable \"cidr\" {}\n",
+        ),
+        (
+            "cloud/main.tf",
+            "terraform {\n  cloud {}\n}\n\nvariable \"cidr\" {}\n",
+        ),
+        (
+            "plain/main.tf",
+            "terraform {\n  required_version = \">= 1\"\n}\n",
+        ),
+        ("called/main.tf", NET),
+        ("main.tf", "module \"net\" {\n  source = \"./called\"\n}\n"),
+    ]);
+    for dir in ["vars", "locked", "state", "cloud"] {
+        assert!(fx.head.is_root(&format!("{dir}/main.tf")), "{dir}");
+    }
+    for dir in ["bare", "plain", "called"] {
+        assert!(!fx.head.is_root(&format!("{dir}/main.tf")), "{dir}");
+    }
+}
+
+#[test]
 fn an_argument_of_a_call_is_a_write_of_the_variable_of_the_called_module() {
     let fx = snapshot(&[("main.tf", CALLER), ("modules/net/main.tf", NET)]);
     let written = fx.at("main.tf", "cidr", 3);

@@ -47,6 +47,9 @@ pub struct ShellExtractor;
 
 /// The key of a script's own definition in the module of its file.
 pub const SCRIPT: &str = "<script>";
+/// The decorator of a script whose first line is a shebang: the file names itself a
+/// program, which whoever has it may run without a repository file saying so.
+pub const SHEBANG: &str = "shebang";
 /// Nesting deeper than this is not read.
 const MAX_DEPTH: usize = 120;
 /// Nodes between two looks at the run's deadline.
@@ -348,7 +351,8 @@ impl<'a> Walker<'a> {
     /// The script itself, as a definition: the program is its top-level code.
     fn script(&mut self, root: TsNode<'a>) {
         let mut hasher = Hasher::new();
-        if let Some(shebang) = self.text.lines().next().filter(|l| l.starts_with("#!")) {
+        let shebang = self.text.lines().next().filter(|l| l.starts_with("#!"));
+        if let Some(shebang) = shebang {
             hasher.token(shebang.trim().as_bytes());
         }
         // The program's own text: what is left when the definitions it holds are cut out.
@@ -379,7 +383,7 @@ impl<'a> Walker<'a> {
             span: syntax::span(root),
             name_span: Span::new(0..0, (1, 1)),
             signature: None,
-            decorators: Vec::new(),
+            decorators: shebang.map(|_| Name::new(SHEBANG)).into_iter().collect(),
             visibility: Visibility::Public,
             body_hash: hasher.finish().unwrap_or(1),
             text_hash: hash_text(program.as_bytes()),
