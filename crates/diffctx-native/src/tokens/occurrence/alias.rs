@@ -4,6 +4,7 @@
 
 use std::ops::Range;
 
+use super::rows::STATEMENT_KEYWORDS;
 use super::{Alias, AliasBound, AliasScope, Basis, Outcome, Reason, ValuePlace};
 use crate::facts::config::UseOf;
 use crate::facts::{DefKind, Fact, FileFacts, Language, LocalKey, Name, Scope, UseKind};
@@ -133,7 +134,8 @@ fn assigned_to(file: &FileFacts, text: &[u8], at: &Range<u32>) -> Option<(Name, 
 }
 
 /// The callee whose argument list holds the occurrence at `at`: the dotted path before
-/// the nearest unclosed `(`, when the text names one.
+/// the nearest unclosed `(`, when the text names one. A statement's own group (`return (…)`,
+/// `if (…)`) is no call: its operands are no argument of any callee.
 pub fn callee_of(text: &[u8], at: &Range<u32>) -> Option<Name> {
     const REACH: usize = 2000;
     let start = (at.start as usize).min(text.len());
@@ -165,7 +167,7 @@ pub fn callee_of(text: &[u8], at: &Range<u32>) -> Option<Name> {
     let path = std::str::from_utf8(&word[begin..])
         .ok()?
         .trim_matches(['.', ':']);
-    (!path.is_empty()).then(|| Name::new(path))
+    (!path.is_empty() && !STATEMENT_KEYWORDS.contains(&path)).then(|| Name::new(path))
 }
 
 /// What the `ours` occurrence at `at` (a byte range of `text`) of a definition of
