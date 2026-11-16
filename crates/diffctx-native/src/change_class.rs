@@ -243,9 +243,9 @@ fn is_import(kind: &str) -> bool {
 }
 
 impl<'t> Rows<'_, 't> {
-    /// The last row a node reaches, as `covers` reads its end.
-    fn last_row(node: tree_sitter::Node) -> usize {
-        let (start, end) = (node.start_position(), node.end_position());
+    /// The last row a node reaches: one ending at the start of a row ends on
+    /// the row above it.
+    fn last_row(start: tree_sitter::Point, end: tree_sitter::Point) -> usize {
         if end.column == 0 && end.row > start.row {
             end.row - 1
         } else {
@@ -265,13 +265,7 @@ impl<'t> Rows<'_, 't> {
     }
 
     fn covers(&self, start: tree_sitter::Point, end: tree_sitter::Point) -> bool {
-        // A node ending at the start of a row ends on the row above it.
-        let last = if end.column == 0 && end.row > start.row {
-            end.row - 1
-        } else {
-            end.row
-        };
-        start.row <= self.last && last >= self.first
+        start.row <= self.last && Self::last_row(start, end) >= self.first
     }
 
     fn node(
@@ -329,7 +323,9 @@ impl<'t> Rows<'_, 't> {
         let from = if kids.len() < WIDE {
             0
         } else {
-            kids.partition_point(|k| Self::last_row(*k) < self.first)
+            kids.partition_point(|k| {
+                Self::last_row(k.start_position(), k.end_position()) < self.first
+            })
         };
         let mut names: Vec<Vec<Token>> = Vec::new();
         let flush = |names: &mut Vec<Vec<Token>>, out: &mut Vec<Token>| {
