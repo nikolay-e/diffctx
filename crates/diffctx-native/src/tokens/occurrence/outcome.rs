@@ -19,8 +19,8 @@ use super::{
 };
 use crate::decide::Standing;
 use crate::facts::{
-    DefKey, DefKind, Export, Fact, FileFacts, Import, Local, LocalKind, Name, Scope, Span, Star,
-    UseKind,
+    DefKey, DefKind, Export, Fact, FileFacts, Import, Language, Local, LocalKind, Name, Scope,
+    Span, Star, UseKind,
 };
 use crate::resolve::{
     Binding, CandidateReason, DYNAMIC, Definition, Relation, Resolution, UnresolvedReason,
@@ -34,6 +34,9 @@ pub struct Index {
     by_file: HashMap<RepoPath, Vec<usize>>,
     exact: HashMap<(RepoPath, u32, u32), Vec<usize>>,
     definitions: HashSet<DefKey>,
+    /// The names the side defines outside any class, by language: a command word it also
+    /// defines as a function is run by that function.
+    functions: HashSet<(Language, Name)>,
     /// The lower-cased names of the definitions that are members of a class, and
     /// how many are so named.
     members: HashMap<String, usize>,
@@ -61,6 +64,10 @@ impl Index {
             by_file: HashMap::new(),
             exact: HashMap::new(),
             definitions: definitions.iter().map(|def| def.key.clone()).collect(),
+            functions: (definitions.iter())
+                .filter(|def| def.key.local.container.is_empty() && def.kind == DefKind::Function)
+                .map(|def| (def.key.language, def.key.local.name.clone()))
+                .collect(),
             members: HashMap::new(),
             prototypes: (files.iter())
                 .flat_map(|file| {
@@ -1185,7 +1192,8 @@ impl<'a> Reading<'a> {
         } else {
             row.is_some() && !writable(self.subject)
         };
-        (plain && !between.iter().any(|b| b"\n;&|(){}`".contains(b)))
+        let shadowed = (self.view.index.functions).contains(&(language, call.name.clone()));
+        (plain && !shadowed && !between.iter().any(|b| b"\n;&|(){}`".contains(b)))
             .then(|| Witness::CommandWord(call.name.clone()))
     }
 
