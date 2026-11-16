@@ -1,0 +1,30 @@
+name: py_two_resolved_calls_on_one_line_stay_complete
+mode: impact
+source: synthetic
+issue_state: open
+tags: [python, same-line, coverage, decoy]
+repo:
+  initial_files:
+    shapes/__init__.py: ""
+    shapes/box.py: |
+      class Box:
+          def area(self):
+              return 1
+    shapes/total.py: |
+      from shapes.box import Box
+
+
+      def total(other: Box):
+          mine = Box()
+          return mine.area() + other.area()
+  changed_files:
+    shapes/box.py: |
+      class Box:
+          def area(self):
+              return 2
+  commit_message: "box: area is two"
+expect:
+  exact: true
+  relations:
+    - {from: "shapes/total.py::total", to: "shapes/box.py::Box.area", kind: calls, resolution: resolved, site: 6}
+  coverage: {shapes/box.py::Box.area: {calls: complete}}
