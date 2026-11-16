@@ -814,6 +814,16 @@ const RED: &[(&str, &str)] = &[
          resolver; the symbol lookup of the full pipeline finds it",
     ),
     (
+        "impact/typescript/ts_global_augmentation_of_a_builtin_type_is_called_through_it",
+        "a builtin receiver carries no type to pick the augmented `String` by, so the member the \
+         augmentation declares is a possible callee (`Dispatch`), never a resolved one",
+    ),
+    (
+        "impact/typescript/ts_namespace_merged_into_a_class_in_another_file_reads_its_member_bare",
+        "a namespace merged into a class in another file: the bare read of its member there is \
+         left as a read through a receiver the binding model cannot type, a hedge not a binding",
+    ),
+    (
         "impact/typescript/au_ts_plain_name_as_an_index_key_is_named_not_empty",
         "the index-key call `obj[\"total\"](items)` on an `any` receiver binds to nothing, so `go` \
          has no candidate relation to `total` or `run`; the engine fix is pending",
