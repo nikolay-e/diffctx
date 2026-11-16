@@ -1,0 +1,36 @@
+name: py_getattr_with_a_string_prefix_discloses_the_dynamic_dispatch
+mode: impact
+source: synthetic
+tags: [python, literal-name, getattr, dynamic-dispatch, class-a]
+repo:
+  initial_files:
+    audit/__init__.py: ""
+    audit/rules.py: |
+      def check_total(entry):
+          return entry["total"] >= 0
+
+
+      def check_date(entry):
+          return bool(entry["date"])
+    audit/run.py: |
+      import audit.rules as rules
+
+
+      def validate(kind, entry):
+          return getattr(rules, "check_" + kind)(entry)
+  changed_files:
+    audit/rules.py: |
+      def check_total(entry):
+          return entry["total"] > 0
+
+
+      def check_date(entry):
+          return bool(entry["date"])
+  commit_message: "rules: a total of zero is no longer valid"
+expect:
+  exact: false
+  discloses: true
+  no_negative_claims: true
+  coverage: {check_total: {calls: partial}}
+  relations:
+    - {from: audit/run.py, to: audit/rules.py::check_total, kind: calls, resolution: unresolved}
