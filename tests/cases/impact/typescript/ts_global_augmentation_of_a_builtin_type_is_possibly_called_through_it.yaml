@@ -1,0 +1,49 @@
+name: ts_global_augmentation_of_a_builtin_type_is_possibly_called_through_it
+mode: impact
+source: synthetic
+issue_state: open
+tags: [typescript, builtin, augmentation, hedge]
+repo:
+  initial_files:
+    package.json: |
+      {"name":"app","version":"1.0.0"}
+    tsconfig.json: |
+      {"compilerOptions":{"strict":true}}
+    src/ext.ts: |
+      declare global {
+        interface String {
+          shout(): string;
+        }
+      }
+
+      String.prototype.shout = function (this: string): string {
+        return this.toUpperCase();
+      };
+
+      export {};
+    src/use.ts: |
+      import './ext';
+
+      export function go(s: string): string {
+        return s.shout();
+      }
+  changed_files:
+    src/ext.ts: |
+      declare global {
+        interface String {
+          shout(): string;
+        }
+      }
+
+      String.prototype.shout = function (this: string): string {
+        return this.toUpperCase() + '!';
+      };
+
+      export {};
+  commit_message: change
+expect:
+  changed: ['src/ext.ts::shout']
+  coverage:
+    src/ext.ts::shout: {calls: partial}
+  no_negative_claims: true
+  exact: false
