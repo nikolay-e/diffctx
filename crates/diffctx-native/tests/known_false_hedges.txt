@@ -13,7 +13,6 @@ impact/go/go_new_with_an_expression_parses  # gh#690: the Go grammar parses vali
 impact/php/php_magic_call_of_a_typed_receiver_never_reaches_another_class  # `$g->boo()` on a declared `Ghost $g` lands in Ghost::__call and is no use of Real::boo, yet the typed receiver is not resolved and the call counts as unlanded
 impact/python/py_attribute_read_through_a_local_alias_is_a_read_of_the_member  # an attribute of an unrelated object with the same name (decoy other.py) is an unresolved receiver the file's imports exclude
 impact/python/py_console_script_run_by_a_sys_executable_sibling_has_a_test_link_an_unrun_one_has_none  # `pkg.interfaces.cli.main:run_from_cli` (pyproject.toml:6) names the module main.py, but its `main` is read as a literal spelling of graph.main and counted as unaccounted
-impact/python/py_local_variable_is_not_a_reference_to_a_removed_property  # a local variable named like the removed property is unexplained text, counted as a candidate read
 impact/python/py_member_shared_with_third_party_types_is_not_resolved_by_name  # `df.columns` is an attribute of a third-party type: the receiver is unresolved, though its type is external
 impact/python/py_never_imported_script_method_has_no_sibling_hedge  # gh#666: `client.call` in a sibling script that never imports the module is an untyped receiver; no import route reaches the method, and the issue asks for no possible caller at all
 impact/python/py_table_registered_tool_a_test_calls_by_name_has_a_test_link  # the tuple member `("get_x", get_x, ...)` is a resolved row and also unlanded, and the analysed Python test tests/test_tools.py:6 is cited as unaccounted (`other_language`)
@@ -27,5 +26,4 @@ impact/typescript/ts_lazy_import_through_a_tsconfig_alias_is_a_caller  # `m.Lazy
 symbol/config/config_symbol_helm_dotted_dashed_template_name_without_a_path  # the define's name is spanned by its whole action and an include's site is the whole action, so both unlanded sites are the resolved rows; a named template is called outside (a parent chart), so the definition is unowned
 symbol/config/config_symbol_helm_named_template_and_its_includes  # as the sibling above, and the other chart's same-named template and include are counted as unlanded uses
 symbol/kotlin/gh490_companion_factory_and_elvis_return_receivers_resolve  # both unlanded sites are the resolved rows: the receivers of the companion factory and the elvis return are left unresolved
-symbol/python/py_call_as_the_value_of_a_same_named_keyword_is_a_caller  # gh#708: the keyword name `agreement=` is unexplained text, counted as a read next to the resolved call
 symbol/web/web_symbol_astro_frontmatter_and_template_calls  # the template call `groups(items)` is the resolved row and also unexplained text
