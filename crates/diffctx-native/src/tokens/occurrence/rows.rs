@@ -106,3 +106,8 @@ pub(super) const STATEMENT_NAMES: &[(Family, &[DefKind], &str)] = &[
     ),
     (Family::Sql, &[DefKind::Object], "view"),
 ];
+
+/// Families whose names live in schemas, not in classes: a definition of one key in several files
+/// (a migration's `CREATE OR REPLACE`) is one object, and a routine of another schema is no
+/// member a call through an unknown receiver may run.
+pub(super) const SCHEMA_OBJECTS: &[Family] = &[Family::Sql];

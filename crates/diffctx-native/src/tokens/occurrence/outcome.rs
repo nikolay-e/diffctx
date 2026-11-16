@@ -10,8 +10,8 @@ use std::rc::Rc;
 use super::rows::{
     BARE_HEADS, CLASS_CANDIDATES, COMMAND_ARGUMENTS, DECLARING_KEYWORDS, DECLARING_LOCALS,
     IMPL_HEADS, KEYWORD_ARGUMENTS, LOCAL_CALLS, MEMBER_OBJECTS, MODULE_PATHS, NAMED_LOCALS,
-    OFFERING_MODULES, PACKAGE_HEADS, PAIRED_PROTOTYPES, PATH_SEPARATORS, SCOPED_LOCALS,
-    STATEMENT_NAMES, STRUCTURAL_TYPES,
+    OFFERING_MODULES, PACKAGE_HEADS, PAIRED_PROTOTYPES, PATH_SEPARATORS, SCHEMA_OBJECTS,
+    SCOPED_LOCALS, STATEMENT_NAMES, STRUCTURAL_TYPES,
 };
 use super::scanner::dollar_joins;
 use super::{
@@ -81,10 +81,10 @@ impl Index {
             unnamed: Vec::new(),
             manifests_whole,
         };
-        for def in definitions
-            .iter()
-            .filter(|def| !def.key.local.container.is_empty())
-        {
+        for def in definitions.iter().filter(|def| {
+            !def.key.local.container.is_empty()
+                && !SCHEMA_OBJECTS.iter().any(|f| f.has(def.key.language))
+        }) {
             *(index.members)
                 .entry(def.key.local.name.as_str().to_ascii_lowercase())
                 .or_default() += 1;
@@ -573,7 +573,7 @@ impl<'a> Reading<'a> {
 
     fn resolved(&self, target: &DefKey, binding: &Binding) -> Claim {
         let relation = Some(binding.relation);
-        if *target == self.subject.key || self.paired(target) {
+        if *target == self.subject.key || self.paired(target) || self.redefined(target) {
             Claim::new(relation, Outcome::Ours, Basis::Resolved)
         } else if binding.relation != Relation::Overrides
             && (self.family.contains(target) || self.view.stranded_at(binding))
@@ -589,6 +589,16 @@ impl<'a> Reading<'a> {
         } else {
             Claim::candidate(relation, Reason::BasisUnverified)
         }
+    }
+
+    /// Whether `target` is another file's definition of the subject's own key, where that is the
+    /// one object (`CREATE OR REPLACE`).
+    fn redefined(&self, target: &DefKey) -> bool {
+        let subject = &self.subject.key;
+        SCHEMA_OBJECTS.iter().any(|f| {
+            f.has(self.file.language()) && f.has(target.language) && f.has(subject.language)
+        }) && target.project == subject.project
+            && target.local == subject.local
     }
 
     /// Whether `target` and the subject are a prototype and its definition.
