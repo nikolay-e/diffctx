@@ -17,6 +17,10 @@ repo:
       title: Hello
       ---
       Read more about it on [the page](/about).
+    src/components/Team.astro: |
+      ---
+      ---
+      <p>All about us: <a href="/about/team">the team</a></p>
     src/layouts/Base.astro: |
       ---
       ---
@@ -40,4 +44,4 @@ repo:
   commit_message: drop about and blog
 expect:
   stale: [src/content/post.md, src/layouts/Base.astro]
-  not_stale: [src/pages/index.astro]
+  not_stale: [src/pages/index.astro, src/components/Team.astro]
