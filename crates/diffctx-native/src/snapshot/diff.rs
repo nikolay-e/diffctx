@@ -116,9 +116,9 @@ fn diff_args<'a>(
 }
 
 /// `git diff <extra> [range] [-- pathspec]` as text. `range` is a revision,
-/// `A..B`, or `None` for the working tree against the index. A file git cannot
-/// read fails a diff that has to compare it to the index; it is left out of the
-/// text and the read of the checkout names it as a loss (fj#205).
+/// `A..B`, or `None` for the working tree against the index.
+///
+/// A file git cannot read is left out; the checkout read names it (fj#205).
 pub fn diff_text(
     root: &Path,
     extra: &[&str],
