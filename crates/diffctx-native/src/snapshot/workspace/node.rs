@@ -254,6 +254,29 @@ fn string_literal(bytes: &[u8], at: usize) -> Option<(String, usize)> {
     None
 }
 
+/// The index after the `)` that closes the `(` at `open`.
+fn call_end(bytes: &[u8], open: usize) -> Option<usize> {
+    let (mut depth, mut at) = (0usize, open);
+    while let Some(&b) = bytes.get(at) {
+        match b {
+            b'"' | b'\'' | b'`' => {
+                at = string_literal(bytes, at)?.1;
+                continue;
+            }
+            b'(' => depth += 1,
+            b')' => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some(at + 1);
+                }
+            }
+            _ => {}
+        }
+        at += 1;
+    }
+    None
+}
+
 /// What an alias key or value is: the string literals of the expression up to
 /// the `,` or closing bracket that ends it, whether it opens as a regex, and
 /// the index of that end.
@@ -274,6 +297,11 @@ fn written(bytes: &[u8], start: usize) -> Option<Written> {
                 let (text, next) = string_literal(bytes, at)?;
                 strings.push(text);
                 at = next;
+                continue;
+            }
+            // The module a `require` names is no part of the path built from it.
+            b'(' if bytes[..at].ends_with(b"require") => {
+                at = call_end(bytes, at)?;
                 continue;
             }
             b'(' | b'[' | b'{' => depth += 1,
@@ -481,6 +509,7 @@ fn read_package(files: &Files, root: &str, package: &Value, draft: &mut Draft) {
         project.link_member(member);
     }
     for export in exports {
+        project.link_elsewhere(root, target_dir_of(&export.target));
         if !project.exports.contains(&export) {
             project.exports.push(export);
         }
