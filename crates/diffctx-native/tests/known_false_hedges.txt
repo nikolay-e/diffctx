@@ -12,7 +12,6 @@ impact/config/config_json_and_ci_entries_run_a_changed_script_by_path  # the out
 impact/dockerfile/dockerfile_copy_from_by_name_reaches_the_stage_and_not_the_other  # embedded shell (`RUN go build`) falls through the witnesses to an unexplained candidate and is counted as a read of the stage `build`
 impact/go/go_new_with_an_expression_parses  # gh#690: the Go grammar parses valid `new(42)` (p.go:3) as an error, so calls and reads say unaccounted for a definition whose one caller is resolved
 impact/php/php_magic_call_of_a_typed_receiver_never_reaches_another_class  # `$g->boo()` on a declared `Ghost $g` lands in Ghost::__call and is no use of Real::boo, yet the typed receiver is not resolved and the call counts as unlanded
-impact/php/php_trait_method_reaches_the_class_using_it  # a trait method's override standing hedges calls though the using class's call is resolved
 impact/python/py_attribute_read_through_a_local_alias_is_a_read_of_the_member  # an attribute of an unrelated object with the same name (decoy other.py) is an unresolved receiver the file's imports exclude
 impact/python/py_console_script_run_by_a_sys_executable_sibling_has_a_test_link_an_unrun_one_has_none  # `pkg.interfaces.cli.main:run_from_cli` (pyproject.toml:6) names the module main.py, but its `main` is read as a literal spelling of graph.main and counted as unaccounted
 impact/python/py_local_variable_is_not_a_reference_to_a_removed_property  # a local variable named like the removed property is unexplained text, counted as a candidate read
