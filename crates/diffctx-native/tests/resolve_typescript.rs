@@ -815,8 +815,8 @@ const RED: &[(&str, &str)] = &[
     ),
     (
         "impact/typescript/au_ts_plain_name_as_an_index_key_is_named_not_empty",
-        "W3: the index-key call `obj[\"total\"](items)` through `any` is no candidate yet; step-2 \
-         blocker",
+        "the index-key call `obj[\"total\"](items)` on an `any` receiver binds to nothing, so `go` \
+         has no candidate relation to `total` or `run`; the engine fix is pending",
     ),
 ];
 

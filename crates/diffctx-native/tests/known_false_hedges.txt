@@ -3,8 +3,8 @@
 # engine, not an oracle to bend. The coverage gate (judge.rs `gate`) fails an `exact`
 # case whose subject definition is hedged and not declared under `expect.partial`.
 # Enforced in both directions like known_below_threshold.txt: a listed case that stops
-# hedging falsely also fails. The letter after `#` is the HEDGE-R mechanism
-# (relay/hedge/ADJUDICATION.md): A a mention that is no use, B a site counted twice or
+# hedging falsely also fails. The letter after `#` is the mechanism of the
+# false hedge: A a mention that is no use, B a site counted twice or
 # the declaration itself, C a shadowing local binding, D a definition no cell owns.
 # Never list a case to make an honest hedge pass: declare it under `partial:`.
 impact/config/config_helm_edited_named_template_is_called_by_the_includes_of_its_own_chart  # A,B: the define line itself and a second chart's include are counted as unlanded uses; the definition is also unowned
