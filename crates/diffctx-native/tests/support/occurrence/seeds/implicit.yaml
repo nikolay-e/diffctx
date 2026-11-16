@@ -646,11 +646,19 @@
   symbol: region
   base:
     main.tf: |
+      terraform {
+        backend "s3" {}
+      }
+
       variable "region" {
         type = string
       }
   change:
     main.tf: |
+      terraform {
+        backend "s3" {}
+      }
+
       variable "region" {
         type = number
       }
@@ -659,11 +667,19 @@
   symbol: addr
   base:
     main.tf: |
+      terraform {
+        backend "s3" {}
+      }
+
       output "addr" {
         value = "a"
       }
   change:
     main.tf: |
+      terraform {
+        backend "s3" {}
+      }
+
       output "addr" {
         value = "b"
       }
