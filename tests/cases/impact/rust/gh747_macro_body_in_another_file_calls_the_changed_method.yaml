@@ -1,0 +1,74 @@
+name: gh747_macro_body_in_another_file_calls_the_changed_method
+mode: impact
+source: gh#747
+issue_state: open
+tags: [rust, macro, macro-body, other-file, decoy]
+repo:
+  initial_files:
+    Cargo.toml: |
+      [package]
+      name = "demo"
+      version = "0.1.0"
+      edition = "2021"
+    src/lib.rs: |
+      mod shared;
+      pub mod engine;
+      pub mod cache;
+    src/shared.rs: |
+      macro_rules! common_methods {
+          () => {
+              pub fn describe(&self, name: &str) -> String {
+                  self.lookup(name)
+              }
+          };
+      }
+      pub(crate) use common_methods;
+    src/engine.rs: |
+      use crate::shared::common_methods;
+
+      pub struct Engine;
+
+      impl Engine {
+          common_methods!();
+
+          fn lookup(&self, name: &str) -> String {
+              name.to_uppercase()
+          }
+      }
+    src/cache.rs: |
+      pub struct Cache;
+
+      impl Cache {
+          pub fn get(&self, name: &str) -> String {
+              self.lookup(name)
+          }
+
+          fn lookup(&self, name: &str) -> String {
+              name.to_string()
+          }
+      }
+  changed_files:
+    src/engine.rs: |
+      use crate::shared::common_methods;
+
+      pub struct Engine;
+
+      impl Engine {
+          common_methods!();
+
+          fn lookup(&self, name: &str) -> String {
+              name.to_lowercase()
+          }
+      }
+  commit_message: "engine: lookup folds to lower case"
+expect:
+  changed: [src/engine.rs::lookup]
+  # The macro's one invocation is `common_methods!()` in `impl Engine`, so the
+  # `self` of its body is an `Engine` and `self.lookup(name)` is a call of
+  # `Engine::lookup`. `Cache::lookup` is another type's method of the same name.
+  relations:
+    - {from: "src/shared.rs::common_methods", to: "src/engine.rs::lookup", kind: calls, resolution: resolved, site: 4}
+  decoys:
+    "src/engine.rs::lookup": [src/cache.rs]
+  coverage:
+    "src/engine.rs::lookup": {calls: complete}
