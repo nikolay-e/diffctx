@@ -510,9 +510,9 @@ pub struct TestLink {
     pub via: Option<String>,
 }
 
-/// The tests an answer names for a caller whose tests are `tests` (path then name
-/// order): the first of each file, then the rest, [`crate::answer::v2::TESTS_NAMED`]
-/// at most, in path then name order. One file of many tests does not crowd out the
+/// The tests an answer names for a caller whose tests are `tests` (the ones the
+/// change touches first, then path then name order): the first of each file, then
+/// the rest, [`crate::answer::v2::TESTS_NAMED`] at most, in that order. One file of many tests does not crowd out the
 /// others.
 pub fn named_tests(tests: &[TestLink]) -> Vec<&TestLink> {
     let cap = crate::answer::v2::TESTS_NAMED;
@@ -544,7 +544,8 @@ pub struct Caller {
     pub symbol: Option<String>,
     pub lines: String,
     pub weight: f64,
-    /// The tests that reach this caller at the fewest hops, in path then name order.
+    /// The tests that reach this caller at the fewest hops: the ones the change
+    /// touches, then path then name order.
     pub tests: Vec<TestLink>,
     /// A test reaches the caller's file but none of the paths to this caller:
     /// the one case where an absent `tests` is a finding, not a gap in
