@@ -1,0 +1,45 @@
+name: ts_structural_implementer_called_through_a_node_builtin_interface_is_possibly_called
+mode: impact
+source: synthetic
+issue_state: open
+tags: [typescript, external-name, structural, absence-claim]
+repo:
+  initial_files:
+    package.json: |
+      {"name":"app","version":"1.0.0"}
+    tsconfig.json: |
+      {"compilerOptions":{"strict":true}}
+    src/sink.ts: |
+      export class Sink {
+        write(s: string): boolean {
+          return s.length > 0;
+        }
+      }
+    src/emit.ts: |
+      import type { Writable } from 'node:stream';
+
+      export function emit(w: Writable): void {
+        w.write('x');
+      }
+    src/run.ts: |
+      import { Sink } from './sink';
+      import { emit } from './emit';
+
+      export function run(): void {
+        emit(new Sink() as any);
+      }
+  changed_files:
+    src/sink.ts: |
+      export class Sink {
+        write(s: string): boolean {
+          return s.length > 1;
+        }
+      }
+  commit_message: change
+expect:
+  changed: ['src/sink.ts::write']
+  coverage:
+    src/sink.ts::write: {calls: partial}
+  never_empty: true
+  no_negative_claims: true
+  exact: false
