@@ -2378,8 +2378,8 @@ impl Cell {
     /// holds and that are code, not a blank line, a comment or an import: a
     /// module-level statement, the body of an `if __name__ == "__main__":`. The
     /// cell traces definitions, so what these lines change is not traced, and the
-    /// answer says so. A file the range adds, and a test file, have no callers to
-    /// lose.
+    /// answer says so. A file the range adds has no callers to lose; a test
+    /// file's top-level code is still named, never read as a change of nothing.
     pub(crate) fn outside_definitions(&self) -> Vec<(String, Vec<(u32, u32)>)> {
         let added_files: HashSet<&str> = self
             .ctx
@@ -2396,7 +2396,6 @@ impl Cell {
             if !self.family.has_path(file)
                 || !within_scope(&self.scope, file)
                 || added_files.contains(file.as_str())
-                || crate::testfiles::is_test_path(std::path::Path::new(file))
             {
                 continue;
             }
