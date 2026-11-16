@@ -8,10 +8,10 @@ use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
 use super::rows::{
-    BARE_HEADS, CLASS_CANDIDATES, COMMAND_ARGUMENTS, DECLARING_KEYWORDS, DECLARING_LOCALS,
-    IMPL_HEADS, KEYWORD_ARGUMENTS, LOCAL_CALLS, MEMBER_OBJECTS, MODULE_PATHS, NAMED_LOCALS,
-    OFFERING_MODULES, PACKAGE_HEADS, PAIRED_PROTOTYPES, PATH_SEPARATORS, SCHEMA_OBJECTS,
-    SCOPED_LOCALS, STATEMENT_NAMES, STRUCTURAL_TYPES,
+    BARE_HEADS, CLASS_CANDIDATES, CLASSIC_PAGES, COMMAND_ARGUMENTS, DECLARING_KEYWORDS,
+    DECLARING_LOCALS, IMPL_HEADS, KEYWORD_ARGUMENTS, LOCAL_CALLS, MEMBER_OBJECTS, MODULE_PATHS,
+    NAMED_LOCALS, OFFERING_MODULES, PACKAGE_HEADS, PAIRED_PROTOTYPES, PATH_SEPARATORS,
+    SCHEMA_OBJECTS, SCOPED_LOCALS, STATEMENT_NAMES, STRUCTURAL_TYPES,
 };
 use super::scanner::dollar_joins;
 use super::{
@@ -696,6 +696,9 @@ impl<'a> Reading<'a> {
                 (self.view.index.manifests_whole)
                     .then(|| Witness::Manifests(reason, binding.name.clone())),
             ),
+            UnresolvedReason::NoBinding if self.unloaded() => {
+                Claim::not_ours(relation, Witness::Builtin(self.file.path.clone()))
+            }
             UnresolvedReason::NoMember
             | UnresolvedReason::NoBinding
             | UnresolvedReason::UntypedRead
@@ -705,6 +708,14 @@ impl<'a> Reading<'a> {
             | UnresolvedReason::Opaque
             | UnresolvedReason::NoMatch => Claim::candidate(relation, Reason::Unresolved(reason)),
         }
+    }
+
+    /// Whether the subject lives in a file a page of classic scripts does not load: the scripts it
+    /// names are all it can see, and none is the subject's, so its global is no name there.
+    fn unloaded(&self) -> bool {
+        CLASSIC_PAGES.contains(&self.file.language())
+            && self.subject.file != self.file.path
+            && !(self.file.blob.facts.iter()).any(|fact| matches!(fact, Fact::ComputedImport(_)))
     }
 
     /// Whether the import may bind the name; a glob may bind any.

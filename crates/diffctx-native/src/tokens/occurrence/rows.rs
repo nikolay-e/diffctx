@@ -1,6 +1,6 @@
 //! What the outcome of an occurrence reads per language: rows of data, never code.
 
-use crate::facts::{DefKind, LocalKind};
+use crate::facts::{DefKind, Language, LocalKind};
 use crate::resolve::CandidateReason;
 use crate::vocabulary::family::Family;
 
@@ -117,3 +117,7 @@ pub(super) const SCHEMA_OBJECTS: &[Family] = &[Family::Sql];
 pub(super) const STATEMENT_KEYWORDS: &[&str] = &[
     "return", "yield", "throw", "if", "elif", "while", "for", "switch", "catch", "case", "with",
 ];
+
+/// Languages of a page that loads scripts which share one global scope: a name defined in a
+/// script it does not load is not bound there.
+pub(super) const CLASSIC_PAGES: &[Language] = &[Language::Html];
