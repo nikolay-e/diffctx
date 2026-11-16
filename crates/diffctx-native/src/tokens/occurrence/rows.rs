@@ -58,6 +58,10 @@ pub(super) const PATH_SEPARATORS: &[(Family, &str)] = &[(Family::Rust, "::")];
 /// builds when the callee is that class.
 pub(super) const KEYWORD_ARGUMENTS: &[Family] = &[Family::Python];
 
+/// Families whose types are satisfied by shape: a member of the subject's name may be the one a
+/// call through an external type runs, whatever the subject's class declares.
+pub(super) const STRUCTURAL_TYPES: &[Family] = &[Family::TypeScript, Family::Go];
+
 /// The candidates a resolver reads off one class's members (overloads cut by the argument
 /// count, a member and the overrides below it): they name every callee among that class.
 pub(super) const CLASS_CANDIDATES: &[(Family, CandidateReason)] = &[
