@@ -99,6 +99,8 @@ struct Sig {
     /// The type parameters the header declares, each with the written types of
     /// its bounds: `<T extends A & B>`.
     type_params: Vec<(String, Vec<String>)>,
+    /// The classes `@ExtensionMethod(A.class, b.B.class)` names, as written.
+    extensions: Vec<String>,
 }
 
 impl Sig {
@@ -200,6 +202,34 @@ fn bound_path(bound: &str) -> Option<String> {
     written_path(head.split_whitespace().last()?)
 }
 
+/// The class literals of the `@ExtensionMethod` a class header carries, each as the
+/// chain it is written with.
+fn extension_classes(header: &str) -> Vec<String> {
+    const ANNOTATION: &str = "ExtensionMethod";
+    let Some(at) = header.find(ANNOTATION) else {
+        return Vec::new();
+    };
+    let Some(args) = header[at + ANNOTATION.len()..]
+        .trim_start()
+        .strip_prefix('(')
+        .and_then(|rest| rest.split(')').next())
+    else {
+        return Vec::new();
+    };
+    let mut pieces: Vec<&str> = args.split(".class").collect();
+    pieces.pop();
+    pieces
+        .into_iter()
+        .filter_map(|piece| {
+            piece
+                .rsplit(|c: char| !(c.is_alphanumeric() || matches!(c, '_' | '$' | '.')))
+                .next()
+                .filter(|chain| !chain.is_empty())
+        })
+        .map(str::to_string)
+        .collect()
+}
+
 fn parse_sig(kind: DefKind, text: &str) -> Sig {
     let flat = Flat::new(text, jvm::JAVA);
     let tokens: Vec<(usize, usize, String)> = flat
@@ -231,6 +261,7 @@ fn parse_sig(kind: DefKind, text: &str) -> Sig {
                     flat.next_at(*name_end).filter(|at| flat.chars[*at] == '<'),
                 );
             }
+            sig.extensions = extension_classes(text);
             let mut listing = false;
             for (_, _, token) in &tokens[(first + 1).min(tokens.len())..] {
                 match token.as_str() {
@@ -1085,9 +1116,9 @@ impl<'w> Engine<'w> {
     }
 
     /// Of the callables, those whose parameter list the call can pass its
-    /// arguments to; all of them when the count says nothing.
-    fn fitting(&self, f: usize, r: &Ref, ids: Vec<usize>) -> Vec<usize> {
-        let Some(count) = self.arguments(f, r) else {
+    /// arguments, and `receivers` more, to; all of them when the count says nothing.
+    fn fitting(&self, f: usize, r: &Ref, ids: Vec<usize>, receivers: usize) -> Vec<usize> {
+        let Some(count) = self.arguments(f, r).map(|count| count + receivers) else {
             return ids;
         };
         let fits: Vec<usize> = ids
@@ -1102,6 +1133,63 @@ impl<'w> Engine<'w> {
     }
 
     fn value_use(&self, f: usize, scope: &[Name], r: &Ref) -> (Relation, Resolution) {
+        let found = self.member_use(f, scope, r);
+        self.extension_use(f, scope, r, found)
+    }
+
+    /// Lombok reads `x.shout()` inside a class annotated `@ExtensionMethod(Ext.class)`
+    /// as `Ext.shout(x)` when the receiver's own type has no method of that name: a
+    /// call through a receiver that does not answer it is the extension's, and one
+    /// that does stays the receiver's.
+    fn extension_use(
+        &self,
+        f: usize,
+        scope: &[Name],
+        r: &Ref,
+        found: (Relation, Resolution),
+    ) -> (Relation, Resolution) {
+        let unanswered = matches!(
+            found.1,
+            Resolution::Unresolved {
+                reason: UnresolvedReason::External
+                    | UnresolvedReason::NoMember
+                    | UnresolvedReason::NoCandidates
+            }
+        );
+        let through_receiver = !matches!(
+            r.receiver,
+            Receiver::None | Receiver::Module(_) | Receiver::New(_) | Receiver::SelfType
+        );
+        if r.use_kind != UseKind::Call || !unanswered || !through_receiver {
+            return found;
+        }
+        let mut ids: Vec<usize> = Vec::new();
+        for (class, _) in self.implicit(f, scope) {
+            let rec = &self.ix.defs[class];
+            let mut inside = rec.def.local.container.clone();
+            inside.push(rec.def.local.name.clone());
+            for written in &rec.sig.extensions {
+                if let Ent::Instance(extension) =
+                    self.type_ent(rec.file, &inside, &Name::new(written.as_str()))
+                {
+                    let statics = self.members_of(extension, &r.name, true, 0);
+                    ids.extend(statics.into_iter().flat_map(|(ids, _)| ids));
+                }
+            }
+        }
+        ids.sort_unstable();
+        ids.dedup();
+        ids.retain(|id| is_callable(self.ix.defs[*id].def.kind));
+        match self.reachable(f, self.fitting(f, r, ids, 1)) {
+            Ok(ids) if !ids.is_empty() => (
+                relation_for(r.use_kind, self.ix.defs[ids[0]].def.kind),
+                self.resolved_or_candidates(&ids, EvidenceKind::ImportedName),
+            ),
+            _ => found,
+        }
+    }
+
+    fn member_use(&self, f: usize, scope: &[Name], r: &Ref) -> (Relation, Resolution) {
         let plain = plain_relation(r.use_kind);
         let call = matches!(r.use_kind, UseKind::Call | UseKind::PassAsValue);
         let (entity, how) = match self.chain_head(f, scope, r) {
@@ -1198,7 +1286,7 @@ impl<'w> Engine<'w> {
             Err(reason) => return (relation, unresolved(reason)),
         };
         if ids.len() > 1 && ids.iter().all(|i| is_callable(self.ix.defs[*i].def.kind)) {
-            ids = self.fitting(f, r, ids);
+            ids = self.fitting(f, r, ids, 0);
             if ids.len() > 1 {
                 return (relation, self.candidates(&ids, CandidateReason::Overloaded));
             }
@@ -1331,7 +1419,7 @@ impl<'w> Engine<'w> {
                 Found::Defs(ids, how) => {
                     let kind = self.ix.defs[ids[0]].def.kind;
                     let ids = if is_callable(kind) {
-                        self.fitting(f, r, ids)
+                        self.fitting(f, r, ids, 0)
                     } else {
                         ids
                     };
