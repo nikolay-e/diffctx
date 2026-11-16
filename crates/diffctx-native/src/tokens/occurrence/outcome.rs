@@ -11,7 +11,7 @@ use super::rows::{
     BARE_HEADS, CLASS_CANDIDATES, COMMAND_ARGUMENTS, DECLARING_KEYWORDS, DECLARING_LOCALS,
     IMPL_HEADS, KEYWORD_ARGUMENTS, LOCAL_CALLS, MEMBER_OBJECTS, MODULE_PATHS, NAMED_LOCALS,
     OFFERING_MODULES, PACKAGE_HEADS, PAIRED_PROTOTYPES, PATH_SEPARATORS, SCOPED_LOCALS,
-    STATEMENT_NAMES,
+    STATEMENT_NAMES, STRUCTURAL_TYPES,
 };
 use super::scanner::dollar_joins;
 use super::{
@@ -643,11 +643,12 @@ impl<'a> Reading<'a> {
                         && !(self.view.files.iter()).any(|file| file.module == import.module)
                 });
                 // With no import of the name, an external call is no member of any
-                // class of the side: a same-named member anywhere but the subject
-                // keeps the candidate.
+                // class of the side: a same-named member anywhere keeps the candidate,
+                // the subject's own too where a type is satisfied by shape.
                 let lower = String::from_utf8_lossy(spelled).to_ascii_lowercase();
                 let own = usize::from(
                     !self.subject.key.local.container.is_empty()
+                        && !STRUCTURAL_TYPES.iter().any(|f| f.has(self.file.language()))
                         && self
                             .subject
                             .key
