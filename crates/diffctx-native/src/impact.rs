@@ -225,6 +225,9 @@ pub struct ImpactOutput {
     /// calls and tests were not read, so a zero says nothing about them
     /// (#392).
     pub withheld_files: usize,
+    /// Files outside the run's pathspecs that spell the name of a changed
+    /// definition: they were not read, so a zero says nothing about them (fj#221).
+    pub outside_scope_files: usize,
     /// Untracked directories the read of the checkout did not enter (a working
     /// tree over its entry budget): callers in them are unknown, so the answer
     /// is partial and names them.
@@ -694,6 +697,11 @@ pub(crate) fn scope_coverage(output: &ImpactOutput) -> decide::Coverage {
     if output.withheld_files > 0 {
         gaps.push(decide::Gap::Withheld {
             files: output.withheld_files,
+        });
+    }
+    if output.outside_scope_files > 0 {
+        gaps.push(decide::Gap::OutsideScope {
+            files: output.outside_scope_files,
         });
     }
     if untracked > 0 {
@@ -1873,6 +1881,58 @@ fn spelled_lines(
             head_of(diff_range).as_deref(),
         ),
     )
+}
+
+/// The files the search for the changed definitions' uses did not read that spell
+/// one of their names: those the ignore rules withhold are counted on the run, and
+/// the number outside the run's pathspecs is returned. What they say of a caller is
+/// unknown, so a definition nothing read calls is not one nothing calls (gh#713,
+/// fj#221).
+fn unread_namers(state: &ScoredState, diff_range: Option<&str>, mut names: Vec<String>) -> usize {
+    names.sort_unstable();
+    names.dedup();
+    names.truncate(MAX_REMOVED_NAMES_TRACED);
+    let grepped = read_or_note(
+        state,
+        crate::grep::grep_code_words(
+            &state.root_dir,
+            &state.run.source(),
+            &names,
+            head_of(diff_range).as_deref(),
+            1,
+        ),
+    );
+    // A changed file the policy withholds is counted by the change set already.
+    let diffed: FxHashSet<std::path::PathBuf> = read_or_note(
+        state,
+        crate::diff_parse::diff_names(&state.root_dir, diff_range, &state.scope),
+    )
+    .changed
+    .into_iter()
+    .collect();
+    state.run.note_withheld(
+        grepped
+            .withheld
+            .into_iter()
+            .filter(|path| {
+                let at = crate::paths::repo_join(&state.root_dir, path);
+                !diffed.contains(&at)
+            })
+            .collect(),
+    );
+    let outside: FxHashSet<&str> = grepped
+        .rows
+        .iter()
+        .map(|(path, _, _)| path.as_str())
+        .filter(|path| {
+            !crate::source::in_scope(
+                &state.root_dir,
+                &crate::paths::repo_join(&state.root_dir, path),
+                &state.scope,
+            )
+        })
+        .collect();
+    outside.len()
 }
 
 /// Files whose change no reader sees: a layout edit, and a file git renames byte
@@ -3128,6 +3188,7 @@ pub fn build_impact(
     let mut entry_unlisted: Vec<String> = Vec::new();
     let mut layout_only: Vec<String> = Vec::new();
     let mut traced_definitions = 0usize;
+    let mut traced_names: Vec<String> = Vec::new();
 
     // A hunk inside a function body seeds a nested fragment — a `let`, an
     // inner block — that nobody calls; the symbol a reader knows, and the one
@@ -3535,6 +3596,7 @@ pub fn build_impact(
             continue;
         }
         traced_definitions += 1;
+        traced_names.extend(core.symbol_name.as_deref().and_then(|s| names_of(s).pop()));
         // A function whose signature the cell found compatible is folded by its
         // rule (`check-the-default`); the text rule below stays for what the cell
         // has no signature of: the fields a class gained.
@@ -4375,6 +4437,7 @@ pub fn build_impact(
             continue;
         }
         traced_definitions += 1;
+        traced_names.push(entry.name.clone());
         // A definition with no fragment has no test link computed: with tests in
         // view it keeps its row, which claims none; the list that says "no static
         // test link" is for the answer that has no tests to say it against.
@@ -4744,6 +4807,12 @@ pub fn build_impact(
     // touched: pack loses context there, impact loses no changed definition,
     // and the cap fires on most large files (#306).
     limits.retain(|r| *r != crate::resource::LimitReason::FragmentLimit);
+    // A symbol lookup reads the files naming the symbol itself.
+    let outside_scope_files = if query.is_none() {
+        unread_namers(state, analysed, traced_names)
+    } else {
+        0
+    };
     let mut output = ImpactOutput {
         name: directory_name(&state.root_dir),
         range: diff_range.map(str::to_string),
@@ -4782,6 +4851,7 @@ pub fn build_impact(
         lockfile_changes: state.lockfile_changes.clone(),
         traced_definitions,
         withheld_files: state.policy_excluded_count + state.run.withheld_count(),
+        outside_scope_files,
         unread_directories: state.run.source().unread_directories(),
         unanalysed_files: unanalysed,
         run: Some(state.run.clone()),
