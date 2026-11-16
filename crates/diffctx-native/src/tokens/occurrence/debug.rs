@@ -152,8 +152,7 @@ impl Shadow<'_> {
                 .find(|def| home.key(&def.local) == definition.key)
                 .map_or_else(Vec::new, |def| {
                     let known = Known {
-                        consumed_outside: known.consumed_outside
-                            && (admits_calls || consumed_by_reading),
+                        consumed_outside: known.consumed_outside && consumed_by_reading,
                         ..known
                     };
                     let mut kinds = implicit_kinds(&home, def, known);
