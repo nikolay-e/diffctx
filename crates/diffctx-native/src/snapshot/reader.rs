@@ -51,6 +51,10 @@ pub struct Listing {
     pub entries: Vec<Entry>,
     pub withheld: usize,
     pub not_analysed: Vec<(RepoPath, NotAnalysedReason)>,
+    /// The symlinks that end at an admitted file of the snapshot: what they
+    /// hold is that file's, read under its own path, so none of them is a
+    /// loss (#603).
+    pub followed: Vec<RepoPath>,
 }
 
 impl Listing {
@@ -66,6 +70,7 @@ impl Listing {
         losses.extend(
             self.not_analysed
                 .iter()
+                .filter(|(path, _)| !self.followed.contains(path))
                 .map(|(path, reason)| Loss::NotAnalysed {
                     path: path.clone(),
                     reason: *reason,
@@ -347,6 +352,7 @@ impl SnapshotReader {
             entries: Vec::new(),
             withheld: 0,
             not_analysed: Vec::new(),
+            followed: Vec::new(),
         };
         for row in &table.rows {
             match row.decision {
@@ -359,6 +365,11 @@ impl SnapshotReader {
                 }),
                 Decision::Withhold(_) => listing.withheld += 1,
                 Decision::NotAnalysed(reason) => {
+                    if reason == NotAnalysedReason::Symlink
+                        && matches!(self.resolve_link(&row.path), Ok(Some(_)))
+                    {
+                        listing.followed.push(row.path.clone());
+                    }
                     listing.not_analysed.push((row.path.clone(), reason));
                 }
             }

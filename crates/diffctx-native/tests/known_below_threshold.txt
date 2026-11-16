@@ -127,7 +127,6 @@ symbol/shell/shell_symbol_sourced_variable_is_a_definition  # gh#659 open
 impact/config/config_argo_workflow_field_reaches_the_referenced_template  # gh#689 open
 impact/config/config_lock_bump_names_the_moved_package_and_its_importers  # gh#620 open
 impact/config/config_shared_gradle_block_says_its_reach_is_not_analysed  # gh#516 open
-impact/config/config_shell_script_naming_changed_files_by_path  # gh#609 open
 symbol/config/config_symbol_helm_named_template_and_its_includes  # gh#378 open
 impact/web/web_astro_component_import_is_a_consumer  # gh#597 open
 impact/web/web_deleted_static_file_is_still_referenced_by_markup  # gh#631 open
@@ -138,7 +137,6 @@ symbol/config/gh675_symbol_lists_scripts_that_run_its_file_by_path  # gh#675 ope
 # Open tickets, cases added 2026-11-10 (each names its ticket in source:).
 impact/config/fj183_alert_rule_is_tested_by_the_rule_test_that_asserts_it  # fj#183 open
 impact/config/gh610_metric_rename_names_the_promql_rule  # gh#610 open
-impact/config/config_scheduler_unit_running_a_changed_script_by_its_installed_basename_is_named
 impact/kotlin/kotlin_untested_callers_outside_the_diff_are_not_shed_under_a_small_budget
 impact/python/py_error_code_literal_a_test_asserts_names_the_test_through_a_dynamic_dispatch
 impact/typescript/ts_loop_variable_in_a_top_level_block_is_not_a_changed_definition
@@ -152,8 +150,6 @@ impact/typescript/ts_ui_copy_literal_names_the_e2e_spec_that_asserts_it
 impact/python/py_class_attribute_holding_a_changed_class_is_a_caller  # fj#186 open
 impact/typescript/ts_default_setting_a_getter_reads_by_its_key_is_a_reader  # fj#186 open
 impact/typescript/ts_hook_type_a_test_passes_by_option_key_has_a_test_link  # fj#166 open
-impact/config/gh412_nix_directory_import_names_its_default_nix  # gh#412 open: `import ./lib` is not resolved to lib/default.nix, only the explicit-file importer is named
-impact/config/gh431_deleted_file_routed_page_leaves_its_links_stale  # gh#431 open: a deleted routed page reports no stale route link
 impact/config/gh638_new_manifest_its_kustomization_does_not_list_is_flagged  # gh#638 open: a new manifest absent from the kustomization resources is not flagged, and the answer claims 0 callers
 impact/java/gh704_sole_implementor_called_through_a_subinterface_has_a_test_link  # gh#704 open: the call through the subinterface stays an unlanded gap with a site, not a candidate row
 impact/java/gh729_untracked_test_calling_a_changed_method_is_analysed  # gh#729 open: the answer states the edge as also_changed/used-by, which the oracle does not read as a relation

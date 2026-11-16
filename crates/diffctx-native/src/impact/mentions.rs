@@ -17,6 +17,8 @@
 //! holds from the file's own directory (`Cell::pointers_to`), and its answer
 //! overrules the text's: a line the family resolved elsewhere names nothing here.
 
+mod spelling;
+
 use std::path::Path;
 
 use rustc_hash::{FxHashMap, FxHashSet};
@@ -28,6 +30,7 @@ use super::{
     PROJECT_MANIFESTS, PathReference, ScoredState, StaleReference, changed_rels, extension,
     is_code_file, is_document, read_or_note, spelled_lines,
 };
+use spelling::{Reader, Spellings};
 
 /// The kind of place a path is mentioned in.
 #[derive(Serialize, JsonSchema, Clone, Copy, PartialEq, Eq, Debug)]
@@ -184,6 +187,8 @@ pub(super) enum Naming {
     RelativePath,
     Module,
     UniqueBasename,
+    /// The program a script is installed as, run from outside the repository.
+    Installed,
 }
 
 fn normalize_rel(path: &str) -> String {
@@ -218,6 +223,14 @@ pub(super) fn naming(
     unique_basename: bool,
     root: &str,
 ) -> Option<Naming> {
+    // `chart/ci/../templates/x.yaml` is `chart/templates/x.yaml`.
+    let tidied;
+    let token = if token.contains("/.") && !token.starts_with(['/', '~', '$']) {
+        tidied = spelling::tidy(token);
+        tidied.as_str()
+    } else {
+        token
+    };
     let trimmed = token.trim_start_matches("./");
     // A file at the root is spelled by its bare name, which names any file
     // of that name: `svc/tests` reading `"AGENTS.md"` reads `svc/AGENTS.md`
@@ -247,6 +260,22 @@ pub(super) fn naming(
         let joined = normalize_rel(&format!("{dir}/{token}"));
         if joined == target || joined == without_extension(target) {
             return Some(Naming::RelativePath);
+        }
+    }
+    // A path spelled from a directory that encloses the referrer's: a chart's
+    // `templates/rules.yaml` in its `ci/` script, a package's `src/app.ts` in
+    // its docs.
+    if token.contains('/') && !token.starts_with(['.', '/', '~', '$']) {
+        let mut up = dir;
+        while let Some((parent, _)) = up.rsplit_once('/') {
+            if target
+                .strip_prefix(parent)
+                .and_then(|rest| rest.strip_prefix('/'))
+                == Some(token)
+            {
+                return Some(Naming::RelativePath);
+            }
+            up = parent;
         }
     }
     // A Python relative import: `.probes` is the sibling module, each
@@ -410,6 +439,9 @@ pub(super) fn stale_references(
             );
         }
     }
+    let mut spellings = Spellings::of(&state.root_dir, state.run.source());
+    let paths: Vec<String> = targets.iter().map(|(t, _)| t.clone()).collect();
+    needles.extend(spellings.needles(&paths, Reader::Stale));
     needles.sort();
     needles.dedup();
     let grepped = spelled_lines(state, diff_range, &needles);
@@ -421,7 +453,6 @@ pub(super) fn stale_references(
         .iter()
         .map(|(_, new)| new.as_str())
         .collect();
-    let token_re = once_cell::sync::Lazy::force(&PATH_TOKEN);
     let mut found = Vec::new();
     let mut per_target: FxHashMap<&str, usize> = FxHashMap::default();
     let mut omitted = 0;
@@ -442,6 +473,9 @@ pub(super) fn stale_references(
         {
             continue;
         }
+        let spelled = spellings.line(path, text);
+        let tokens = Spellings::tokens(path, &spelled);
+        let spellings = &spellings;
         let surviving = &surviving;
         let targets = &targets;
         let sharing = &sharing;
@@ -452,25 +486,24 @@ pub(super) fn stale_references(
         // deleted module only where the family's imports landed on it, and
         // `app.config` of an object is no module (#660).
         let bound = cells.of(path).is_some_and(|cell| cell.is_bound(path));
-        let best = token_re
-            .find_iter(text)
-            .flat_map(|m| {
+        let best = tokens
+            .iter()
+            .flat_map(|token| {
                 targets
                     .iter()
                     .filter(|(t, _)| t != path)
                     .filter_map(move |(t, kind)| {
                         let basename = t.rsplit('/').next().unwrap_or(t);
-                        // A path that ends a sentence carries its full stop; a directory
-                        // is spelled with its slash too (`COPY apps/pricing/ /dst`, `paths:
-                        // apps/pricing/**`).
-                        let token = m.as_str().trim_end_matches('.');
-                        let token = if directory_names.contains(t) {
+                        // A directory is spelled with its slash too (`COPY apps/pricing/
+                        // /dst`, `paths: apps/pricing/**`).
+                        let token: &str = if directory_names.contains(t) {
                             token.trim_end_matches('/')
                         } else {
                             token
                         };
                         let unique = !surviving.contains(basename) && sharing[basename] == 1;
-                        naming(token, path, t, unique, root)
+                        spellings
+                            .naming(token, path, t, unique, root, Reader::Stale)
                             .filter(|n| {
                                 !(bound && *n == Naming::Module)
                                     || landed.get(t.as_str()).is_some_and(|f| f.contains(path))
@@ -703,7 +736,11 @@ pub(super) fn named_by_path(
     if targets.is_empty() {
         return (Vec::new(), 0);
     }
-    let (root, basenames, needles) = path_search(state, &targets);
+    let (root, basenames, mut needles) = path_search(state, &targets);
+    let mut spellings = Spellings::of(&state.root_dir, state.run.source());
+    needles.extend(spellings.needles(&targets, Reader::Content));
+    needles.sort();
+    needles.dedup();
     // A file the ignore rules withhold is not searched here; the header's
     // withheld count stays the one the answer's own reads give.
     let grepped = spelled_lines(state, diff_range, &needles);
@@ -713,7 +750,6 @@ pub(super) fn named_by_path(
         .iter()
         .flat_map(|h| h.added.iter().map(move |l| (h.path.as_str(), l.trim())))
         .collect();
-    let token_re = once_cell::sync::Lazy::force(&PATH_TOKEN);
     let source = state.run.source();
     let mut candidates: Vec<PathReference> = Vec::new();
     for (path, line, text) in state.run.bounded(&grepped.rows) {
@@ -727,32 +763,44 @@ pub(super) fn named_by_path(
         {
             continue;
         }
-        let hit = token_re.find_iter(text).find_map(|m| {
-            let token = m.as_str().trim_end_matches('.');
-            targets
-                .iter()
-                .find(|t| {
-                    let basename = basename_of(t);
-                    *t != path
-                        && token.ends_with(basename.as_str())
-                        && matches!(
-                            naming(token, path, t, basenames.get(&basename) == Some(&1), &root),
-                            Some(Naming::FullPath | Naming::RelativePath | Naming::UniqueBasename)
-                        )
-                })
-                .map(|t| (t, token))
-        });
+        let spelled = spellings.line(path, text);
+        let hit = Spellings::tokens(path, &spelled)
+            .into_iter()
+            .find_map(|token| {
+                targets
+                    .iter()
+                    .find(|t| {
+                        let unique = basenames.get(&basename_of(t)) == Some(&1);
+                        *t != path
+                            && matches!(
+                                spellings.naming(&token, path, t, unique, &root, Reader::Content),
+                                Some(
+                                    Naming::FullPath
+                                        | Naming::RelativePath
+                                        | Naming::UniqueBasename
+                                        | Naming::Installed
+                                )
+                            )
+                    })
+                    .map(|t| (t, token))
+            });
         let Some((target, token)) = hit else {
             continue;
         };
         // A mapping key spelled as a bare filename (`alerts.yaml: |`) labels a
         // value; it points at no file (#658).
-        if !token.contains('/') && is_mapping_key(text, token) {
+        if !token.contains('/') && is_mapping_key(&spelled, &token) {
             continue;
         }
         // A sentence in a config's string (a dump, a description) is not a
         // reader; code is judged by its comments above.
-        let class = class_of(&state.root_dir, &source, path, text, Some(token));
+        let class = class_of(
+            &state.root_dir,
+            &source,
+            path,
+            &spelled,
+            Some(token.as_str()),
+        );
         if !class.reads() {
             continue;
         }
