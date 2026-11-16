@@ -46,7 +46,9 @@ repo:
 expect:
   changed: ['src/foo.ts::defaults']
   relations:
-  - {from: 'src/foo.ts::retries', to: 'src/foo.ts::defaults', kind: calls, resolution: resolved}
+  - {from: 'src/foo.ts::retries', to: 'src/foo.ts::defaults', kind: reads, resolution: resolved}
   exact: false
   never_empty: true
   no_negative_claims: true
+  decoys:
+    src/foo.ts::defaults: [src/foo.ts::run]
