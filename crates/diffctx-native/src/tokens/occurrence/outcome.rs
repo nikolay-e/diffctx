@@ -19,7 +19,7 @@ use super::{
 };
 use crate::decide::Standing;
 use crate::facts::{
-    DefKey, DefKind, Export, Fact, FileFacts, Import, Language, Local, LocalKind, Name, Scope,
+    Def, DefKey, DefKind, Export, Fact, FileFacts, Import, Language, Local, LocalKind, Name, Scope,
     Span, Star, UseKind,
 };
 use crate::resolve::{
@@ -1225,13 +1225,20 @@ impl<'a> Reading<'a> {
             .then(|| Witness::Statement(Name::new(keyword)))
     }
 
-    /// Whether the subject is a member of a class, and `at` is not in the class body.
+    /// Whether the subject is a member of a class, and `at` is not in the class body. A
+    /// namespace of the class's name is merged into it: a member the namespace declares is no
+    /// member of the class, and its body is a scope of its own.
     fn outside_class(&self, at: u32) -> bool {
         let home = self.view.file(&self.subject.file);
         let owner = &self.subject.key.local.container;
-        let class = (home.into_iter().flat_map(|home| home.defs())).find(|def| {
+        let named = |def: &&Def| (def.local.container.iter().chain([&def.local.name])).eq(owner);
+        let same_name: Vec<&Def> = (home.into_iter().flat_map(|home| home.defs()))
+            .filter(named)
+            .collect();
+        let merged = same_name.iter().any(|def| def.kind == DefKind::Module);
+        let class = same_name.iter().find(|def| {
             def.kind != DefKind::Module
-                && (def.local.container.iter().chain([&def.local.name])).eq(owner)
+                && (!merged || def.span.bytes.contains(&self.subject.name_span.bytes.start))
         });
         class
             .is_some_and(|def| self.file.path != self.subject.file || !def.span.bytes.contains(&at))
