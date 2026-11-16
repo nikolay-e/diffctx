@@ -362,6 +362,7 @@ pub fn describe(kind: EntryKind, framework: &Framework) -> String {
         EntryKind::Tool => "tool",
         EntryKind::Scheduled => "scheduled job",
         EntryKind::Fixture => "fixture",
+        EntryKind::Migration => "migration",
         EntryKind::Main | EntryKind::ScriptGuard | EntryKind::Test => "entry",
     };
     let mut words = vec![what.to_string()];

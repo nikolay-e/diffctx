@@ -278,6 +278,8 @@ pub enum EntryKind {
     Tool,
     /// A pytest fixture, injected into a test by the name of its parameter.
     Fixture,
+    /// A schema migration a runner applies by its revision id (`alembic upgrade <id>`).
+    Migration,
 }
 
 /// Where execution can begin from outside the code.
