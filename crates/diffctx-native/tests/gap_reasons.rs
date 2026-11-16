@@ -86,3 +86,25 @@ fn a_constructor_a_language_calls_says_it_is_constructed_implicitly() {
     let text = String::from_utf8(impact(tmp.path(), "md").stdout).expect("utf8");
     assert!(text.contains("constructed implicitly"), "{text}");
 }
+
+const TOOLTIPS: &str =
+    "export function renderTip(text: string): string {\n  return text.slice(0, 20);\n}\n";
+const TOOLTIPS_CHANGED: &str =
+    "export function renderTip(text: string): string {\n  return text.slice(0, 40);\n}\n";
+const PAGE: &str = "import { renderTip } from './tooltips';\nimport { Tip } from './Tip';\n\nexport function Page() {\n  return (\n    <section>\n      <Tip content={renderTip} />\n    </section>\n  );\n}\n";
+
+#[test]
+fn a_value_handed_to_a_component_in_a_returned_group_names_no_return() {
+    let tmp = repo(
+        &[("src/tooltips.ts", TOOLTIPS), ("src/Page.tsx", PAGE)],
+        &[("src/tooltips.ts", TOOLTIPS_CHANGED)],
+    );
+    let gaps = gaps_of(tmp.path(), "renderTip");
+    assert_eq!(gaps, [serde_json::json!({"kind": "passed_as_value"})]);
+    let text = String::from_utf8(impact(tmp.path(), "md").stdout).expect("utf8");
+    assert!(
+        text.contains("passed as a value to a callee the text does not name"),
+        "{text}"
+    );
+    assert!(!text.contains("`return`"), "{text}");
+}
