@@ -42,3 +42,11 @@ expect:
   decoys:
     message: [pkg_a/src/runtime.py, pkg_a/tests/test_runtime.py]
     callback: [pkg_a/src/runtime.py, pkg_a/tests/test_runtime.py]
+  partial:
+    # `sent` and `update` are untyped parameters of main: nothing says what they
+    # hold, so a read or call of an attribute named like `message` or `callback`
+    # may or may not reach Bot. A duck-typed receiver is an open gap, not a caller.
+    pkg_b/src/bot.py::callback:
+      calls: unlanded
+    pkg_b/src/bot.py::message:
+      reads: unlanded

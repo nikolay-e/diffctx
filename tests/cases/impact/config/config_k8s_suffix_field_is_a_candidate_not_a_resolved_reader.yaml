@@ -41,3 +41,9 @@ expect:
     resolution: candidate
     site: 6
   exact: true
+  partial:
+    # The volume provisioner named by `provisioner` reads an applied StorageClass
+    # for every claim that names it, including claims of manifests applied from
+    # other repositories. The claims in this repository are listed.
+    k8s/storageclass.yaml::StorageClass.storage.k8s.io/fast:
+      reads: not_traced

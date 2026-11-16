@@ -76,3 +76,12 @@ expect:
     - k8s/other-service.yaml
     k8s/configmap.yaml:
     - k8s/other-service.yaml
+  partial:
+    # The kubelet reads an applied ConfigMap when it starts any pod that names it,
+    # and cluster DNS and kube-proxy route to an applied Service for pods of
+    # manifests applied from other repositories. The readers in this repository
+    # are listed.
+    k8s/configmap.yaml::ConfigMap/app-settings:
+      reads: not_traced
+    k8s/service.yaml::Service/db-svc:
+      reads: not_traced

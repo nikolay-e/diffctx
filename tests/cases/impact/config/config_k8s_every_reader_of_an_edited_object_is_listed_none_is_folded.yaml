@@ -88,3 +88,9 @@ expect:
     resolution: resolved
     site: 17
   exact: true
+  partial:
+    # The kubelet reads an applied ConfigMap when it starts any pod that names it,
+    # including pods of manifests applied from other repositories. The workloads
+    # of this repository are all listed; that reader outside it is not traced.
+    k8s/configmap.yaml::ConfigMap/shared:
+      reads: not_traced

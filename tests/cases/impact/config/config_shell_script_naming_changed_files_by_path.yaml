@@ -85,3 +85,8 @@ expect:
     resolution: resolved
     site: 2
   exact: true
+  partial:
+    # The Prometheus Operator reads an applied PrometheusRule and loads its
+    # rules into the Prometheus it manages, a reader outside this repository.
+    chart/templates/rules.yaml::PrometheusRule.monitoring.coreos.com/demo:
+      reads: not_traced
