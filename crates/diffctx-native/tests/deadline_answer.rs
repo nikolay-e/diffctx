@@ -3,6 +3,7 @@
 //! stalled git read ends on the stall itself, the layout pass on the logical
 //! poll count.
 
+use std::fmt::Write as _;
 use std::path::Path;
 
 use tempfile::TempDir;
@@ -17,9 +18,10 @@ fn reformatted_module(runs: usize) -> TempDir {
     let repo = tmp.path();
     init_repo(repo);
     let module = |comma: &str| {
-        let body: String = (0..runs)
-            .map(|i| format!("    v{i} = g(a, b{comma})\n    w{i} = {i}\n"))
-            .collect();
+        let mut body = String::new();
+        for i in 0..runs {
+            writeln!(body, "    v{i} = g(a, b{comma})\n    w{i} = {i}").expect("string write");
+        }
         format!("def run(a, b):\n{body}    return a\n")
     };
     write(repo, "m.py", &module(","));
