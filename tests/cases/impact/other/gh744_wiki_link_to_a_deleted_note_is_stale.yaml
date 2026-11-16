@@ -1,0 +1,31 @@
+name: gh744_wiki_link_to_a_deleted_note_is_stale
+mode: impact
+source: gh#744
+issue_state: open
+tags:
+- markdown
+- stale
+- wiki-link
+- decoy
+repo:
+  initial_files:
+    notes/b.md: |
+      target note
+    notes/c.md: |
+      another note
+    a.md: |
+      see [[b]]
+    aliased.md: |
+      see [[notes/b|the target]] and [[b#section]]
+    c.md: |
+      see notes/b.md
+    other.md: |
+      see [[c]] and [[bb]]
+    plan.md: |
+      plan b is the fallback
+  deleted_files:
+  - notes/b.md
+  commit_message: drop note b
+expect:
+  stale: [a.md, aliased.md, c.md]
+  not_stale: [other.md, plan.md]
