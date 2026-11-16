@@ -1903,10 +1903,13 @@ fn module_failure(found: &ModuleRes) -> Resolution {
     Resolution::Unresolved { reason }
 }
 
-/// A call of a class makes an object; a variable passed as an argument is read.
+/// A call of a class makes an object; a variable passed as an argument is read;
+/// a class named where a value stands (`HANDLER = Handler`, `[Handler]`) is the
+/// class held as a value, like one handed to a call.
 fn relation_for(use_kind: UseKind, target: DefKind) -> Relation {
     match (use_kind, target) {
         (UseKind::Call, DefKind::Class) => Relation::Instantiates,
+        (UseKind::Read, DefKind::Class) => Relation::PassesAsValue,
         (
             UseKind::PassAsValue,
             DefKind::Variable | DefKind::Constant | DefKind::Field | DefKind::TypeAlias,
