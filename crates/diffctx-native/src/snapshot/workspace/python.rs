@@ -35,6 +35,8 @@ pub(super) fn discover(files: &Files, draft: &mut Draft) -> Result<()> {
         read_pyproject(files, root, table, members.get(root), draft);
     }
     pytest_configurations(files, draft)?;
+    requirement_files(files, draft)?;
+    super::dockerfile::python_path(files, draft)?;
     scan_sources(files, draft)
 }
 
@@ -100,11 +102,80 @@ fn pytest_configurations(files: &Files, draft: &mut Draft) -> Result<()> {
             let project = draft.project(dir, Ecosystem::Python);
             project.root(dir.to_string(), RootOrigin::Manifest);
             for root in roots {
+                project.link_elsewhere(dir, root.clone());
                 project.root(root, RootOrigin::Configured);
             }
         }
     }
     Ok(())
+}
+
+/// The local directories a pip requirements file installs: `-e ../core`,
+/// `./libs/core`, `core @ file:../core`. Where the project holding the file is
+/// is known only once every manifest is read.
+fn requirement_files(files: &Files, draft: &mut Draft) -> Result<()> {
+    let found: Vec<&str> = files.all().filter(|p| is_requirements_file(p)).collect();
+    for path in found {
+        let Some(text) = files.read(path)? else {
+            continue;
+        };
+        for line in text.lines() {
+            match local_requirement(line) {
+                Some(Local::Path(literal)) => draft.late(Late::Editable {
+                    file: path.to_string(),
+                    literal,
+                }),
+                Some(Local::Computed) => draft.lose(
+                    path,
+                    "a requirement names a directory through a variable".to_string(),
+                ),
+                None => {}
+            }
+        }
+    }
+    Ok(())
+}
+
+/// What pip reads by its name: `requirements.txt`, `requirements-dev.txt`,
+/// `dev-requirements.in`, `requirements/base.txt`, the `constraints` kin.
+fn is_requirements_file(path: &str) -> bool {
+    let name = name_of(path).to_ascii_lowercase();
+    (has_extension(&name, "txt") || has_extension(&name, "in"))
+        && (name.contains("requirements")
+            || name.starts_with("constraints")
+            || path.split('/').any(|part| part == "requirements"))
+}
+
+enum Local {
+    Path(String),
+    Computed,
+}
+
+fn local_requirement(line: &str) -> Option<Local> {
+    let line = line.split(" #").next().unwrap_or("").trim();
+    let target = if let Some(rest) = line
+        .strip_prefix("--editable")
+        .or_else(|| line.strip_prefix("-e"))
+    {
+        rest.trim_start_matches([' ', '\t', '='])
+    } else if let Some(target) = direct_reference(line) {
+        target
+    } else if line == "." || line == ".." || line.starts_with("./") || line.starts_with("../") {
+        line
+    } else {
+        return None;
+    };
+    let target = target.strip_prefix("file://").unwrap_or(target);
+    let target = target.strip_prefix("file:").unwrap_or(target);
+    let target = target.split(['#', '[']).next().unwrap_or("").trim();
+    if target.is_empty() || target.contains("://") {
+        return None;
+    }
+    Some(if target.contains('$') {
+        Local::Computed
+    } else {
+        Local::Path(target.to_string())
+    })
 }
 
 /// `key` of `[section]` in an ini file, continuation lines joined; `None` when
@@ -300,6 +371,7 @@ fn read_pyproject(
         project.root(layout, RootOrigin::Layout);
     }
     for dir in roots {
+        project.link_elsewhere(root, dir.clone());
         project.root(dir, RootOrigin::Configured);
     }
     if let Some(name) = name {
