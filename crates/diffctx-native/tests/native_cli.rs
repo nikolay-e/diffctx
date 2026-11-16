@@ -2178,3 +2178,49 @@ fn an_edit_inside_a_zig_generic_type_is_its_method() {
         .collect();
     assert_eq!(changed, vec![("method_50", "209-211")], "{doc:#}");
 }
+
+#[cfg(unix)]
+#[test]
+fn an_unreadable_file_is_a_disclosed_loss_not_the_end_of_the_run() {
+    use std::os::unix::fs::PermissionsExt as _;
+    let tmp = TempDir::new().expect("tempdir");
+    let repo = tmp.path();
+    init_repo(repo);
+    std::fs::write(
+        repo.join("pricing.py"),
+        "def total(xs):\n    return sum(xs)\n",
+    )
+    .expect("write");
+    std::fs::write(
+        repo.join("refund.py"),
+        "from pricing import total\n\n\ndef refund(xs):\n    return -total(xs)\n",
+    )
+    .expect("write");
+    commit_all(repo, "base");
+    std::fs::write(
+        repo.join("pricing.py"),
+        "def total(xs):\n    return sum(xs) + 1\n",
+    )
+    .expect("write");
+    let locked = repo.join("refund.py");
+    std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o000)).expect("chmod");
+    if std::fs::read(&locked).is_ok() {
+        // A superuser reads any file: there is no unreadable one to test with.
+        return;
+    }
+    let out = run(
+        repo,
+        &[".", "--diff", "--mode", "impact", "-q", "-f", "json"],
+    );
+    std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o644)).expect("chmod");
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let doc = json_doc(&out);
+    let limits = doc["coverage"]["limits"].to_string();
+    assert!(limits.contains("read_failed"), "{doc:#}");
+    assert_eq!(doc["summary"]["callers"]["exact"], false, "{doc:#}");
+}
