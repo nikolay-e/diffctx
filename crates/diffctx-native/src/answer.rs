@@ -242,9 +242,6 @@ impl Tally {
         };
         let folded_callers = folded(false);
         let callers = rows().filter(caller).count() + folded_callers + shed(|s| s.resolved);
-        let exact = doc.coverage.scope.complete
-            && defs.iter().all(|d| d.coverage.calls.complete)
-            && doc.omitted.as_ref().is_none_or(|o| o.incomplete == 0);
         let reason = |reason: &str| {
             doc.coverage
                 .unanalysed
@@ -256,6 +253,20 @@ impl Tally {
         let analysed_in_part = reason("parse_partial");
         let not_followed = reason("content_untraced") + doc.coverage.untraced_omitted;
         let outside_definitions = reason(crate::impact::OUTSIDE_DEFINITIONS);
+        // A count is exact over what was traced: a lock file, a file only searched
+        // for its path or keys, and one read in part or not at all hold callers
+        // the count never saw.
+        let untraced = doc.inventory.lockfiles.total
+            + doc
+                .coverage
+                .unanalysed
+                .total
+                .saturating_sub(outside_definitions)
+            + doc.named.key_searches.len();
+        let exact = doc.coverage.scope.complete
+            && defs.iter().all(|d| d.coverage.calls.complete)
+            && doc.omitted.as_ref().is_none_or(|o| o.incomplete == 0)
+            && untraced == 0;
         let shed_from_listed: usize = defs.iter().map(|d| d.shed.total()).sum();
         Self {
             definitions: defs.len() + doc.omitted.as_ref().map_or(0, |o| o.definitions.total),
