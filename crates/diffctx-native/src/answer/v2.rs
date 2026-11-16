@@ -508,7 +508,8 @@ pub struct Guard {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub via: Option<String>,
     /// The other tests that reach the caller at the same fewest hops: the first
-    /// of each test file, then the rest, in path then name order, three tests in all.
+    /// of each test file, then the rest, a test the change touches first, three
+    /// tests in all.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub also: Vec<GuardTest>,
     /// How many more reach it beyond those named.
