@@ -1,0 +1,61 @@
+name: rs_call_through_an_external_trait_object_names_the_local_implementer_as_unresolved
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [rust, external-base, dispatch, gap]
+repo:
+  initial_files:
+    Cargo.toml: |
+      [package]
+      name = "app"
+      version = "0.1.0"
+      edition = "2021"
+    src/lib.rs: |
+      pub mod sink;
+      pub mod emit;
+    src/sink.rs: |
+      use std::io::Write;
+
+      pub struct Sink {
+          pub n: usize,
+      }
+
+      impl Write for Sink {
+          fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+              self.n += buf.len();
+              Ok(buf.len())
+          }
+          fn flush(&mut self) -> std::io::Result<()> {
+              Ok(())
+          }
+      }
+    src/emit.rs: |
+      use std::io::Write;
+
+      pub fn emit(w: &mut dyn Write) {
+          w.write(b"x").unwrap();
+      }
+  changed_files:
+    src/sink.rs: |
+      use std::io::Write;
+
+      pub struct Sink {
+          pub n: usize,
+      }
+
+      impl Write for Sink {
+          fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+              self.n += buf.len() + 0;
+              Ok(buf.len())
+          }
+          fn flush(&mut self) -> std::io::Result<()> {
+              Ok(())
+          }
+      }
+  commit_message: change
+expect:
+  changed: ['src/sink.rs::write']
+  coverage:
+    src/sink.rs::write: {calls: partial}
+  no_negative_claims: true
+  exact: false

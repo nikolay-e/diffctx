@@ -1,0 +1,53 @@
+name: go_call_through_an_external_interface_names_the_local_implementer_as_unresolved
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [go, external-base, dispatch, gap]
+repo:
+  initial_files:
+    go.mod: |
+      module example.com/app
+
+      go 1.21
+    sink/sink.go: |
+      package sink
+
+      type Buf struct{ n int }
+
+      func (b *Buf) Write(p []byte) (int, error) {
+          b.n += len(p)
+          return len(p), nil
+      }
+    app/app.go: |
+      package app
+
+      import (
+          "io"
+
+          "example.com/app/sink"
+      )
+
+      func Emit(w io.Writer) {
+          w.Write([]byte("x"))
+      }
+
+      func Run() {
+          Emit(&sink.Buf{})
+      }
+  changed_files:
+    sink/sink.go: |
+      package sink
+
+      type Buf struct{ n int }
+
+      func (b *Buf) Write(p []byte) (int, error) {
+          b.n += len(p) + 0
+          return len(p), nil
+      }
+  commit_message: change
+expect:
+  changed: ['sink/sink.go::Write']
+  coverage:
+    sink/sink.go::Write: {calls: partial}
+  no_negative_claims: true
+  exact: false
