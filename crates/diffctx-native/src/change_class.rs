@@ -96,13 +96,13 @@ pub fn classify(
 /// multi-line string all read as layout (#442). Without a grammar, a clean
 /// parse or the text, only trailing whitespace and blank lines are.
 ///
-/// The deadline is polled before each run: past it the runs left are judged by
-/// their lines alone, as a file past it is, so one module of tens of thousands
-/// of runs ends in a partial answer.
+/// `within_deadline` is polled before each run: past it the runs left are
+/// judged by their lines alone, as a file past it is, so one module of tens of
+/// thousands of runs ends in a partial answer.
 pub fn settle_layout(
     runs: &mut [HunkText],
     new: Option<&str>,
-    deadline: &crate::resource::RunContext,
+    within_deadline: &(dyn Fn() -> bool + Sync),
 ) {
     let Some(path) = runs.first().map(|r| r.path.clone()) else {
         return;
@@ -121,7 +121,7 @@ pub fn settle_layout(
     let (old_wide, new_wide) = (Wide::default(), Wide::default());
     for run in runs.iter_mut() {
         run.layout = match (&parsed, new) {
-            (Some((old, old_tree, new_tree, python)), Some(new)) if deadline.check() => {
+            (Some((old, old_tree, new_tree, python)), Some(new)) if within_deadline() => {
                 let rows = |start: u32, len: u32| (start.max(1) - 1, len);
                 Shape::of(
                     old_tree,

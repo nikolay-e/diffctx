@@ -320,7 +320,7 @@ pub fn build_diff_context_in_memory(
     let mut hunk_texts = crate::changed_lines::hunk_texts(&diff_text);
     for runs in hunk_texts.chunk_by_mut(|a, b| a.path == b.path) {
         let text = all_files.get(runs[0].path.as_str()).map(String::as_str);
-        crate::change_class::settle_layout(runs, text, &run);
+        crate::change_class::settle_layout(runs, text, &|| run.check());
     }
     let change_classes = crate::pipeline::classify_changes(
         dummy_root,
