@@ -1,0 +1,64 @@
+name: gh737_migration_run_by_its_revision_id_is_an_entry_a_test_reaches
+mode: impact
+source: gh#737
+issue_state: open
+tags: [python, alembic, migration, entry-point, tests-reach, decoy]
+repo:
+  initial_files:
+    migrations/versions/001_base.py: |
+      revision = "001_base"
+      down_revision = None
+
+
+      def upgrade():
+          create_table("accounts")
+
+
+      def downgrade():
+          drop_table("accounts")
+    migrations/versions/002_more.py: |
+      revision = "002_more"
+      down_revision = "001_base"
+
+
+      def upgrade():
+          create_table("orders")
+
+
+      def downgrade():
+          drop_table("orders")
+    tests/test_migration_001.py: |
+      from alembic import command
+
+
+      def test_base(cfg):
+          command.upgrade(cfg, "001_base")
+  changed_files:
+    migrations/versions/001_base.py: |
+      revision = "001_base"
+      down_revision = None
+
+
+      def upgrade():
+          create_table("accounts", unique=True)
+
+
+      def downgrade():
+          drop_table("accounts")
+    migrations/versions/002_more.py: |
+      revision = "002_more"
+      down_revision = "001_base"
+
+
+      def upgrade():
+          create_table("orders", unique=True)
+
+
+      def downgrade():
+          drop_table("orders")
+  commit_message: "migrations: make the tables unique"
+expect:
+  entry_tested:
+  - migrations/versions/001_base.py::upgrade
+  entry_not_tested:
+  - migrations/versions/002_more.py::upgrade
