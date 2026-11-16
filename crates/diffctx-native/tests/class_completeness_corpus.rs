@@ -41,7 +41,7 @@
 // failed before it could be judged. No run is decided by a clock.
 #![allow(dead_code)]
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
 use std::process::Output;
@@ -61,8 +61,9 @@ mod support;
 use oracle::case::{Case, Mode, Repo, parse};
 use oracle::model::{Kind, Node};
 use support::classes::{
-    Finding, TRANSFORMS, comment_of, complete_empty, conclude, excerpt, extension, lists,
-    literal_call, mention, proof_missing, regions, strip_everything, unmoved_by_no_use,
+    Finding, Stripped, SubjectKind, TRANSFORMS, comment_of, complete_empty, conclude, excerpt,
+    extension, lists, literal_call, mention, proof_missing, regions, route_gone, strip_everything,
+    subject_kind, unmoved_by_no_use,
 };
 use support::{diffctx_unclocked, git, init_repo};
 
@@ -137,6 +138,7 @@ struct Subject {
     definition: Option<String>,
     // The files that call it.
     callers: Vec<String>,
+    kind: SubjectKind,
 }
 
 fn has_file(repo: &Repo, path: &str) -> bool {
@@ -201,10 +203,21 @@ fn subject(case: &Case) -> Option<Subject> {
         .collect();
     callers.sort();
     callers.dedup();
+    let kind = definition
+        .as_deref()
+        .and_then(|path| {
+            let text = repo
+                .changed_files
+                .get(path)
+                .or_else(|| repo.initial_files.get(path))?;
+            Some(subject_kind(path, text, &name))
+        })
+        .unwrap_or(SubjectKind::Reachable);
     Some(Subject {
         name,
         definition,
         callers,
+        kind,
     })
 }
 
@@ -479,11 +492,13 @@ struct Tally {
     unmoved: usize,
     // A complete answer that nobody uses the subject: the finding.
     absent: usize,
+    // The same answer for a spelling the subject's kind makes no use.
+    excused: usize,
     errored: usize,
     unanswered: usize,
 }
 
-fn account(test: &str, tallies: &BTreeMap<(&'static str, &'static str), Tally>) {
+fn append_account(lines: &[String]) {
     let Some(path) = knob("DIFFCTX_CLASS_ACCOUNT") else {
         return;
     };
@@ -492,14 +507,29 @@ fn account(test: &str, tallies: &BTreeMap<(&'static str, &'static str), Tally>) 
         .append(true)
         .open(&path)
         .unwrap_or_else(|e| panic!("open {path:?}: {e}"));
-    for ((site, label), t) in tallies {
-        writeln!(
-            file,
-            "{test}\t{site}\t{label}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
-            t.inserted, t.named, t.hedged, t.unmoved, t.absent, t.errored, t.unanswered
-        )
-        .expect("write the account");
+    for line in lines {
+        writeln!(file, "{line}").expect("write the account");
     }
+}
+
+fn account(test: &str, tallies: &BTreeMap<(&'static str, &'static str), Tally>) {
+    let rows: Vec<String> = tallies
+        .iter()
+        .map(|((site, label), t)| {
+            format!(
+                "{test}\t{site}\t{label}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
+                t.inserted,
+                t.named,
+                t.hedged,
+                t.unmoved,
+                t.absent,
+                t.errored,
+                t.unanswered,
+                t.excused
+            )
+        })
+        .collect();
+    append_account(&rows);
 }
 
 fn enumeration(language: &str) {
@@ -507,6 +537,7 @@ fn enumeration(language: &str) {
     let mut tallies: BTreeMap<(&'static str, &'static str), Tally> = BTreeMap::new();
     let only_sites = knob("DIFFCTX_CLASS_SITE");
     let accounting = knob("DIFFCTX_CLASS_ACCOUNT").is_some();
+    let mut by_kind: Vec<String> = Vec::new();
     let mut checked = 0;
     for loaded in load(language) {
         let Some(subject) = subject(&loaded.case) else {
@@ -545,10 +576,18 @@ fn enumeration(language: &str) {
             if spelling == Spelling::Use {
                 let named = lists(&doc, &path);
                 let absent = !named && complete_empty(&doc);
+                let excused = absent && subject.kind.excuses(site.is_some());
+                let tally = match (tally, excused) {
+                    (Some(tally), _) => Some(tally),
+                    (None, true) => Some(tallies.entry(("not a use, by kind", label)).or_default()),
+                    (None, false) => None,
+                };
                 if let Some(tally) = tally {
                     tally.inserted += 1;
                     if named {
                         tally.named += 1;
+                    } else if excused {
+                        tally.excused += 1;
                     } else if absent {
                         tally.absent += 1;
                     } else {
@@ -566,7 +605,12 @@ fn enumeration(language: &str) {
                         }
                     }
                 }
-                if absent {
+                if excused {
+                    by_kind.push(format!(
+                        "by kind\tcorpus A/{language}\t{}\t{label}\t{:?}\t{}",
+                        loaded.name, subject.kind, subject.name
+                    ));
+                } else if absent {
                     findings.push(finding('A', &loaded, label, &doc));
                 }
                 continue;
@@ -582,6 +626,7 @@ fn enumeration(language: &str) {
         }
     }
     account(&format!("corpus A/{language}"), &tallies);
+    append_account(&by_kind);
     conclude(&format!("corpus A/{language}"), checked, &findings);
 }
 
@@ -589,6 +634,7 @@ fn enumeration(language: &str) {
 
 fn proof(language: &str) {
     let mut findings = Vec::new();
+    let mut exempt: Vec<String> = Vec::new();
     let mut checked = 0;
     for loaded in load(language) {
         let Some(subject) = subject(&loaded.case) else {
@@ -602,6 +648,17 @@ fn proof(language: &str) {
         for (label, transform) in variants {
             let mut repo = loaded.case.repo.clone();
             let mut touched = false;
+            let mut gone: BTreeMap<&str, &str> = BTreeMap::new();
+            let imports_removed = label == "strip_imports" || label == "strip_everything";
+            let read = |path: &str| {
+                let files = &loaded.case.repo;
+                files
+                    .changed_files
+                    .get(path)
+                    .or_else(|| files.initial_files.get(path))
+                    .or_else(|| files.untracked_files.get(path))
+                    .cloned()
+            };
             for caller in &subject.callers {
                 for files in [
                     &mut repo.initial_files,
@@ -611,14 +668,27 @@ fn proof(language: &str) {
                     let Some(text) = files.get(caller) else {
                         continue;
                     };
-                    if let Some(stripped) = transform(caller, text) {
-                        // A caller that no longer spells the subject proves
-                        // nothing.
-                        if stripped.contains(&subject.name) {
-                            files.insert(caller.clone(), stripped);
-                            touched = true;
-                        }
+                    let Some(stripped) = transform(caller, text) else {
+                        continue;
+                    };
+                    // A caller that no longer spells the subject proves
+                    // nothing.
+                    if !stripped.contains(&subject.name) {
+                        continue;
                     }
+                    let held = Stripped {
+                        path: caller,
+                        original: text,
+                        stripped: &stripped,
+                        name: &subject.name,
+                        definition: subject.definition.as_deref(),
+                        imports_removed,
+                    };
+                    if let Some(why) = route_gone(&held, &read) {
+                        gone.insert(caller, why);
+                    }
+                    files.insert(caller.clone(), stripped);
+                    touched = true;
                 }
             }
             if !touched {
@@ -634,13 +704,32 @@ fn proof(language: &str) {
                         .callers
                         .iter()
                         .all(|caller| proof_missing(&doc, caller));
-                    if names_none {
+                    if names_none
+                        && subject
+                            .callers
+                            .iter()
+                            .all(|c| gone.contains_key(c.as_str()))
+                    {
+                        exempt.push(format!(
+                            "by kind\tcorpus B/{language}\t{}\t{label}\t{}",
+                            loaded.name,
+                            gone.values()
+                                .copied()
+                                .collect::<BTreeSet<_>>()
+                                .into_iter()
+                                .collect::<Vec<_>>()
+                                .join("; ")
+                        ));
+                    } else if names_none {
                         findings.push(finding('B', &loaded, label, &doc));
                     }
                 }
             }
         }
     }
+    exempt.sort();
+    exempt.dedup();
+    append_account(&exempt);
     conclude(&format!("corpus B/{language}"), checked, &findings);
 }
 
