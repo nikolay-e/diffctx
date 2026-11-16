@@ -315,6 +315,12 @@ const PRINTERS: &[&str] = &[
     "info", "warn", "warning", "error", "fatal", "trace", "eprint", "eprintln", "print_r",
     "var_dump",
 ];
+/// The calls whose string argument titles a test or a suite, or is one piece of a
+/// path: a name it spells is what the title is about or a file's name, never
+/// something the program resolves.
+const TITLES: &[&str] = &[
+    "describe", "it", "test", "suite", "context", "specify", "join",
+];
 /// A fixed prefix an environment variable spells a name with.
 const NAME_PREFIXES: &[&str] = &["TF_VAR_"];
 const TEMPLATE_GLOBS: &[&str] = &[
@@ -521,17 +527,50 @@ fn macro_value(before: &str) -> bool {
     words.next() == Some("#define") && words.next().is_some() && words.next().is_none()
 }
 
-/// Whether the text ahead of a string ends in a call that only prints it:
-/// `print(`, `console.log(`, `echo -n `.
+/// Whether the text ahead of a string ends in a call that only prints it, titles a
+/// test with it or joins it into a path: `print(`, `console.log(`, `echo -n `,
+/// `describe(`, `path.join(dir, `.
 fn printed(before: &str) -> bool {
+    let inert = |callee: &str| {
+        let callee = callee
+            .rsplit(['.', ':'])
+            .next()
+            .unwrap_or(callee)
+            .to_lowercase();
+        PRINTERS.contains(&callee.as_str()) || TITLES.contains(&callee.as_str())
+    };
     let before = before.trim_end();
-    let before = before.strip_suffix('(').unwrap_or(before).trim_end();
-    before
+    let opened = before.strip_suffix('(').unwrap_or(before).trim_end();
+    opened
         .split_whitespace()
         .rev()
         .find(|token| !token.starts_with('-'))
-        .and_then(|token| token.rsplit(['.', ':']).next())
-        .is_some_and(|callee| PRINTERS.contains(&callee.to_lowercase().as_str()))
+        .is_some_and(inert)
+        || open_call(before).is_some_and(inert)
+}
+
+/// The callee of the call still open at the end of `before`: `path.join` in
+/// `path.join(os.tmpdir(), `.
+fn open_call(before: &str) -> Option<&str> {
+    let mut depth = 0usize;
+    for (at, c) in before.char_indices().rev() {
+        match c {
+            ')' | ']' | '}' => depth += 1,
+            '(' | '[' | '{' if depth > 0 => depth -= 1,
+            '(' => {
+                let head = &before[..at];
+                let start = head
+                    .char_indices()
+                    .rev()
+                    .find(|(_, c)| !(word_char(*c) || matches!(c, '.' | ':')))
+                    .map_or(0, |(i, c)| i + c.len_utf8());
+                return Some(&head[start..]).filter(|callee| !callee.is_empty());
+            }
+            '[' | '{' => return None,
+            _ => {}
+        }
+    }
+    None
 }
 
 /// Whether `before`, the text ahead of a string, ends in an argument's label
