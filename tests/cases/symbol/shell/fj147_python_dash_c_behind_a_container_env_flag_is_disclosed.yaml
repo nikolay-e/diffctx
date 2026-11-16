@@ -1,0 +1,54 @@
+name: fj147_python_dash_c_behind_a_container_env_flag_is_disclosed
+mode: symbol
+source: fj#147
+issue_state: open
+tags:
+- shell
+- python
+- discloses
+repo:
+  initial_files:
+    src/__init__.py: ""
+    src/seed_rows.py: |
+      def seed_rows(n):
+          return list(range(n))
+    scripts/compat.sh: |
+      #!/bin/sh
+      TOKEN=$(docker run --rm -e MODE=compat \
+        --entrypoint python "$IMAGE" -c '
+      from src.seed_rows import seed_rows
+
+      print(seed_rows(3))
+      ')
+      echo "$TOKEN"
+    scripts/note.sh: |
+      #!/bin/sh
+      echo "run seed_rows after the migration"
+    tests/test_seed.py: |
+      from src.seed_rows import seed_rows
+
+
+      def test_seed():
+          assert seed_rows(2) == [0, 1]
+  commit_message: Add seed_rows with a test and a container script that runs it
+query:
+  symbol: seed_rows
+expect:
+  relations:
+  - from: tests/test_seed.py::test_seed
+    to: src/seed_rows.py::seed_rows
+    kind: calls
+    resolution: resolved
+    site: 5
+  - from: scripts/compat.sh
+    to: src/seed_rows.py::seed_rows
+    kind: calls
+    resolution: unresolved
+    site: 2
+  exact: true
+  decoys:
+    src/seed_rows.py::seed_rows:
+    - scripts/note.sh
+  definitions:
+  - src/seed_rows.py::seed_rows
+  discloses: true
