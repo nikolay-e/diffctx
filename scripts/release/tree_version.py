@@ -33,6 +33,11 @@ def cargo_spelling(version: str) -> str:
     return base if label is None else f"{base}-{_SEMVER_LABEL[label]}.{number}"
 
 
+def is_prerelease(version: str) -> bool:
+    """A candidate (`a`, `b`, `rc`, `.dev`) ships on every channel but moves no user pin."""
+    return _parse(version).group(4) in ("a", "b", "rc", ".dev")
+
+
 def next_dev(released: str) -> str:
     major, minor, patch, label, _ = _parse(released).groups()
     if label is not None:
@@ -90,8 +95,12 @@ def main(argv: list[str] | None = None) -> None:
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("set", help="write this version on every tree surface").add_argument("version")
     commands.add_parser("open-dev", help="write the development version that follows this release").add_argument("released")
+    commands.add_parser("describe", help="print `semver=` and `prerelease=` lines for $GITHUB_OUTPUT").add_argument("version")
     args = parser.parse_args(argv)
     try:
+        if args.command == "describe":
+            print(f"semver={cargo_spelling(args.version)}\nprerelease={str(is_prerelease(args.version)).lower()}")
+            return
         version = args.version if args.command == "set" else next_dev(args.released)
         set_tree_version(version)
     except ValueError as error:
