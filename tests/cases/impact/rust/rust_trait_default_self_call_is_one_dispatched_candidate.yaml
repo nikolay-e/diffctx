@@ -1,0 +1,58 @@
+name: rust_trait_default_self_call_is_one_dispatched_candidate
+mode: impact
+source: synthetic
+issue_state: open
+tags: [rust, trait, default-method, dispatch, self-receiver]
+repo:
+  initial_files:
+    Cargo.toml: |
+      [package]
+      name = "demo"
+      version = "0.1.0"
+      edition = "2021"
+    src/lib.rs: |
+      pub mod twins;
+      pub mod py;
+    src/twins.rs: |
+      pub trait Twins {
+          fn compute(&self, id: u32) -> u32;
+
+          fn twin(&self, id: u32) -> u32 {
+              self.compute(id)
+          }
+      }
+    src/py.rs: |
+      use crate::twins::Twins;
+
+      pub struct Py;
+
+      impl Twins for Py {
+          fn compute(&self, id: u32) -> u32 {
+              id + 1
+          }
+      }
+  changed_files:
+    src/py.rs: |
+      use crate::twins::Twins;
+
+      pub struct Py;
+
+      impl Twins for Py {
+          fn compute(&self, id: u32) -> u32 {
+              id + 2
+          }
+      }
+  commit_message: "py: compute adds two"
+expect:
+  changed: [src/py.rs::compute]
+  # `self.compute(id)` in the trait's default method reaches whichever
+  # implementor `self` is: `Py::compute` is possibly called, through dispatch.
+  # The site is that one candidate; it is no second, unlanded use.
+  relations:
+    - {from: "src/twins.rs::twin", to: "src/py.rs::compute", kind: calls, resolution: candidate, site: 5}
+  unknowns:
+    compute: dispatched
+  coverage:
+    "src/py.rs::compute": {calls: partial}
+  partial:
+    "src/py.rs::compute": {calls: dispatched, reads: dispatched}
