@@ -1,0 +1,35 @@
+name: ts_script_file_global_function_is_possibly_called_without_an_import
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [typescript, builtin, global]
+repo:
+  initial_files:
+    package.json: |
+      {"name":"app","version":"1.0.0"}
+    tsconfig.json: |
+      {"compilerOptions":{"strict":true}}
+    src/globals.ts: |
+      function track(event: string): void {
+        console.log(event);
+      }
+    src/app.ts: |
+      import { x } from './other';
+
+      export function run(): void {
+        track('a' + x);
+      }
+    src/other.ts: |
+      export const x = 1;
+  changed_files:
+    src/globals.ts: |
+      function track(event: string): void {
+        console.log(event, 1);
+      }
+  commit_message: change
+expect:
+  changed: ['src/globals.ts::track']
+  coverage:
+    src/globals.ts::track: {calls: partial}
+  no_negative_claims: true
+  exact: false

@@ -1,0 +1,34 @@
+name: rs_function_pulled_in_by_include_is_possibly_called
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [rust, builtin, include]
+repo:
+  initial_files:
+    Cargo.toml: |
+      [package]
+      name = "app"
+      version = "0.1.0"
+      edition = "2021"
+    src/lib.rs: |
+      include!("gen.rs");
+
+      pub fn go(x: i32) -> i32 {
+          total(x)
+      }
+    src/gen.rs: |
+      pub fn total(x: i32) -> i32 {
+          x
+      }
+  changed_files:
+    src/gen.rs: |
+      pub fn total(x: i32) -> i32 {
+          x + 0
+      }
+  commit_message: change
+expect:
+  changed: ['src/gen.rs::total']
+  coverage:
+    src/gen.rs::total: {calls: partial}
+  no_negative_claims: true
+  exact: false

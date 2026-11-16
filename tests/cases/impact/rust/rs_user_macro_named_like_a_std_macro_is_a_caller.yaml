@@ -1,0 +1,39 @@
+name: rs_user_macro_named_like_a_std_macro_is_a_caller
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [rust, builtin, macro, shadowing]
+repo:
+  initial_files:
+    Cargo.toml: |
+      [package]
+      name = "app"
+      version = "0.1.0"
+      edition = "2021"
+    src/lib.rs: |
+      #[macro_use]
+      mod macros;
+      pub mod run;
+    src/macros.rs: |
+      macro_rules! format {
+          ($x:expr) => {
+              $x
+          };
+      }
+    src/run.rs: |
+      pub fn go(x: i32) -> i32 {
+          format!(x)
+      }
+  changed_files:
+    src/macros.rs: |
+      macro_rules! format {
+          ($x:expr) => {
+              $x + 0
+          };
+      }
+  commit_message: change
+expect:
+  changed: ['src/macros.rs::format']
+  relations:
+  - {from: 'src/run.rs::go', to: 'src/macros.rs::format', kind: calls, resolution: resolved}
+  exact: false
