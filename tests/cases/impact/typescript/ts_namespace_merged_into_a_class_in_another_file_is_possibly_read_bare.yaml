@@ -1,0 +1,43 @@
+name: ts_namespace_merged_into_a_class_in_another_file_is_possibly_read_bare
+mode: impact
+source: synthetic
+issue_state: open
+tags: [typescript, bare-name, declaration-merging, hedge]
+repo:
+  initial_files:
+    package.json: |
+      {"name":"app","version":"1.0.0"}
+    tsconfig.json: |
+      {"compilerOptions":{"strict":true}}
+    src/foo.ts: |
+      export class Foo {
+        id = 1;
+      }
+
+      export namespace Foo {
+        export const defaults = { retries: 1 };
+      }
+    src/foo.more.ts: |
+      import { Foo } from './foo';
+
+      export namespace Foo {
+        export function retries(): number {
+          return defaults.retries;
+        }
+      }
+  changed_files:
+    src/foo.ts: |
+      export class Foo {
+        id = 1;
+      }
+
+      export namespace Foo {
+        export const defaults = { retries: 2 };
+      }
+  commit_message: change
+expect:
+  changed: ['src/foo.ts::defaults']
+  coverage:
+    src/foo.ts::defaults: {reads: partial}
+  no_negative_claims: true
+  exact: false
