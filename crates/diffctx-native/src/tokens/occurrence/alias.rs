@@ -5,6 +5,7 @@
 use std::ops::Range;
 
 use super::{Alias, AliasBound, AliasScope, Basis, Outcome, Reason, ValuePlace};
+use crate::facts::config::UseOf;
 use crate::facts::{DefKind, Fact, FileFacts, Language, LocalKey, Name, Scope, UseKind};
 use crate::resolve::Relation;
 
@@ -192,6 +193,16 @@ pub fn value_use(
         )
         .then_some((Outcome::Candidate(Reason::Unexplained), Basis::Unproven))
     };
+    // An action that includes a named template states a call, in no value position.
+    let included = file.blob.facts.iter().any(|fact| {
+        matches!(fact, Fact::ConfigUse(used)
+            if used.of == UseOf::Include
+                && used.site.bytes.start <= at.start
+                && at.end <= used.site.bytes.end)
+    });
+    if included {
+        return None;
+    }
     let Some(use_kind) = file.blob.facts.iter().find_map(|fact| match fact {
         Fact::Reference(reference) if reference.site.bytes == *at => Some(reference.use_kind),
         _ => None,
