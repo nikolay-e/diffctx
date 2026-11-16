@@ -4576,14 +4576,14 @@ pub fn build_impact(
     } else {
         (Vec::new(), changed)
     };
-    let (named_by, named_by_omitted) = if query.is_none() {
+    let (named_by, named_by_omitted) = {
         let _named = crate::profile::phase("impact.named_by");
         let (mut named, omitted) = named_by_path(state, &cells, analysed);
-        let by_module = untraced.module_refs(state, &cores, &named);
-        named.extend(by_module);
+        if query.is_none() {
+            let by_module = untraced.module_refs(state, &cores, &named);
+            named.extend(by_module);
+        }
         (named, omitted)
-    } else {
-        (Vec::new(), 0)
     };
     let (collection_reads, collection_reads_omitted) = if query.is_none() {
         read_by_collection(state, analysed)
