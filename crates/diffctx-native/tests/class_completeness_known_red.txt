@@ -16,9 +16,6 @@
 # and "corpus B/…") come from its own run on the release profile.
 A/config | A | config | synthetic | Use: unchanged without an extension (unread) | Impact # complete_empty=true
 A/config | A | config | synthetic | Use: unchanged .xyz (unread) | Impact # complete_empty=true
-A/sql | H | sql | synthetic | NoUse: changed, the family's suffix, in a comment | Symbol # complete_empty=false
-A/sql | H | sql | synthetic | NoUse: unchanged, the family's suffix, in a comment | Impact # complete_empty=false
-A/sql | H | sql | synthetic | NoUse: unchanged, the family's suffix, in a comment | Symbol # complete_empty=false
 corpus A/c | A | c | impact/c/c_changed_function_nothing_calls_is_a_verified_zero | unchanged, command position (Makefile) | impact # command word: `greet` (plain word) spelled in a file the engine reads as another language is answered complete, nobody calls
 corpus A/c | A | c | impact/c/c_changed_function_nothing_calls_is_a_verified_zero | unchanged, command position (script) | impact # command word: `greet` (plain word) spelled in a file the engine reads as another language is answered complete, nobody calls
 corpus A/c | A | c | impact/c/c_changed_function_nothing_calls_is_a_verified_zero | unchanged, template text (html) | impact # template text: `greet` (plain word) spelled in a file the engine reads as another language is answered complete, nobody calls
