@@ -1,0 +1,34 @@
+name: ts_a_test_title_spelling_the_name_is_no_reference_to_it
+mode: impact
+source: synthetic
+issue_state: open
+tags: [typescript, literal, hedge]
+repo:
+  initial_files:
+    build/prune.ts: |
+      export function prune(path: string): string {
+        return path.trim()
+      }
+    build/prune-worker.ts: |
+      export function prune(path: string): string {
+        return path
+      }
+    build/prune-worker.test.ts: |
+      import os from 'node:os'
+      import path from 'node:path'
+      import { prune } from './prune-worker'
+
+      describe('prune', () => {
+        it('keeps the path', () => {
+          const dir = path.join(os.tmpdir(), 'prune')
+          expect(prune(dir)).toBe(dir)
+        })
+      })
+  changed_files:
+    build/prune.ts: |
+      export function prune(path: string): string {
+        return path.trim().toLowerCase()
+      }
+expect:
+  exact: false
+  untested: [prune]
