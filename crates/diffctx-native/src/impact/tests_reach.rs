@@ -84,6 +84,9 @@ pub(super) struct TestsReach<'a> {
 }
 
 impl<'a> TestsReach<'a> {
+    /// Ends at the run's deadline with what it has read. The run is then tripped
+    /// for good, so no caller is searched and no claim about a test rests on this
+    /// partial reach.
     pub(super) fn build(
         state: &'a ScoredState,
         cells: &'a Cells,
@@ -91,7 +94,7 @@ impl<'a> TestsReach<'a> {
     ) -> Self {
         let mut by_rel: FxHashMap<String, Vec<&Fragment>> = FxHashMap::default();
         let mut rel_of: FxHashMap<&str, String> = FxHashMap::default();
-        for f in &state.all_fragments {
+        for f in state.run.bounded(&state.all_fragments) {
             let shown = rel_of
                 .entry(f.path())
                 .or_insert_with(|| rel(state, f.path()))
@@ -120,7 +123,7 @@ impl<'a> TestsReach<'a> {
             .map(|(_, source)| source.to_string())
             .collect();
         let mut tests_at: FxHashMap<&str, Vec<(u32, u32)>> = FxHashMap::default();
-        for f in &state.all_fragments {
+        for f in state.run.bounded(&state.all_fragments) {
             if f.kind == FragmentKind::Function && rust::is_rust(f.path()) {
                 tests_at.entry(f.path()).or_insert_with(|| {
                     let text = state.run.source().read_to_string(Path::new(f.path()));
@@ -135,7 +138,7 @@ impl<'a> TestsReach<'a> {
                 });
             }
         }
-        for (&spelled, shown) in &rel_of {
+        for (&spelled, shown) in state.run.bounded(&rel_of) {
             if !tests_at.contains_key(spelled) {
                 let scopes = in_source_scopes(state, cells, spelled, shown);
                 if !scopes.is_empty() {
