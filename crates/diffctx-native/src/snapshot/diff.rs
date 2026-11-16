@@ -9,8 +9,10 @@ use once_cell::sync::Lazy;
 use regex::Regex;
 
 use crate::snapshot::error::{Result, SnapshotError};
+use crate::snapshot::git::Exec;
+use crate::snapshot::reader::hash_objects;
 use crate::snapshot::repo::reject_option_like;
-use crate::snapshot::run::run_git;
+use crate::snapshot::run::{run_git, run_git_z};
 use crate::snapshot::types::contains_lexically;
 
 // The prefix and color flags are not cosmetic: the diff parser keys off the
@@ -114,15 +116,62 @@ fn diff_args<'a>(
 }
 
 /// `git diff <extra> [range] [-- pathspec]` as text. `range` is a revision,
-/// `A..B`, or `None` for the working tree against the index.
+/// `A..B`, or `None` for the working tree against the index. A file git cannot
+/// read fails a diff that has to compare it to the index; it is left out of the
+/// text and the read of the checkout names it as a loss (fj#205).
 pub fn diff_text(
     root: &Path,
     extra: &[&str],
     diff_range: Option<&str>,
     pathspec: &[String],
 ) -> Result<String> {
-    let args = diff_args(extra, diff_range, pathspec)?;
+    let mut args = diff_args(extra, diff_range, pathspec)?;
+    let failed = match run_git(root, &args) {
+        Err(error @ (SnapshotError::Git(_) | SnapshotError::GitRefused { .. })) => error,
+        answered => return answered,
+    };
+    let unreadable = match unreadable_changes(root, diff_range, pathspec) {
+        Ok(paths) if !paths.is_empty() => paths,
+        _ => return Err(failed),
+    };
+    if pathspec.is_empty() {
+        args.push("--");
+    }
+    let excluded: Vec<String> = unreadable
+        .iter()
+        .map(|path| format!(":(exclude,literal){path}"))
+        .collect();
+    args.extend(excluded.iter().map(String::as_str));
     run_git(root, &args)
+}
+
+/// The changed files of the same diff (a deletion has no file to read) that git
+/// cannot hash.
+fn unreadable_changes(
+    root: &Path,
+    diff_range: Option<&str>,
+    pathspec: &[String],
+) -> Result<Vec<String>> {
+    let args = diff_args(
+        &[
+            "--name-only",
+            "-z",
+            "--no-renames",
+            "--diff-filter=d",
+            "--ignore-submodules=all",
+        ],
+        diff_range,
+        pathspec,
+    )?;
+    let names = run_git_z(root, &args)?;
+    let paths: Vec<&str> = names.iter().map(String::as_str).collect();
+    let hashed = hash_objects(&Exec::current(), root, &paths)?;
+    Ok(paths
+        .iter()
+        .zip(hashed)
+        .filter(|(_, oid)| oid.is_none())
+        .map(|(name, _)| (*name).to_string())
+        .collect())
 }
 
 #[cfg(test)]
