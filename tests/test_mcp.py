@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import subprocess
+import threading
 
 import pytest
 
@@ -1180,12 +1181,24 @@ class TestPathsScopeAMonorepo:
         with pytest.raises(ToolError, match="call again without paths"):
             await self._ask(server, monorepo.path, mode="locate", fragment_ids=["svc_a/calc.py:1-2"], paths=["svc_a"])
 
-    @pytest.mark.asyncio
-    @pytest.mark.parametrize("mode", ["impact", "locate", "pack"])
-    async def test_a_deadline_names_the_scoped_cli_form(self, server, monorepo, monkeypatch, mode):
+    @pytest.fixture
+    def engine_that_does_not_stop(self, monkeypatch):
+        """An engine that outlives its deadline and the grace behind it: the call
+        ends on the guard. The guard waits no grace here, so it is spent at once."""
         from diffctx.mcp import server as server_module
 
+        released = threading.Event()
         monkeypatch.setattr(server_module, "_DEFAULT_TIMEOUT_SECONDS", 0)
+        monkeypatch.setattr(server_module, "_ENGINE_GRACE_SECONDS", 0)
+        monkeypatch.setattr(server_module, "deliver", lambda **_: released.wait())
+        yield
+        released.set()
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("mode", ["impact", "locate", "pack"])
+    async def test_an_engine_that_does_not_stop_names_the_scoped_cli_form(
+        self, server, monorepo, engine_that_does_not_stop, mode
+    ):
         with pytest.raises(ToolError, match="exceeded the 0s deadline") as exc:
             await self._ask(server, monorepo.path, mode=mode)
         message = str(exc.value)
@@ -1194,10 +1207,7 @@ class TestPathsScopeAMonorepo:
         assert str(monorepo.path) not in message
 
     @pytest.mark.asyncio
-    async def test_a_deadline_on_a_scoped_call_names_the_paths_given(self, server, monorepo, monkeypatch):
-        from diffctx.mcp import server as server_module
-
-        monkeypatch.setattr(server_module, "_DEFAULT_TIMEOUT_SECONDS", 0)
+    async def test_a_guard_on_a_scoped_call_names_the_paths_given(self, server, monorepo, engine_that_does_not_stop):
         with pytest.raises(ToolError, match="exceeded the 0s deadline") as exc:
             await self._ask(server, monorepo.path, paths=["svc_a", "svc_b"])
         message = str(exc.value)
@@ -1206,14 +1216,28 @@ class TestPathsScopeAMonorepo:
         assert str(monorepo.path) not in message
 
     @pytest.mark.asyncio
-    async def test_a_symbol_deadline_names_the_scoped_symbol_form(self, server, monorepo, monkeypatch):
-        from diffctx.mcp import server as server_module
-
-        monkeypatch.setattr(server_module, "_DEFAULT_TIMEOUT_SECONDS", 0)
+    async def test_a_symbol_guard_names_the_scoped_symbol_form(self, server, monorepo, engine_that_does_not_stop):
         args = {"repo_path": str(monorepo.path), "symbol": "add", "paths": ["svc_a"]}
         with pytest.raises(ToolError, match="exceeded the 0s deadline") as exc:
             await server.call_tool("diffctx_context", args)
         assert "diffctx svc_a --symbol add" in str(exc.value)
+
+    @pytest.mark.asyncio
+    async def test_the_engines_partial_answer_at_its_deadline_reaches_the_caller(self, server, monorepo, monkeypatch):
+        """The engine's deadline is spent at its first poll, as when the range is
+        too large for the time it has: it answers with what it read and says so.
+        The guard around it has already reached the deadline it shares with the
+        engine, and waits the grace for exactly this answer."""
+        from diffctx.mcp import server as server_module
+
+        engine = server_module.deliver
+        monkeypatch.setenv("DIFFCTX_TEST_DEADLINE_EXPIRED", "1")
+        monkeypatch.setattr(server_module, "_DEFAULT_TIMEOUT_SECONDS", 0)
+        # An engine deadline of 0 would also spend the engine's git ceiling, which
+        # the knob leaves alone: the engine is given its default, the guard its 0.
+        monkeypatch.setattr(server_module, "deliver", lambda **kwargs: engine(**{**kwargs, "timeout": 300}))
+        text = await self._ask(server, monorepo.path, mode="impact")
+        assert "(partial: deadline" in text
 
 
 class TestProgressiveDisclosure:
