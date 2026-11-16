@@ -1,0 +1,66 @@
+name: py_a_test_the_change_touches_is_named_before_the_others
+mode: impact
+source: synthetic
+issue_state: open
+tags: [python, tests-reach, guard]
+repo:
+  initial_files:
+    shop/pricing.py: |
+      def total(items):
+          return sum(items)
+    shop/checkout.py: |
+      from shop.pricing import total
+
+
+      def charge(items):
+          return total(items)
+    tests/test_a.py: |
+      from shop.checkout import charge
+
+
+      def test_charge_a():
+          assert charge([1]) > 0
+    tests/test_b.py: |
+      from shop.checkout import charge
+
+
+      def test_charge_b():
+          assert charge([1]) > 0
+    tests/test_c.py: |
+      from shop.checkout import charge
+
+
+      def test_charge_c():
+          assert charge([1]) > 0
+    tests/test_d.py: |
+      from shop.checkout import charge
+
+
+      def test_charge_d():
+          assert charge([1]) > 0
+    tests/test_e.py: |
+      from shop.checkout import charge
+
+
+      def test_charge_e():
+          assert charge([1]) > 0
+    tests/test_pricing.py: |
+      from shop.checkout import charge
+
+
+      def test_charge_prices():
+          assert charge([1]) == 1
+  changed_files:
+    shop/pricing.py: |
+      def total(items):
+          return sum(items) + 1
+    tests/test_pricing.py: |
+      from shop.checkout import charge
+
+
+      def test_charge_prices():
+          assert charge([1]) == 2
+expect:
+  exact: false
+  tested_by:
+    shop/checkout.py: tests/test_pricing.py
