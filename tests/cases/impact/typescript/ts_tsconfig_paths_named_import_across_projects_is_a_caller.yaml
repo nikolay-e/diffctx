@@ -1,0 +1,34 @@
+name: ts_tsconfig_paths_named_import_across_projects_is_a_caller
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [typescript, manifests, workspace]
+repo:
+  initial_files:
+    libs/core/package.json: |
+      {"name":"@acme/core","version":"1.0.0"}
+    libs/core/src/money.ts: |
+      export function total(x: number): number {
+        return x;
+      }
+    apps/web/package.json: |
+      {"name":"@acme/web","version":"1.0.0"}
+    apps/web/src/view.ts: |
+      import { total } from '@core/money';
+
+      export function show(x: number): number {
+        return total(x);
+      }
+    apps/web/tsconfig.json: |
+      {"compilerOptions":{"baseUrl":".","paths":{"@core/*":["../../libs/core/src/*"]}}}
+  changed_files:
+    libs/core/src/money.ts: |
+      export function total(x: number): number {
+        return x + 0;
+      }
+  commit_message: change
+expect:
+  changed: ['libs/core/src/money.ts::total']
+  relations:
+  - {from: 'apps/web/src/view.ts::show', to: 'libs/core/src/money.ts::total', kind: calls, resolution: resolved}
+  exact: false

@@ -1,0 +1,44 @@
+name: kt_gradle_source_dir_the_script_computes_is_not_a_complete_answer
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [kotlin, manifests, gradle]
+repo:
+  initial_files:
+    libs/core/build.gradle.kts: |
+      plugins { kotlin("jvm") version "2.0.0" }
+    libs/core/src/main/kotlin/com/acme/core/Money.kt: |
+      package com.acme.core
+
+      fun total(x: Int): Int {
+          return x
+      }
+    apps/web/src/main/kotlin/com/acme/web/View.kt: |
+      package com.acme.web
+
+      import com.acme.core.total
+
+      fun show(x: Int): Int {
+          return total(x)
+      }
+    settings.gradle.kts: |
+      include(":libs:core", ":apps:web")
+    apps/web/build.gradle.kts: |
+      plugins { kotlin("jvm") version "2.0.0" }
+      val shared = file("../../libs/core/src/main/kotlin")
+      sourceSets { main { kotlin.srcDir(shared) } }
+  changed_files:
+    libs/core/src/main/kotlin/com/acme/core/Money.kt: |
+      package com.acme.core
+
+      fun total(x: Int): Int {
+          return x + 0
+      }
+  commit_message: change
+expect:
+  changed: ['libs/core/src/main/kotlin/com/acme/core/Money.kt::total']
+  exact: false
+  discloses: true
+  coverage: {total: {calls: partial}}
+  never_empty: true
+  no_negative_claims: true

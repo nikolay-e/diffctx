@@ -1,0 +1,38 @@
+name: py_mixin_after_an_external_base_is_still_called
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [python, external-base, inheritance]
+repo:
+  initial_files:
+    pkg/__init__.py: |2+
+
+    pkg/mixin.py: |
+      class Mixin:
+          def audit(self, x):
+              return x
+    pkg/client.py: |
+      import requests
+      from pkg.mixin import Mixin
+
+
+      class Client(requests.Session, Mixin):
+          pass
+    pkg/use.py: |
+      from pkg.client import Client
+
+
+      def go():
+          c = Client()
+          return c.audit(1)
+  changed_files:
+    pkg/mixin.py: |
+      class Mixin:
+          def audit(self, x):
+              return x + 1
+  commit_message: change
+expect:
+  changed: ['pkg/mixin.py::audit']
+  relations:
+  - {from: 'pkg/use.py::go', to: 'pkg/mixin.py::audit', kind: calls, resolution: resolved}
+  exact: false

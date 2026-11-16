@@ -1,0 +1,34 @@
+name: js_jsconfig_paths_namespace_import_across_projects_is_a_caller
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [javascript, manifests, workspace]
+repo:
+  initial_files:
+    libs/core/package.json: |
+      {"name":"@acme/core","version":"1.0.0"}
+    libs/core/src/money.js: |
+      export function total(x) {
+        return x;
+      }
+    apps/web/package.json: |
+      {"name":"@acme/web","version":"1.0.0"}
+    apps/web/jsconfig.json: |
+      {"compilerOptions":{"baseUrl":".","paths":{"@core/*":["../../libs/core/src/*"]}}}
+    apps/web/src/view.js: |
+      import * as money from '@core/money';
+
+      export function show(x) {
+        return money.total(x);
+      }
+  changed_files:
+    libs/core/src/money.js: |
+      export function total(x) {
+        return x + 0;
+      }
+  commit_message: change
+expect:
+  changed: ['libs/core/src/money.js::total']
+  relations:
+  - {from: 'apps/web/src/view.js::show', to: 'libs/core/src/money.js::total', kind: calls, resolution: resolved}
+  exact: false
