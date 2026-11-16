@@ -111,3 +111,9 @@ pub(super) const STATEMENT_NAMES: &[(Family, &[DefKind], &str)] = &[
 /// (a migration's `CREATE OR REPLACE`) is one object, and a routine of another schema is no
 /// member a call through an unknown receiver may run.
 pub(super) const SCHEMA_OBJECTS: &[Family] = &[Family::Sql];
+
+/// The keywords of a statement that take a parenthesised operand: what stands in it is an
+/// operand of the statement, never an argument of a callee.
+pub(super) const STATEMENT_KEYWORDS: &[&str] = &[
+    "return", "yield", "throw", "if", "elif", "while", "for", "switch", "catch", "case", "with",
+];
