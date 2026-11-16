@@ -90,8 +90,11 @@ pub struct RunProvenance {
 
 impl RunProvenance {
     /// A revision git cannot be asked about is the run's error: a record that
-    /// leaves its input unnamed would pass for one with no committed side.
+    /// leaves its input unnamed would pass for one with no committed side. A read
+    /// the run's deadline ended is no error: the side stays unnamed and the run
+    /// notes the limit, so the answer says it is partial and still arrives.
     pub fn new(
+        run: &crate::resource::RunContext,
         root_dir: &Path,
         diff_range: Option<&str>,
         effective_config: EffectiveConfigV1,
@@ -99,12 +102,19 @@ impl RunProvenance {
         let (base_rev, head_rev) = diff_range
             .map(crate::snapshot::split_diff_range)
             .unwrap_or((None, None));
+        let oid = |rev: &str| match crate::snapshot::rev_oid(root_dir, rev) {
+            Err(e) if e.is_interruption() => {
+                run.note(crate::resource::reason_for(&e));
+                Ok(None)
+            }
+            read => read,
+        };
         // `git diff X` compares X with the working tree; only `A..B` names a
         // committed right side.
         let working_tree = head_rev.is_none();
         // A staged snapshot's head is a tree, named by its own id.
         let head = match head_rev.as_deref() {
-            Some(rev) => match crate::snapshot::rev_oid(root_dir, rev)? {
+            Some(rev) => match oid(rev)? {
                 Some(oid) => Some(oid),
                 None => rev
                     .bytes()
@@ -113,10 +123,7 @@ impl RunProvenance {
             },
             None => None,
         };
-        let base = crate::snapshot::rev_oid(
-            root_dir,
-            base_rev.as_deref().or(diff_range).unwrap_or("HEAD"),
-        )?;
+        let base = oid(base_rev.as_deref().or(diff_range).unwrap_or("HEAD"))?;
         Ok(Self {
             range: diff_range.map(str::to_string),
             input: Input {
@@ -126,26 +133,6 @@ impl RunProvenance {
             },
             effective_config,
         })
-    }
-
-    /// The record of a run the deadline stopped before it could resolve a revision:
-    /// the range as asked, no id for either side, which says it was not read.
-    pub fn without_revisions(
-        diff_range: Option<&str>,
-        effective_config: crate::effective_config::EffectiveConfigV1,
-    ) -> Self {
-        let (_, head_rev) = diff_range
-            .map(crate::snapshot::split_diff_range)
-            .unwrap_or((None, None));
-        Self {
-            range: diff_range.map(str::to_string),
-            input: Input {
-                base: None,
-                head: None,
-                working_tree: head_rev.is_none(),
-            },
-            effective_config,
-        }
     }
 
     pub fn finish(&self, selection: Option<Selection>) -> Provenance {
