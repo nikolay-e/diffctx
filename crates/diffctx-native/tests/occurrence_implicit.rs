@@ -257,6 +257,17 @@ fn a_definition_no_row_names_has_no_kind() {
 }
 
 #[test]
+fn a_python_constructor_is_traced_by_its_instantiations_not_hedged() {
+    let source = "class V:\n    def __init__(self):\n        pass\n\n    def __new__(cls):\n        return object.__new__(cls)\n\n    def __iter__(self):\n        return self\n";
+    assert!(kinds(&PythonExtractor, source, "V.__init__").is_empty());
+    assert!(kinds(&PythonExtractor, source, "V.__new__").is_empty());
+    assert_eq!(
+        kinds(&PythonExtractor, source, "V.__iter__"),
+        [Implicit::Protocol]
+    );
+}
+
+#[test]
 fn a_name_is_a_row_of_its_own_family_only() {
     assert!(kinds(&RustExtractor, "fn __add__() {}\n", "__add__").is_empty());
     assert!(kinds(&RustExtractor, "fn toString() {}\n", "toString").is_empty());
