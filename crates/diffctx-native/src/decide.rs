@@ -1812,6 +1812,25 @@ impl Cell {
                 }))
     }
 
+    /// The definition of `file` at the head named `name` whose span meets `lines`,
+    /// the first in the resolver's order.
+    fn first_definition_at(
+        &self,
+        file: &str,
+        name: &str,
+        lines: (u32, u32),
+    ) -> Option<&crate::resolve::Definition> {
+        self.defs_by_file
+            .get(file)?
+            .iter()
+            .map(|at| &self.head.definitions()[*at])
+            .find(|d| {
+                d.key.local.name.as_str() == name
+                    && d.span.lines.0 <= lines.1
+                    && lines.0 <= d.span.lines.1
+            })
+    }
+
     /// The annotations a Kotlin definition states at the head, by where it is:
     /// the JVM entry points a framework calls are read off them. `None` for
     /// another family or a definition the facts do not hold.
@@ -1824,12 +1843,7 @@ impl Cell {
         if self.family != Family::Kotlin {
             return None;
         }
-        let def = self.head.definitions().iter().find(|d| {
-            d.file.as_str() == file
-                && d.key.local.name.as_str() == name
-                && d.span.lines.0 <= lines.1
-                && lines.0 <= d.span.lines.1
-        })?;
+        let def = self.first_definition_at(file, name, lines)?;
         let found = self
             .declared(SideTag::Head, &def.file, &def.key)
             .unwrap_or(None)?;
@@ -1852,12 +1866,7 @@ impl Cell {
         name: &str,
         lines: (u32, u32),
     ) -> Vec<(EntryKind, Framework)> {
-        let Some(def) = self.head.definitions().iter().find(|d| {
-            d.file.as_str() == file
-                && d.key.local.name.as_str() == name
-                && d.span.lines.0 <= lines.1
-                && lines.0 <= d.span.lines.1
-        }) else {
+        let Some(def) = self.first_definition_at(file, name, lines) else {
             return Vec::new();
         };
         let Ok(Some(facts)) = facts_of(&self.ctx, SideTag::Head, &self.cache, &def.file) else {
