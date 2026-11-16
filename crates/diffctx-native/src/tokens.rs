@@ -242,7 +242,8 @@ impl TokenIndex {
 
 /// Tokenises the files of `group` in the head listing: the admitted ones by
 /// reading them, the listed-but-unread ones (oversize, symlinks, untracked) as
-/// files with no token set.
+/// files with no token set. A symlink to an admitted file is that file, read
+/// under its own path.
 fn build(head: &Head, group: Group) -> GroupTokens {
     let mut files: Vec<(&RepoPath, Option<&Oid>, bool)> = head
         .listing
@@ -255,7 +256,9 @@ fn build(head: &Head, group: Group) -> GroupTokens {
         head.listing
             .not_analysed
             .iter()
-            .filter(|(path, _)| group.has_path(path.as_str()))
+            .filter(|(path, _)| {
+                group.has_path(path.as_str()) && !head.listing.followed.contains(path)
+            })
             .map(|(path, _)| (path, None, false)),
     );
     files.sort_by(|a, b| a.0.cmp(b.0));
