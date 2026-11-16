@@ -172,5 +172,3 @@ impact/config/config_k8s_referrer_without_a_namespace_reaches_every_namespace_as
 impact/typescript/au_ts_plain_name_as_an_index_key_is_named_not_empty  # `obj["total"](items)` on an `any` receiver is an unlanded gap at dispatch.ts:5, not a candidate row of `go`: the only caller is named by no relation
 impact/python/py_removed_field_lists_its_readers_only  # gh#400: a removed defaulted field lists the class's construction `settings = AppSettings()` as a caller
 impact/python/k4b_pytest_python_files_declare_check_modules_wherever_they_sit  # `smoke_b` in a declared check module is taken for a test function; pytest collects only `test*`
-impact/python/gh713_policy_withheld_importer_is_not_a_complete_scope  # gh#713: the only caller sits in a file `.diffctx/ignore` withholds and impact claims "nothing calls them"
-impact/typescript/fj221_importer_outside_the_pathspec_is_not_a_complete_scope  # fj#221: the only caller sits outside the run's pathspec and impact claims "nothing calls them"
