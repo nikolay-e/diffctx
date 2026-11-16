@@ -17,6 +17,14 @@
 //      of its imports, its type annotations or its package clause, may weaken
 //      to a candidate or a gap, never to a complete answer that names nobody.
 //
+// Two things are not findings because they are not a use. A subject no other
+// file can name (a local of a function or block) or whose value cannot be called
+// (a string, number, boolean or null) is not used by a call spelling, and a
+// stripped caller that no longer holds any route to the subject (its only
+// import, a binding that replaced it, an alias it declared, a project boundary
+// it crossed) is not a caller. Both are judged by kind: the run still happens
+// and DIFFCTX_CLASS_ACCOUNT lists each one.
+//
 // This file holds what the synthetic suite (class_completeness.rs) and the
 // corpus suite (class_completeness_corpus.rs) share: the verdicts, the text
 // of an insertion and the three transformations of a caller. A transformation
@@ -516,6 +524,267 @@ pub(crate) fn regions(own: Option<&str>, symbol: &str) -> Vec<Region> {
         format!("{{% if x %}}{{{{ {symbol}(x) }}}}{{% endif %}}\n"),
     );
     all
+}
+
+// ---- the kind of the subject ----
+
+// What the subject is, where the case's own text shows it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum SubjectKind {
+    // Anything a file of another language may use.
+    Reachable,
+    // Declared inside a function or a block: no other file can name it.
+    Local,
+    // Declared as a plain value, a string, number or boolean, and not imported:
+    // no call names it.
+    Literal,
+}
+
+impl SubjectKind {
+    // The call spelling of the subject, in a region or elsewhere, is provably no
+    // use. A string literal naming a value may still read it by name.
+    pub(crate) fn excuses(self, in_a_region: bool) -> bool {
+        match self {
+            Self::Reachable => false,
+            Self::Local => true,
+            Self::Literal => in_a_region,
+        }
+    }
+}
+
+pub(crate) fn subject_kind(path: &str, text: &str, name: &str) -> SubjectKind {
+    let local = match lang(path) {
+        Some(Lang::Python) => python_local(text, name),
+        Some(Lang::Script) if !matches!(extension(path), "vue" | "svelte" | "astro") => {
+            script_local(text, name)
+        }
+        _ => false,
+    };
+    if local {
+        SubjectKind::Local
+    } else if literal_value(text, name) {
+        SubjectKind::Literal
+    } else {
+        SubjectKind::Reachable
+    }
+}
+
+// Every declaration of `name` sits in the body of a `def`, not of a class.
+fn python_local(text: &str, name: &str) -> bool {
+    let name = regex::escape(name);
+    let declares = rx(&format!(
+        r"^(\s*)(?:(?:async\s+)?def\s+{name}\b|{name}\s*(?::[^=\n]+)?=[^=])"
+    ));
+    let lines: Vec<&str> = text.lines().collect();
+    let mut found = false;
+    for (at, line) in lines.iter().enumerate() {
+        let Some(held) = declares.captures(line) else {
+            continue;
+        };
+        let indent = held[1].len();
+        if indent == 0 || !inside_def(&lines[..at], indent) {
+            return false;
+        }
+        found = true;
+    }
+    found
+}
+
+// Walking up by indentation from a line at `indent`, the nearest enclosing
+// `def` or `class` opens a `def` (an `if` or a `for` between is no scope).
+fn inside_def(before: &[&str], indent: usize) -> bool {
+    let mut limit = indent;
+    for line in before.iter().rev() {
+        let t = line.trim_start();
+        if t.is_empty() || t.starts_with('#') {
+            continue;
+        }
+        let at = line.len() - t.len();
+        if at < limit {
+            if t.starts_with("def ") || t.starts_with("async def ") {
+                return true;
+            }
+            if t.starts_with("class ") || at == 0 {
+                return false;
+            }
+            limit = at;
+        }
+    }
+    false
+}
+
+// The text with strings and comments blanked, byte for byte, so that a brace
+// left in either does not count.
+fn blanked(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut chars = text.chars().peekable();
+    let mut quote: Option<char> = None;
+    while let Some(c) = chars.next() {
+        let blank = |c: char| if c == '\n' { '\n' } else { ' ' };
+        match quote {
+            Some('/') => {
+                if c == '\n' {
+                    quote = None;
+                }
+                out.push(blank(c));
+            }
+            Some('*') => {
+                if c == '*' && chars.peek() == Some(&'/') {
+                    chars.next();
+                    quote = None;
+                    out.push_str("  ");
+                } else {
+                    out.push(blank(c));
+                }
+            }
+            Some(q) => {
+                if c == '\\' {
+                    chars.next();
+                    out.push_str("  ");
+                    continue;
+                }
+                if c == q || (c == '\n' && q != '`') {
+                    quote = None;
+                }
+                out.push(blank(c));
+            }
+            None => match (c, chars.peek()) {
+                ('/', Some('/')) => {
+                    quote = Some('/');
+                    out.push(' ');
+                }
+                ('/', Some('*')) => {
+                    quote = Some('*');
+                    out.push(' ');
+                }
+                ('"' | '\'' | '`', _) => {
+                    quote = Some(c);
+                    out.push(' ');
+                }
+                _ => out.push(c),
+            },
+        }
+    }
+    out
+}
+
+// Every declaration of `name` by `const`, `let`, `var` or `function` is
+// inside braces and not exported. An ambient module exports all it declares.
+fn script_local(text: &str, name: &str) -> bool {
+    let code = blanked(text);
+    if rx(r"\bdeclare\s+(?:module|global|namespace)\b").is_match(&code) {
+        return false;
+    }
+    let declares = rx(&format!(
+        r"(?m)(?P<export>\bexport\s+(?:default\s+)?)?\b(?:const|let|var|function\*?)\s+{}\b",
+        regex::escape(name)
+    ));
+    let mut found = false;
+    for held in declares.captures_iter(&code) {
+        let at = held.get(0).map_or(0, |m| m.start());
+        let depth = code[..at].matches('{').count() as i64 - code[..at].matches('}').count() as i64;
+        if held.name("export").is_some() || depth < 1 {
+            return false;
+        }
+        found = true;
+    }
+    found
+}
+
+// Every assignment to `name` is a plain literal, and nothing declares it as a
+// function or imports it. A null may be replaced by a callable: it is no value.
+fn literal_value(text: &str, name: &str) -> bool {
+    let name = regex::escape(name);
+    let head = format!(r"(?m)^[ \t]*(?:[\w@<>\[\],.:?*&]+[ \t]+){{0,5}}{name}[ \t]*(?::[^=\n]+)?=");
+    let assigned = rx(&format!("{head}[^=]")).find_iter(text).count();
+    let plain = rx(&format!(
+        r#"{head}[ \t]*(?:"[^"\n]*"|'[^'\n]*'|-?\d[\w.]*|true|false|True|False)[ \t]*[;,]?[ \t]*(?://.*|#.*)?$"#
+    ))
+    .find_iter(text)
+    .count();
+    let function = rx(&format!(r"\b(?:def|fn|func|function|fun)\s+{name}\b"));
+    let imported = rx(&format!(
+        r"(?m)^\s*(?:import|from|use|using|require)\b[^\n]*\b{name}\b"
+    ));
+    plain > 0 && plain == assigned && !function.is_match(text) && !imported.is_match(text)
+}
+
+// ---- a stripped caller that holds no route to the subject ----
+
+// A caller the transformation leaves with no route to the subject proves
+// nothing: a red answer for it is judged by kind, never dropped.
+pub(crate) struct Stripped<'a> {
+    pub path: &'a str,
+    pub original: &'a str,
+    pub stripped: &'a str,
+    pub name: &'a str,
+    pub definition: Option<&'a str>,
+    // The transformation removed the caller's import statements.
+    pub imports_removed: bool,
+}
+
+// The nearest `package.json` above `path`: its directory and text.
+fn manifest_of(path: &str, read: &impl Fn(&str) -> Option<String>) -> Option<(String, String)> {
+    let mut dir = path;
+    while let Some((parent, _)) = dir.rsplit_once('/') {
+        dir = parent;
+        if let Some(text) = read(&format!("{dir}/package.json")) {
+            return Some((dir.to_string(), text));
+        }
+    }
+    read("package.json").map(|text| (String::new(), text))
+}
+
+// Two projects under their own manifests, the caller's declaring nothing of the
+// definition's.
+fn across_projects(caller: &str, definition: &str, read: &impl Fn(&str) -> Option<String>) -> bool {
+    let (Some((user, user_text)), Some((used, used_text))) =
+        (manifest_of(caller, read), manifest_of(definition, read))
+    else {
+        return false;
+    };
+    let package = rx(r#""name"\s*:\s*"([^"]+)""#)
+        .captures(&used_text)
+        .map(|held| held[1].to_string());
+    user != used && package.is_none_or(|name| !user_text.contains(&format!("\"{name}\"")))
+}
+
+// Why the stripped caller is no caller, where its own text or its manifest
+// shows it.
+pub(crate) fn route_gone(
+    held: &Stripped,
+    read: &impl Fn(&str) -> Option<String>,
+) -> Option<&'static str> {
+    let name = regex::escape(held.name);
+    let word = rx(&format!(r"\b{name}\b"));
+    let without = strip_imports(held.path, held.stripped);
+    if !word.is_match(without.as_deref().unwrap_or(held.stripped)) {
+        return Some("the name is left only in an import");
+    }
+    if !held.imports_removed || held.definition == Some(held.path) {
+        return None;
+    }
+    let imported = strip_imports(held.path, held.original)
+        .is_some_and(|rest| word.find_iter(&rest).count() < word.find_iter(held.original).count());
+    let rebound = rx(&format!(r"(?m)^\s*{name}\s*(?::[^=\n]+)?=[^=]"));
+    if imported && rebound.is_match(held.stripped) {
+        return Some("the caller assigns the name it imported");
+    }
+    let aliases = rx(r"(?m)^\s*(?:import|from|use)\b[^\n]*?\bas\s+(\w+)");
+    for alias in aliases.captures_iter(held.original) {
+        let head = rx(&format!(
+            r"\b{}\s*(?:\.|::|->|\\)\s*{name}\b",
+            regex::escape(&alias[1])
+        ));
+        if head.is_match(held.stripped) {
+            return Some("the alias that headed the call is declared nowhere");
+        }
+    }
+    let crosses = imported
+        && held
+            .definition
+            .is_some_and(|definition| across_projects(held.path, definition, read));
+    crosses.then_some("the caller's project cannot name the definition's without the import")
 }
 
 // ---- transformations of a caller ----
