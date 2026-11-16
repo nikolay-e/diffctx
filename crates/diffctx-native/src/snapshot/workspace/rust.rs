@@ -101,10 +101,50 @@ pub(super) fn discover(files: &Files, draft: &mut Draft) -> Result<()> {
         inherited.insert(manifest.root, entries);
     }
     let workspace_roots: BTreeSet<&str> = inherited.keys().copied().collect();
+    let overrides = path_overrides(files, draft)?;
     for manifest in &manifests {
-        read_manifest(files, manifest, &inherited, &workspace_roots, draft)?;
+        read_manifest(
+            files,
+            manifest,
+            &inherited,
+            &workspace_roots,
+            &overrides,
+            draft,
+        )?;
     }
     Ok(())
+}
+
+/// The directories a `.cargo/config.toml` `paths` array puts in place of registry crates, with the
+/// directory they apply below: the crates found there are local ones.
+fn path_overrides(files: &Files, draft: &mut Draft) -> Result<Vec<(String, Vec<String>)>> {
+    let mut found = Vec::new();
+    for path in ["config.toml", "config"]
+        .into_iter()
+        .flat_map(|name| files.named(name))
+        .filter(|path| name_of(dir_of(path)) == ".cargo")
+    {
+        let base = dir_of(dir_of(path));
+        let Some(text) = files.read(path)? else {
+            continue;
+        };
+        match toml::from_str::<toml::Table>(&text) {
+            Ok(table) => {
+                let dirs: Vec<String> = toml_strings(table.get("paths"))
+                    .iter()
+                    .filter_map(|dir| join(base, dir))
+                    .collect();
+                found.push((base.to_string(), dirs));
+            }
+            Err(error) => draft.unknown(
+                base,
+                Ecosystem::Cargo,
+                path,
+                format!("not valid TOML: {error}"),
+            ),
+        }
+    }
+    Ok(found)
 }
 
 /// The workspace root that owns `root`: the nearest manifest above it with a
@@ -141,6 +181,7 @@ fn read_manifest(
     manifest: &Manifest,
     inherited: &BTreeMap<&str, BTreeMap<String, Inherited>>,
     workspaces: &BTreeSet<&str>,
+    overrides: &[(String, Vec<String>)],
     draft: &mut Draft,
 ) -> Result<()> {
     let (root, table) = (manifest.root, &manifest.table);
@@ -204,6 +245,17 @@ fn read_manifest(
                     links.extend(entry.dir.clone());
                 }
             }
+        }
+    }
+
+    for (base, dirs) in overrides {
+        if base.is_empty()
+            || root == base
+            || root
+                .strip_prefix(base.as_str())
+                .is_some_and(|r| r.starts_with('/'))
+        {
+            links.extend(dirs.iter().cloned());
         }
     }
 
