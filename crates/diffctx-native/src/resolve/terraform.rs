@@ -80,17 +80,6 @@ impl TerraformResolver {
         self.external
     }
 
-    /// Whether a module call sets the variables of the module `file` is in: a
-    /// call of the repository sources its directory, or the standard module
-    /// structure nests it as `modules/<name>`, a module only a `module` block
-    /// calls, here or in a repository that sources it. A directory nothing calls
-    /// is a root module, set from outside (a tfvars file, `-var`, `TF_VAR_`), at
-    /// any depth, only when it holds what a root holds (see `is_root`).
-    pub fn is_called(&self, file: &str) -> bool {
-        let dir = dir_of(file);
-        self.called.contains(dir) || nested_by_layout(dir)
-    }
-
     /// Whether the module `file` is in is applied from outside: no call of the
     /// repository sources its directory and the directory holds a state backend, a
     /// variable file or a lock file. A directory nothing calls and nothing says is
@@ -104,11 +93,6 @@ impl TerraformResolver {
 fn is_root_file(path: &str) -> bool {
     let name = path.rsplit('/').next().unwrap_or(path);
     name == ".terraform.lock.hcl" || name.ends_with(".tfvars") || name.ends_with(".tfvars.json")
-}
-
-fn nested_by_layout(dir: &str) -> bool {
-    dir.rsplit_once('/')
-        .is_some_and(|(parent, _)| parent.rsplit('/').next() == Some("modules"))
 }
 
 solved_by!(TerraformResolver);
