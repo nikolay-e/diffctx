@@ -275,3 +275,29 @@ fn an_entry_reads_as_an_entry_point_never_as_nothing_calling_it() {
         .collect();
     assert_eq!(said, ["entry point: route GET /reviews (fastapi)"]);
 }
+
+#[test]
+fn a_migration_is_entered_by_its_revision_id_and_a_lookalike_is_not() {
+    let entries = |source: &str| -> Vec<String> {
+        let blob = PythonExtractor.extract(source.as_bytes(), &RunBudget::default());
+        blob.facts
+            .iter()
+            .filter_map(|fact| match fact {
+                Fact::EntryPoint(e) => Some(describe(e.kind, e.framework.as_ref()?)),
+                _ => None,
+            })
+            .collect()
+    };
+    let migration = "revision: str = \"001_base\"\ndown_revision = None\n\n\ndef upgrade():\n    pass\n\n\ndef downgrade():\n    pass\n\n\ndef helper():\n    pass\n";
+    assert_eq!(
+        entries(migration),
+        [
+            "entry point: migration 001_base (alembic)",
+            "entry point: migration 001_base (alembic)"
+        ]
+    );
+    let no_chain = migration.replace("down_revision = None\n", "");
+    assert!(entries(&no_chain).is_empty());
+    let method = "revision = \"1\"\ndown_revision = None\n\n\nclass M:\n    def upgrade(self):\n        pass\n";
+    assert!(entries(method).is_empty());
+}

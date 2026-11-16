@@ -36,9 +36,9 @@ use super::{ERROR_RANGES_KEPT, lines_of, merge_ranges, read_tree, span};
 use crate::facts::framework;
 use crate::facts::{
     BlobFacts, ComputedImport, Def, DefKind, Disambig, EntryKind, EntryPoint, Export, Extractor,
-    Fact, Hasher, Import, ImportKind, Language, Local, LocalKey, LocalKind, ModulePath, Name,
-    Namespace, PathMention, Receiver, Ref, Scope, Star, TypeName, UseKind, Visibility, expired,
-    hash_text,
+    Fact, Framework, Hasher, Import, ImportKind, Language, Local, LocalKey, LocalKind, ModulePath,
+    Name, Namespace, PathMention, Receiver, Ref, Scope, Star, TypeName, UseKind, Visibility,
+    expired, hash_text,
 };
 use crate::snapshot::RunBudget;
 
@@ -476,9 +476,62 @@ impl<'t> Walker<'t> {
             read: UseKind::Read,
         };
         self.visit(root, &cx, 0);
+        self.migration_entries(root);
     }
 
     walker_methods!();
+
+    /// A migration script names its revision (`revision`, `down_revision` at the top of
+    /// the module): the runner enters `upgrade` and `downgrade` by that id.
+    fn migration_entries(&mut self, root: Node<'t>) {
+        let (mut revision, mut chained) = (None, false);
+        let mut cursor = root.walk();
+        for assignment in root
+            .named_children(&mut cursor)
+            .filter_map(|statement| statement.named_child(0))
+            .filter(|node| node.kind() == "assignment")
+        {
+            let Some(left) = assignment.child_by_field_name("left") else {
+                continue;
+            };
+            match self.text(left) {
+                "revision" => {
+                    revision = assignment
+                        .child_by_field_name("right")
+                        .and_then(|right| self.plain_string(right));
+                }
+                "down_revision" => chained = true,
+                _ => {}
+            }
+        }
+        let Some(label) = revision.filter(|_| chained) else {
+            return;
+        };
+        let entries: Vec<Fact> = self
+            .facts
+            .iter()
+            .filter_map(|fact| match fact {
+                Fact::Definition(def)
+                    if def.kind == DefKind::Function
+                        && def.local.container.is_empty()
+                        && matches!(def.local.name.as_str(), "upgrade" | "downgrade") =>
+                {
+                    Some(Fact::EntryPoint(EntryPoint {
+                        site: def.name_span.clone(),
+                        kind: EntryKind::Migration,
+                        target: Scope::Def(def.local.clone()),
+                        framework: Some(Framework {
+                            name: Name::new("alembic"),
+                            verb: None,
+                            label: Some(label.clone()),
+                        }),
+                    }))
+                }
+                _ => None,
+            })
+            .collect();
+        self.facts.extend(entries);
+    }
 
     fn is_type_checking(&self, condition: Node<'_>) -> bool {
         let compact: String = self
