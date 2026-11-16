@@ -1809,11 +1809,11 @@ pub(crate) fn embedded_naming(
         }) {
             continue;
         }
+        // Any `-c`/`-e`: a container runner's own `-e K=V` comes before the
+        // interpreter's `-c`.
         let inline = words
-            .iter()
-            .position(|w| matches!(*w, "-c" | "-e"))
-            .and_then(|i| words.get(i + 1))
-            .is_some_and(|code| names(code.trim_matches(['\'', '"'])));
+            .windows(2)
+            .any(|pair| matches!(pair[0], "-c" | "-e") && names(pair[1].trim_matches(['\'', '"'])));
         let fed = node.parent().is_some_and(|p| {
             p.kind() == "redirected_statement"
                 && children_of(p, "heredoc_redirect")
