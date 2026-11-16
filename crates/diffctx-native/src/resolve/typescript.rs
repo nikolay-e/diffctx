@@ -1370,6 +1370,26 @@ impl<'a> Engine<'a> {
         })
     }
 
+    /// Whether the scope `path` lies in the body of a namespace merged into the class that the
+    /// first `depth` names spell: the namespace's members are names there, the class's are not.
+    fn in_namespace_body(&self, f: usize, path: &[Name], depth: usize) -> bool {
+        let file = &self.ix.files[f];
+        let (Some(twins), Some(inner)) = (
+            file.by_path.get(&path[..depth]),
+            path.get(..=depth).and_then(|inner| file.by_path.get(inner)),
+        ) else {
+            return false;
+        };
+        let span = |id: &usize| &self.ix.defs[*id].def.span.bytes;
+        (twins.iter())
+            .filter(|id| self.ix.defs[**id].def.kind == DefKind::Module)
+            .any(|body| {
+                inner.iter().any(|def| {
+                    span(body).start <= span(def).start && span(def).end <= span(body).end
+                })
+            })
+    }
+
     fn entity_of_def(&self, id: usize) -> Entity {
         match self.ix.defs[id].def.kind {
             DefKind::Class
@@ -1418,7 +1438,8 @@ impl<'a> Engine<'a> {
         let path = scope_path(scope);
         for depth in (0..=path.len()).rev() {
             let prefix = &path[..depth];
-            if depth > 0 && !self.is_scope_container(f, prefix) {
+            let merged = depth > 0 && !self.is_scope_container(f, prefix);
+            if merged && !self.in_namespace_body(f, &path, depth) {
                 continue;
             }
             if depth == 0 {
@@ -1438,7 +1459,18 @@ impl<'a> Engine<'a> {
                 let named: Vec<usize> = ids
                     .iter()
                     .copied()
-                    .filter(|id| self.ix.defs[*id].def.local.name == *name)
+                    .filter(|id| {
+                        let def = &self.ix.defs[*id].def;
+                        def.local.name == *name
+                            && !(merged
+                                && matches!(
+                                    def.kind,
+                                    DefKind::Method
+                                        | DefKind::Property
+                                        | DefKind::Field
+                                        | DefKind::Constructor
+                                ))
+                    })
                     .collect();
                 if let Some(id) = self.ix.primary(&named, want_type) {
                     return Some(Named::Hit(Hit {

@@ -1,0 +1,52 @@
+name: ts_class_method_beside_a_merged_namespace_does_not_read_its_member_bare
+mode: impact
+source: synthetic
+issue_state: open
+tags: [typescript, bare-name, declaration-merging, decoy]
+repo:
+  initial_files:
+    package.json: |
+      {"name":"app","version":"1.0.0"}
+    tsconfig.json: |
+      {"compilerOptions":{"strict":true}}
+    src/foo.ts: |
+      export class Foo {
+        id = 1;
+
+        run(): number {
+          return defaults.retries;
+        }
+      }
+
+      export namespace Foo {
+        export const defaults = { retries: 1 };
+
+        export function retries(): number {
+          return defaults.retries;
+        }
+      }
+  changed_files:
+    src/foo.ts: |
+      export class Foo {
+        id = 1;
+
+        run(): number {
+          return defaults.retries;
+        }
+      }
+
+      export namespace Foo {
+        export const defaults = { retries: 2 };
+
+        export function retries(): number {
+          return defaults.retries;
+        }
+      }
+  commit_message: change
+expect:
+  changed: ['src/foo.ts::defaults']
+  relations:
+  - {from: 'src/foo.ts::retries', to: 'src/foo.ts::defaults', kind: calls, resolution: resolved}
+  exact: false
+  never_empty: true
+  no_negative_claims: true
