@@ -1,0 +1,35 @@
+name: php_function_of_a_composer_autoload_file_is_a_caller_from_a_namespace
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [php, builtin, autoload]
+repo:
+  initial_files:
+    composer.json: |
+      {"autoload":{"files":["src/helpers.php"],"psr-4":{"App\\":"src/"}}}
+    src/helpers.php: |
+      <?php
+      function format_money($x) {
+          return $x;
+      }
+    src/Use.php: |
+      <?php
+      namespace App;
+
+      class UseIt {
+          public function go($x) {
+              return format_money($x);
+          }
+      }
+  changed_files:
+    src/helpers.php: |
+      <?php
+      function format_money($x) {
+          return $x + 0;
+      }
+  commit_message: change
+expect:
+  changed: ['src/helpers.php::format_money']
+  relations:
+  - {from: 'src/Use.php::go', to: 'src/helpers.php::format_money', kind: calls, resolution: resolved}
+  exact: false

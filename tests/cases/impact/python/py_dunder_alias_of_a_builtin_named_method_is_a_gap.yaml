@@ -1,0 +1,50 @@
+name: py_dunder_alias_of_a_builtin_named_method_is_a_gap
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [python, builtin, alias, gap]
+repo:
+  initial_files:
+    pkg/__init__.py: |2+
+
+    pkg/it.py: |
+      class Counter:
+          def __init__(self):
+              self.n = 0
+
+          def next(self):
+              self.n += 1
+              return self.n
+
+          __next__ = next
+
+          def __iter__(self):
+              return self
+    pkg/use.py: |
+      from pkg.it import Counter
+
+
+      def run():
+          c = Counter()
+          return next(c)
+  changed_files:
+    pkg/it.py: |
+      class Counter:
+          def __init__(self):
+              self.n = 0
+
+          def next(self):
+              self.n += 2
+              return self.n
+
+          __next__ = next
+
+          def __iter__(self):
+              return self
+  commit_message: change
+expect:
+  changed: ['pkg/it.py::next']
+  coverage:
+    pkg/it.py::next: {calls: partial}
+  no_negative_claims: true
+  exact: false
