@@ -1,0 +1,34 @@
+name: gh620_lock_bump_is_not_an_exact_zero_callers
+mode: impact
+source: gh#620
+issue_state: open
+tags: [config, lock, absence-claim]
+repo:
+  initial_files:
+    pyproject.toml: |
+      [project]
+      name = "app"
+      version = "0"
+      dependencies = ["requests>=2"]
+    uv.lock: |
+      version = 1
+
+      [[package]]
+      name = "requests"
+      version = "2.31.0"
+    app.py: |
+      import requests
+
+
+      def fetch(url):
+          return requests.get(url, timeout=5).text
+  changed_files:
+    uv.lock: |
+      version = 1
+
+      [[package]]
+      name = "requests"
+      version = "2.32.3"
+expect:
+  exact: false
+  no_negative_claims: true
