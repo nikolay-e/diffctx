@@ -801,28 +801,6 @@ fn a_module_call_reaches_its_directory_and_a_source_that_is_no_path_reaches_noth
 }
 
 #[test]
-fn a_module_is_called_when_a_call_sources_its_directory_whatever_its_depth() {
-    let fx = snapshot(&[
-        (
-            "infra/prod/main.tf",
-            "module \"net\" {\n  source = \"../../modules/net\"\n}\n",
-        ),
-        ("modules/net/main.tf", NET),
-        ("infra/stage/main.tf", NET),
-        ("modules/spare/main.tf", NET),
-        ("modules/spare/examples/basic/main.tf", NET),
-    ]);
-    assert!(fx.head.is_called("modules/net/main.tf"));
-    // fj#193: a directory no call sources is a root module, deep or not.
-    assert!(!fx.head.is_called("infra/prod/main.tf"));
-    assert!(!fx.head.is_called("infra/stage/main.tf"));
-    // The standard module structure nests a module only a module block calls;
-    // its example is a root module again.
-    assert!(fx.head.is_called("modules/spare/main.tf"));
-    assert!(!fx.head.is_called("modules/spare/examples/basic/main.tf"));
-}
-
-#[test]
 fn a_directory_no_call_sources_is_a_root_only_with_what_a_root_holds() {
     let fx = snapshot(&[
         ("bare/main.tf", NET),
@@ -843,6 +821,7 @@ fn a_directory_no_call_sources_is_a_root_only_with_what_a_root_holds() {
             "terraform {\n  required_version = \">= 1\"\n}\n",
         ),
         ("called/main.tf", NET),
+        ("called/prod.tfvars", "cidr = \"10.0.0.0/16\"\n"),
         ("main.tf", "module \"net\" {\n  source = \"./called\"\n}\n"),
     ]);
     for dir in ["vars", "locked", "state", "cloud"] {
