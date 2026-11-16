@@ -86,11 +86,8 @@ pub(crate) fn evaluate(
     }
     let answer = engine::run(&case, name)?;
     let (failures, report) = judge::judge(name, &case, &compiled, language, &answer);
-    let hedges = if std::env::var_os("DIFFCTX_BIN").is_some() {
-        Vec::new()
-    } else {
-        judge::gate(&case, &compiled, &answer)
-    };
+    // Judged under DIFFCTX_BIN too: the class test must see a base binary's false hedge.
+    let hedges = judge::gate(&case, &compiled, &answer);
     Ok(Outcome {
         failures,
         hedges,
