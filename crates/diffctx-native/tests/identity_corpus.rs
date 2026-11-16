@@ -1,5 +1,5 @@
-// The accounting identity (relay arch, R38 B) over every case of the impact and
-// symbol corpus: in every file that may name a changed definition, each text match
+// Guards the accounting identity over every case of the impact and symbol
+// corpus: in every file that may name a changed definition, each text match
 // of each of its names is exactly one record — a use, a declaration, a not-ours with
 // its witness, a gap. The binary checks it itself in a debug build under
 // `DIFFCTX_DEBUG_IDENTITY` (src/tokens/occurrence/identity.rs); this suite sets the
