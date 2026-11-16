@@ -1,0 +1,41 @@
+name: config_symbol_helm_dotted_dashed_template_name_without_a_path
+mode: symbol
+source: gh#378
+issue_state: open
+tags:
+- config
+- helm
+- symbol
+- dotted-name
+repo:
+  initial_files:
+    charts/app/Chart.yaml: |
+      apiVersion: v2
+      name: app
+      version: 0.1.0
+    charts/app/templates/_helpers.tpl: |
+      {{- define "app.wait-for-db" -}}
+      wait-for-db
+      {{- end -}}
+    charts/app/templates/deployment.yaml: |
+      spec:
+        initContainers:
+          - name: {{ include "app.wait-for-db" . }}
+    charts/app/templates/notes.txt: |
+      app.wait-for-db is spelled here as prose only
+  commit_message: Change config symbol helm dotted dashed template name without a path
+query:
+  symbol: app.wait-for-db
+expect:
+  relations:
+  - from: charts/app/templates/deployment.yaml
+    to: charts/app/templates/_helpers.tpl::app.wait-for-db
+    kind: calls
+    resolution: resolved
+    site: 3
+  exact: true
+  decoys:
+    charts/app/templates/_helpers.tpl::app.wait-for-db:
+    - charts/app/templates/notes.txt
+  definitions:
+  - charts/app/templates/_helpers.tpl::app.wait-for-db
