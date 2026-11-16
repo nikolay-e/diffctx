@@ -29,7 +29,7 @@ enum Part {
 }
 
 /// The patterns are words split by spaces; one ending in `*` is a prefix; a `Word`
-/// pattern is lower case.
+/// pattern is lower case; one starting with `!` takes a name out of the row.
 type Row = (Family, Part, Implicit, &'static str);
 
 const TABLE: &[Row] = &[
@@ -39,7 +39,12 @@ const TABLE: &[Row] = &[
         Implicit::Operator,
         "__call__ __getitem__ __setitem__ __delitem__ __getattr__ __setattr__ __delattr__ __getattribute__ __add__ __sub__ __mul__ __matmul__ __truediv__ __floordiv__ __mod__ __pow__ __neg__ __pos__ __invert__ __and__ __or__ __xor__ __lshift__ __rshift__",
     ),
-    (Family::Python, Part::Name, Implicit::Protocol, "__*"),
+    (
+        Family::Python,
+        Part::Name,
+        Implicit::Protocol,
+        "__* !__init__ !__new__",
+    ),
     (Family::Python, Part::Name, Implicit::Test, "test_*"),
     (Family::Python, Part::Word, Implicit::Override, "override"),
     (
@@ -194,14 +199,21 @@ pub fn implicit_kinds(file: &FileFacts, def: &Def, known: Known) -> Vec<Implicit
     // caller. Which is which the calls say, not the depth of the path (fj#193).
     let rooted = !known.module_called;
     for (family, part, kind, patterns) in TABLE {
-        let hit = patterns.split_ascii_whitespace().any(|pattern| {
+        let names = |pattern: &str| {
             tags.iter().any(|(at, tag)| {
                 at == part
                     && pattern
                         .strip_suffix('*')
                         .map_or(pattern == tag, |prefix| tag.starts_with(prefix))
             })
-        });
+        };
+        let hit = patterns
+            .split_ascii_whitespace()
+            .any(|pattern| pattern.strip_prefix('!').is_none() && names(pattern))
+            && !patterns
+                .split_ascii_whitespace()
+                .filter_map(|pattern| pattern.strip_prefix('!'))
+                .any(names);
         if hit && family.has(file.language()) && (rooted || *family != Family::Terraform) {
             found.push(*kind);
         }
