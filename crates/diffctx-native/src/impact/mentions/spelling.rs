@@ -5,8 +5,9 @@
 //! behind a shell variable that holds the script's own directory
 //! (`"$CI_DIR/rules-test.yaml"`), through a symlinked directory (`link/t.sh`),
 //! as the directory it is the index of (`import ./lib`), as a wiki link
-//! (`[[b]]`), as the route a framework serves a page file at (`/about`), and
-//! as the program a script is installed as (`~/.local/bin/backup`). Every
+//! (`[[b]]`), as the route a framework serves a page file at (`/about`), as the
+//! URL a `public/` directory serves a file at (`/img/a.jpg`), and as the
+//! program a script is installed as (`~/.local/bin/backup`). Every
 //! reader of path mentions asks `Spellings`, so a spelling one of them reads,
 //! all of them read.
 
@@ -217,7 +218,10 @@ impl Spellings {
         let routed = (reader == Reader::Stale
             && route_of(target).is_some_and(|route| token.trim_end_matches('/') == route))
         .then_some(Naming::FullPath);
-        [direct, linked, indexed, installed, routed]
+        let served = public_url(target)
+            .is_some_and(|(project, url)| token == url && referrer.starts_with(&project))
+            .then_some(Naming::FullPath);
+        [direct, linked, indexed, installed, routed, served]
             .into_iter()
             .flatten()
             .min()
@@ -332,6 +336,17 @@ fn route_of(path: &str) -> Option<String> {
         return None;
     }
     Some(format!("/{}", routed.join("/")))
+}
+
+/// The URL the `public/` directory of a web project serves a file at, and the
+/// directory the project sits in, which the pages naming it lie under:
+/// `site/public/img/a.jpg` is `/img/a.jpg` for `site/`.
+fn public_url(path: &str) -> Option<(String, String)> {
+    let segments: Vec<&str> = path.split('/').collect();
+    let (_, dirs) = segments.split_last()?;
+    let at = dirs.iter().position(|d| *d == "public")?;
+    let project: String = segments[..at].iter().flat_map(|d| [*d, "/"]).collect();
+    Some((project, format!("/{}", segments[at + 1..].join("/"))))
 }
 
 fn is_shell(path: &str) -> bool {
