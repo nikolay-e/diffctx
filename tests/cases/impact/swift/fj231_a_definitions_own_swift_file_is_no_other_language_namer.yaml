@@ -1,0 +1,19 @@
+name: fj231_a_definitions_own_swift_file_is_no_other_language_namer
+mode: impact
+source: fj#231
+issue_state: closed
+tags: [swift, unread-file, no-caller]
+repo:
+  initial_files:
+    README.md: |
+      demo
+  changed_files:
+    Sources/Cam/Frames.swift: |
+      func countCapturedFrames(_ frames: [Int]) -> Int {
+          frames.count
+      }
+  commit_message: "cam: count captured frames"
+expect:
+  changed: [Sources/Cam/Frames.swift::countCapturedFrames]
+  callers: {countCapturedFrames: []}
+  unknowns: {}
