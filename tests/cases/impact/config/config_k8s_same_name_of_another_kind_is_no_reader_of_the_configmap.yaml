@@ -72,3 +72,9 @@ expect:
     k8s/configmap.yaml:
     - k8s/ingress.yaml
     - k8s/service.yaml
+  partial:
+    # The kubelet reads an applied ConfigMap when it starts any pod that names it,
+    # including pods of manifests applied from other repositories. The readers in
+    # this repository are listed.
+    k8s/configmap.yaml::ConfigMap/db:
+      reads: not_traced

@@ -74,3 +74,9 @@ expect:
   decoys:
     prod/configmap.yaml:
     - staging/app.yaml
+  partial:
+    # The kubelet reads an applied ConfigMap when it starts any pod of namespace
+    # prod that names it, including pods of manifests applied from other
+    # repositories. The readers in this repository are listed.
+    prod/configmap.yaml::ConfigMap/settings:
+      reads: not_traced

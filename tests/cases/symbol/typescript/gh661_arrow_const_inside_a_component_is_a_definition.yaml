@@ -15,3 +15,9 @@ query:
   symbol: handleLogout
 expect:
   definitions: [src/Layout.tsx::handleLogout]
+  partial:
+    # `onClick={handleLogout}` hands the function to the framework, which calls
+    # it on a click: the use is real, and no call or read site of it is traced.
+    src/Layout.tsx::handleLogout:
+      calls: unlanded
+      reads: unlanded

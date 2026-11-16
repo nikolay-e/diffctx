@@ -31,3 +31,8 @@ expect:
     resolution: resolved
     site: 3
   exact: true
+  partial:
+    # `::double` hands the function to `map`, which calls it where this
+    # repository cannot follow: the use is real, who runs it is not traced.
+    src/main/kotlin/p/Math.kt::double:
+      calls: passed_as_value

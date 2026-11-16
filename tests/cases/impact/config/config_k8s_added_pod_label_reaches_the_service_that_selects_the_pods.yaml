@@ -64,3 +64,10 @@ expect:
   decoys:
     k8s/web.yaml:
     - k8s/db-svc.yaml
+  partial:
+    # The Deployment controller of the cluster reads the pod template's labels
+    # and the API server applies them to the pods; selectors of objects applied
+    # from other repositories (a NetworkPolicy, an HPA, another Service) read them
+    # too. Only the readers in this repository are listed.
+    k8s/web.yaml::Deployment.apps/web:
+      reads: not_traced

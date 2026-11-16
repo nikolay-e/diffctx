@@ -93,3 +93,9 @@ expect:
   exact: true
   definitions:
   - db/V1__fn.sql::lib.refresh_book
+  partial:
+    # worker/Refresh.java spells the call inside a Java string: a file of another
+    # language the SQL model does not read, so what it holds stays unaccounted.
+    db/V1__fn.sql::lib.refresh_book:
+      calls: unaccounted
+      reads: unaccounted
