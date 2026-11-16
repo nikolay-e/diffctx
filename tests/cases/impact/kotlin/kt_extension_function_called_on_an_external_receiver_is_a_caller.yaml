@@ -1,0 +1,37 @@
+name: kt_extension_function_called_on_an_external_receiver_is_a_caller
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [kotlin, external-name, extension]
+repo:
+  initial_files:
+    build.gradle.kts: |
+      plugins { kotlin("jvm") version "2.0.0" }
+    src/main/kotlin/com/acme/Ext.kt: |
+      package com.acme
+
+      fun String.shout(): String {
+          return this.uppercase()
+      }
+    src/main/kotlin/com/acme/Use.kt: |
+      package com.acme
+
+      fun go(s: String): String {
+          return s.shout()
+      }
+  changed_files:
+    src/main/kotlin/com/acme/Ext.kt: |
+      package com.acme
+
+      fun String.shout(): String {
+          return this.uppercase() + "!"
+      }
+  commit_message: change
+expect:
+  changed: ['src/main/kotlin/com/acme/Ext.kt::shout']
+  relations:
+  - from: src/main/kotlin/com/acme/Use.kt::go
+    to: src/main/kotlin/com/acme/Ext.kt::shout
+    kind: calls
+    resolution: resolved
+  exact: false

@@ -1,0 +1,44 @@
+name: ts_structural_implementer_called_through_an_undeclared_package_interface_is_possibly_called
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [typescript, external-name, structural]
+repo:
+  initial_files:
+    package.json: |
+      {"name":"app","version":"1.0.0"}
+    tsconfig.json: |
+      {"compilerOptions":{"strict":true}}
+    src/sink.ts: |
+      export class Sink {
+        dispose(): void {
+          console.log('a');
+        }
+      }
+    src/emit.ts: |
+      import type { Disposable } from 'vscode';
+
+      export function close(d: Disposable): void {
+        d.dispose();
+      }
+    src/run.ts: |
+      import { Sink } from './sink';
+      import { close } from './emit';
+
+      export function run(): void {
+        close(new Sink());
+      }
+  changed_files:
+    src/sink.ts: |
+      export class Sink {
+        dispose(): void {
+          console.log('b');
+        }
+      }
+  commit_message: change
+expect:
+  changed: ['src/sink.ts::dispose']
+  coverage:
+    src/sink.ts::dispose: {calls: partial}
+  no_negative_claims: true
+  exact: false

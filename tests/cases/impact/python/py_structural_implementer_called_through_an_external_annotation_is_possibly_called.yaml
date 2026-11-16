@@ -1,0 +1,37 @@
+name: py_structural_implementer_called_through_an_external_annotation_is_possibly_called
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [python, external-name, structural]
+repo:
+  initial_files:
+    pkg/__init__.py: |2+
+
+    pkg/sink.py: |
+      class Sink:
+          def write(self, s):
+              return len(s)
+    pkg/emit.py: |
+      from typing import IO
+
+
+      def emit(w: IO[str]):
+          w.write('x')
+    pkg/run.py: |
+      from pkg.sink import Sink
+      from pkg.emit import emit
+
+
+      def run():
+          emit(Sink())
+  changed_files:
+    pkg/sink.py: |
+      class Sink:
+          def write(self, s):
+              return len(s) + 0
+  commit_message: change
+expect:
+  changed: ['pkg/sink.py::write']
+  relations:
+  - {from: 'pkg/emit.py::emit', to: 'pkg/sink.py::write', kind: calls, resolution: candidate}
+  exact: false

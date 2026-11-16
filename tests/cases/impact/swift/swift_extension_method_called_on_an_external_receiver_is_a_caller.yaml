@@ -1,0 +1,34 @@
+name: swift_extension_method_called_on_an_external_receiver_is_a_caller
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [swift, external-name, extension]
+repo:
+  initial_files:
+    Package.swift: |
+      // swift-tools-version:5.9
+      import PackageDescription
+      let package = Package(name: "App", targets: [.target(name: "App")])
+    Sources/App/Ext.swift: |
+      extension String {
+          func shout() -> String {
+              return self.uppercased()
+          }
+      }
+    Sources/App/Use.swift: |
+      func go(_ s: String) -> String {
+          return s.shout()
+      }
+  changed_files:
+    Sources/App/Ext.swift: |
+      extension String {
+          func shout() -> String {
+              return self.uppercased() + "!"
+          }
+      }
+  commit_message: change
+expect:
+  changed: ['Sources/App/Ext.swift::shout']
+  relations:
+  - {from: 'Sources/App/Use.swift::go', to: 'Sources/App/Ext.swift::shout', kind: calls, resolution: resolved}
+  exact: false
