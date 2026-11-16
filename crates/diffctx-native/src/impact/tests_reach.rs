@@ -81,6 +81,9 @@ pub(super) struct TestsReach<'a> {
     above: RefCell<FxHashMap<FragmentId, bool>>,
     /// The files the runners' configurations declare tests, whatever their names.
     declared: DeclaredTests,
+    /// The changed files, by the path the answer prints: a test the change itself
+    /// touches is named before the others.
+    changed: FxHashSet<String>,
 }
 
 impl<'a> TestsReach<'a> {
@@ -219,6 +222,7 @@ impl<'a> TestsReach<'a> {
             stops: RefCell::default(),
             above: RefCell::default(),
             declared,
+            changed: super::changed_rels(state).collect(),
         }
     }
 
@@ -324,8 +328,8 @@ impl<'a> TestsReach<'a> {
         found
     }
 
-    /// Every test that reaches the caller at the fewest hops, in path then name
-    /// order, and the function in between when the test calls something that
+    /// Every test that reaches the caller at the fewest hops, the ones the change
+    /// touches first, then in path then name order, and the function in between when the test calls something that
     /// calls it — a public tool over a helper is how most code is tested
     /// (#348). Up to [`MAX_TEST_HOPS`] hops up the uses; none: no test.
     pub(super) fn tested_by(
@@ -342,7 +346,10 @@ impl<'a> TestsReach<'a> {
         for test in &mut answer {
             test.path = rel(state, &test.path);
         }
-        answer.sort();
+        answer.sort_by(|a, b| {
+            let untouched = |t: &TestLink| !self.changed.contains(&t.path);
+            untouched(a).cmp(&untouched(b)).then_with(|| a.cmp(b))
+        });
         answer.dedup();
         self.memo
             .borrow_mut()
