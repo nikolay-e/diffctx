@@ -5160,7 +5160,10 @@ fn a_reminder_names_no_callers_a_review_did_not_find() {
     write(repo, "a.py", "def lonely(x):\n    return x + 2\n");
     write(repo, ".env", "A=2\n");
     let shown = context_of(&run_line(repo, cache.path(), "git diff"));
-    assert!(shown.contains(" 0 caller(s) outside the diff"), "{shown}");
+    assert!(
+        shown.contains("no caller found outside the diff"),
+        "{shown}"
+    );
     let context = context_of(&run_line(repo, cache.path(), "git commit -qam lonely"));
     assert!(
         context.starts_with("diffctx: this command recorded a change whose impact was shown"),
