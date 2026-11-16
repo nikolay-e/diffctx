@@ -748,9 +748,8 @@ const RED: &[(&str, &str)] = &[
     ),
     (
         "impact/python/py_removed_field_lists_its_readers_only",
-        "gh#400: the reader of a removed field is reported under the removed field, and the \
-         class's construction sites under the class whose generated constructor lost the \
-         parameter; decide() names both, the resolver binds `settings.b` to the field",
+        "gh#400: the AppSettings() construction is reported as a caller of a class whose removed \
+         field no construction passed",
     ),
     (
         "impact/python/py_removed_middle_field_with_a_typed_reader_is_named_as_removed",
