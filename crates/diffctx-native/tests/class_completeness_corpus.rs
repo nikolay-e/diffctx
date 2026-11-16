@@ -1,7 +1,7 @@
 // The two class-level properties of class_completeness.rs, over every case of
-// the impact and symbol corpus (relay arch, R28 and R29). Each case's
-// repository is the seed; its own expectations are not read except to find
-// the subject (the changed definition and the files that call it).
+// the impact and symbol corpus. Each case's repository is the seed; its own
+// expectations are not read except to find the subject (the changed
+// definition and the files that call it).
 //
 // A  The subject's name is written into one more file. As a use the engine may
 //    not read (`foo(x)` in an unchanged or a changed file with an unknown

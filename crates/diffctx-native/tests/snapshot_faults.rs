@@ -1,7 +1,7 @@
-//! A reader's failure is an `Err`, never an absent file. The facade's sweep
-//! missed a swallowed blob-read error (mutation m3, relay arch-migration):
-//! a read that failed came back as `None`, indistinguishable from a file that
-//! was never there.
+//! A reader's failure is an `Err`, never an absent file. A mutation that
+//! swallowed a blob-read error survived the facade's sweep: a read that
+//! failed came back as `None`, indistinguishable from a file that was never
+//! there.
 
 mod snapshot_fixture;
 
