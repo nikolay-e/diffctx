@@ -172,7 +172,8 @@ pub fn implicit_kinds(file: &FileFacts, def: &Def, known: Known) -> Vec<Implicit
                 | EntryKind::Route
                 | EntryKind::Scheduled
                 | EntryKind::Tool
-                | EntryKind::Fixture => Implicit::Entry,
+                | EntryKind::Fixture
+                | EntryKind::Migration => Implicit::Entry,
             }),
             Fact::Reference(r)
                 if r.use_kind == UseKind::Override

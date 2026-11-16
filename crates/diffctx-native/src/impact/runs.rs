@@ -658,6 +658,7 @@ impl Spelling {
             EntryKind::Command => Some(Self::Command(label.to_string())),
             EntryKind::Tool => Some(Self::keyed(label, &["tool"])),
             EntryKind::Scheduled => Some(Self::keyed(label, &["job", "schedul", "cron"])),
+            EntryKind::Migration => Some(Self::keyed(label, &["upgrade", "downgrade"])),
             _ => None,
         }
     }

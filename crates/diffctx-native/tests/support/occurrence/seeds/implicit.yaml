@@ -714,6 +714,29 @@
       @mcp.tool()
       def lookup(q):
           return q + "x"
+- name: python_alembic_migration
+  kind: entry
+  symbol: upgrade
+  base:
+    pyproject.toml: |
+      [project]
+      name = "shop"
+      version = "0.1.0"
+    migrations/versions/001_base.py: |
+      revision = "001_base"
+      down_revision = None
+
+
+      def upgrade():
+          create_table("a")
+  change:
+    migrations/versions/001_base.py: |
+      revision = "001_base"
+      down_revision = None
+
+
+      def upgrade():
+          create_table("b")
 - name: python_script_guard
   kind: entry
   symbol: x
