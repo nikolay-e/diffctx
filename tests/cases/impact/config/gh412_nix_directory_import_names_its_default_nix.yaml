@@ -17,6 +17,13 @@ repo:
       {
         greet = name: "hello ${name}";
       }
+    pkgs/other.nix: |
+      { }:
+      import ./lib
+    pkgs/lib/default.nix: |
+      { }
+    scripts/build.sh: |
+      cd ./lib && nix-build
     pkgs/tool.nix: |
       { }:
       let
@@ -31,3 +38,4 @@ repo:
   commit_message: change
 expect:
   named_by: [default.nix, pkgs/tool.nix]
+  not_named_by: [pkgs/other.nix, scripts/build.sh]
