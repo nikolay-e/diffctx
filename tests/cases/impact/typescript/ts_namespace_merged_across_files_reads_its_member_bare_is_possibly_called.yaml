@@ -1,0 +1,37 @@
+name: ts_namespace_merged_across_files_reads_its_member_bare_is_possibly_called
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [typescript, bare-name, declaration-merging]
+repo:
+  initial_files:
+    package.json: |
+      {"name":"app","version":"1.0.0"}
+    tsconfig.json: |
+      {"compilerOptions":{"strict":true}}
+    src/util.ts: |
+      namespace Util {
+        export function parse(s: string): number {
+          return Number(s);
+        }
+      }
+    src/more.ts: |
+      namespace Util {
+        export function twice(s: string): number {
+          return parse(s) * 2;
+        }
+      }
+  changed_files:
+    src/util.ts: |
+      namespace Util {
+        export function parse(s: string): number {
+          return Number(s) + 0;
+        }
+      }
+  commit_message: change
+expect:
+  changed: ['src/util.ts::parse']
+  coverage:
+    src/util.ts::parse: {calls: partial}
+  no_negative_claims: true
+  exact: false
