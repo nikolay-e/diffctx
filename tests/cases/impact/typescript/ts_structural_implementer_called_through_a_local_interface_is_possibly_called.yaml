@@ -1,0 +1,46 @@
+name: ts_structural_implementer_called_through_a_local_interface_is_possibly_called
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [typescript, external-name, structural]
+repo:
+  initial_files:
+    package.json: |
+      {"name":"app","version":"1.0.0"}
+    tsconfig.json: |
+      {"compilerOptions":{"strict":true}}
+    src/sink.ts: |
+      export class Sink {
+        write(s: string): boolean {
+          return s.length > 0;
+        }
+      }
+    src/emit.ts: |
+      export interface Writer {
+        write(s: string): boolean;
+      }
+
+      export function emit(w: Writer): void {
+        w.write('x');
+      }
+    src/run.ts: |
+      import { Sink } from './sink';
+      import { emit } from './emit';
+
+      export function run(): void {
+        emit(new Sink());
+      }
+  changed_files:
+    src/sink.ts: |
+      export class Sink {
+        write(s: string): boolean {
+          return s.length > 1;
+        }
+      }
+  commit_message: change
+expect:
+  changed: ['src/sink.ts::write']
+  coverage:
+    src/sink.ts::write: {calls: partial}
+  no_negative_claims: true
+  exact: false

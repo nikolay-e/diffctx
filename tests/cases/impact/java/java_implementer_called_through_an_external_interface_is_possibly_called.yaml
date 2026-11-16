@@ -1,0 +1,53 @@
+name: java_implementer_called_through_an_external_interface_is_possibly_called
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [java, external-name, dispatch]
+repo:
+  initial_files:
+    pom.xml: |
+      <project><modelVersion>4.0.0</modelVersion><groupId>a</groupId><artifactId>a</artifactId><version>1</version></project>
+    src/main/java/com/acme/Sink.java: |
+      package com.acme;
+
+      public class Sink implements Appendable {
+          public Appendable append(CharSequence s) {
+              return this;
+          }
+          public Appendable append(CharSequence s, int a, int b) {
+              return this;
+          }
+          public Appendable append(char c) {
+              return this;
+          }
+      }
+    src/main/java/com/acme/Emit.java: |
+      package com.acme;
+
+      public class Emit {
+          public void emit(Appendable a) throws Exception {
+              a.append("x");
+          }
+      }
+  changed_files:
+    src/main/java/com/acme/Sink.java: |
+      package com.acme;
+
+      public class Sink implements Appendable {
+          public Appendable append(CharSequence s) {
+              return null;
+          }
+          public Appendable append(CharSequence s, int a, int b) {
+              return this;
+          }
+          public Appendable append(char c) {
+              return this;
+          }
+      }
+  commit_message: change
+expect:
+  changed: ['src/main/java/com/acme/Sink.java::append']
+  coverage:
+    src/main/java/com/acme/Sink.java::append: {calls: partial}
+  no_negative_claims: true
+  exact: false
