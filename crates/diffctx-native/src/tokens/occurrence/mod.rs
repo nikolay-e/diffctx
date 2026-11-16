@@ -227,6 +227,9 @@ pub enum Witness {
     /// `statement`: the name follows a keyword that declares it or names an object of another
     /// namespace (`DROP FUNCTION f`, `INSERT INTO f` for a routine `f`): the keyword.
     Statement(Name),
+    /// `argument_name`: the name of a keyword argument (`f(name=value)`), a parameter or a field
+    /// of the callee.
+    Keyword(Name),
 }
 
 impl Witness {
@@ -242,6 +245,7 @@ impl Witness {
             Self::BareName(_) => "bare_name",
             Self::OtherProject(_) => "other_project",
             Self::Statement(_) => "statement",
+            Self::Keyword(_) => "argument_name",
         }
     }
 }
