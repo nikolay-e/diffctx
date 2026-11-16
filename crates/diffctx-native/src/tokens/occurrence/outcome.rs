@@ -322,6 +322,12 @@ fn writable(subject: &Definition) -> bool {
     admitted(subject.kind).contains(&Relation::Writes)
 }
 
+/// Whether a bare name may reach the subject to write it: a module-level value a `global`
+/// states; a member is reached through its owner only.
+fn reached_bare(subject: &Definition) -> bool {
+    writable(subject) && subject.key.local.container.is_empty()
+}
+
 /// Whether the entry stands in the way of `relation`: its binding's own relation,
 /// else every relation the kind admits.
 pub fn counts_against(entry: &Entry, kind: DefKind, relation: Relation) -> bool {
@@ -474,10 +480,10 @@ impl<'a> Reading<'a> {
                 }
                 Fact::LocalBinding(local) => {
                     // A parameter's span is surely no use, and a declarator's where its
-                    // language's row says so. A value a name may be written through
-                    // (`global`) keeps its hedge at a local of its own name.
+                    // language's row says so. A module-level value a name may be written
+                    // through (`global`) keeps its hedge at a local of its own name.
                     let declares = local.kind == LocalKind::Parameter
-                        || (!writable(subject)
+                        || (!reached_bare(subject)
                             && (DECLARING_LOCALS.iter().any(|(family, kind)| {
                                 *kind == local.kind && family.has(file.language())
                             }) || (local.kind == LocalKind::Variable && named)))
@@ -792,6 +798,7 @@ impl<'a> Reading<'a> {
             .or_else(|| self.local_call(occurrence, spelled))
             .or_else(|| self.command_argument(occurrence))
             .or_else(|| self.statement_name(occurrence))
+            .or_else(|| self.keyword_name(occurrence))
         {
             return Claim::not_ours(None, witness);
         }
@@ -967,7 +974,7 @@ impl<'a> Reading<'a> {
         let scope = self.scope_at(start);
         let joins = dollar_joins(self.file.language());
         // A module-level name may be written through a `global`; a member is never reached bare.
-        if writable(self.subject) && self.subject.key.local.container.is_empty() {
+        if reached_bare(self.subject) {
             return None;
         }
         self.locals
@@ -1131,9 +1138,8 @@ impl<'a> Reading<'a> {
         })
     }
 
-    /// `Reply(url=...)` writes the field `url` of the class it builds: the keyword is a use
-    /// of that field when the callee, found at the call's opening parenthesis, is its class.
-    fn keyword_field(&self, occurrence: &Occurrence) -> Option<Claim> {
+    /// The `(` of the call whose keyword argument is the occurrence (`f(name=value)`).
+    fn keyword_call(&self, occurrence: &Occurrence) -> Option<usize> {
         if !KEYWORD_ARGUMENTS
             .iter()
             .any(|f| f.has(self.file.language()))
@@ -1153,7 +1159,7 @@ impl<'a> Reading<'a> {
             return None;
         }
         let mut depth = 0;
-        let open = before.iter().rposition(|b| match b {
+        before.iter().rposition(|b| match b {
             b')' => {
                 depth += 1;
                 false
@@ -1163,7 +1169,13 @@ impl<'a> Reading<'a> {
                 false
             }
             _ => *b == b'(',
-        })?;
+        })
+    }
+
+    /// `Reply(url=...)` writes the field `url` of the class it builds: the keyword is a use
+    /// of that field when the callee, found at the call's opening parenthesis, is its class.
+    fn keyword_field(&self, occurrence: &Occurrence) -> Option<Claim> {
+        let open = self.keyword_call(occurrence)?;
         let (name, owner) = self.subject.key.local.container.split_last()?;
         let callee = self.view.in_file(&self.file.path).find(|binding| {
             binding.site.bytes.end as usize == open
@@ -1173,6 +1185,13 @@ impl<'a> Reading<'a> {
                         && target.local.container == owner)
         });
         callee.map(|_| Claim::new(Some(Relation::Writes), Outcome::Ours, Basis::Resolved))
+    }
+
+    /// A keyword argument's name names a parameter or a field of the callee: no use of a subject
+    /// that no keyword can write.
+    fn keyword_name(&self, occurrence: &Occurrence) -> Option<Witness> {
+        (!writable(self.subject) && self.keyword_call(occurrence).is_some())
+            .then(|| Witness::Keyword(Name::new(String::from_utf8_lossy(self.spelled(occurrence)))))
     }
 
     /// The type an `impl` header names is declared there, unlike a return `impl Trait` or a bound.
