@@ -203,28 +203,34 @@ impl SnapshotReader {
     ) -> Result<Self> {
         let exec = Exec::with_budget(budget);
         let work = &root.work_tree;
-        let (basis, id, untracked) = match side {
+        let (basis, id, untracked, unreadable) = match side {
             Side::Tree(oid) => {
                 let tree = tree_of(&exec, work, &oid)?;
                 let id = ContentId(tree.to_string());
-                (Backing::Tree(tree), id, None)
+                (Backing::Tree(tree), id, None, Vec::new())
             }
             Side::Index => {
                 let tree = index_tree_with(&exec, work)?;
                 let id = ContentId(tree.to_string());
-                (Backing::Tree(tree), id, None)
+                (Backing::Tree(tree), id, None, Vec::new())
             }
             Side::WorkingTree => {
                 let found = untracked::read(&exec, work, &[])?;
-                let id = working_tree_id(&exec, root, &found)?;
-                (Backing::WorkingTree, id, Some(found))
+                let (id, unreadable) = working_tree_id(&exec, root, &found)?;
+                (Backing::WorkingTree, id, Some(found), unreadable)
             }
         };
         let cap = usize::try_from(admission.policy().size_cap).unwrap_or(usize::MAX);
+        // A file git could not read to name the checkout is a lost read from the start.
+        let failures: Vec<(RepoPath, bool)> = unreadable
+            .iter()
+            .flat_map(|name| RepoPath::new(name))
+            .map(|path| (path, false))
+            .collect();
         Ok(Self {
             inner: Arc::new(Inner {
                 role: OnceLock::new(),
-                failures: Mutex::new(Vec::new()),
+                failures: Mutex::new(failures),
                 remembered: Mutex::new(Remembered::default()),
                 root: root.clone(),
                 basis,
@@ -386,7 +392,13 @@ impl SnapshotReader {
             let paths: Vec<&str> = listing.entries.iter().map(|e| e.path.as_str()).collect();
             let oids = hash_objects(&self.inner.exec, &self.inner.root.work_tree, &paths)?;
             for (entry, oid) in listing.entries.iter_mut().zip(oids) {
-                entry.oid = Some(oid);
+                if oid.is_none() {
+                    self.record_failure(
+                        &entry.path,
+                        &SnapshotError::Git("git hash-object: unreadable".into()),
+                    );
+                }
+                entry.oid = oid;
             }
         }
         Ok(listing)
@@ -907,12 +919,21 @@ fn join_inside(parent: &str, text: &str) -> Option<RepoPath> {
 }
 
 /// The blob ids `git add` would store for `paths` (repo-relative), in order:
-/// the repository's filters (line endings, LFS) applied, nothing written.
+/// the repository's filters (line endings, LFS) applied, nothing written. A file
+/// git cannot read has no id (`None`) and the rest still have theirs: one locked
+/// file ended the whole read (fj#205).
 #[allow(
     clippy::disallowed_methods,
     reason = "feeds git the list of paths it hashes through a file it just wrote"
 )]
-fn hash_objects(exec: &Exec, work: &Path, paths: &[&str]) -> Result<Vec<Oid>> {
+pub(super) fn hash_objects(exec: &Exec, work: &Path, paths: &[&str]) -> Result<Vec<Option<Oid>>> {
+    let hash_one = |path: &str| -> Result<Option<Oid>> {
+        match exec.text(work, &["hash-object", "--", path]) {
+            Ok(out) => Oid::parse(&out).map(Some),
+            Err(error) if error.is_interruption() => Err(error),
+            Err(_) => Ok(None),
+        }
+    };
     let mut oids: Vec<Option<Oid>> = vec![None; paths.len()];
     // `--stdin-paths` is line-delimited: a name holding a newline would split.
     let (plain, odd): (Vec<usize>, Vec<usize>) =
@@ -930,30 +951,41 @@ fn hash_objects(exec: &Exec, work: &Path, paths: &[&str]) -> Result<Vec<Oid>> {
             let mut cmd = git_command(work);
             cmd.args(["hash-object", "--stdin-paths"])
                 .stdin(std::fs::File::open(&list)?);
-            let out = exec.finish(cmd, &["hash-object"], &[])?;
-            let answer = String::from_utf8_lossy(&out.stdout);
-            let lines: Vec<&str> = answer.lines().collect();
-            if lines.len() != chunk.len() {
-                return Err(SnapshotError::Git("git hash-object: short answer".into()));
-            }
-            for (i, line) in chunk.iter().zip(lines) {
-                oids[*i] = Some(Oid::parse(line)?);
+            match exec.finish(cmd, &["hash-object"], &[]) {
+                Ok(out) => {
+                    let answer = String::from_utf8_lossy(&out.stdout);
+                    let lines: Vec<&str> = answer.lines().collect();
+                    if lines.len() != chunk.len() {
+                        return Err(SnapshotError::Git("git hash-object: short answer".into()));
+                    }
+                    for (i, line) in chunk.iter().zip(lines) {
+                        oids[*i] = Some(Oid::parse(line)?);
+                    }
+                }
+                Err(error) if error.is_interruption() => return Err(error),
+                // One path git cannot read fails the batch: each is asked alone.
+                Err(_) => {
+                    for i in chunk {
+                        oids[*i] = hash_one(paths[*i])?;
+                    }
+                }
             }
         }
     }
     for i in odd {
-        let out = exec.text(work, &["hash-object", "--", paths[i]])?;
-        oids[i] = Some(Oid::parse(&out)?);
+        oids[i] = hash_one(paths[i])?;
     }
-    oids.into_iter()
-        .map(|oid| oid.ok_or_else(|| SnapshotError::Git("git hash-object: short answer".into())))
-        .collect()
+    Ok(oids)
 }
 
 /// A digest of what the working tree holds beyond `HEAD`: the tree of `HEAD`
 /// and the content of every path `git status` reports. Cheap, and it does not
 /// change when nothing the analysis could read changed.
-fn working_tree_id(exec: &Exec, root: &RepoRoot, found: &Found) -> Result<ContentId> {
+fn working_tree_id(
+    exec: &Exec,
+    root: &RepoRoot,
+    found: &Found,
+) -> Result<(ContentId, Vec<String>)> {
     let work = &root.work_tree;
     let head = rev_to_oid(exec, work, "HEAD^{tree}")?;
     let records = exec.records(
@@ -1003,8 +1035,15 @@ fn working_tree_id(exec: &Exec, root: &RepoRoot, found: &Found) -> Result<Conten
             .map(|i| names[*i].as_str())
             .collect::<Vec<_>>(),
     )?;
+    let mut unreadable: Vec<String> = Vec::new();
     for (i, oid) in regular.iter().zip(hashed) {
-        marks[*i] = oid.to_string().into_bytes();
+        match oid {
+            Some(oid) => marks[*i] = oid.to_string().into_bytes(),
+            None => {
+                marks[*i] = b"?".to_vec();
+                unreadable.push(names[*i].clone());
+            }
+        }
     }
     let head = head.map_or_else(|| "unborn".to_string(), |oid| oid.to_string());
     let mut parts: Vec<&[u8]> = vec![head.as_bytes()];
@@ -1021,5 +1060,5 @@ fn working_tree_id(exec: &Exec, root: &RepoRoot, found: &Found) -> Result<Conten
         parts.push(b"unread".as_slice());
         parts.push(dir.as_bytes());
     }
-    Ok(ContentId(format!("wt:{}", digest(&parts))))
+    Ok((ContentId(format!("wt:{}", digest(&parts))), unreadable))
 }

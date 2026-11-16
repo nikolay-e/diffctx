@@ -82,6 +82,50 @@ fn a_failed_read_stays_a_loss_after_its_caller_dropped_the_error() {
     );
 }
 
+#[cfg(unix)]
+#[test]
+fn a_file_git_cannot_read_is_a_loss_of_the_working_tree_not_the_end_of_its_read() {
+    use std::os::unix::fs::PermissionsExt as _;
+    let repo = Repo::init();
+    repo.write("kept.py", "KEPT = 1\n");
+    repo.write("locked.py", "LOCKED = 1\n");
+    repo.commit("two files");
+    let locked = repo.path().join("locked.py");
+    std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o000)).expect("chmod");
+    if std::fs::read(&locked).is_ok() {
+        return;
+    }
+    let attempt = SnapshotReader::new(
+        &repo.root,
+        Side::WorkingTree,
+        Arc::new(Admission::default()),
+    )
+    .map(|reader| {
+        let entries = reader.tree_entries();
+        (reader, entries)
+    });
+    std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o644)).expect("chmod");
+    let (reader, entries) = attempt.expect("a reader over the checkout");
+    let entries = entries.expect("entries");
+    let oid_of = |name: &str| {
+        entries
+            .entries
+            .iter()
+            .find(|entry| entry.path == path(name))
+            .map(|entry| entry.oid.clone())
+    };
+    assert!(matches!(oid_of("kept.py"), Some(Some(_))), "{entries:?}");
+    assert_eq!(oid_of("locked.py"), Some(None), "{entries:?}");
+    assert!(
+        reader.losses().iter().any(|loss| matches!(
+            loss,
+            Loss::ReadFailed { path: lost, .. } if *lost == path("locked.py")
+        )),
+        "{:?}",
+        reader.losses()
+    );
+}
+
 #[test]
 fn a_listing_counts_what_it_withholds_and_names_none_of_it() {
     let repo = Repo::init();
