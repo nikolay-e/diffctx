@@ -813,6 +813,11 @@ const RED: &[(&str, &str)] = &[
         "gh#661: an arrow-function const declared inside a function body is no definition for the \
          resolver; the symbol lookup of the full pipeline finds it",
     ),
+    (
+        "impact/typescript/au_ts_plain_name_as_an_index_key_is_named_not_empty",
+        "W3: the index-key call `obj[\"total\"](items)` through `any` is no candidate yet; step-2 \
+         blocker",
+    ),
 ];
 
 #[test]
