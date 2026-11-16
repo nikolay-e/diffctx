@@ -1,0 +1,49 @@
+name: java_maven_extra_source_dir_across_projects_is_a_caller
+mode: impact
+source: synthetic
+issue_state: open
+tags: [java, manifests, maven, absence-claim]
+repo:
+  initial_files:
+    libs/core/pom.xml: |
+      <project><modelVersion>4.0.0</modelVersion><groupId>com.acme</groupId><artifactId>core</artifactId><version>1</version></project>
+    libs/core/src/main/java/com/acme/core/Money.java: |
+      package com.acme.core;
+
+      public class Money {
+          public static int total(int x) {
+              return x;
+          }
+      }
+    apps/web/src/main/java/com/acme/web/View.java: |
+      package com.acme.web;
+
+      import com.acme.core.Money;
+
+      public class View {
+          public int show(int x) {
+              return Money.total(x);
+          }
+      }
+    apps/web/pom.xml: |
+      <project><modelVersion>4.0.0</modelVersion><groupId>com.acme</groupId><artifactId>web</artifactId><version>1</version><build><plugins><plugin><groupId>org.codehaus.mojo</groupId><artifactId>build-helper-maven-plugin</artifactId><executions><execution><goals><goal>add-source</goal></goals><configuration><sources><source>../../libs/core/src/main/java</source></sources></configuration></execution></executions></plugin></plugins></build></project>
+  changed_files:
+    libs/core/src/main/java/com/acme/core/Money.java: |
+      package com.acme.core;
+
+      public class Money {
+          public static int total(int x) {
+              return x + 0;
+          }
+      }
+  commit_message: change
+expect:
+  changed: ['libs/core/src/main/java/com/acme/core/Money.java::total']
+  relations:
+  - from: apps/web/src/main/java/com/acme/web/View.java::show
+    to: libs/core/src/main/java/com/acme/core/Money.java::total
+    kind: calls
+    resolution: resolved
+  exact: false
+  never_empty: true
+  no_negative_claims: true

@@ -1,0 +1,47 @@
+name: php_composer_path_repository_makes_the_sibling_a_caller
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [php, manifests, workspace]
+repo:
+  initial_files:
+    libs/core/composer.json: |
+      {"name":"acme/core","autoload":{"psr-4":{"Acme\\Core\\":"src/"}}}
+    libs/core/src/Money.php: |
+      <?php
+      namespace Acme\Core;
+
+      class Money {
+          public static function total($x) {
+              return $x;
+          }
+      }
+    apps/web/src/View.php: |
+      <?php
+      namespace Acme\Web;
+
+      use Acme\Core\Money;
+
+      class View {
+          public function show($x) {
+              return Money::total($x);
+          }
+      }
+    apps/web/composer.json: |
+      {"name":"acme/web","repositories":[{"type":"path","url":"../../libs/core"}],"require":{"acme/core":"*"},"autoload":{"psr-4":{"Acme\\Web\\":"src/"}}}
+  changed_files:
+    libs/core/src/Money.php: |
+      <?php
+      namespace Acme\Core;
+
+      class Money {
+          public static function total($x) {
+              return $x + 0;
+          }
+      }
+  commit_message: change
+expect:
+  changed: ['libs/core/src/Money.php::total']
+  relations:
+  - {from: 'apps/web/src/View.php::show', to: 'libs/core/src/Money.php::total', kind: calls, resolution: resolved}
+  exact: false

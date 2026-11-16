@@ -1,0 +1,39 @@
+name: cpp_multiple_inheritance_with_an_external_base_still_calls_the_local_one
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [cpp, external-base, inheritance]
+repo:
+  initial_files:
+    CMakeLists.txt: |
+      project(app)
+      add_executable(app main.cpp)
+    audit.hpp: |
+      #pragma once
+      struct Audit {
+          int record(int x) { return x; }
+      };
+    client.hpp: |
+      #pragma once
+      #include <vector>
+      #include "audit.hpp"
+      struct Client : std::vector<int>, Audit {};
+    main.cpp: |
+      #include "client.hpp"
+
+      int run() {
+          Client c;
+          return c.record(1);
+      }
+  changed_files:
+    audit.hpp: |
+      #pragma once
+      struct Audit {
+          int record(int x) { return x + 0; }
+      };
+  commit_message: change
+expect:
+  changed: ['audit.hpp::record']
+  relations:
+  - {from: 'main.cpp::run', to: 'audit.hpp::record', kind: calls, resolution: resolved}
+  exact: false

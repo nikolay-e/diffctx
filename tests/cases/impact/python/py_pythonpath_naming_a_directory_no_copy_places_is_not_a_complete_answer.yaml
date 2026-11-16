@@ -1,0 +1,46 @@
+name: py_pythonpath_naming_a_directory_no_copy_places_is_not_a_complete_answer
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [python, manifests, workspace]
+repo:
+  initial_files:
+    libs/core/pyproject.toml: |
+      [project]
+      name = "core"
+      version = "0.1.0"
+      dependencies = []
+    libs/core/core_lib/__init__.py: |2+
+
+    libs/core/core_lib/money.py: |
+      def total(x):
+          return x
+    apps/web/pyproject.toml: |
+      [project]
+      name = "web"
+      version = "0.1.0"
+      dependencies = []
+    apps/web/web/__init__.py: |2+
+
+    apps/web/web/views.py: |
+      from core_lib.money import total
+
+
+      def show(x):
+          return total(x)
+    Dockerfile: |
+      FROM python:3.12
+      ENV PYTHONPATH=/srv/shared
+      CMD ["python", "-m", "web.views"]
+  changed_files:
+    libs/core/core_lib/money.py: |
+      def total(x):
+          return x + 0
+  commit_message: change
+expect:
+  changed: ['libs/core/core_lib/money.py::total']
+  exact: false
+  discloses: true
+  coverage: {total: {calls: partial}}
+  never_empty: true
+  no_negative_claims: true

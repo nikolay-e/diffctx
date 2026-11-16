@@ -1,0 +1,47 @@
+name: java_maven_dependency_on_a_sibling_makes_it_a_caller
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [java, manifests, maven]
+repo:
+  initial_files:
+    libs/core/pom.xml: |
+      <project><modelVersion>4.0.0</modelVersion><groupId>com.acme</groupId><artifactId>core</artifactId><version>1</version></project>
+    libs/core/src/main/java/com/acme/core/Money.java: |
+      package com.acme.core;
+
+      public class Money {
+          public static int total(int x) {
+              return x;
+          }
+      }
+    apps/web/src/main/java/com/acme/web/View.java: |
+      package com.acme.web;
+
+      import com.acme.core.Money;
+
+      public class View {
+          public int show(int x) {
+              return Money.total(x);
+          }
+      }
+    apps/web/pom.xml: |
+      <project><modelVersion>4.0.0</modelVersion><groupId>com.acme</groupId><artifactId>web</artifactId><version>1</version><dependencies><dependency><groupId>com.acme</groupId><artifactId>core</artifactId><version>1</version></dependency></dependencies></project>
+  changed_files:
+    libs/core/src/main/java/com/acme/core/Money.java: |
+      package com.acme.core;
+
+      public class Money {
+          public static int total(int x) {
+              return x + 0;
+          }
+      }
+  commit_message: change
+expect:
+  changed: ['libs/core/src/main/java/com/acme/core/Money.java::total']
+  relations:
+  - from: apps/web/src/main/java/com/acme/web/View.java::show
+    to: libs/core/src/main/java/com/acme/core/Money.java::total
+    kind: calls
+    resolution: resolved
+  exact: false

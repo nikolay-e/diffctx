@@ -1,0 +1,43 @@
+name: go_work_use_makes_the_sibling_module_a_caller
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [go, manifests, workspace]
+repo:
+  initial_files:
+    go.work: "go 1.21\n\nuse (\n\t./core\n\t./web\n)\n"
+    core/go.mod: |
+      module example.com/core
+
+      go 1.21
+    core/money/money.go: |
+      package money
+
+      func Total(x int) int {
+          return x
+      }
+    web/go.mod: |
+      module example.com/web
+
+      go 1.21
+    web/view/view.go: |
+      package view
+
+      import "example.com/core/money"
+
+      func Show(x int) int {
+          return money.Total(x)
+      }
+  changed_files:
+    core/money/money.go: |
+      package money
+
+      func Total(x int) int {
+          return x + 0
+      }
+  commit_message: change
+expect:
+  changed: ['core/money/money.go::Total']
+  relations:
+  - {from: 'web/view/view.go::Show', to: 'core/money/money.go::Total', kind: calls, resolution: resolved}
+  exact: false
