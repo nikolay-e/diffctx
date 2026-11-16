@@ -69,7 +69,7 @@ fn doctest_runs(state: &ScoredState) -> Vec<Run> {
         .collect();
     let mut runs = Vec::new();
     let mut rust_read: FxHashSet<&str> = FxHashSet::default();
-    for f in &state.all_fragments {
+    for f in state.run.bounded(&state.all_fragments) {
         let path = f.path();
         if crate::testfiles::is_test_path(Path::new(path)) {
             continue;
@@ -203,7 +203,7 @@ pub(super) fn dict_registrations_of<'f>(
 fn binary_runs(state: &ScoredState, diff_range: Option<&str>) -> Vec<Run> {
     let mut entries: Vec<(String, String, String)> = Vec::new();
     let mut seen: FxHashSet<&str> = FxHashSet::default();
-    for f in &state.all_fragments {
+    for f in state.run.bounded(&state.all_fragments) {
         let own = f.path();
         if !seen.insert(own) || !rust::is_rust(own) {
             continue;
@@ -280,7 +280,7 @@ fn swift_product_runs(
     let mut manifests: FxHashMap<String, Vec<(String, String)>> = FxHashMap::default();
     let mut entries: Vec<(String, String)> = Vec::new();
     let mut seen: FxHashSet<&str> = FxHashSet::default();
-    for f in &state.all_fragments {
+    for f in state.run.bounded(&state.all_fragments) {
         let own = f.path();
         if !seen.insert(own) || !own.ends_with("main.swift") {
             continue;
@@ -757,7 +757,9 @@ fn framework_runs(
     }
     let mut entries: Vec<Entry> = Vec::new();
     let mut seen: FxHashSet<(String, String, EntryKind, String)> = FxHashSet::default();
-    for f in &state.all_fragments {
+    let mut taken = 0u64;
+    for f in state.run.bounded(&state.all_fragments) {
+        taken += 1;
         let shown = rel(state, f.path());
         if !f.kind.is_definition_kind() {
             continue;
@@ -807,9 +809,10 @@ fn framework_runs(
             }
         }
     }
+    crate::profile::count("impact.tests.fragments", taken);
     // A registration call no facts rule knows (`tool("name")(fn)`) is keyed by its
     // first string and spelled beside the callee's name.
-    for f in &state.all_fragments {
+    for f in state.run.bounded(&state.all_fragments) {
         for (call, symbol) in curried_registrations(f) {
             let Some((callee, arguments)) = call.split_once('(') else {
                 continue;
@@ -837,7 +840,7 @@ fn framework_runs(
     }
     // A handler a name-keyed dict registers is spelled by its key beside a
     // function the registry's file defines (`call_tool("log_vital", …)`).
-    for f in &state.all_fragments {
+    for f in state.run.bounded(&state.all_fragments) {
         for (key, value, _) in dict_registrations(f) {
             let name = value.rsplit('.').next().unwrap_or(value);
             let Some(target) = state.all_fragments.iter().find(|t| {
@@ -880,7 +883,7 @@ fn framework_runs(
     // A browser test that visits a route of a client-side router's table runs the
     // definition that holds the route and the component the route renders.
     let mut read: FxHashSet<&str> = FxHashSet::default();
-    for f in &state.all_fragments {
+    for f in state.run.bounded(&state.all_fragments) {
         let script = matches!(
             crate::languages::get_language_for_file(f.path()),
             Some("javascript" | "typescript" | "tsx" | "jsx")
@@ -1116,7 +1119,7 @@ fn literal_runs(
     let changed: FxHashSet<String> = changed_rels(state).collect();
     // (the file as fragments spell it, as the answer prints it, the symbol, its strings)
     let mut held: Vec<(String, String, String, Vec<String>)> = Vec::new();
-    for f in &state.all_fragments {
+    for f in state.run.bounded(&state.all_fragments) {
         let shown = rel(state, f.path());
         if !changed.contains(&shown)
             || !f.kind.is_definition_kind()
