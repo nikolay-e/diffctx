@@ -1,0 +1,88 @@
+name: java_lombok_extension_method_yields_to_the_receivers_own_method
+mode: impact
+source: fj#214
+issue_state: open
+tags: [java, lombok, extension-method, receiver-type, decoy]
+repo:
+  initial_files:
+    src/main/java/shop/Ext.java: |
+      package shop;
+
+      public class Ext {
+          public static String shout(String s) {
+              return s.toUpperCase();
+          }
+      }
+    src/main/java/shop/Greeter.java: |
+      package shop;
+
+      public class Greeter {
+          public String shout() {
+              return "hello";
+          }
+      }
+    src/main/java/shop/Use.java: |
+      package shop;
+
+      import lombok.experimental.ExtensionMethod;
+
+      @ExtensionMethod(Ext.class)
+      public class Use {
+          String f(String x) {
+              return x.shout();
+          }
+      }
+    src/main/java/shop/Own.java: |
+      package shop;
+
+      import lombok.experimental.ExtensionMethod;
+
+      @ExtensionMethod(Ext.class)
+      public class Own {
+          String h(Greeter g) {
+              return g.shout();
+          }
+      }
+  changed_files:
+    src/main/java/shop/Ext.java: |
+      package shop;
+
+      public class Ext {
+          public static String shout(String s) {
+              return s.toUpperCase() + "!";
+          }
+      }
+    src/main/java/shop/Greeter.java: |
+      package shop;
+
+      public class Greeter {
+          public String shout() {
+              return "hello!";
+          }
+      }
+  commit_message: "shout louder in the extension and in Greeter"
+# Lombok takes `x.shout()` for `Ext.shout(x)` only where the receiver's own type has
+# no `shout`: in Own.java the receiver is a `Greeter`, which has one, so the call goes
+# there and the extension has no caller in that file; in Use.java the receiver is a
+# `String`, which the repository does not declare.
+expect:
+  changed:
+  - src/main/java/shop/Ext.java::Ext.shout
+  - src/main/java/shop/Greeter.java::Greeter.shout
+  relations:
+  - from: src/main/java/shop/Use.java::Use.f
+    to: src/main/java/shop/Ext.java::Ext.shout
+    kind: calls
+    resolution: resolved
+    site: 8
+  - from: src/main/java/shop/Own.java::Own.h
+    to: src/main/java/shop/Greeter.java::Greeter.shout
+    kind: calls
+    resolution: resolved
+    site: 8
+  exact: true
+  decoys:
+    src/main/java/shop/Ext.java::Ext.shout:
+    - src/main/java/shop/Own.java
+    src/main/java/shop/Greeter.java::Greeter.shout:
+    - src/main/java/shop/Use.java
