@@ -5897,6 +5897,11 @@ fn shed_one(output: &mut ImpactOutput) -> bool {
         output.truncated_possible += 1;
         return true;
     }
+    // The sites a gap names of the uses it cannot settle are the detail of a
+    // guess: the count stays, the names go before any caller or definition does.
+    if shed_candidate_sites(output) {
+        return true;
+    }
     // A removed or changed contract is a break the reader must see; only the
     // public API the range merely touches is context (#663). The first stays:
     // a heading over a count alone names no contract (fj#219).
@@ -5961,6 +5966,22 @@ fn shed_one(output: &mut ImpactOutput) -> bool {
         return true;
     }
     false
+}
+
+/// Whether any definition gave up the candidate sites of a gap that counts more
+/// uses than it names.
+fn shed_candidate_sites(output: &mut ImpactOutput) -> bool {
+    let mut shed = false;
+    for sym in &mut output.changed {
+        shed |= sym.coverage.shed_sites();
+        if let Some(Unknown::Candidates { uses, sites, .. }) = &mut sym.unresolved {
+            if *uses > sites.len() && !sites.is_empty() {
+                sites.clear();
+                shed = true;
+            }
+        }
+    }
+    shed
 }
 
 /// The shed definitions the omitted entry names; the rest are counted.
@@ -6099,6 +6120,19 @@ fn shed_weakest_caller(output: &mut ImpactOutput) -> bool {
         output.changed[i].callers_omitted += 1;
         output.truncated_untested += usize::from(without_test_link(&shed));
         output.truncated += 1;
+        return true;
+    }
+    // A definition with a hedge to say and no caller joins the omitted entry,
+    // which keeps that its search was open, before a definition with a caller
+    // does: callers are the answer.
+    if let Some(i) = output.changed.iter().rposition(|c| {
+        c.callers.is_empty()
+            && c.compatible_callers == 0
+            && c.unresolved
+                .as_ref()
+                .is_some_and(|_| !is_omitted(c) && !is_unfinished(c))
+    }) {
+        omit(output, i);
         return true;
     }
     // A symbol's only caller goes last: dropping a whole symbol while another

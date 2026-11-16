@@ -171,6 +171,20 @@ pub enum Gap {
     },
 }
 
+impl Gap {
+    /// A candidate gap that counts more uses than it names, without the names:
+    /// whether it had any.
+    pub(crate) fn shed_sites(&mut self) -> bool {
+        match self {
+            Self::Candidates { uses, sites } if *uses > sites.len() && !sites.is_empty() => {
+                sites.clear();
+                true
+            }
+            _ => false,
+        }
+    }
+}
+
 impl std::fmt::Display for Gap {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -677,6 +691,18 @@ impl Coverages {
     /// Both groups, as one coverage: what a claim about every use needs.
     pub(crate) fn all(&self) -> Coverage {
         self.calls.clone().both(self.reads.clone())
+    }
+
+    /// Whether a candidate gap that counts more uses than it names gave up its
+    /// sites: the count stays.
+    pub(crate) fn shed_sites(&mut self) -> bool {
+        let mut shed = false;
+        for coverage in [&mut self.calls, &mut self.reads] {
+            if let Coverage::Partial(gaps) = coverage {
+                gaps.iter_mut().for_each(|gap| shed |= gap.shed_sites());
+            }
+        }
+        shed
     }
 }
 
