@@ -3945,6 +3945,87 @@ fn a_stopped_run_traces_one_more_definition_per_poll() {
     );
 }
 
+/// fj#107: the phase that reads which tests reach the changed definitions
+/// polled nothing, so a deadline never fell inside it; on a repository of
+/// thousands of fragments it was most of a run, and the run ended with no
+/// answer at all. Counted in fragments the phase took, not timed: one more
+/// poll lets it take one more, and a stop inside it is the partial answer with
+/// no caller and no missing test link claimed.
+#[test]
+fn a_stopped_tests_phase_is_a_partial_answer_that_claims_no_missing_test() {
+    const ROUTES: usize = 8;
+    let tmp = TempDir::new().expect("tempdir");
+    let repo = tmp.path();
+    init_repo(repo);
+    for version in [1, 2] {
+        let views: String = (0..ROUTES)
+            .map(|i| {
+                format!(
+                    "@app.route(\"/item{i}\")\ndef item_{i}():\n    return \"v{version}\"\n\n\n"
+                )
+            })
+            .collect();
+        write(
+            repo,
+            "app/views.py",
+            &format!("from flask import Flask\n\napp = Flask(__name__)\n\n\n{views}"),
+        );
+        let tests: String = (0..ROUTES)
+            .map(|i| {
+                format!("def test_item_{i}(client):\n    assert client.get(\"/item{i}\").status_code == 200\n\n\n")
+            })
+            .collect();
+        write(
+            repo,
+            "tests/test_views.py",
+            &format!("from app.views import app\n\n\n{tests}"),
+        );
+        commit_all(repo, "views");
+    }
+    let sweep = support::sweep_polls(
+        |n| profiled(repo, "HEAD~1..HEAD", n, "impact.tests.fragments"),
+        |(doc, _)| !stopped_by_the_deadline(doc),
+    );
+    let whole = sweep.last().map_or(0, |(_, (_, taken))| *taken);
+    assert!(
+        whole >= 2 * ROUTES as u64,
+        "the tests phase took {whole} fragments of the whole run"
+    );
+    let inside: Vec<&(u64, (serde_json::Value, u64))> = sweep
+        .iter()
+        .filter(|(_, (doc, taken))| stopped_by_the_deadline(doc) && 0 < *taken && *taken < whole)
+        .collect();
+    assert!(
+        inside.len() as u64 >= whole / 2,
+        "{} of {whole} stop points fell inside the tests phase",
+        inside.len()
+    );
+    for (n, (doc, taken)) in inside {
+        let definitions = doc["definitions"].as_array().expect("definitions");
+        assert_eq!(definitions.len(), ROUTES, "poll {n}: {doc:#}");
+        for def in definitions {
+            assert!(
+                def["rows"].as_array().is_some_and(Vec::is_empty),
+                "poll {n}, {taken} taken: a caller before the run stopped: {def:#}"
+            );
+            assert_eq!(
+                def["coverage"]["calls"]["complete"], false,
+                "poll {n}: {def:#}"
+            );
+        }
+        assert_eq!(
+            doc["summary"]["callers"],
+            serde_json::json!({ "n": 0, "exact": false }),
+            "poll {n}: {doc:#}"
+        );
+        assert_eq!(
+            doc["tests"]["definitions_without_link"],
+            serde_json::json!({ "n": 0, "exact": false }),
+            "poll {n}: a test link claimed missing: {doc:#}"
+        );
+    }
+}
+
 /// #460, #475: a call inside an f-string replacement field or a template
 /// literal substitution is code, and is a caller; the same name in a plain
 /// string or a comment is not. Strings and comments are read off the
