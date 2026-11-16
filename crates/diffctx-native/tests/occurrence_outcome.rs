@@ -578,10 +578,10 @@ fn f_of_g_of_f_binds_each_f_by_its_own_span() {
 #[test]
 fn a_spelling_no_binding_names_is_unexplained() {
     let world = snapshot(&[
-        ("lib.py", LIB_F),
+        ("lib.py", "class C:\n    f = 1\n"),
         ("app.py", "def h(g):\n    return g(f=1)\n"),
     ]);
-    let found = world.outcomes(world.def("lib.py", "f"), "app.py", &["f"]);
+    let found = world.outcomes(world.def("lib.py", "C.f"), "app.py", &["f"]);
     let member = on(&found, 2);
     assert_eq!(member.outcome, Outcome::Candidate(Reason::Unexplained));
     assert_eq!(member.relation, None);
