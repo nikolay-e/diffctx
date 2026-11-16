@@ -32,7 +32,10 @@ Examples of unacceptable behavior:
 ## Enforcement
 
 Instances of abusive, harassing, or otherwise unacceptable behavior may be
-reported to the project maintainer at <nikolay.eremeev@outlook.com>.
+reported privately to the maintainers through
+[GitHub's private reporting](https://github.com/nikolay-e/diffctx/security/advisories/new)
+(the repository's Security tab, "Report a vulnerability"); start the title with
+"Conduct".
 
 All complaints will be reviewed and investigated promptly and fairly.
 

@@ -130,10 +130,9 @@ without reading the dependency tree by hand.
 **Please do NOT report security vulnerabilities through public GitHub
 issues.**
 
-Preferred channel: [GitHub's private vulnerability reporting](https://github.com/nikolay-e/diffctx/security/advisories/new).
-
-Backup channel: email **<nikolay.eremeev@outlook.com>** with
-`[diffctx-security]` in the subject line.
+Report through [GitHub's private vulnerability reporting](https://github.com/nikolay-e/diffctx/security/advisories/new)
+(the repository's Security tab, "Report a vulnerability"). It is the only
+channel: the report stays private between you and the maintainers.
 
 We follow coordinated disclosure: report privately, we confirm and fix, the
 advisory and reporter's write-up follow the release.
