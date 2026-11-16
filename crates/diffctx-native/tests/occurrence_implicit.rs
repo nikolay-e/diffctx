@@ -203,8 +203,8 @@ fn every_kind_has_a_seed_and_each_seed_reports_its_kind() {
 
 #[test]
 fn only_a_root_module_variable_and_output_are_set_from_outside() {
-    let called = Known {
-        module_called: true,
+    let root = Known {
+        root_module: true,
         ..Known::default()
     };
     for (source, at) in [
@@ -213,19 +213,19 @@ fn only_a_root_module_variable_and_output_are_set_from_outside() {
     ] {
         let kinds = |path, known| kinds_in(path, &TerraformExtractor, source, at, known);
         assert_eq!(
-            kinds("main.tf", Known::default()),
+            kinds("main.tf", root),
             [Implicit::Outside],
             "{at} of the root"
         );
         // fj#193: a root module under a directory is a root all the same.
         assert_eq!(
-            kinds("infra/prod/main.tf", Known::default()),
+            kinds("infra/prod/main.tf", root),
             [Implicit::Outside],
             "{at} of a root module in a directory"
         );
         assert!(
-            kinds("modules/net/main.tf", called).is_empty(),
-            "{at} of a module a call sources"
+            kinds("modules/net/main.tf", Known::default()).is_empty(),
+            "{at} of a module no root evidence names"
         );
     }
 }
@@ -265,6 +265,15 @@ fn a_python_constructor_is_traced_by_its_instantiations_not_hedged() {
         kinds(&PythonExtractor, source, "V.__iter__"),
         [Implicit::Protocol]
     );
+}
+
+#[test]
+fn a_script_is_run_from_outside_only_when_it_names_itself_a_program() {
+    assert_eq!(
+        kinds(&ShellExtractor, "#!/bin/sh\necho hi\n", "<script>"),
+        [Implicit::Outside]
+    );
+    assert!(kinds(&ShellExtractor, "echo hi\n", "<script>").is_empty());
 }
 
 #[test]

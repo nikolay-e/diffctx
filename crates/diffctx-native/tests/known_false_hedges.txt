@@ -8,7 +8,6 @@
 # it stands for written beside it, and never listed here.
 impact/config/config_helm_edited_named_template_is_called_by_the_includes_of_its_own_chart  # the define line itself and a second chart's include count as unlanded uses (a quoted define name is no declaration), and a named template gets the outside reason that only objects and files earn
 impact/config/config_helm_release_values_file_is_read_by_the_template_of_its_chart_as_resolved  # a `.Values` read inside a template scalar is unexplained text in the real and the decoy chart, and a chart that does not take the values file has no witness that the read is not its own
-impact/config/config_json_and_ci_entries_run_a_changed_script_by_path  # the outside reason spills onto a script file: every entry that runs it (settings.json, package.json, the CI step) is listed as resolved and no consumer outside the repository is named
 impact/dockerfile/dockerfile_copy_from_by_name_reaches_the_stage_and_not_the_other  # embedded shell (`RUN go build`) falls through the witnesses to an unexplained candidate and is counted as a read of the stage `build`
 impact/go/go_new_with_an_expression_parses  # gh#690: the Go grammar parses valid `new(42)` (p.go:3) as an error, so calls and reads say unaccounted for a definition whose one caller is resolved
 impact/php/php_magic_call_of_a_typed_receiver_never_reaches_another_class  # `$g->boo()` on a declared `Ghost $g` lands in Ghost::__call and is no use of Real::boo, yet the typed receiver is not resolved and the call counts as unlanded
@@ -23,7 +22,6 @@ impact/sql/sql_create_or_replace_keeps_the_routines_callers  # `CREATE OR REPLAC
 impact/terraform/tf_changed_output_reaches_the_callers_of_its_module  # a quoted template `"vpc-${var.cidr}"` is unexplained text, counted as a read of output.vpc
 impact/terraform/tf_every_traversal_form_reaches_its_variable  # the for-expression variable `n` shadows var.n but the shadowed use is unexplained text
 impact/terraform/tf_registry_source_is_not_a_path_even_when_a_directory_has_that_name  # the registry source `hashicorp/consul/aws` is named as external_source for a directory it cannot reach (a source that does not start with `./` or `../` is an address, not a path)
-impact/terraform/tf_removed_variable_leaves_its_readers_naming_it  # the outside reason rests on a directory no module call sources being a root, though nothing in the case (no backend, tfvars or lock file) says it is applied or sourced from outside: no consumer outside the repository is named
 impact/typescript/ts_destructured_static_method_is_called_through_its_alias  # `const {normalizeArguments} = Request` is the alias the resolved call goes through, and its receiver is left unresolved
 impact/typescript/ts_later_declarator_of_a_multi_declarator_const_is_the_changed_one  # `hooks.MODEL` is an object member of the same name, an unresolved receiver, not the constant
 impact/typescript/ts_lazy_import_is_a_caller  # `m.MobileFullPlayer` is the site of the resolved dynamic-import row, and its receiver `m` is left unresolved

@@ -1,0 +1,46 @@
+name: tf_root_module_with_a_lock_file_is_hedged
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [terraform, root-module, coverage]
+repo:
+  initial_files:
+    infra/prod/.terraform.lock.hcl: |
+      # provider locks
+    infra/prod/main.tf: |
+      variable "replicas" {
+        type    = number
+        default = 2
+      }
+
+      module "net" {
+        source = "../../modules/net"
+        cidr   = "10.0.0.0/16"
+      }
+    modules/net/main.tf: |
+      variable "cidr" {
+        type = string
+      }
+
+      output "cidr" {
+        value = var.cidr
+      }
+  changed_files:
+    infra/prod/main.tf: |
+      variable "replicas" {
+        type    = number
+        default = 4
+      }
+
+      module "net" {
+        source = "../../modules/net"
+        cidr   = "10.0.0.0/16"
+      }
+  commit_message: "prod: four replicas by default"
+expect:
+  # infra/prod is a root module (no module block sources it) and it holds a lock file: its variable is set
+  # from outside, so no clean "nothing reads it"
+  exact: false
+  changed: [infra/prod/main.tf::replicas]
+  no_negative_claims: true
+  discloses: true
