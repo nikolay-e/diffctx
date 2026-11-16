@@ -508,3 +508,20 @@ class TestLandingPageDiscoverability:
             assert loc.startswith(origin + "/"), loc
             target = self.DOCS / (loc.removeprefix(origin + "/") or "index.html")
             assert target.is_file() or target.with_suffix(".md").is_file(), loc
+
+
+class TestReportingChannels:
+    # gh#560: the policy files once printed the maintainer's personal mailbox.
+    # Reports go through GitHub's private channel, which keeps no address public.
+    POLICY_FILES = ("SECURITY.md", "CODE_OF_CONDUCT.md")
+    MAILBOX = re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+")
+
+    @pytest.mark.parametrize("name", POLICY_FILES)
+    def test_policy_file_prints_no_mailbox(self, name):
+        text = (PROJECT_ROOT / name).read_text(encoding="utf-8")
+        assert self.MAILBOX.findall(text) == []
+
+    @pytest.mark.parametrize("name", POLICY_FILES)
+    def test_policy_file_points_at_private_reporting(self, name):
+        text = (PROJECT_ROOT / name).read_text(encoding="utf-8")
+        assert "/security/advisories/new" in text
