@@ -1,0 +1,49 @@
+name: py_removed_field_passed_by_a_construction_keeps_that_site
+mode: impact
+source: gh#400
+issue_state: closed
+tags: [python, removed-field, construction, control, decoy]
+repo:
+  initial_files:
+    svc/__init__.py: ""
+    svc/config.py: |
+      from pydantic_settings import BaseSettings
+
+
+      class AppSettings(BaseSettings):
+          alpha: str = ""
+          bravo: str = ""
+          charlie: bool = False
+    svc/passes.py: |
+      from svc.config import AppSettings
+
+
+      def build():
+          return AppSettings(bravo="x")
+    svc/skips.py: |
+      from svc.config import AppSettings
+
+
+      def build():
+          return AppSettings(alpha="y")
+  changed_files:
+    svc/config.py: |
+      from pydantic_settings import BaseSettings
+
+
+      class AppSettings(BaseSettings):
+          alpha: str = ""
+          charlie: bool = False
+  commit_message: "config: drop the bravo setting"
+expect:
+  removed: [bravo]
+  # The construction that passes `bravo` breaks; the one that does not is
+  # unaffected by the removal.
+  relations:
+    - from: "svc/passes.py::build"
+      to: "svc/config.py::AppSettings"
+      kind: instantiates
+      resolution: resolved
+      site: 5
+  decoys:
+    "svc/config.py::AppSettings": [svc/skips.py]
