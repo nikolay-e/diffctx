@@ -10,8 +10,11 @@
 
 use once_cell::sync::Lazy;
 use regex::Regex;
+use rustc_hash::FxHashMap;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use std::cell::RefCell;
+use std::rc::Rc;
 
 use crate::changed_lines::{HunkText, reverted};
 use crate::types::DiffHunk;
@@ -92,7 +95,15 @@ pub fn classify(
 /// out of a loop, a tuple's comma, a rune turned string or the inside of a
 /// multi-line string all read as layout (#442). Without a grammar, a clean
 /// parse or the text, only trailing whitespace and blank lines are.
-pub fn settle_layout(runs: &mut [HunkText], new: Option<&str>) {
+///
+/// The deadline is polled before each run: past it the runs left are judged by
+/// their lines alone, as a file past it is, so one module of tens of thousands
+/// of runs ends in a partial answer.
+pub fn settle_layout(
+    runs: &mut [HunkText],
+    new: Option<&str>,
+    deadline: &crate::resource::RunContext,
+) {
     let Some(path) = runs.first().map(|r| r.path.clone()) else {
         return;
     };
@@ -107,12 +118,24 @@ pub fn settle_layout(runs: &mut [HunkText], new: Option<&str>) {
             grammar == "python",
         ))
     });
+    let (old_wide, new_wide) = (Wide::default(), Wide::default());
     for run in runs.iter_mut() {
         run.layout = match (&parsed, new) {
-            (Some((old, old_tree, new_tree, python)), Some(new)) => {
+            (Some((old, old_tree, new_tree, python)), Some(new)) if deadline.check() => {
                 let rows = |start: u32, len: u32| (start.max(1) - 1, len);
-                Shape::of(old_tree, old, rows(run.old_start, run.old_len), *python)
-                    == Shape::of(new_tree, new, rows(run.new_start, run.new_len), *python)
+                Shape::of(
+                    old_tree,
+                    old,
+                    rows(run.old_start, run.old_len),
+                    *python,
+                    &old_wide,
+                ) == Shape::of(
+                    new_tree,
+                    new,
+                    rows(run.new_start, run.new_len),
+                    *python,
+                    &new_wide,
+                )
             }
             _ => {
                 let text = |lines: &[String]| -> Vec<String> {
@@ -152,16 +175,32 @@ struct Shape {
     tokens: Vec<Token>,
 }
 
-struct Rows<'a> {
+/// The children of the nodes with many of them, listed once per tree: a run
+/// reads only those on its rows, found by bisection, where listing them again
+/// for each of tens of thousands of runs made a module's pass quadratic.
+type Wide<'t> = RefCell<FxHashMap<usize, Rc<[tree_sitter::Node<'t>]>>>;
+
+/// Below this many children a node is listed afresh: a bisection saves less
+/// than the list costs to keep.
+const WIDE: usize = 64;
+
+struct Rows<'a, 't> {
     source: &'a str,
     first: usize,
     last: usize,
     python: bool,
+    wide: &'a Wide<'t>,
 }
 
 impl Shape {
     /// `rows` is the first row (0-based) and the number of rows.
-    fn of(tree: &tree_sitter::Tree, source: &str, rows: (u32, u32), python: bool) -> Self {
+    fn of<'t>(
+        tree: &'t tree_sitter::Tree,
+        source: &str,
+        rows: (u32, u32),
+        python: bool,
+        wide: &Wide<'t>,
+    ) -> Self {
         let mut shape = Self {
             imports: Vec::new(),
             tokens: Vec::new(),
@@ -172,6 +211,7 @@ impl Shape {
                 first: rows.0 as usize,
                 last: (rows.0 + rows.1 - 1) as usize,
                 python,
+                wide,
             };
             within.node(
                 tree.root_node(),
@@ -202,7 +242,28 @@ fn is_import(kind: &str) -> bool {
     )
 }
 
-impl Rows<'_> {
+impl<'t> Rows<'_, 't> {
+    /// The last row a node reaches, as `covers` reads its end.
+    fn last_row(node: tree_sitter::Node) -> usize {
+        let (start, end) = (node.start_position(), node.end_position());
+        if end.column == 0 && end.row > start.row {
+            end.row - 1
+        } else {
+            end.row
+        }
+    }
+
+    fn kids(&self, node: tree_sitter::Node<'t>) -> Rc<[tree_sitter::Node<'t>]> {
+        let list = || {
+            let mut cursor = node.walk();
+            node.children(&mut cursor).collect::<Rc<[_]>>()
+        };
+        if node.child_count() < WIDE {
+            return list();
+        }
+        Rc::clone(self.wide.borrow_mut().entry(node.id()).or_insert_with(list))
+    }
+
     fn covers(&self, start: tree_sitter::Point, end: tree_sitter::Point) -> bool {
         // A node ending at the start of a row ends on the row above it.
         let last = if end.column == 0 && end.row > start.row {
@@ -215,7 +276,7 @@ impl Rows<'_> {
 
     fn node(
         &self,
-        node: tree_sitter::Node,
+        node: tree_sitter::Node<'t>,
         in_import: bool,
         out: &mut Vec<Token>,
         imports: &mut Vec<Vec<Token>>,
@@ -257,20 +318,29 @@ impl Rows<'_> {
     /// Inside an import, the names a list holds compare as a set.
     fn children(
         &self,
-        node: tree_sitter::Node,
+        node: tree_sitter::Node<'t>,
         in_import: bool,
         out: &mut Vec<Token>,
         imports: &mut Vec<Vec<Token>>,
     ) {
-        let mut cursor = node.walk();
-        let kids: Vec<tree_sitter::Node> = node.children(&mut cursor).collect();
+        let kids = self.kids(node);
+        // Kids ending above the first row neither cover it nor leave a gap that
+        // does, and none past the last row's start leaves one after it.
+        let from = if kids.len() < WIDE {
+            0
+        } else {
+            kids.partition_point(|k| Self::last_row(*k) < self.first)
+        };
         let mut names: Vec<Vec<Token>> = Vec::new();
         let flush = |names: &mut Vec<Vec<Token>>, out: &mut Vec<Token>| {
             names.sort();
             out.extend(names.drain(..).flatten());
         };
-        let (mut gap, mut gap_at) = (node.start_byte(), node.start_position());
-        for i in 0..=kids.len() {
+        let (mut gap, mut gap_at) = match from.checked_sub(1) {
+            Some(before) => (kids[before].end_byte(), kids[before].end_position()),
+            None => (node.start_byte(), node.start_position()),
+        };
+        for i in from..=kids.len() {
             let (end, end_at) = kids.get(i).map_or_else(
                 || (node.end_byte(), node.end_position()),
                 |k| (k.start_byte(), k.start_position()),
@@ -281,6 +351,9 @@ impl Rows<'_> {
                 out.push(Token::Text(OWN_TEXT, own.to_string()));
             }
             let Some(&kid) = kids.get(i) else { break };
+            if kid.start_position().row > self.last {
+                break;
+            }
             (gap, gap_at) = (kid.end_byte(), kid.end_position());
             if !self.covers(kid.start_position(), kid.end_position())
                 || kid.kind().contains("comment")

@@ -17,11 +17,10 @@ fn reformatted_module(runs: usize) -> TempDir {
     let repo = tmp.path();
     init_repo(repo);
     let module = |comma: &str| {
-        let mut text = String::from("def run(a, b):\n");
-        for i in 0..runs {
-            text.push_str(&format!("    v{i} = g(a, b{comma})\n    w{i} = {i}\n"));
-        }
-        text + "    return a\n"
+        let body: String = (0..runs)
+            .map(|i| format!("    v{i} = g(a, b{comma})\n    w{i} = {i}\n"))
+            .collect();
+        format!("def run(a, b):\n{body}    return a\n")
     };
     write(repo, "m.py", &module(","));
     commit_all(repo, "base");
@@ -87,16 +86,22 @@ mod stalled_reads {
 
     use super::*;
 
-    /// A `git` that numbers its calls under `$SLOTS` and, for the one numbered
-    /// `$STALL_INDEX`, leaves `$STALLED` and never answers: the event the run's
-    /// stall knob waits for. Every other call is the real git.
+    /// A `git` that, for the `$STALL_NTH`th call whose arguments hold `$STALL_MATCH`,
+    /// leaves `$STALLED` and never answers: the event the run's stall knob waits
+    /// for. Every other call is the real git. It logs every call under `$SLOTS`.
     const STALLING_GIT: &str = r#"#!/bin/sh
 until mkdir "$SLOTS/lock" 2>/dev/null; do :; done
-read -r n < "$SLOTS/next"
-echo $((n + 1)) > "$SLOTS/next"
-echo "$n $*" >> "$SLOTS/calls"
+echo "$*" >> "$SLOTS/calls"
+hit=
+case "$*" in
+  *"$STALL_MATCH"*)
+    read -r n < "$SLOTS/matched"
+    echo $((n + 1)) > "$SLOTS/matched"
+    [ "$n" = "$STALL_NTH" ] && hit=1
+    ;;
+esac
 rmdir "$SLOTS/lock"
-if [ "$n" = "$STALL_INDEX" ]; then
+if [ -n "$hit" ]; then
   echo stalled >> "$STALLED"
   exec sleep 60
 fi
@@ -118,12 +123,13 @@ exec "$REAL_GIT" "$@"
             Self { dir }
         }
 
-        /// One impact run on `repo` whose `stall`th git call never answers
-        /// (`0`: none does), and the calls the run made, in order.
-        fn run(&self, repo: &Path, stall: usize) -> (Output, Vec<String>) {
-            let slots: PathBuf = self.dir.path().join(format!("slots-{stall}"));
+        /// One impact run on `repo` whose `nth` git call with `rev-parse --verify
+        /// --quiet` in its arguments never answers (`0`: none does), the calls the
+        /// run made in order, and whether that stall was reached.
+        fn run(&self, repo: &Path, nth: usize) -> (Output, Vec<String>, bool) {
+            let slots: PathBuf = self.dir.path().join(format!("slots-{nth}"));
             std::fs::create_dir_all(&slots).expect("mkdir");
-            std::fs::write(slots.join("next"), "1\n").expect("write");
+            std::fs::write(slots.join("matched"), "1\n").expect("write");
             std::fs::write(slots.join("calls"), "").expect("write");
             let stalled = slots.join("stalled");
             let real = support::scrubbed_sh(repo, "command -v git")
@@ -139,7 +145,8 @@ exec "$REAL_GIT" "$@"
                 .env("PATH", path)
                 .env("REAL_GIT", String::from_utf8_lossy(&real.stdout).trim())
                 .env("SLOTS", &slots)
-                .env("STALL_INDEX", stall.to_string())
+                .env("STALL_MATCH", "rev-parse --verify --quiet")
+                .env("STALL_NTH", nth.to_string())
                 .env("STALLED", &stalled)
                 .env("DIFFCTX_TEST_GIT_STALL_FILE", &stalled)
                 .args([
@@ -154,12 +161,16 @@ exec "$REAL_GIT" "$@"
                 .output()
                 .expect("run diffctx");
             let calls = std::fs::read_to_string(slots.join("calls")).unwrap_or_default();
-            (out, calls.lines().map(str::to_string).collect())
+            (
+                out,
+                calls.lines().map(str::to_string).collect(),
+                stalled.exists(),
+            )
         }
     }
 
-    /// Once the change is read, a revision git does not answer in time is a
-    /// reason the answer is partial, not the end of the run. The provenance of the
+    /// Once the change is read, a revision git does not answer in time costs the
+    /// answer some of what it says, not the answer. The provenance of the
     /// answer named both sides of the range with a read that failed the run on
     /// the deadline (exit 3, nothing on stdout), where a run past its deadline
     /// had always answered with what it held.
@@ -183,30 +194,37 @@ exec "$REAL_GIT" "$@"
         commit_all(repo, "add sub");
 
         let shim = Shim::new();
-        let (whole, calls) = shim.run(repo, 0);
+        let (whole, calls, _) = shim.run(repo, 0);
         assert!(whole.status.success(), "{whole:?}");
+        let revision = |c: &String| c.contains("rev-parse --verify --quiet");
         let listed = calls
             .iter()
             .position(|c| c.contains(" diff "))
             .expect("the run read the change");
-        let revisions: Vec<usize> = calls
-            .iter()
-            .enumerate()
-            .filter(|(i, c)| *i > listed && c.contains("rev-parse --verify --quiet"))
-            .map(|(i, _)| i + 1)
-            .collect();
-        assert!(revisions.len() >= 2, "{calls:#?}");
-        for stall in revisions {
-            let (out, _) = shim.run(repo, stall);
-            let (stdout, stderr) = (
-                String::from_utf8_lossy(&out.stdout),
-                String::from_utf8_lossy(&out.stderr),
+        let before = calls[..listed].iter().filter(|c| revision(c)).count();
+        let total = calls.iter().filter(|c| revision(c)).count();
+        let mut reached = 0;
+        for nth in before + 1..=total {
+            let (out, ran, stalled) = shim.run(repo, nth);
+            if !stalled {
+                continue;
+            }
+            reached += 1;
+            let stderr = String::from_utf8_lossy(&out.stderr);
+            assert_eq!(
+                out.status.code(),
+                Some(0),
+                "revision read {nth} stalled: {stderr}\n{ran:#?}"
             );
-            assert_eq!(out.status.code(), Some(0), "call {stall}: {stderr}");
+            let stdout = String::from_utf8_lossy(&out.stdout);
             assert!(
-                stdout.contains("partial: deadline"),
-                "call {stall}: {stdout}"
+                stdout.starts_with("diffctx impact for HEAD~1..HEAD"),
+                "revision read {nth}: {stdout}"
             );
         }
+        assert!(
+            reached >= 2,
+            "{reached} stalls reached of {total} reads ({before} before the change)"
+        );
     }
 }
