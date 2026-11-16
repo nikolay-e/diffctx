@@ -40,6 +40,16 @@ tree_version = _load_tree_version()
 RELEASED = json.loads(_load_text("server.json"))["version"]
 
 
+def _assert_a_tree_that_follows(tree_version_text: str, released_text: str) -> None:
+    released = Version(released_text)
+    assert not released.is_prerelease, released_text
+    tree = Version(tree_version_text)
+    if tree.is_prerelease:
+        assert Version(tree.base_version) > released, (tree_version_text, released_text)
+    else:
+        assert tree == released, (tree_version_text, released_text)
+
+
 class TestWhatThisTreeIs:
     def test_pyproject_toml_version(self):
         match = re.search(r'^version = "([^"]+)"', _load_text("pyproject.toml"), re.MULTILINE)
@@ -76,14 +86,40 @@ class TestWhatThisTreeIs:
 
     def test_the_tree_is_the_release_or_a_development_version_after_it(self):
         """A development tree sits above the last release, so a build from source
-        can never satisfy the `==X.Y.Z` pin of that release."""
-        released = Version(RELEASED)
-        assert not released.is_prerelease, RELEASED
-        tree = Version(__version__)
-        if tree.is_devrelease:
-            assert Version(tree.base_version) > released, (__version__, RELEASED)
-        else:
-            assert tree == released
+        can never satisfy the `==X.Y.Z` pin of that release. A prerelease of the
+        next version (2.0.0rc1 while 1.20.0 is the release) is such a tree too."""
+        _assert_a_tree_that_follows(__version__, RELEASED)
+
+    @pytest.mark.parametrize(
+        ("tree", "released"),
+        [
+            ("1.20.0", "1.20.0"),
+            ("1.20.1.dev0", "1.20.0"),
+            ("2.0.0.dev0", "1.20.0"),
+            ("2.0.0a1", "1.20.0"),
+            ("2.0.0b2", "1.20.0"),
+            ("2.0.0rc1", "1.20.0"),
+            ("1.21.0rc1", "1.20.0"),
+        ],
+    )
+    def test_a_tree_that_follows_the_release_is_accepted(self, tree, released):
+        _assert_a_tree_that_follows(tree, released)
+
+    @pytest.mark.parametrize(
+        ("tree", "released"),
+        [
+            ("1.20.0rc1", "1.20.0"),
+            ("1.20.0.dev0", "1.20.0"),
+            ("1.19.0", "1.20.0"),
+            ("1.19.0rc1", "1.20.0"),
+            ("1.21.0", "1.20.0"),
+            ("2.0.0", "1.20.0"),
+            ("1.20.0.post1", "1.20.0"),
+        ],
+    )
+    def test_a_tree_that_is_neither_the_release_nor_after_it_is_refused(self, tree, released):
+        with pytest.raises(AssertionError):
+            _assert_a_tree_that_follows(tree, released)
 
 
 class TestWhatUsersPin:

@@ -10,6 +10,8 @@ from __future__ import annotations
 import importlib.util
 import re
 import shutil
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -95,3 +97,34 @@ class TestAVersionThatIsNotAReleaseWritesNothing:
         with pytest.raises(ValueError, match="not a version this repository releases"):
             tree_version.set_tree_version(version, tree)
         assert {p: _read(tree, p) for p in before} == before
+
+
+class TestTheCandidateIsClassifiedOnceForTheWorkflow:
+    """`describe` prints the two `$GITHUB_OUTPUT` lines the release workflow reads."""
+
+    @staticmethod
+    def _describe(version: str) -> subprocess.CompletedProcess[str]:
+        return subprocess.run([sys.executable, str(SCRIPT), "describe", version], capture_output=True, text=True, check=False)
+
+    @pytest.mark.parametrize(
+        ("version", "semver", "prerelease"),
+        [
+            ("1.20.0", "1.20.0", "false"),
+            ("2.0.0rc1", "2.0.0-rc.1", "true"),
+            ("2.0.0a3", "2.0.0-a.3", "true"),
+            ("2.0.0b2", "2.0.0-b.2", "true"),
+            ("2.0.0.dev0", "2.0.0-dev.0", "true"),
+            ("1.20.1.post1", "1.20.1-post.1", "false"),
+        ],
+    )
+    def test_it_prints_the_semver_spelling_and_whether_the_version_is_a_candidate(self, version, semver, prerelease):
+        done = self._describe(version)
+        assert done.returncode == 0, done.stderr
+        assert done.stdout.splitlines() == [f"semver={semver}", f"prerelease={prerelease}"]
+
+    @pytest.mark.parametrize("version", ["2.0", "v2.0.0", "2.0.0-rc.1", "latest"])
+    def test_a_version_that_is_not_a_release_prints_nothing_and_fails_the_job(self, version):
+        done = self._describe(version)
+        assert done.returncode != 0
+        assert done.stdout == ""
+        assert "not a version this repository releases" in done.stderr
