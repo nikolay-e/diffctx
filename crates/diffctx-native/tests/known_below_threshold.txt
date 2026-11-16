@@ -128,6 +128,7 @@ impact/config/config_argo_workflow_field_reaches_the_referenced_template  # gh#6
 impact/config/config_lock_bump_names_the_moved_package_and_its_importers  # gh#620 open
 impact/config/config_shared_gradle_block_says_its_reach_is_not_analysed  # gh#516 open
 symbol/config/config_symbol_helm_named_template_and_its_includes  # gh#378 open
+symbol/config/config_symbol_helm_dotted_dashed_template_name_without_a_path  # gh#378 open
 impact/web/web_astro_component_import_is_a_consumer  # gh#597 open
 impact/web/web_removed_css_rule_is_still_used_by_markup  # gh#631 open
 symbol/web/web_symbol_css_class_and_its_markup_uses  # gh#631 open
@@ -138,6 +139,8 @@ impact/config/gh610_metric_rename_names_the_promql_rule  # gh#610 open
 impact/kotlin/kotlin_untested_callers_outside_the_diff_are_not_shed_under_a_small_budget
 impact/python/py_error_code_literal_a_test_asserts_names_the_test_through_a_dynamic_dispatch
 impact/typescript/ts_loop_variable_in_a_top_level_block_is_not_a_changed_definition
+impact/python/py_top_level_code_in_a_test_file_is_disclosed_never_silently_lost  # fj#94 open
+impact/java/java_lombok_extension_method_call_reaches_the_extending_method  # fj#214 open
 impact/typescript/ts_ui_copy_literal_names_the_e2e_spec_that_asserts_it
 
 # AC5 false-absence classes (tests stream, p5): the cases are red on the engine they were written

@@ -1,0 +1,59 @@
+name: java_lombok_extension_method_call_reaches_the_extending_method
+mode: impact
+source: fj#214
+issue_state: open
+tags: [java, lombok, extension-method, receiver-type, decoy]
+repo:
+  initial_files:
+    src/main/java/shop/Ext.java: |
+      package shop;
+
+      public class Ext {
+          public static String shout(String s) {
+              return s.toUpperCase();
+          }
+      }
+    src/main/java/shop/Use.java: |
+      package shop;
+
+      import lombok.experimental.ExtensionMethod;
+
+      @ExtensionMethod(Ext.class)
+      public class Use {
+          String f(String x) {
+              return x.shout();
+          }
+      }
+    src/main/java/shop/Plain.java: |
+      package shop;
+
+      public class Plain {
+          String g(String x) {
+              return x.trim();
+          }
+      }
+  changed_files:
+    src/main/java/shop/Ext.java: |
+      package shop;
+
+      public class Ext {
+          public static String shout(String s) {
+              return s.toUpperCase() + "!";
+          }
+      }
+  commit_message: "ext: shout louder"
+# Lombok rewrites `x.shout()` in a class annotated with the extension class to
+# `Ext.shout(x)`: the call is a caller of the static method, though the receiver
+# `String` declares no `shout`. Plain.java has no such annotation.
+expect:
+  changed: [src/main/java/shop/Ext.java::Ext.shout]
+  relations:
+  - from: src/main/java/shop/Use.java::Use.f
+    to: src/main/java/shop/Ext.java::Ext.shout
+    kind: calls
+    resolution: resolved
+    site: 8
+  exact: true
+  decoys:
+    src/main/java/shop/Ext.java::Ext.shout:
+    - src/main/java/shop/Plain.java
