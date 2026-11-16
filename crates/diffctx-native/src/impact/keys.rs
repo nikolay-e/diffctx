@@ -305,8 +305,6 @@ pub(super) struct LiteralNames {
 const MIN_LITERAL_NAME: usize = 4;
 const MIN_CALL_NAME: usize = 2;
 const NAMES_PER_SEARCH: usize = 40;
-/// A name that fills more files than this is a common word, not a reference.
-const MAX_LITERAL_FILES: usize = 12;
 const SQL_VERBS: &[&str] = &[
     "select", "insert", "update", "delete", "with", "call", "merge",
 ];
@@ -832,16 +830,9 @@ impl LiteralNames {
         Self { rows }
     }
 
-    /// The files that spell `name` as a literal, one line each; none when the
-    /// name is a common word.
+    /// The files that spell `name` as a literal, one line each.
     pub(super) fn naming(&self, name: &str) -> Vec<(String, u32)> {
-        let Some(files) = self.rows.get(name) else {
-            return Vec::new();
-        };
-        let mut named = files.clone();
-        if named.len() > MAX_LITERAL_FILES {
-            return Vec::new();
-        }
+        let mut named = self.rows.get(name).cloned().unwrap_or_default();
         named.sort();
         named
     }
