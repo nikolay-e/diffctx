@@ -11,6 +11,11 @@
 //    the run without the insertion discloses. Class `H` is the second kind
 //    of finding, a hedge over a spelling that is no use.
 //
+//   The regions a parsed file hides are written the same way, as a use: the
+//   body of a macro, the text after a parse error, a word in command position
+//   (a script, a Makefile, a CI step) and the text of a template. The answer
+//   names the file, stays partial, or is the false absence.
+//
 // B  The files that call the subject are stripped of their imports, of their
 //    type annotations and of their package clause, one transformation at a
 //    time and then all three. The answer may weaken to a candidate or a gap,
@@ -23,6 +28,11 @@
 //   DIFFCTX_CLASS_FILTER  only the cases whose name contains the text
 //   DIFFCTX_CLASS_EVERY   every n-th case of a language, to sample
 //   DIFFCTX_CLASS_REPORT  append every failing row to this file
+//   DIFFCTX_CLASS_SITE    A only: run only the regions a parsed file hides
+//                         (macro body, after a parse error, command position,
+//                         template text) whose label contains the text
+//   DIFFCTX_CLASS_ACCOUNT append, per region and language, how many runs the
+//                         insertion made, named, hedged and called absent
 //
 // Rows read `class family case variant query complete_empty excerpt`, with
 // the family being the case's language directory. Class `E` is a run that
@@ -30,6 +40,7 @@
 #![allow(dead_code)]
 
 use std::collections::BTreeMap;
+use std::io::Write as _;
 use std::path::{Path, PathBuf};
 use std::process::Output;
 
@@ -48,8 +59,8 @@ mod support;
 use oracle::case::{Case, Mode, Repo, parse};
 use oracle::model::{Kind, Node};
 use support::classes::{
-    Finding, TRANSFORMS, comment_of, complete_empty, conclude, excerpt, extension, literal_call,
-    mention, proof_missing, strip_everything, unmoved_by_no_use, use_is_enumerated,
+    Finding, TRANSFORMS, comment_of, complete_empty, conclude, excerpt, extension, lists,
+    literal_call, mention, proof_missing, regions, strip_everything, unmoved_by_no_use,
 };
 use support::{diffctx_unclocked, git, init_repo};
 
@@ -370,14 +381,13 @@ enum Spelling {
 const NEUTRAL: &str = "zzneutral";
 
 // The variants of one case that spell `name`: the label, whether it is a use,
-// the repository and the file that holds the spelling.
-fn spellings(
-    loaded: &Loaded,
-    subject: &Subject,
-    name: &str,
-) -> Vec<(&'static str, Spelling, Repo, String)> {
+// the repository, the file that holds the spelling and, for a region a parsed
+// file hides, its site.
+type Variant = (&'static str, Spelling, Repo, String, Option<&'static str>);
+
+fn spellings(loaded: &Loaded, subject: &Subject, name: &str) -> Vec<Variant> {
     let line = |path: &str| mention(path, name);
-    let mut variants: Vec<(&'static str, Spelling, Repo, String)> = Vec::new();
+    let mut variants: Vec<Variant> = Vec::new();
     let mut elsewhere = |label, spelling, extra: &str, text: String, changed: bool| {
         let mut repo = loaded.case.repo.clone();
         let files = if changed {
@@ -386,7 +396,7 @@ fn spellings(
             &mut repo.initial_files
         };
         files.insert(extra.to_string(), text);
-        variants.push((label, spelling, repo, extra.to_string()));
+        variants.push((label, spelling, repo, extra.to_string(), None));
     };
     elsewhere(
         "unchanged .xyz",
@@ -437,15 +447,64 @@ fn spellings(
                     Spelling::NoUse,
                     repo,
                     own.clone(),
+                    None,
                 ));
             }
         }
     }
+    for region in regions(subject.definition.as_deref(), name) {
+        let mut repo = loaded.case.repo.clone();
+        repo.initial_files.insert(region.path.clone(), region.text);
+        variants.push((
+            region.label,
+            Spelling::Use,
+            repo,
+            region.path,
+            Some(region.site),
+        ));
+    }
     variants
+}
+
+// What the insertions of one region made of the answers, in one language.
+#[derive(Default)]
+struct Tally {
+    inserted: usize,
+    // The answer lists the inserted file.
+    named: usize,
+    // The answer names no such file and is no complete "nobody uses it": it
+    // stays partial. `unmoved` of them were as partial without the name.
+    hedged: usize,
+    unmoved: usize,
+    // A complete answer that nobody uses the subject: the finding.
+    absent: usize,
+    errored: usize,
+    unanswered: usize,
+}
+
+fn account(test: &str, tallies: &BTreeMap<(&'static str, &'static str), Tally>) {
+    let Some(path) = knob("DIFFCTX_CLASS_ACCOUNT") else {
+        return;
+    };
+    let mut file = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+        .unwrap_or_else(|e| panic!("open {path:?}: {e}"));
+    for ((site, label), t) in tallies {
+        writeln!(
+            file,
+            "{test}\t{site}\t{label}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
+            t.inserted, t.named, t.hedged, t.unmoved, t.absent, t.errored, t.unanswered
+        )
+        .expect("write the account");
+    }
 }
 
 fn enumeration(language: &str) {
     let mut findings = Vec::new();
+    let mut tallies: BTreeMap<(&'static str, &'static str), Tally> = BTreeMap::new();
+    let only_sites = knob("DIFFCTX_CLASS_SITE");
     let mut checked = 0;
     for loaded in load(language) {
         let Some(subject) = subject(&loaded.case) else {
@@ -453,21 +512,55 @@ fn enumeration(language: &str) {
         };
         let variants = spellings(&loaded, &subject, &subject.name);
         let neutral = spellings(&loaded, &subject, NEUTRAL);
-        for ((label, spelling, repo, path), (_, _, neutral_repo, _)) in
+        for ((label, spelling, repo, path, site), (_, _, neutral_repo, _, _)) in
             variants.into_iter().zip(neutral)
         {
+            if let Some(only) = &only_sites
+                && !(site.is_some() && label.contains(only.as_str()))
+            {
+                continue;
+            }
             let planted = materialise(loaded.case.mode, &repo);
             checked += 1;
+            let tally = site.map(|site| tallies.entry((site, label)).or_default());
             let doc = match ask(&planted, &loaded.case) {
                 Err(why) => {
+                    if let Some(tally) = tally {
+                        tally.inserted += 1;
+                        tally.errored += 1;
+                    }
                     findings.push(error('A', &loaded, label, &why));
                     continue;
                 }
-                Ok(None) => continue,
+                Ok(None) => {
+                    if let Some(tally) = tally {
+                        tally.unanswered += 1;
+                    }
+                    continue;
+                }
                 Ok(Some(doc)) => doc,
             };
             if spelling == Spelling::Use {
-                if !use_is_enumerated(&doc, &path) {
+                let named = lists(&doc, &path);
+                let absent = !named && complete_empty(&doc);
+                if let Some(tally) = tally {
+                    tally.inserted += 1;
+                    if named {
+                        tally.named += 1;
+                    } else if absent {
+                        tally.absent += 1;
+                    } else {
+                        tally.hedged += 1;
+                        let neutral = materialise(loaded.case.mode, &neutral_repo);
+                        if matches!(
+                            ask(&neutral, &loaded.case),
+                            Ok(Some(baseline)) if unmoved_by_no_use(&doc, &baseline)
+                        ) {
+                            tally.unmoved += 1;
+                        }
+                    }
+                }
+                if absent {
                     findings.push(finding('A', &loaded, label, &doc));
                 }
                 continue;
@@ -482,6 +575,7 @@ fn enumeration(language: &str) {
             }
         }
     }
+    account(&format!("corpus A/{language}"), &tallies);
     conclude(&format!("corpus A/{language}"), checked, &findings);
 }
 

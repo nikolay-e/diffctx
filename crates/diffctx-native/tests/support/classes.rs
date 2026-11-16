@@ -233,7 +233,7 @@ fn known_red() -> BTreeSet<String> {
 
 // Appends every finding to `DIFFCTX_CLASS_REPORT` when set, and fails the test
 // when a finding is not on the known-red list or a listed variant passed. A
-// sampled corpus run (DIFFCTX_CLASS_FILTER, DIFFCTX_CLASS_EVERY) cannot tell a
+// sampled corpus run (DIFFCTX_CLASS_FILTER, _EVERY, _SITE) cannot tell a
 // stale entry from a case it did not run.
 pub(crate) fn conclude(test: &str, checked: usize, findings: &[Finding]) {
     if let Some(path) = std::env::var_os("DIFFCTX_CLASS_REPORT") {
@@ -253,9 +253,13 @@ pub(crate) fn conclude(test: &str, checked: usize, findings: &[Finding]) {
         .filter(|f| !red.contains(&f.key(test)))
         .map(|f| f.row(test))
         .collect();
-    let sampled = ["DIFFCTX_CLASS_FILTER", "DIFFCTX_CLASS_EVERY"]
-        .iter()
-        .any(|knob| std::env::var_os(knob).is_some());
+    let sampled = [
+        "DIFFCTX_CLASS_FILTER",
+        "DIFFCTX_CLASS_EVERY",
+        "DIFFCTX_CLASS_SITE",
+    ]
+    .iter()
+    .any(|knob| std::env::var_os(knob).is_some());
     let prefix = format!("{test} | ");
     let stale: Vec<&String> = red
         .iter()
@@ -322,14 +326,11 @@ pub(crate) fn mention(path: &str, symbol: &str) -> String {
     }
 }
 
-// A call of the parsed file's language with the subject's name as a string
-// literal argument: a spelling that may be a reflective use, which a reader
-// that follows names alone cannot trace. None where the format has no call
-// to write standing alone.
-pub(crate) fn literal_call(path: &str, symbol: &str) -> Option<String> {
-    let call = format!("register(\"{symbol}\")");
-    Some(match lang(path)? {
-        Lang::Python => format!("{call}\n"),
+// A statement that stands alone in a file of the language, around `call`. None
+// where the format has no call to write standing alone.
+fn standing(lang: Lang, call: &str) -> Option<String> {
+    Some(match lang {
+        Lang::Python | Lang::Shell => format!("{call}\n"),
         Lang::Script => format!("{call};\n"),
         Lang::Php => format!("<?php\n{call};\n"),
         Lang::Rust => format!("fn zz_register() {{\n    {call};\n}}\n"),
@@ -340,9 +341,181 @@ pub(crate) fn literal_call(path: &str, symbol: &str) -> Option<String> {
             format!("class ZzInserted {{\n    void zz() {{\n        {call};\n    }}\n}}\n")
         }
         Lang::Go => format!("package zz\n\nfunc zzRegister() {{\n\t{call}\n}}\n"),
-        Lang::Shell => format!("register \"{symbol}\"\n"),
         Lang::CSharp | Lang::Ruby | Lang::Terraform => return None,
     })
+}
+
+// A call of the parsed file's language with the subject's name as a string
+// literal argument: a spelling that may be a reflective use, which a reader
+// that follows names alone cannot trace. None where the format has no call
+// to write standing alone.
+pub(crate) fn literal_call(path: &str, symbol: &str) -> Option<String> {
+    let lang = lang(path)?;
+    let call = if lang == Lang::Shell {
+        format!("register \"{symbol}\"")
+    } else {
+        format!("register(\"{symbol}\")")
+    };
+    standing(lang, &call)
+}
+
+// ---- the regions of a file that a parsed reader hides ----
+
+// A spelling of the subject in a place the file's reader sees as something
+// other than code: the body of a macro, the text after a parse error, a word in
+// command position, the text of a template. All of them may be a use.
+pub(crate) struct Region {
+    pub site: &'static str,
+    pub label: &'static str,
+    pub path: String,
+    pub text: String,
+}
+
+// A call of the subject written in the text of a macro, which the language
+// expands only where it is invoked.
+fn macro_body(path: &str, symbol: &str) -> Option<String> {
+    Some(match lang(path)? {
+        Lang::Rust => {
+            format!("macro_rules! zz_macro {{\n    () => {{\n        {symbol}(x)\n    }};\n}}\n")
+        }
+        Lang::C => format!("#define ZZ_MACRO() {symbol}(x)\n"),
+        _ => return None,
+    })
+}
+
+// A call of the subject that follows a line the language cannot parse, so that
+// the parse tree has an error node before it.
+fn after_error(path: &str, symbol: &str) -> Option<String> {
+    if extension(path) == "sql" {
+        return Some(format!("SELECT FROM WHERE ) (;\nSELECT {symbol}(x);\n"));
+    }
+    let lang = lang(path)?;
+    let call = if lang == Lang::Shell {
+        format!("{symbol} x")
+    } else {
+        format!("{symbol}(x)")
+    };
+    let text = standing(lang, &call)?;
+    let broken = match lang {
+        Lang::Python => "def zz_broken(:",
+        Lang::Script => "const zzBroken = (;",
+        Lang::Rust => "fn zz_broken( {",
+        Lang::C => "void zz_broken( {",
+        Lang::Kotlin => "fun zzBroken( {",
+        Lang::Swift | Lang::Go => "func zzBroken( {",
+        Lang::Java => "int zz_broken( {",
+        Lang::Php => "function zz_broken( {",
+        Lang::Shell => "if then fi ) (",
+        _ => return None,
+    };
+    Some(match lang {
+        Lang::Php => text.replacen("<?php\n", &format!("<?php\n{broken}\n"), 1),
+        Lang::Go => text.replacen("\n\n", &format!("\n\n{broken}\n"), 1),
+        _ => format!("{broken}\n{text}"),
+    })
+}
+
+// The regions of one subject, as new unchanged files. `own` is the file that
+// defines it, which the language-bound regions follow; the others exist in a
+// repository of any language.
+pub(crate) fn regions(own: Option<&str>, symbol: &str) -> Vec<Region> {
+    let mut all = Vec::new();
+    let mut add = |site, label, path: String, text: String| {
+        all.push(Region {
+            site,
+            label,
+            path,
+            text,
+        });
+    };
+    if let Some(own) = own {
+        let ext = extension(own);
+        if let Some(text) = macro_body(own, symbol) {
+            add(
+                "macro body",
+                "unchanged, macro body",
+                format!("zz_class/macro.{ext}"),
+                text,
+            );
+        }
+        if let Some(text) = after_error(own, symbol) {
+            add(
+                "after a parse error",
+                "unchanged, after a parse error",
+                format!("zz_class/broken.{ext}"),
+                text,
+            );
+        }
+        if lang(own) == Some(Lang::Script) {
+            add(
+                "template text",
+                "unchanged, template text (jsx)",
+                "zz_class/template.tsx".into(),
+                format!("export const ZzTemplate = () => <div>{{{symbol}(x)}}</div>;\n"),
+            );
+            add(
+                "template text",
+                "unchanged, template text (vue)",
+                "zz_class/template.vue".into(),
+                format!("<template>\n  <p>{{{{ {symbol}(x) }}}}</p>\n</template>\n"),
+            );
+            add(
+                "template text",
+                "unchanged, template text (svelte)",
+                "zz_class/template.svelte".into(),
+                format!("<p>{{{symbol}(x)}}</p>\n"),
+            );
+        }
+        if lang(own) == Some(Lang::Php) {
+            add(
+                "template text",
+                "unchanged, template text (php)",
+                "zz_class/template.php".into(),
+                format!("<p><?= {symbol}($x) ?></p>\n"),
+            );
+        }
+        if lang(own) == Some(Lang::Ruby) {
+            add(
+                "template text",
+                "unchanged, template text (erb)",
+                "zz_class/template.erb".into(),
+                format!("<p><%= {symbol}(x) %></p>\n"),
+            );
+        }
+    }
+    add(
+        "command position",
+        "unchanged, command position (script)",
+        "zz_class/run.sh".into(),
+        format!("#!/bin/sh\n{symbol} x\n"),
+    );
+    add(
+        "command position",
+        "unchanged, command position (Makefile)",
+        "zz_class/Makefile".into(),
+        format!("zz:\n\t{symbol} x\n"),
+    );
+    add(
+        "command position",
+        "unchanged, command position (CI step)",
+        ".github/workflows/zz_class.yml".into(),
+        format!(
+            "name: zz\non: push\njobs:\n  zz:\n    runs-on: ubuntu-latest\n    steps:\n      - run: {symbol} x\n"
+        ),
+    );
+    add(
+        "template text",
+        "unchanged, template text (html)",
+        "zz_class/template.html".into(),
+        format!("<p>{{{{ {symbol}(x) }}}}</p>\n"),
+    );
+    add(
+        "template text",
+        "unchanged, template text (jinja)",
+        "zz_class/template.j2".into(),
+        format!("{{% if x %}}{{{{ {symbol}(x) }}}}{{% endif %}}\n"),
+    );
+    all
 }
 
 // ---- transformations of a caller ----
