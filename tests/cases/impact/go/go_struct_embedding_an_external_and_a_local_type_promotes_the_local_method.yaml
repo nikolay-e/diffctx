@@ -1,0 +1,51 @@
+name: go_struct_embedding_an_external_and_a_local_type_promotes_the_local_method
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [go, external-base, embedding]
+repo:
+  initial_files:
+    go.mod: |
+      module example.com/app
+
+      go 1.21
+    audit/audit.go: |
+      package audit
+
+      type Log struct{}
+
+      func (l *Log) Record(s string) {
+          println(s)
+      }
+    app/app.go: |
+      package app
+
+      import (
+          "net/http"
+
+          "example.com/app/audit"
+      )
+
+      type Server struct {
+          http.Server
+          audit.Log
+      }
+
+      func Run(s *Server) {
+          s.Record("x")
+      }
+  changed_files:
+    audit/audit.go: |
+      package audit
+
+      type Log struct{}
+
+      func (l *Log) Record(s string) {
+          println(s, 1)
+      }
+  commit_message: change
+expect:
+  changed: ['audit/audit.go::Record']
+  relations:
+  - {from: 'app/app.go::Run', to: 'audit/audit.go::Record', kind: calls, resolution: resolved}
+  exact: false

@@ -1,0 +1,40 @@
+name: py_requirement_named_without_a_source_keeps_the_sibling_a_candidate
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [python, manifests, workspace]
+repo:
+  initial_files:
+    libs/core/pyproject.toml: |
+      [project]
+      name = "core"
+      version = "0.1.0"
+      dependencies = []
+    libs/core/core_lib/__init__.py: |2+
+
+    libs/core/core_lib/money.py: |
+      def total(x):
+          return x
+    apps/web/pyproject.toml: |
+      [project]
+      name = "web"
+      version = "0.1.0"
+      dependencies = ["core"]
+    apps/web/web/__init__.py: |2+
+
+    apps/web/web/views.py: |
+      from core_lib.money import total
+
+
+      def show(x):
+          return total(x)
+  changed_files:
+    libs/core/core_lib/money.py: |
+      def total(x):
+          return x + 0
+  commit_message: change
+expect:
+  changed: ['libs/core/core_lib/money.py::total']
+  relations:
+  - {from: 'apps/web/web/views.py::show', to: 'libs/core/core_lib/money.py::total', kind: calls, resolution: resolved}
+  exact: false

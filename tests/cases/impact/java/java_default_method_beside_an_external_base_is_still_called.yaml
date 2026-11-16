@@ -1,0 +1,51 @@
+name: java_default_method_beside_an_external_base_is_still_called
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [java, external-base, inheritance]
+repo:
+  initial_files:
+    pom.xml: |
+      <project><modelVersion>4.0.0</modelVersion><groupId>a</groupId><artifactId>a</artifactId><version>1</version></project>
+    src/main/java/com/acme/Audited.java: |
+      package com.acme;
+
+      public interface Audited {
+          default int audit(int x) {
+              return x;
+          }
+      }
+    src/main/java/com/acme/Client.java: |
+      package com.acme;
+
+      import java.util.ArrayList;
+
+      public class Client extends ArrayList<String> implements Audited {
+      }
+    src/main/java/com/acme/Use.java: |
+      package com.acme;
+
+      public class Use {
+          public int go() {
+              Client c = new Client();
+              return c.audit(1);
+          }
+      }
+  changed_files:
+    src/main/java/com/acme/Audited.java: |
+      package com.acme;
+
+      public interface Audited {
+          default int audit(int x) {
+              return x + 1;
+          }
+      }
+  commit_message: change
+expect:
+  changed: ['src/main/java/com/acme/Audited.java::audit']
+  relations:
+  - from: src/main/java/com/acme/Use.java::go
+    to: src/main/java/com/acme/Audited.java::audit
+    kind: calls
+    resolution: resolved
+  exact: false

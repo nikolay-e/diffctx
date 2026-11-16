@@ -1,0 +1,45 @@
+name: py_import_root_named_by_pytest_pythonpath_across_projects_is_a_caller
+mode: impact
+source: synthetic
+issue_state: open
+tags: [python, manifests, workspace, absence-claim]
+repo:
+  initial_files:
+    libs/core/pyproject.toml: |
+      [project]
+      name = "core"
+      version = "0.1.0"
+      dependencies = []
+    libs/core/core_lib/__init__.py: |2+
+
+    libs/core/core_lib/money.py: |
+      def total(x):
+          return x
+    apps/web/pyproject.toml: |
+      [project]
+      name = "web"
+      version = "0.1.0"
+      dependencies = []
+    apps/web/web/__init__.py: |2+
+
+    apps/web/web/views.py: |
+      from core_lib.money import total
+
+
+      def show(x):
+          return total(x)
+    apps/web/pytest.ini: |
+      [pytest]
+      pythonpath = ../../libs/core
+  changed_files:
+    libs/core/core_lib/money.py: |
+      def total(x):
+          return x + 0
+  commit_message: change
+expect:
+  changed: ['libs/core/core_lib/money.py::total']
+  relations:
+  - {from: 'apps/web/web/views.py::show', to: 'libs/core/core_lib/money.py::total', kind: calls, resolution: resolved}
+  exact: false
+  never_empty: true
+  no_negative_claims: true
