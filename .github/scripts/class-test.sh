@@ -9,6 +9,13 @@
 # and all must pass on the head. The escape is a reviewed line in the PR body:
 #   Class test: none — truth|leak|delivery gh#N
 #
+# Both sides run with the baselines ignored (DIFFCTX_YAML_IGNORE_BASELINE), except
+# a changed case the head lists in known_below_threshold.txt or
+# known_false_hedges.txt: the head judges it with its lists honoured, and it never
+# counts as the red-on-base witness. An expectation lands before the engine change
+# that meets it (D2) and stays listed until that change lands; the corpus gate
+# holds the list in both directions, so a listed case that starts passing is red.
+#
 # Where each kind of test runs:
 #   impact and symbol cases  the head's harness against a diffctx binary built
 #                            from the base (DIFFCTX_BIN): the engine is a process
@@ -98,6 +105,7 @@ trap cleanup EXIT
 export DIFFCTX_YAML_IGNORE_BASELINE=1
 # The tree's own cargo target stays the head's; the base keeps one of its own.
 head_cargo() { (cd "$crate" && cargo test --release --locked "$@"); }
+head_with_lists() { (unset DIFFCTX_YAML_IGNORE_BASELINE && head_cargo "$@"); }
 base_cargo() {
   local dir="${work}/$1"
   shift
@@ -162,8 +170,8 @@ expect() { # side expected-verdict label assertion-marker command...
     gate_error "${label}: exit ${got} on the ${side} without a failed assertion: a crash, a missing binary or a setup error, not a red test"
     return 0
   fi
-  if [[ "$side" == base && "$want" == red ]]; then
-    if [[ "$verdict" == red ]]; then base_red=$((base_red + 1)); fi
+  if [[ "$side" == base ]]; then
+    if [[ "$want" == red && "$verdict" == red ]]; then base_red=$((base_red + 1)); fi
     echo "class-test: ${label} is ${verdict} on the base"
   elif [[ "$verdict" != "$want" ]]; then
     printf '%s\n' "$output" | tail -n 40
@@ -182,6 +190,8 @@ done
 
 if [[ -n "$class_cases" ]]; then
   listing=$(head_cargo --test yaml_cases -- --list 2>/dev/null)
+  listed=$(cat "${crate}/tests/known_below_threshold.txt" "${crate}/tests/known_false_hedges.txt" 2>/dev/null |
+    sed -e 's/#.*//' -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' || true)
   for path in $class_cases; do
     rel=${path#tests/cases/}
     rel=${rel%.*}
@@ -197,12 +207,16 @@ if [[ -n "$class_cases" ]]; then
       failures=$((failures + 1))
       continue
     fi
-    if [[ "$path" =~ $selection_cases ]]; then
-      expect base red "case ${trial}" "$assertion" base_cargo base --test yaml_cases -- --exact "$trial"
-    else
-      expect base red "case ${trial}" "$assertion" head_against_base_binary --test yaml_cases -- --exact "$trial"
+    label="case ${trial}" witness=red head_run=head_cargo
+    if grep -qxF "$trial" <<<"$listed"; then
+      label="case ${trial} (listed on the head)" witness=listed head_run=head_with_lists
     fi
-    expect head green "case ${trial}" "$assertion" head_cargo --test yaml_cases -- --exact "$trial"
+    if [[ "$path" =~ $selection_cases ]]; then
+      expect base "$witness" "$label" "$assertion" base_cargo base --test yaml_cases -- --exact "$trial"
+    else
+      expect base "$witness" "$label" "$assertion" head_against_base_binary --test yaml_cases -- --exact "$trial"
+    fi
+    expect head green "$label" "$assertion" "$head_run" --test yaml_cases -- --exact "$trial"
   done
 fi
 
