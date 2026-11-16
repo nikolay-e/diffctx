@@ -1448,8 +1448,9 @@ struct UntracedNamers {
     literal: keys::LiteralNames,
 }
 
-/// A name spelled in more untraced files than this is a common word, not a
-/// reference: it witnesses nothing.
+/// The files that name a definition and are listed; the rest are counted. By a
+/// module's stem or a Terraform variable assigned in a `.hcl`, a name spelled in
+/// more files than this is a common word, not a reference: it witnesses nothing.
 const MAX_UNTRACED_NAMERS: usize = 12;
 
 /// Module names that say a file's role, not which file it is.
@@ -1603,7 +1604,9 @@ impl UntracedNamers {
                 reason: decide::Reason::OtherLanguage,
                 files: spelled.len(),
             }));
-            sym.missed_in.extend(spelled);
+            sym.shed.name += spelled.len().saturating_sub(MAX_UNTRACED_NAMERS);
+            sym.missed_in
+                .extend(spelled.into_iter().take(MAX_UNTRACED_NAMERS));
         }
     }
 
@@ -1616,29 +1619,35 @@ impl UntracedNamers {
             .collect()
     }
 
-    /// The lines naming `word` in the files `admit` keeps, one per file;
-    /// none when the word is too common to witness anything.
-    fn naming(&self, word: &str, admit: impl Fn(&str) -> bool) -> Vec<(String, u32)> {
+    /// The lines naming `word` in the files `admit` keeps, one per file.
+    fn named_in(&self, word: &str, admit: impl Fn(&str) -> bool) -> Vec<(String, u32)> {
         let mut by_path: Vec<(String, u32)> = Vec::new();
         for (path, line) in self.rows.get(word).into_iter().flatten() {
             if admit(path) && !by_path.iter().any(|(p, _)| p == path) {
                 by_path.push((path.clone(), *line));
             }
         }
-        if by_path.len() > MAX_UNTRACED_NAMERS {
-            return Vec::new();
-        }
         by_path.sort();
         by_path
     }
 
-    /// The files outside code that spell `core`'s name.
+    /// `named_in`, none when the word is too common to witness anything.
+    fn naming(&self, word: &str, admit: impl Fn(&str) -> bool) -> Vec<(String, u32)> {
+        let named = self.named_in(word, admit);
+        if named.len() > MAX_UNTRACED_NAMERS {
+            return Vec::new();
+        }
+        named
+    }
+
+    /// The files outside code that spell `core`'s name, every one: the answer
+    /// lists the first `MAX_UNTRACED_NAMERS` and counts the rest.
     fn of(&self, state: &ScoredState, core: &Fragment) -> Vec<UnanalysedFile> {
         let Some(name) = spelled_name(core) else {
             return Vec::new();
         };
         let own = crate::vocabulary::family::Group::of_path(&rel(state, core.path()));
-        self.naming(name, |p| {
+        self.named_in(name, |p| {
             !is_code_file(p)
                 || (unread_code(p) && crate::vocabulary::family::Group::of_path(p) != own)
         })
@@ -4220,6 +4229,8 @@ pub fn build_impact(
         // A config that spells the name is no test: only a test file that does
         // leaves the absence of a test link open.
         let mut outside_tests = 0;
+        let mut listed_namers = 0;
+        let mut unlisted_namers = 0;
         for (file, literal) in named {
             if !missed_in.iter().any(|m| m.path == file.path)
                 && !callers.iter().any(|c| c.path == file.path)
@@ -4231,7 +4242,12 @@ pub fn build_impact(
             {
                 outside += 1;
                 outside_tests += usize::from(!literal || tests.is_test_file(&file.path));
-                missed_in.push(file);
+                if listed_namers < MAX_UNTRACED_NAMERS {
+                    listed_namers += 1;
+                    missed_in.push(file);
+                } else {
+                    unlisted_namers += 1;
+                }
             }
         }
         let tests_coverage = search_coverage(verdict.as_ref(), unresolved.as_ref(), outside_tests);
@@ -4334,7 +4350,10 @@ pub fn build_impact(
             missed_in,
             also_changed,
             possibly_also_changed,
-            shed: crate::answer::v2::ShedRows::default(),
+            shed: crate::answer::v2::ShedRows {
+                name: unlisted_namers,
+                ..Default::default()
+            },
             change: py.map(crate::answer::v2::Change::of),
             callers_omitted: 0,
             omitted: Vec::new(),
