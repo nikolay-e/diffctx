@@ -1,0 +1,35 @@
+name: py_override_of_a_builtin_subclass_called_through_the_builtin_annotation_is_a_gap
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [python, builtin, inheritance, gap]
+repo:
+  initial_files:
+    pkg/__init__.py: |2+
+
+    pkg/bag.py: |
+      class Bag(list):
+          def append(self, x):
+              self.extend([x])
+    pkg/use.py: |
+      def fill(xs: list):
+          xs.append(1)
+    pkg/run.py: |
+      from pkg.bag import Bag
+      from pkg.use import fill
+
+
+      def run():
+          fill(Bag())
+  changed_files:
+    pkg/bag.py: |
+      class Bag(list):
+          def append(self, x):
+              self.extend([x, x])
+  commit_message: change
+expect:
+  changed: ['pkg/bag.py::append']
+  coverage:
+    pkg/bag.py::append: {calls: partial}
+  no_negative_claims: true
+  exact: false

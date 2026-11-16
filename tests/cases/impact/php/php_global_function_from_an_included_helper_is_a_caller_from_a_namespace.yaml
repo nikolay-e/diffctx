@@ -1,0 +1,37 @@
+name: php_global_function_from_an_included_helper_is_a_caller_from_a_namespace
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [php, builtin, include]
+repo:
+  initial_files:
+    composer.json: |
+      {"autoload":{"psr-4":{"App\\":"src/"}}}
+    helpers.php: |
+      <?php
+      function format_money($x) {
+          return $x;
+      }
+    src/Use.php: |
+      <?php
+      namespace App;
+
+      require_once __DIR__ . '/../helpers.php';
+
+      class UseIt {
+          public function go($x) {
+              return format_money($x);
+          }
+      }
+  changed_files:
+    helpers.php: |
+      <?php
+      function format_money($x) {
+          return $x + 0;
+      }
+  commit_message: change
+expect:
+  changed: ['helpers.php::format_money']
+  relations:
+  - {from: 'src/Use.php::go', to: 'helpers.php::format_money', kind: calls, resolution: resolved}
+  exact: false
