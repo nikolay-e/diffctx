@@ -67,6 +67,9 @@ fn candidates(name: &str, uses: usize, sites: &[Site]) -> String {
         let at = embedded.join(", ");
         parts.push(format!("{at} runs code naming it that is not analysed"));
     }
+    if sites.is_empty() {
+        return format!("{uses} use(s) of `{name}` no binding settles");
+    }
     if uses > sites.len() {
         let more = uses - sites.len();
         parts.push(if sites.is_empty() {
