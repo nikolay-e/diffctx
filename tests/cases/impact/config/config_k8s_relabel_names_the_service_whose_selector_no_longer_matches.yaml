@@ -52,3 +52,10 @@ expect:
     resolution: candidate
     site: 7
   exact: true
+  partial:
+    # The Deployment controller of the cluster reads the pod template's labels
+    # and the API server applies them to the pods; selectors of objects applied
+    # from other repositories read them too. Only the readers in this repository
+    # are listed.
+    k8s/web.yaml::Deployment.apps/web:
+      reads: not_traced

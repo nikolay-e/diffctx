@@ -3,53 +3,35 @@
 # engine, not an oracle to bend. The coverage gate (judge.rs `gate`) fails an `exact`
 # case whose subject definition is hedged and not declared under `expect.partial`.
 # Enforced in both directions like known_below_threshold.txt: a listed case that stops
-# hedging falsely also fails. The letter after `#` is the mechanism of the
-# false hedge: A a mention that is no use, B a site counted twice or
-# the declaration itself, C a shadowing local binding, D a definition no cell owns.
-# Never list a case to make an honest hedge pass: declare it under `partial:`.
-impact/config/config_helm_edited_named_template_is_called_by_the_includes_of_its_own_chart  # A,B: the define line itself and a second chart's include are counted as unlanded uses; the definition is also unowned
-impact/config/config_helm_release_values_file_is_read_by_the_template_of_its_chart_as_resolved  # A,B: a decoy chart's template and the resolved site itself are counted as unlanded reads
-impact/config/config_json_and_ci_entries_run_a_changed_script_by_path  # D: a script file definition is unowned though its executes rows are resolved
-impact/config/config_k8s_added_pod_label_reaches_the_service_that_selects_the_pods  # D: a Kubernetes object definition is unowned (no verdict) though its readers are resolved; BASE named no gap
-impact/config/config_k8s_every_reader_of_an_edited_object_is_listed_none_is_folded  # D: a Kubernetes object definition is unowned (no verdict) though its readers are resolved; BASE named no gap
-impact/config/config_k8s_namespace_keeps_the_other_namespace_out_of_the_readers  # D: a Kubernetes object definition is unowned (no verdict) though its readers are resolved; BASE named no gap
-impact/config/config_k8s_object_names_are_references  # D: a Kubernetes object definition is unowned (no verdict) though its readers are resolved; BASE named no gap
-impact/config/config_k8s_referrer_without_a_namespace_reaches_every_namespace_as_a_candidate  # D: a Kubernetes object definition is unowned (no verdict) though its readers are resolved; BASE named no gap
-impact/config/config_k8s_relabel_names_the_service_whose_selector_no_longer_matches  # D: a Kubernetes object definition is unowned (no verdict) though its readers are resolved; BASE named no gap
-impact/config/config_k8s_role_ref_names_the_kind_it_binds  # D: a Kubernetes object definition is unowned (no verdict) though its readers are resolved; BASE named no gap
-impact/config/config_k8s_same_name_of_another_kind_is_no_reader_of_the_configmap  # D: a Kubernetes object definition is unowned (no verdict) though its readers are resolved; BASE named no gap
-impact/config/config_k8s_selector_of_another_namespace_is_not_a_reader_of_the_pod_labels  # D: a Kubernetes object definition is unowned (no verdict) though its readers are resolved; BASE named no gap
-impact/config/config_k8s_suffix_field_is_a_candidate_not_a_resolved_reader  # D: a Kubernetes object definition is unowned (no verdict) though its readers are resolved; BASE named no gap
-impact/config/config_shell_script_naming_changed_files_by_path  # D: a Kubernetes object definition is unowned though its readers are resolved
-impact/dockerfile/dockerfile_copy_from_by_name_reaches_the_stage_and_not_the_other  # A: `RUN go build` is shell text, counted as a read of the stage `build`
-impact/go/go_new_with_an_expression_parses  # none of A-D, gh#690: valid Go 1.26 `new(42)` (p.go:3) is a parse error of the grammar, so calls and reads say unaccounted for a definition whose one caller is resolved
-impact/kotlin/kotlin_callable_reference_is_a_use  # B: alias.rs:211-214: the callable reference is a resolved passes_as_value row and also unplaced
-impact/php/php_magic_call_of_a_typed_receiver_never_reaches_another_class  # A: `$g->boo()` on a declared `Ghost $g` lands in Ghost::__call, no use of Real::boo, counted as unlanded
-impact/php/php_trait_method_reaches_the_class_using_it  # D: a trait member is unowned though its caller row is resolved
-impact/python/py_attribute_names_do_not_bind_across_packages  # A: attribute of another package's object with the same name
-impact/python/py_attribute_read_through_a_local_alias_is_a_read_of_the_member  # A: attribute of an unrelated object with the same name (decoy other.py)
-impact/python/py_changed_init_is_not_reached_by_annotations  # B: __init__ runs on the class call, which the resolved instantiates row (make.py:5) already traces, and nothing else constructs the class; the dunder Protocol rule counts that route twice
-impact/python/py_console_script_run_by_a_sys_executable_sibling_has_a_test_link_an_unrun_one_has_none  # A: pyproject.toml:6 `pkg.interfaces.cli.main:run_from_cli` names the module main.py, counted as unaccounted for graph.main
-impact/python/py_local_variable_is_not_a_reference_to_a_removed_property  # C: a local variable named like the removed property
-impact/python/py_member_shared_with_third_party_types_is_not_resolved_by_name  # A: df.columns: a third-party type's attribute, a decoy
-impact/python/py_never_imported_script_method_has_no_sibling_hedge  # A: client.call in a decoy script that never imports the module
-impact/python/py_sibling_class_construction_is_not_a_call_of_this_init  # B: __init__ runs on the class call, which the resolved instantiates row (client.py:5) already traces, and nothing else constructs the class; the dunder Protocol rule counts that route twice
-impact/python/py_table_registered_tool_a_test_calls_by_name_has_a_test_link  # B: the tuple member `("get_x", get_x, ...)` is a resolved row and also unlanded; the analysed Python test tests/test_tools.py:6 is cited as unaccounted (`other_language`, missed_in) on calls and reads
-impact/rust/rust_removed_private_duplicate_has_no_callers  # C: absorb(x) in a.rs binds to the imported absorb that replaced the removed private fn
-impact/shell/shell_changed_library_function_names_the_scripts_that_source_it  # A: `msg="login"` is a string, counted as a call and a read of login; the source_flag part is honest
-impact/sql/sql_create_or_replace_keeps_the_routines_callers  # A,B: comment, string and other-schema calls in a decoy file; resolved sites counted again as reads
-impact/terraform/tf_changed_output_reaches_the_callers_of_its_module  # A: "vpc-${var.cidr}": a string literal counted as a read of output.vpc
-impact/terraform/tf_every_traversal_form_reaches_its_variable  # C: the for-expression variable `n` shadows var.n
-impact/terraform/tf_registry_source_is_not_a_path_even_when_a_directory_has_that_name  # A: the registry source `hashicorp/consul/aws` is cited as external_source for a directory it cannot reach; the root-module not_traced is fj#193
-impact/terraform/tf_removed_variable_leaves_its_readers_naming_it  # D: a removed variable is unowned though its reader is resolved
-impact/typescript/ts_destructured_static_method_is_called_through_its_alias  # B: `const {normalizeArguments} = Request` is the alias the resolved call goes through
-impact/typescript/ts_later_declarator_of_a_multi_declarator_const_is_the_changed_one  # A: hooks.MODEL: an object member of the same name, not the constant
-impact/typescript/ts_lazy_import_is_a_caller  # B: `m.MobileFullPlayer` is the site of the resolved import row
-impact/typescript/ts_lazy_import_through_a_tsconfig_alias_is_a_caller  # B: `m.Lazy` is the site of the resolved import row
-impact/web/web_classic_script_global_is_called_by_the_pages_other_scripts  # A: standalone.html does not load lib.js: a decoy page
-symbol/kotlin/gh490_companion_factory_and_elvis_return_receivers_resolve  # B: both unlanded sites are the resolved rows
-symbol/python/py_call_as_the_value_of_a_same_named_keyword_is_a_caller  # A,B: the keyword name `agreement=` is counted as a read next to the resolved call (gh#708 family)
-symbol/shell/shell_symbol_hyphenated_library_and_built_source_path  # A: `msg="login"` is a string; the source_flag part is honest
-symbol/sql/sql_call_in_a_host_code_string_is_a_candidate  # A: comment, string and table decoys; the unaccounted host-code part is honest
-symbol/typescript/gh661_arrow_const_inside_a_component_is_a_definition  # D: a function nested in a component is unowned
-symbol/web/web_symbol_astro_frontmatter_and_template_calls  # B: the template call site is the resolved row
+# hedging falsely also fails. The comment on a row is the mechanism that hedges it.
+# An honest hedge is declared under `partial:` in the case, with the reader or the gap
+# it stands for written beside it, and never listed here.
+impact/config/config_helm_edited_named_template_is_called_by_the_includes_of_its_own_chart  # the define line itself and a second chart's include count as unlanded uses (a quoted define name is no declaration), and a named template gets the outside reason that only objects and files earn
+impact/config/config_helm_release_values_file_is_read_by_the_template_of_its_chart_as_resolved  # a `.Values` read inside a template scalar is unexplained text in the real and the decoy chart, and a chart that does not take the values file has no witness that the read is not its own
+impact/config/config_json_and_ci_entries_run_a_changed_script_by_path  # the outside reason spills onto a script file: every entry that runs it (settings.json, package.json, the CI step) is listed as resolved and no consumer outside the repository is named
+impact/dockerfile/dockerfile_copy_from_by_name_reaches_the_stage_and_not_the_other  # embedded shell (`RUN go build`) falls through the witnesses to an unexplained candidate and is counted as a read of the stage `build`
+impact/go/go_new_with_an_expression_parses  # gh#690: the Go grammar parses valid `new(42)` (p.go:3) as an error, so calls and reads say unaccounted for a definition whose one caller is resolved
+impact/php/php_magic_call_of_a_typed_receiver_never_reaches_another_class  # `$g->boo()` on a declared `Ghost $g` lands in Ghost::__call and is no use of Real::boo, yet the typed receiver is not resolved and the call counts as unlanded
+impact/php/php_trait_method_reaches_the_class_using_it  # a trait method's override standing hedges calls though the using class's call is resolved
+impact/python/py_attribute_read_through_a_local_alias_is_a_read_of_the_member  # an attribute of an unrelated object with the same name (decoy other.py) is an unresolved receiver the file's imports exclude
+impact/python/py_changed_init_is_not_reached_by_annotations  # the dunder rule hedges `__init__` as called implicitly, which the resolved instantiates row (make.py:5) already traces: one route counted twice
+impact/python/py_console_script_run_by_a_sys_executable_sibling_has_a_test_link_an_unrun_one_has_none  # `pkg.interfaces.cli.main:run_from_cli` (pyproject.toml:6) names the module main.py, but its `main` is read as a literal spelling of graph.main and counted as unaccounted
+impact/python/py_local_variable_is_not_a_reference_to_a_removed_property  # a local variable named like the removed property is unexplained text, counted as a candidate read
+impact/python/py_member_shared_with_third_party_types_is_not_resolved_by_name  # `df.columns` is an attribute of a third-party type: the receiver is unresolved, though its type is external
+impact/python/py_never_imported_script_method_has_no_sibling_hedge  # gh#666: `client.call` in a sibling script that never imports the module is an untyped receiver; no import route reaches the method, and the issue asks for no possible caller at all
+impact/python/py_sibling_class_construction_is_not_a_call_of_this_init  # the dunder rule hedges `__init__` as called implicitly, which the resolved instantiates row (client.py:5) already traces: one route counted twice
+impact/python/py_table_registered_tool_a_test_calls_by_name_has_a_test_link  # the tuple member `("get_x", get_x, ...)` is a resolved row and also unlanded, and the analysed Python test tests/test_tools.py:6 is cited as unaccounted (`other_language`)
+impact/rust/rust_removed_private_duplicate_has_no_callers  # `absorb(x)` in a.rs binds to the imported fn that replaced the removed private one; the wide binding's own resolution is ignored and the use stays a candidate
+impact/sql/sql_create_or_replace_keeps_the_routines_callers  # `CREATE OR REPLACE` of one function in two migrations is two definitions on one span, and a call qualified with another schema is left unverified; resolved sites are also counted again as reads
+impact/terraform/tf_changed_output_reaches_the_callers_of_its_module  # a quoted template `"vpc-${var.cidr}"` is unexplained text, counted as a read of output.vpc
+impact/terraform/tf_every_traversal_form_reaches_its_variable  # the for-expression variable `n` shadows var.n but the shadowed use is unexplained text
+impact/terraform/tf_registry_source_is_not_a_path_even_when_a_directory_has_that_name  # the registry source `hashicorp/consul/aws` is named as external_source for a directory it cannot reach (a source that does not start with `./` or `../` is an address, not a path)
+impact/terraform/tf_removed_variable_leaves_its_readers_naming_it  # the outside reason rests on a directory no module call sources being a root, though nothing in the case (no backend, tfvars or lock file) says it is applied or sourced from outside: no consumer outside the repository is named
+impact/typescript/ts_destructured_static_method_is_called_through_its_alias  # `const {normalizeArguments} = Request` is the alias the resolved call goes through, and its receiver is left unresolved
+impact/typescript/ts_later_declarator_of_a_multi_declarator_const_is_the_changed_one  # `hooks.MODEL` is an object member of the same name, an unresolved receiver, not the constant
+impact/typescript/ts_lazy_import_is_a_caller  # `m.MobileFullPlayer` is the site of the resolved dynamic-import row, and its receiver `m` is left unresolved
+impact/typescript/ts_lazy_import_through_a_tsconfig_alias_is_a_caller  # `m.Lazy` is the site of the resolved dynamic-import row, and its receiver `m` is left unresolved
+impact/web/web_classic_script_global_is_called_by_the_pages_other_scripts  # standalone.html does not load lib.js: a read from a page that cannot see the global is an unresolved receiver
+symbol/kotlin/gh490_companion_factory_and_elvis_return_receivers_resolve  # both unlanded sites are the resolved rows: the receivers of the companion factory and the elvis return are left unresolved
+symbol/python/py_call_as_the_value_of_a_same_named_keyword_is_a_caller  # gh#708: the keyword name `agreement=` is unexplained text, counted as a read next to the resolved call
+symbol/web/web_symbol_astro_frontmatter_and_template_calls  # the template call `groups(items)` is the resolved row and also unexplained text

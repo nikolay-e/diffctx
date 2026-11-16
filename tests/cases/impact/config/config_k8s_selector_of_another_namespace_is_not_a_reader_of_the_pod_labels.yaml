@@ -69,3 +69,10 @@ expect:
   decoys:
     shop/web.yaml:
     - staging/svc.yaml
+  partial:
+    # The Deployment controller of the cluster reads the pod template's labels
+    # and the API server applies them to the pods; selectors of namespace shop
+    # applied from other repositories read them too. Only the readers in this
+    # repository are listed.
+    shop/web.yaml::Deployment.apps/web:
+      reads: not_traced

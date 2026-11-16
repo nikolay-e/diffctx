@@ -69,3 +69,9 @@ expect:
     rbac/clusterrole.yaml:
     - rbac/binding-local.yaml
     - rbac/role.yaml
+  partial:
+    # The API server's RBAC authorizer reads the rules of an applied ClusterRole
+    # on every request of every subject bound to it, including bindings applied
+    # from other repositories. The bindings in this repository are listed.
+    rbac/clusterrole.yaml::ClusterRole.rbac.authorization.k8s.io/viewer:
+      reads: not_traced

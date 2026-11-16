@@ -56,3 +56,9 @@ expect:
     resolution: candidate
     site: 12
   exact: true
+  partial:
+    # The kubelet reads an applied ConfigMap when it starts any pod of its
+    # namespace that names it, including pods of manifests applied from other
+    # repositories. The readers in this repository are listed.
+    prod/configmap.yaml::ConfigMap/settings:
+      reads: not_traced

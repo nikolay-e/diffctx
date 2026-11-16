@@ -100,3 +100,10 @@ expect:
   decoys:
     scripts/my-lib.sh::login:
     - scripts/words.sh
+  partial:
+    # scripts/config.sh sources `$CONFIG_FILE`, a path computed at run time:
+    # which file it loads is not known, so its `login` is listed as a candidate
+    # and every call and read of `login` stays open (source_flag).
+    scripts/my-lib.sh::login:
+      calls: source_flag
+      reads: source_flag
