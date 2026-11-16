@@ -1,0 +1,73 @@
+name: rust_macro_body_expanded_in_two_impls_calls_each_impls_own_method
+mode: impact
+source: synthetic
+issue_state: open
+tags: [rust, macro, macro-body, other-file, twins, decoy]
+repo:
+  initial_files:
+    Cargo.toml: |
+      [package]
+      name = "demo"
+      version = "0.1.0"
+      edition = "2021"
+    src/lib.rs: |
+      mod twins;
+      pub mod java;
+      pub mod kotlin;
+    src/twins.rs: |
+      macro_rules! engine_methods {
+          () => {
+              fn type_ents(&self, name: &str) -> Vec<String> {
+                  vec![self.type_ent(name)]
+              }
+          };
+      }
+      pub(crate) use engine_methods;
+    src/java.rs: |
+      use crate::twins::engine_methods;
+
+      pub struct JavaEngine;
+
+      impl JavaEngine {
+          engine_methods!();
+
+          fn type_ent(&self, name: &str) -> String {
+              format!("java {name}")
+          }
+      }
+    src/kotlin.rs: |
+      use crate::twins::engine_methods;
+
+      pub struct KotlinEngine;
+
+      impl KotlinEngine {
+          engine_methods!();
+
+          fn type_ent(&self, name: &str) -> String {
+              format!("kotlin {name}")
+          }
+      }
+  changed_files:
+    src/java.rs: |
+      use crate::twins::engine_methods;
+
+      pub struct JavaEngine;
+
+      impl JavaEngine {
+          engine_methods!();
+
+          fn type_ent(&self, name: &str) -> String {
+              format!("java type {name}")
+          }
+      }
+  commit_message: "java: type_ent names the kind"
+expect:
+  changed: [src/java.rs::type_ent]
+  # The macro is expanded in two impls. In `impl JavaEngine` its `self` is a
+  # `JavaEngine`, so its call reaches `JavaEngine::type_ent`; the other
+  # expansion's `KotlinEngine::type_ent` is the namesake of a type this
+  # change did not touch.
+  relations:
+    - {from: "src/twins.rs::engine_methods", to: "src/java.rs::type_ent", kind: calls, resolution: resolved, site: 4}
+  coverage:
+    "src/java.rs::type_ent": {calls: complete}
