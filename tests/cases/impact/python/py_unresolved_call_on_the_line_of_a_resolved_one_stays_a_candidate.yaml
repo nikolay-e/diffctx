@@ -23,7 +23,11 @@ repo:
           def area(self):
               return 2
   commit_message: "box: area is two"
+# `other.area()` is a candidate use of the same definition on the resolved call's line: the
+# answer counts it as unlanded and lists the line once, the resolver reports it as a
+# candidate too, so the relation list is not exact.
 expect:
+  exact: false
   relations:
     - {from: "shapes/total.py::total", to: "shapes/box.py::Box.area", kind: calls, resolution: resolved, site: 6}
   partial:

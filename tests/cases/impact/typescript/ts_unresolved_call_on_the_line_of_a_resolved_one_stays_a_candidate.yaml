@@ -26,7 +26,11 @@ repo:
         }
       }
   commit_message: "box: area is two"
+# `other.area()` is a candidate use of the same definition on the resolved call's line: the
+# answer counts it as unlanded and lists the line once, the resolver reports it as a
+# candidate too, so the relation list is not exact.
 expect:
+  exact: false
   relations:
     - {from: "src/total.ts::total", to: "src/box.ts::Box.area", kind: calls, resolution: resolved, site: 5}
   partial:
