@@ -1,0 +1,25 @@
+name: py_attribute_call_on_a_dunder_import_result_is_a_candidate_caller
+mode: impact
+source: synthetic
+issue_state: open
+tags: [python, dunder-import, dynamic-name, candidate]
+repo:
+  initial_files:
+    modules/M8.py: |
+      def foo(x):
+          return x + 1
+    modules/Main.py: |
+      mod = __import__('M8')
+      mod.foo(1)
+  changed_files:
+    modules/M8.py: |
+      def foo(x):
+          return x + 2
+  commit_message: "M8: foo adds two"
+expect:
+  exact: false
+  discloses: true
+  never_empty: true
+  no_negative_claims: true
+  relations:
+    - {from: modules/Main.py, to: modules/M8.py::foo, kind: calls, resolution: unresolved}

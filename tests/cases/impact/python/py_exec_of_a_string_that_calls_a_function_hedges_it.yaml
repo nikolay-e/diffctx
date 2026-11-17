@@ -1,0 +1,31 @@
+name: py_exec_of_a_string_that_calls_a_function_hedges_it
+mode: impact
+source: synthetic
+issue_state: open
+tags: [python, exec, dynamic-name, coverage]
+repo:
+  initial_files:
+    main.py: |
+      def helper():
+          pass
+
+
+      exec("def generated():\n    helper()")
+      generated()
+  changed_files:
+    main.py: |
+      def helper():
+          return 1
+
+
+      exec("def generated():\n    helper()")
+      generated()
+  commit_message: "main: helper returns one"
+expect:
+  changed: [main.py::helper]
+  discloses: true
+  no_negative_claims: true
+  partial:
+    main.py::helper:
+      calls: not_traced
+      reads: not_traced
