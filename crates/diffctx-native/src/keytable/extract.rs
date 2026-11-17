@@ -730,18 +730,18 @@ fn dockerfile(text: &str, out: &mut Vec<RawRecord>) {
 
 // ---------------------------------------------------------------- YAML
 
-struct Entry {
-    line: usize,
-    key: String,
-    value: String,
-    parent: Option<usize>,
+pub(super) struct Entry {
+    pub(super) line: usize,
+    pub(super) key: String,
+    pub(super) value: String,
+    pub(super) parent: Option<usize>,
     /// First entry of a list item.
-    item: bool,
+    pub(super) item: bool,
     /// A list item that is a bare scalar, or a line of a block scalar.
-    plain: bool,
+    pub(super) plain: bool,
 }
 
-fn unquote(s: &str) -> &str {
+pub(super) fn unquote(s: &str) -> &str {
     s.trim().trim_matches(|c| c == '"' || c == '\'')
 }
 
@@ -782,7 +782,7 @@ fn split_mapping(rest: &str) -> Option<(String, String)> {
     None
 }
 
-fn parse_yaml(text: &str) -> Vec<Entry> {
+pub(super) fn parse_yaml(text: &str) -> Vec<Entry> {
     let mut entries: Vec<Entry> = Vec::new();
     let mut stack: Vec<(usize, usize)> = Vec::new();
     let mut block: Option<(usize, usize)> = None;
@@ -854,7 +854,7 @@ fn parse_yaml(text: &str) -> Vec<Entry> {
     entries
 }
 
-fn children(entries: &[Entry]) -> Vec<Vec<usize>> {
+pub(super) fn children(entries: &[Entry]) -> Vec<Vec<usize>> {
     let mut kids = vec![Vec::new(); entries.len()];
     for (i, e) in entries.iter().enumerate() {
         if let Some(p) = e.parent {
