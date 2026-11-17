@@ -1,0 +1,29 @@
+name: py_local_function_read_where_no_use_is_stated_stays_open
+mode: symbol
+source: synthetic
+tags: [python, nested-function, coverage, absence-claim]
+repo:
+  initial_files:
+    src/report.py: |
+      def make(xs):
+          def helper(x):
+              return x + 1
+
+          total = [helper(x) for x in xs]
+          label = helper.__name__
+          return total, label
+  commit_message: Add report
+query:
+  symbol: helper
+expect:
+  definitions: [src/report.py::helper]
+  callers:
+    helper: [src/report.py::make]
+  coverage:
+    src/report.py::helper:
+      calls: partial
+      reads: partial
+  partial:
+    src/report.py::helper:
+      calls: unlanded
+      reads: unlanded
