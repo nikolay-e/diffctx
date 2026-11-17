@@ -160,19 +160,17 @@ pub enum Group {
 impl Group {
     /// The group a file belongs to by its extension; none for a file of no known
     /// language.
-    pub fn of_path(path: &str) -> Option<Self> {
-        if let Ok(repo) = RepoPath::new(path) {
-            if let Some(language) = Language::from_path(&repo) {
-                return Family::ALL
-                    .into_iter()
-                    .find(|family| family.has(language))
-                    .map(Family::group);
-            }
+    pub fn of_path(path: &RepoPath) -> Option<Self> {
+        if let Some(language) = Language::from_path(path) {
+            return Family::ALL
+                .into_iter()
+                .find(|family| family.has(language))
+                .map(Family::group);
         }
-        if path.to_ascii_lowercase().ends_with(".astro") {
+        if path.as_str().to_ascii_lowercase().ends_with(".astro") {
             return Some(Self::Web);
         }
-        crate::languages::get_language_for_file(path).map(|language| match language {
+        crate::languages::get_language_for_file(path.as_str()).map(|language| match language {
             "java" | "kotlin" | "scala" | "groovy" => Self::Jvm,
             "c" | "cpp" | "objectivec" => Self::Native,
             "typescript" | "tsx" | "javascript" | "jsx" | "html" | "vue" | "svelte" => Self::Web,
@@ -180,8 +178,18 @@ impl Group {
         })
     }
 
-    pub fn has_path(self, path: &str) -> bool {
-        Self::of_path(path) == Some(self)
+    /// `of_path` for a name a layer holds as text, an answer's printed path: none
+    /// when the text is no repository path (an absolute one, a Windows drive), so
+    /// a place on the disk is never given the group its extension suggests.
+    pub fn of_name(name: &str) -> Option<Self> {
+        match RepoPath::new(name) {
+            Ok(path) => Self::of_path(&path),
+            Err(_) => None,
+        }
+    }
+
+    pub fn has_path(self, name: &str) -> bool {
+        Self::of_name(name) == Some(self)
     }
 }
 
