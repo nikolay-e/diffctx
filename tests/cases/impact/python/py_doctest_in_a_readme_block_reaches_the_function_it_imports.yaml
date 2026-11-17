@@ -1,0 +1,43 @@
+name: py_doctest_in_a_readme_block_reaches_the_function_it_imports
+mode: impact
+source: synthetic
+tags:
+- python
+- tests-reach
+- doctest
+repo:
+  initial_files:
+    pkg/__init__.py: ""
+    pkg/core.py: |
+      def compute(x):
+          return x
+
+
+      def other(x):
+          return x
+    README.md: |
+      # pkg
+
+      ```python
+      >>> import pkg.core as core
+      >>> core.compute(1)
+      1
+      ```
+  changed_files:
+    pkg/core.py: |
+      def compute(x):
+          return x + 1
+
+
+      def other(x):
+          return x + 2
+  commit_message: change both
+expect:
+  changed:
+  - pkg/core.py::compute
+  - pkg/core.py::other
+  exact: false
+  not_untested:
+  - compute
+  untested:
+  - other
