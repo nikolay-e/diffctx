@@ -1317,7 +1317,8 @@ impl<'a> Engine<'a> {
     }
 
     /// A bare specifier that names a package of the workspace, through the name
-    /// its `package.json` gives it. A package the importer does not depend on is
+    /// its `package.json` gives it. A package the importer neither depends on nor
+    /// shares a workspace with (hoisting resolves a member without a declaration) is
     /// outside.
     fn package_module(&self, f: usize, specifier: &str) -> Option<ModRes> {
         let (package, rest) = split_package(specifier);
@@ -1331,8 +1332,11 @@ impl<'a> Engine<'a> {
             {
                 continue;
             }
-            let allowed =
-                user.is_none_or(|u| u == project.id || self.workspace.depends(u, project.id));
+            let allowed = user.is_none_or(|u| {
+                u == project.id
+                    || self.workspace.depends(u, project.id)
+                    || self.workspace.share_workspace(u, project.id)
+            });
             if !allowed {
                 result = result.or(Some(ModRes::Outside));
                 continue;

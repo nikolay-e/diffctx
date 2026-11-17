@@ -82,6 +82,7 @@ pub(super) fn doctest_runs(state: &ScoredState) -> Vec<Run> {
         .collect();
     let mut runs = Vec::new();
     let mut rust_read: FxHashSet<&str> = FxHashSet::default();
+    let mut python_read: FxHashSet<&str> = FxHashSet::default();
     for f in state.run.scan(&state.all_fragments) {
         let path = f.path();
         if crate::testfiles::is_test_path(Path::new(path)) {
@@ -109,9 +110,69 @@ pub(super) fn doctest_runs(state: &ScoredState) -> Vec<Run> {
                 .into_iter()
                 .map(|(row, names)| (f.start_line() + row as u32, names));
             doctest_runs_of(&mut runs, path, &shown, lines, &defined);
+            if python_read.insert(path) {
+                if let Some(text) = state.run.source().read_to_string(Path::new(path)) {
+                    imported_doctest_runs(&mut runs, state, &shown, &text, true);
+                }
+            }
+        }
+    }
+    let documents = read_or_note(state, state.run.source().list_paths(&state.root_dir));
+    for document in state.run.bounded(&documents).filter(|d| is_document(d)) {
+        if let Some(text) = state
+            .run
+            .source()
+            .read_to_string(&state.root_dir.join(document))
+            .filter(|text| text.contains(">>>"))
+        {
+            imported_doctest_runs(&mut runs, state, document, &text, false);
         }
     }
     runs
+}
+
+/// Prose a doctest runner reads (`--doctest-glob`) or a reader runs by hand.
+fn is_document(path: &str) -> bool {
+    Path::new(path).extension().is_some_and(|ext| {
+        ["rst", "md", "markdown", "txt"]
+            .iter()
+            .any(|document| ext.eq_ignore_ascii_case(document))
+    })
+}
+
+/// The run each `>>>` example of `shown` makes of a function another file defines,
+/// the example's own imports saying which file.
+fn imported_doctest_runs(
+    runs: &mut Vec<Run>,
+    state: &ScoredState,
+    shown: &str,
+    text: &str,
+    python: bool,
+) {
+    for (row, module, name) in crate::testfiles::imported_doctest_calls(text, python) {
+        let module_path = module.replace('.', "/");
+        let places = [
+            format!("{module_path}.py"),
+            format!("{module_path}/__init__.py"),
+        ];
+        for f in state.all_fragments.iter().filter(|f| {
+            f.kind.is_definition_kind()
+                && f.symbol_name.as_deref().map(base_symbol) == Some(name.as_str())
+        }) {
+            let defined_in = rel(state, f.path());
+            if defined_in != shown
+                && places
+                    .iter()
+                    .any(|place| defined_in == *place || defined_in.ends_with(&format!("/{place}")))
+            {
+                runs.push(Run {
+                    file: f.path().to_string(),
+                    symbol: Some(name.clone()),
+                    tests: vec![(shown.to_string(), row as u32 + 1)],
+                });
+            }
+        }
+    }
 }
 
 /// The run each called name of `file` that the file defines makes of it.

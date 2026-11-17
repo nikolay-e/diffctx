@@ -171,7 +171,14 @@ impl<'a> TestsReach<'a> {
             },
         );
         for (&spelled, shown) in &rel_of {
-            if declared.is_test(shown) {
+            if declared.is_test(shown)
+                || (declared.is_loaded(shown)
+                    && state
+                        .run
+                        .source()
+                        .read_to_string(Path::new(spelled))
+                        .is_some_and(|text| crate::testfiles::spells_test_calls(&text)))
+            {
                 tests_at.entry(spelled).or_default().push((1, u32::MAX));
             }
         }

@@ -383,6 +383,84 @@ pub(crate) fn doctest_calls(text: &str) -> Vec<(usize, Vec<&str>)> {
         .collect()
 }
 
+/// The names `>>>` examples call through an import of their own, as (0-based line,
+/// dotted module, name): a document or another module's docstring runs code that
+/// lives elsewhere. `from m import n [as a]` and `import m [as a]` bind in the
+/// examples; in a Python file an import at the top of a line binds too, being the
+/// namespace its doctests run in.
+pub(crate) fn imported_doctest_calls(text: &str, python: bool) -> Vec<(usize, String, String)> {
+    static FROM: once_cell::sync::Lazy<regex::Regex> = once_cell::sync::Lazy::new(|| {
+        regex::Regex::new(r"^from\s+([A-Za-z_][\w.]*)\s+import\s+\(?([^)#]+)")
+            .expect("from import regex")
+    });
+    static IMPORT: once_cell::sync::Lazy<regex::Regex> = once_cell::sync::Lazy::new(|| {
+        regex::Regex::new(r"^import\s+([^#]+)").expect("import regex")
+    });
+    static QUALIFIED: once_cell::sync::Lazy<regex::Regex> = once_cell::sync::Lazy::new(|| {
+        regex::Regex::new(r"([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)\.([A-Za-z_]\w*)\s*\(")
+            .expect("qualified call regex")
+    });
+    fn examples(line: &str) -> Option<&str> {
+        line.trim_start().strip_prefix(">>>").map(str::trim)
+    }
+    let mut names: Vec<(String, (String, String))> = Vec::new();
+    let mut modules: Vec<(String, String)> = Vec::new();
+    for line in text.lines() {
+        let Some(code) =
+            examples(line).or_else(|| (python && !line.starts_with([' ', '\t'])).then_some(line))
+        else {
+            continue;
+        };
+        if let Some(caps) = FROM.captures(code) {
+            for item in caps[2].split(',') {
+                let mut words = item.split_whitespace();
+                if let (Some(name), alias) = (words.next(), words.nth(1)) {
+                    names.push((
+                        alias.unwrap_or(name).to_string(),
+                        (caps[1].to_string(), name.to_string()),
+                    ));
+                }
+            }
+        } else if let Some(caps) = IMPORT.captures(code) {
+            for item in caps[1].split(',') {
+                let mut words = item.split_whitespace();
+                if let Some(module) = words.next() {
+                    let local = words.nth(1).unwrap_or(module);
+                    modules.push((local.to_string(), module.to_string()));
+                }
+            }
+        }
+    }
+    let module_of = |qualifier: &str| {
+        modules
+            .iter()
+            .find(|(local, _)| local == qualifier)
+            .map(|(_, module)| module.clone())
+            .or_else(|| {
+                names
+                    .iter()
+                    .find(|(local, _)| local == qualifier)
+                    .map(|(_, (module, name))| format!("{module}.{name}"))
+            })
+            .unwrap_or_else(|| qualifier.to_string())
+    };
+    let mut found = Vec::new();
+    for (row, line) in text.lines().enumerate() {
+        let Some(example) = examples(line) else {
+            continue;
+        };
+        for name in called_names(example) {
+            if let Some((_, (module, original))) = names.iter().find(|(local, _)| local == name) {
+                found.push((row, module.clone(), original.clone()));
+            }
+        }
+        for caps in QUALIFIED.captures_iter(example) {
+            found.push((row, module_of(&caps[1]), caps[2].to_string()));
+        }
+    }
+    found
+}
+
 /// A fence's info string says the example runs as a test (`cargo test --doc`):
 /// plain, `rust`, `should_panic`, an edition. `ignore`, `no_run`, `compile_fail`
 /// and other languages do not run.
@@ -445,6 +523,9 @@ enum Declares {
     Globs,
     /// Regular expressions over the path (`testRegex`).
     Regex,
+    /// Glob patterns of files the runner loads, tests and the code under test alike
+    /// (Karma's `files`): a file is a test only when it also holds test calls.
+    LoadedGlobs,
     /// Glob patterns of files that are not tests (`exclude`, `testIgnore`).
     Excludes,
     /// Regular expressions any part of the path may match, of files that are not
@@ -479,6 +560,9 @@ struct Runner {
     keys: &'static [(&'static str, Declares)],
     extensions: &'static [&'static str],
     against: Against,
+    /// The directory the configuration sits in beneath the one its patterns are
+    /// relative to (Jasmine's `spec/support/jasmine.json`).
+    beneath_root: &'static str,
 }
 
 const SCRIPT_EXTENSIONS: &[&str] = &["js", "jsx", "mjs", "cjs", "ts", "tsx", "mts", "cts"];
@@ -499,6 +583,7 @@ static RUNNERS: &[Runner] = &[
         keys: &[("python_files", Declares::Globs)],
         extensions: &["py"],
         against: Against::Name,
+        beneath_root: "",
     },
     Runner {
         config_files: &[
@@ -514,6 +599,7 @@ static RUNNERS: &[Runner] = &[
         ],
         extensions: SCRIPT_EXTENSIONS,
         against: Against::Path,
+        beneath_root: "",
     },
     Runner {
         config_files: &[
@@ -526,6 +612,7 @@ static RUNNERS: &[Runner] = &[
         ],
         extensions: SCRIPT_EXTENSIONS,
         against: Against::Path,
+        beneath_root: "",
     },
     Runner {
         config_files: &[
@@ -538,6 +625,7 @@ static RUNNERS: &[Runner] = &[
         keys: &[("spec", Declares::Globs)],
         extensions: SCRIPT_EXTENSIONS,
         against: Against::Path,
+        beneath_root: "",
     },
     Runner {
         config_files: &[("playwright.config.*", Holder::Script)],
@@ -548,6 +636,7 @@ static RUNNERS: &[Runner] = &[
         ],
         extensions: SCRIPT_EXTENSIONS,
         against: Against::Tail,
+        beneath_root: "",
     },
     Runner {
         config_files: &[("cypress.config.*", Holder::Script)],
@@ -557,12 +646,49 @@ static RUNNERS: &[Runner] = &[
         ],
         extensions: SCRIPT_EXTENSIONS,
         against: Against::Path,
+        beneath_root: "",
+    },
+    Runner {
+        config_files: &[
+            ("package.json", Holder::Json(&["ava"])),
+            ("ava.config.*", Holder::Script),
+        ],
+        keys: &[("files", Declares::Globs)],
+        extensions: SCRIPT_EXTENSIONS,
+        against: Against::Path,
+        beneath_root: "",
+    },
+    // `spec_files` are relative to `spec_dir`: the directory scopes the run and the
+    // patterns match any tail, as Playwright's do.
+    Runner {
+        config_files: &[
+            ("jasmine.json", Holder::Json(&[])),
+            ("jasmine.*", Holder::Script),
+        ],
+        keys: &[
+            ("spec_files", Declares::Globs),
+            ("spec_dir", Declares::Scope),
+        ],
+        extensions: SCRIPT_EXTENSIONS,
+        against: Against::Tail,
+        beneath_root: "spec/support",
+    },
+    Runner {
+        config_files: &[("karma.conf.*", Holder::Script)],
+        keys: &[
+            ("files", Declares::LoadedGlobs),
+            ("exclude", Declares::Excludes),
+        ],
+        extensions: SCRIPT_EXTENSIONS,
+        against: Against::Path,
+        beneath_root: "",
     },
     Runner {
         config_files: &[("Cargo.toml", Holder::Toml(&["test"]))],
         keys: &[("path", Declares::Globs)],
         extensions: &["rs"],
         against: Against::Path,
+        beneath_root: "",
     },
 ];
 
@@ -582,6 +708,8 @@ struct Declared {
     extensions: &'static [&'static str],
     against: Against,
     include: Vec<regex::Regex>,
+    /// Files the runner loads that are tests only where they hold test calls.
+    loaded: Vec<regex::Regex>,
     exclude: Vec<regex::Regex>,
     /// The directories beneath `dir` the runner collects from; none: all of `dir`.
     scopes: Vec<String>,
@@ -598,8 +726,14 @@ impl DeclaredTests {
     pub(crate) fn read(paths: &[&str], read: impl Fn(&str) -> Option<String>) -> Self {
         let mut declared = Vec::new();
         for path in paths {
-            let (dir, name) = path.rsplit_once('/').unwrap_or(("", path));
+            let (config_dir, name) = path.rsplit_once('/').unwrap_or(("", path));
             for runner in RUNNERS {
+                let dir = config_dir
+                    .strip_suffix(runner.beneath_root)
+                    .filter(|root| {
+                        !runner.beneath_root.is_empty() && (root.is_empty() || root.ends_with('/'))
+                    })
+                    .map_or(config_dir, |root| root.trim_end_matches('/'));
                 let Some((_, holder)) = runner
                     .config_files
                     .iter()
@@ -613,6 +747,7 @@ impl DeclaredTests {
                     extensions: runner.extensions,
                     against: runner.against,
                     include: Vec::new(),
+                    loaded: Vec::new(),
                     exclude: Vec::new(),
                     scopes: Vec::new(),
                 };
@@ -621,7 +756,7 @@ impl DeclaredTests {
                         rules.add(&value, literal, how);
                     }
                 }
-                if !rules.include.is_empty() {
+                if !(rules.include.is_empty() && rules.loaded.is_empty()) {
                     declared.push(rules);
                 }
             }
@@ -630,6 +765,16 @@ impl DeclaredTests {
     }
 
     pub(crate) fn is_test(&self, path: &str) -> bool {
+        self.declares(path, |declared| &declared.include)
+    }
+
+    /// Whether the runner loads `path` without saying it is a test: a test only
+    /// where its text holds test calls ([`spells_test_calls`]).
+    pub(crate) fn is_loaded(&self, path: &str) -> bool {
+        self.declares(path, |declared| &declared.loaded)
+    }
+
+    fn declares(&self, path: &str, patterns: fn(&Declared) -> &Vec<regex::Regex>) -> bool {
         let Some(extension) = Path::new(path).extension().and_then(|e| e.to_str()) else {
             return false;
         };
@@ -652,7 +797,7 @@ impl DeclaredTests {
                 });
             declared.extensions.contains(&extension)
                 && collected
-                && declared.include.iter().any(|pattern| {
+                && patterns(declared).iter().any(|pattern| {
                     pattern.is_match(match declared.against {
                         Against::Name => name,
                         Against::Path | Against::Tail => beneath,
@@ -690,6 +835,7 @@ impl Declared {
                 Some(excluded) => self.exclude.extend(pattern(excluded)),
                 None => self.include.extend(pattern(value)),
             },
+            Declares::LoadedGlobs => self.loaded.extend(pattern(value)),
             Declares::Regex => self.include.extend(regex::Regex::new(value).ok()),
             Declares::Excludes => self.exclude.extend(pattern(value)),
             Declares::RegexExcludes => self
@@ -706,6 +852,15 @@ impl Declared {
             }
         }
     }
+}
+
+/// Whether a script's text calls `describe`, `it` or `test`: a file a runner
+/// loads beside the code it tests is a test only when it does.
+pub(crate) fn spells_test_calls(text: &str) -> bool {
+    static CALL: once_cell::sync::Lazy<regex::Regex> = once_cell::sync::Lazy::new(|| {
+        regex::Regex::new(r"\b(?:describe|it|test)(?:\.\w+)*\s*\(").expect("test call regex")
+    });
+    CALL.is_match(text)
 }
 
 /// The values a runner's configuration gives `key`, each with whether a script
