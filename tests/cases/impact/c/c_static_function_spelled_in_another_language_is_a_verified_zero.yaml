@@ -1,0 +1,20 @@
+name: c_static_function_spelled_in_another_language_is_a_verified_zero
+mode: impact
+source: synthetic
+tags: [c, ffi, static, control]
+repo:
+  initial_files:
+    native/native.c: |
+      static int nt_hidden_cents(int a, int b) { return a + b; }
+    py/native.py: |
+      def nt_hidden_cents(a, b):
+          return a + b
+  changed_files:
+    native/native.c: |
+      static int nt_hidden_cents(int a, int b) { return a + b + 1; }
+  commit_message: "native: the file-local helper adds one"
+expect:
+  changed: [native/native.c::nt_hidden_cents]
+  callers: {nt_hidden_cents: []}
+  decoys:
+    native/native.c::nt_hidden_cents: [py/native.py]
