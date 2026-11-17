@@ -19,11 +19,9 @@ repo:
           'acme_list_items',
       ];
 
-      function acme_run_all(): void
+      function acme_count_all(): int
       {
-          foreach ($GLOBALS['handlers'] as $handler) {
-              $handler();
-          }
+          return count($GLOBALS['handlers']);
       }
   changed_files:
     src/handlers.php: |
