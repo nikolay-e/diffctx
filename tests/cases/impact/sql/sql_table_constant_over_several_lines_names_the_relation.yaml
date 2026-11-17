@@ -1,0 +1,26 @@
+name: sql_table_constant_over_several_lines_names_the_relation
+mode: impact
+source: synthetic
+tags: [sql, literal-name, relation-statement, false-absence]
+repo:
+  initial_files:
+    db/mv.sql: |
+      CREATE MATERIALIZED VIEW daily_sales AS SELECT 1 AS n;
+    app/report.py: |
+      TABLE = (
+          "daily_sales"
+      )
+
+
+      def rows(cur):
+          cur.execute(f"SELECT * FROM {TABLE}")
+  changed_files:
+    db/mv.sql: |
+      CREATE MATERIALIZED VIEW daily_sales AS SELECT 2 AS n;
+  commit_message: "db: daily_sales counts two"
+expect:
+  exact: false
+  discloses: true
+  no_negative_claims: true
+  relations:
+    - {from: app/report.py, to: db/mv.sql::daily_sales, kind: calls, resolution: unresolved}
