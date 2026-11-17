@@ -1,7 +1,7 @@
-name: shell_function_named_in_a_method_called_exec_is_no_command
+name: shell_function_named_as_a_ruby_method_call_is_no_command
 mode: impact
 source: synthetic
-tags: [shell, literal-name, decoy, javascript]
+tags: [shell, literal-name, decoy, ruby]
 repo:
   initial_files:
     lib/strings.sh: |
@@ -9,11 +9,10 @@ repo:
       slugify() {
         echo "${1,,}"
       }
-    scripts/cache.js: |
-      function warm(cache) {
-        return cache.exec("slugify --warm");
-      }
-      module.exports = { warm };
+    lib/app.rb: |
+      def main(obj, x)
+        obj.slugify(x)
+      end
   changed_files:
     lib/strings.sh: |
       #!/usr/bin/env bash
@@ -25,4 +24,4 @@ expect:
   exact: true
   callers: {slugify: []}
   decoys:
-    lib/strings.sh::slugify: [scripts/cache.js]
+    lib/strings.sh::slugify: [lib/app.rb]

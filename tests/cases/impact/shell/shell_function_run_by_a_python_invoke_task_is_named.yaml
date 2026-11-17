@@ -1,0 +1,31 @@
+name: shell_function_run_by_a_python_invoke_task_is_named
+mode: impact
+source: synthetic
+tags: [shell, literal-name, shell-string, false-absence, python]
+repo:
+  initial_files:
+    lib/strings.sh: |
+      #!/usr/bin/env bash
+      slugify() {
+        echo "${1,,}"
+      }
+    tasks.py: |
+      from invoke import task
+
+
+      @task
+      def slug(c):
+          c.run("slugify abc")
+  changed_files:
+    lib/strings.sh: |
+      #!/usr/bin/env bash
+      slugify() {
+        printf '%s\n' "${1,,}"
+      }
+  commit_message: "strings: slugify prints through printf"
+expect:
+  exact: false
+  discloses: true
+  no_negative_claims: true
+  relations:
+    - {from: tasks.py, to: lib/strings.sh::slugify, kind: calls, resolution: unresolved}
