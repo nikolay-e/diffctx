@@ -1,0 +1,55 @@
+name: java_reflective_lookup_by_a_held_constant_is_no_computed_name
+mode: impact
+source: synthetic
+tags: [java, reflection, literal-name, coverage]
+repo:
+  initial_files:
+    src/main/java/shop/Lib.java: |
+      package shop;
+
+      public class Lib {
+          public void viaThing() {
+              System.out.println(1);
+          }
+
+          public void viaOther() {
+              System.out.println(1);
+          }
+      }
+    src/main/java/shop/Boot.java: |
+      package shop;
+
+      import java.lang.reflect.Method;
+
+      public class Boot {
+          static final String NAME = "viaThing";
+
+          Object run() throws Exception {
+              Method method = Lib.class.getMethod(NAME);
+              return method;
+          }
+      }
+  changed_files:
+    src/main/java/shop/Lib.java: |
+      package shop;
+
+      public class Lib {
+          public void viaThing() {
+              System.out.println(2);
+          }
+
+          public void viaOther() {
+              System.out.println(2);
+          }
+      }
+  commit_message: "lib: bump"
+expect:
+  exact: false
+  discloses: true
+  relations:
+    - from: src/main/java/shop/Boot.java
+      to: src/main/java/shop/Lib.java::viaThing
+      kind: calls
+      resolution: unresolved
+  untested:
+    - src/main/java/shop/Lib.java::viaOther

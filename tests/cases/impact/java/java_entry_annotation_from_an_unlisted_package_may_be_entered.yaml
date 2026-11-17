@@ -1,0 +1,115 @@
+name: java_entry_annotation_from_an_unlisted_package_may_be_entered
+mode: impact
+source: synthetic
+tags: [java, entry-point, framework, annotation]
+repo:
+  initial_files:
+    src/main/java/shop/Hooks.java: |
+      package shop;
+
+      import com.example.bus.Subscribe;
+      import com.example.di.Provides;
+      import com.example.json.JsonCreator;
+      import org.springframework.beans.factory.annotation.Autowired;
+
+      public class Hooks {
+          private int state;
+
+          @Subscribe
+          public void onTick(Object event) {
+              state = 1;
+          }
+
+          @Provides
+          public Object clock() {
+              return state + 1;
+          }
+
+          @JsonCreator
+          public static Hooks of(String raw) {
+              return new Hooks();
+          }
+
+          @Autowired
+          public void wire(Object other) {
+              state = 1;
+          }
+
+          public void plain() {
+              state = 1;
+          }
+      }
+    src/main/java/shop/Money.java: |
+      package shop;
+
+      import lombok.Value;
+
+      @Value
+      public class Money {
+          int cents;
+
+          public int doubled() {
+              return cents * 2;
+          }
+      }
+  changed_files:
+    src/main/java/shop/Hooks.java: |
+      package shop;
+
+      import com.example.bus.Subscribe;
+      import com.example.di.Provides;
+      import com.example.json.JsonCreator;
+      import org.springframework.beans.factory.annotation.Autowired;
+
+      public class Hooks {
+          private int state;
+
+          @Subscribe
+          public void onTick(Object event) {
+              state = 2;
+          }
+
+          @Provides
+          public Object clock() {
+              return state + 2;
+          }
+
+          @JsonCreator
+          public static Hooks of(String raw) {
+              int length = raw.length();
+              return new Hooks();
+          }
+
+          @Autowired
+          public void wire(Object other) {
+              state = 2;
+          }
+
+          public void plain() {
+              state = 2;
+          }
+      }
+    src/main/java/shop/Money.java: |
+      package shop;
+
+      import lombok.Value;
+
+      @Value
+      public class Money {
+          int cents;
+
+          public int doubled() {
+              return cents * 3;
+          }
+      }
+  commit_message: "hooks: state two"
+expect:
+  exact: false
+  entry_not_tested:
+    - src/main/java/shop/Hooks.java::onTick
+    - src/main/java/shop/Hooks.java::clock
+    - src/main/java/shop/Hooks.java::of
+    - src/main/java/shop/Hooks.java::wire
+  untested:
+    - src/main/java/shop/Hooks.java::plain
+    - src/main/java/shop/Money.java::doubled
