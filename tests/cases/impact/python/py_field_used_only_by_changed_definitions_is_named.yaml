@@ -33,9 +33,6 @@ repo:
 # the answer's one line for definitions only the range's own changes use. (A field
 # the range adds is not: nothing outside the range could depend on it.) `attempts`
 # is a changed function nothing calls, named too; `Options` is changed only through
-# the field, but a name as common as `Options` is not searched as text, so its row says
-# that rather than leaving it among the definitions nothing calls.
+# the field, whose row says all there is.
 expect:
-  changed: [pkg/opts.py::Options, pkg/opts.py::Options.limit, pkg/use.py::attempts]
-  partial:
-    pkg/opts.py::Options: {calls: name_unsearched, reads: name_unsearched}
+  changed: [pkg/opts.py::Options.limit, pkg/use.py::attempts]

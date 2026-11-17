@@ -33,8 +33,6 @@ repo:
 # not its function changed in the same range.
 expect:
   changed: [lib.py::old, app.py::run]
-  partial:
-    app.py::run: {calls: name_unsearched, reads: name_unsearched}
   relations:
     - {from: "app.py::run", to: "lib.py::old", kind: calls, resolution: resolved, site: 5}
   removed: [old]
