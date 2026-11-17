@@ -1,0 +1,44 @@
+name: java_method_of_a_one_line_class_keeps_its_caller_and_test_link
+mode: impact
+source: synthetic
+tags: [java, one-line, tests-reach]
+repo:
+  initial_files:
+    src/main/java/com/acme/lib/W.java: |
+      package com.acme.lib;
+      public class W { public int wm() { return 1; } }
+    src/main/java/com/acme/app/Use.java: |
+      package com.acme.app;
+      import com.acme.lib.W;
+      public class Use {
+        public int go() {
+          W w = new W();
+          return w.wm();
+        }
+      }
+    src/test/java/com/acme/app/UseTest.java: |
+      package com.acme.app;
+      import org.junit.jupiter.api.Test;
+      class UseTest {
+        @Test
+        void t() {
+          new Use().go();
+        }
+      }
+  changed_files:
+    src/main/java/com/acme/lib/W.java: |
+      package com.acme.lib;
+      public class W { public int wm() { return 2; } }
+  commit_message: "W.wm returns 2"
+expect:
+  changed: [src/main/java/com/acme/lib/W.java::W.wm]
+  relations:
+    - from: "src/main/java/com/acme/app/Use.java::Use.go"
+      to: "src/main/java/com/acme/lib/W.java::W.wm"
+      kind: calls
+      resolution: resolved
+      site: 6
+    - from: "src/test/java/com/acme/app/UseTest.java::UseTest.t"
+      to: "src/main/java/com/acme/app/Use.java::Use.go"
+      kind: tests_reach
+  not_untested: [wm]

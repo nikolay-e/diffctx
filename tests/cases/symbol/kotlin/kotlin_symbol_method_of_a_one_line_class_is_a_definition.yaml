@@ -1,0 +1,37 @@
+name: kotlin_symbol_method_of_a_one_line_class_is_a_definition
+mode: symbol
+source: synthetic
+tags: [kotlin, one-line, tests-reach]
+repo:
+  initial_files:
+    src/main/kotlin/com/acme/lib/W.kt: |
+      package com.acme.lib
+
+      class W { fun wm(): Int { return 1 } }
+    src/main/kotlin/com/acme/app/Use.kt: |
+      package com.acme.app
+
+      import com.acme.lib.W
+
+      class Use {
+          fun go(): Int {
+              val w = W()
+              return w.wm()
+          }
+      }
+    src/test/kotlin/com/acme/app/UseTest.kt: |
+      package com.acme.app
+
+      import kotlin.test.Test
+
+      class UseTest {
+          @Test
+          fun t() {
+              Use().go()
+          }
+      }
+query: {symbol: wm}
+expect:
+  definitions: [src/main/kotlin/com/acme/lib/W.kt::W.wm]
+  callers: {wm: ["src/main/kotlin/com/acme/app/Use.kt::Use.go"]}
+  not_untested: [wm]

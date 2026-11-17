@@ -1,0 +1,124 @@
+name: kotlin_smart_cast_receiver_declared_any_reaches_the_narrowed_class
+mode: impact
+source: synthetic
+tags: [kotlin, smart-cast, receiver]
+repo:
+  initial_files:
+    src/main/kotlin/com/acme/lib/Repo.kt: |
+      package com.acme.lib
+
+      class Repo {
+          fun load(): Int {
+              return 1
+          }
+      }
+    src/main/kotlin/com/acme/app/Use.kt: |
+      package com.acme.app
+
+      import com.acme.lib.Repo
+
+      class Use {
+          fun viaIf(x: Any): Int {
+              if (x is Repo) return x.load()
+              return 0
+          }
+
+          fun viaAnd(x: Any?): Boolean = x is Repo && x.load() > 0
+
+          fun viaWhen(x: Any): Int = when (x) {
+              is Repo -> x.load()
+              else -> 0
+          }
+
+          fun viaSubjectless(x: Any): Int = when {
+              x is Repo -> x.load()
+              else -> 0
+          }
+
+          fun viaEarlyReturn(x: Any): Int {
+              if (x !is Repo) return 0
+              return x.load()
+          }
+
+          fun viaCast(x: Any): Int {
+              x as Repo
+              return x.load()
+          }
+
+          fun viaRequire(x: Any): Int {
+              require(x is Repo)
+              return x.load()
+          }
+
+          fun viaEquals(other: Any?): Boolean {
+              if (other is Repo) return other.load() > 0
+              return false
+          }
+      }
+    src/test/kotlin/com/acme/app/UseTest.kt: |
+      package com.acme.app
+
+      import kotlin.test.Test
+
+      class UseTest {
+          @Test
+          fun t() {
+              Use().viaIf(Any())
+          }
+      }
+  changed_files:
+    src/main/kotlin/com/acme/lib/Repo.kt: |
+      package com.acme.lib
+
+      class Repo {
+          fun load(): Int {
+              return 2
+          }
+      }
+  commit_message: "Repo.load returns 2"
+expect:
+  changed: [src/main/kotlin/com/acme/lib/Repo.kt::Repo.load]
+  relations:
+    - from: "src/main/kotlin/com/acme/app/Use.kt::Use.viaIf"
+      to: "src/main/kotlin/com/acme/lib/Repo.kt::Repo.load"
+      kind: calls
+      resolution: resolved
+      site: 7
+    - from: "src/main/kotlin/com/acme/app/Use.kt::Use.viaAnd"
+      to: "src/main/kotlin/com/acme/lib/Repo.kt::Repo.load"
+      kind: calls
+      resolution: resolved
+      site: 11
+    - from: "src/main/kotlin/com/acme/app/Use.kt::Use.viaWhen"
+      to: "src/main/kotlin/com/acme/lib/Repo.kt::Repo.load"
+      kind: calls
+      resolution: resolved
+      site: 14
+    - from: "src/main/kotlin/com/acme/app/Use.kt::Use.viaSubjectless"
+      to: "src/main/kotlin/com/acme/lib/Repo.kt::Repo.load"
+      kind: calls
+      resolution: resolved
+      site: 19
+    - from: "src/main/kotlin/com/acme/app/Use.kt::Use.viaEarlyReturn"
+      to: "src/main/kotlin/com/acme/lib/Repo.kt::Repo.load"
+      kind: calls
+      resolution: resolved
+      site: 25
+    - from: "src/main/kotlin/com/acme/app/Use.kt::Use.viaCast"
+      to: "src/main/kotlin/com/acme/lib/Repo.kt::Repo.load"
+      kind: calls
+      resolution: resolved
+      site: 30
+    - from: "src/main/kotlin/com/acme/app/Use.kt::Use.viaRequire"
+      to: "src/main/kotlin/com/acme/lib/Repo.kt::Repo.load"
+      kind: calls
+      resolution: resolved
+      site: 35
+    - from: "src/main/kotlin/com/acme/app/Use.kt::Use.viaEquals"
+      to: "src/main/kotlin/com/acme/lib/Repo.kt::Repo.load"
+      kind: calls
+      resolution: resolved
+      site: 39
+    - from: "src/test/kotlin/com/acme/app/UseTest.kt::UseTest.t"
+      to: "src/main/kotlin/com/acme/app/Use.kt::Use.viaIf"
+      kind: tests_reach
