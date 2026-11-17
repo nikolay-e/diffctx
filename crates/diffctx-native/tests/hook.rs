@@ -5196,6 +5196,41 @@ fn a_hook_past_its_ceiling_says_it_did_not_review() {
     assert!(reviewed.contains("shop/checkout.py::charge"), "{reviewed}");
 }
 
+/// A test ceiling that is no number is the run's own error and is logged as
+/// one, in silence: it never falls back to the shipped ceiling, and a ceiling
+/// the test spent beforehand (`EXPIRED`) does not make it a number.
+#[test]
+fn a_test_ceiling_that_is_no_number_is_a_logged_error() {
+    for (ceiling, spent) in [("soon", None), ("", None), ("soon", Some("1"))] {
+        let tmp = repo_with_pending_change();
+        let repo = tmp.path();
+        let cache = TempDir::new().unwrap();
+        let command = "git commit -qam vat";
+        let first = hook_in_env(
+            repo,
+            cache.path(),
+            "pretooluse",
+            &[],
+            &[],
+            &payload_in_session("s1", repo, command),
+        );
+        assert_eq!(first.stdout, "", "recording is not the call under test");
+        sh(repo, &[], command);
+        let mut env = vec![("DIFFCTX_TEST_HOOK_CEILING_SECS", Path::new(ceiling))];
+        if let Some(spent) = spent {
+            env.push(("DIFFCTX_TEST_HOOK_CEILING_EXPIRED", Path::new(spent)));
+        }
+        let after = in_session("s1", &payload_for("PostToolUse", repo, command));
+        let answered = hook_in_env(repo, cache.path(), "posttooluse", &[], &env, &after);
+        assert_eq!(answered.stdout, "", "{ceiling:?}");
+        assert!(
+            last_log_line(cache.path()).contains(" error:test-ceiling "),
+            "{ceiling:?}: {}",
+            last_log_line(cache.path())
+        );
+    }
+}
+
 /// gh#508: an inspection a pathspec narrows is about what it showed, the
 /// pending change under that path, never the rest of the checkout; from a
 /// subdirectory the pathspec is that directory's.

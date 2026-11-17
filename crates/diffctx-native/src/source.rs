@@ -621,6 +621,38 @@ mod tests {
         }
     }
 
+    /// What a side withholds is decided by the snapshot layer for a repository
+    /// path, and by its name alone for a string that is none: a place outside
+    /// the checkout is no file of it, yet a key's name is never shown.
+    #[test]
+    fn a_name_that_is_no_repository_path_is_withheld_by_its_name_alone() {
+        let tmp = repo_with_dirty_file();
+        let root = dunce::canonicalize(tmp.path()).expect("canonical");
+        std::fs::write(root.join("id_rsa"), "key\n").expect("write");
+        let run = crate::resource::RunContext::unbounded();
+        let analysis = Analysis::open(&root, None, &run).expect("open");
+        let named: Vec<String> = [
+            "a.py",
+            "id_rsa",
+            ".git/config",
+            "/elsewhere/a.py",
+            "/elsewhere/id_rsa",
+            "C:/elsewhere/a.py",
+            "C:/elsewhere/id_rsa",
+        ]
+        .map(String::from)
+        .to_vec();
+        assert_eq!(
+            analysis.head().withheld(&named),
+            [
+                "id_rsa",
+                ".git/config",
+                "/elsewhere/id_rsa",
+                "C:/elsewhere/id_rsa"
+            ]
+        );
+    }
+
     fn oid_of(root: &Path, rev: &str) -> snap::Oid {
         let out = snap::run_git(root, &["rev-parse", rev]).expect("rev-parse");
         snap::Oid::parse(out.trim()).expect("object id")
