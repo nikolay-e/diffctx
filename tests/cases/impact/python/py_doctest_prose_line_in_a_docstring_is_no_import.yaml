@@ -1,0 +1,56 @@
+name: py_doctest_prose_line_in_a_docstring_is_no_import
+mode: impact
+source: synthetic
+tags:
+- python
+- tests-reach
+- doctest
+repo:
+  initial_files:
+    pkg/__init__.py: ""
+    pkg/core.py: |
+      def compute(x):
+          return x
+
+
+      def other(x):
+          return x
+    pkg/api.py: |
+      """The api of the package.
+
+      The examples below need
+      from pkg.core import other
+      in the namespace; they do not have it.
+      """
+      from pkg.core import (
+          compute,
+      )
+
+
+      def show(x):
+          """Show the value.
+
+          >>> compute(1)
+          1
+          >>> other(1)
+          1
+          """
+          return x
+  changed_files:
+    pkg/core.py: |
+      def compute(x):
+          return x + 1
+
+
+      def other(x):
+          return x + 2
+  commit_message: change both
+expect:
+  changed:
+  - pkg/core.py::compute
+  - pkg/core.py::other
+  exact: false
+  not_untested:
+  - compute
+  untested:
+  - other
