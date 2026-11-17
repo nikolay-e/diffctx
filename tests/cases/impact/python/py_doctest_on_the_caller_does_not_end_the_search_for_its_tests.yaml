@@ -1,0 +1,52 @@
+name: py_doctest_on_the_caller_does_not_end_the_search_for_its_tests
+mode: impact
+source: synthetic
+issue_state: closed
+tags:
+- python
+- tests-reach
+- doctest
+repo:
+  initial_files:
+    pkg/__init__.py: ""
+    pkg/core.py: |
+      def _step(value):
+          return value + 1
+
+
+      def bump(value):
+          """Add one.
+
+          >>> bump(1)
+          2
+          """
+          return _step(value)
+    tests/test_core.py: |
+      from pkg.core import bump as add_one
+
+
+      def test_adds_one():
+          assert add_one(1) == 2
+  changed_files:
+    pkg/core.py: |
+      def _step(value):
+          return value + 2
+
+
+      def bump(value):
+          """Add one.
+
+          >>> bump(1)
+          2
+          """
+          return _step(value)
+  commit_message: step adds two
+expect:
+  changed:
+  - pkg/core.py::_step
+  relations:
+  - {from: pkg/core.py::bump, to: pkg/core.py::_step, kind: calls, site: 11}
+  # The doctest is a reach of `bump`, named; it does not end the search, so the
+  # test file that calls `bump` under another name is named too.
+  - {from: pkg/core.py::bump, to: pkg/core.py::bump, kind: tests_reach}
+  - {from: tests/test_core.py::test_adds_one, to: pkg/core.py::bump, kind: tests_reach}
