@@ -1,0 +1,53 @@
+name: java_symbol_method_of_a_final_class_is_complete_beside_its_extensible_twin
+mode: symbol
+source: synthetic
+issue_state: open
+tags: [java, dispatch, library, open-world, final]
+repo:
+  initial_files:
+    pom.xml: |
+      <project><modelVersion>4.0.0</modelVersion><groupId>a</groupId><artifactId>a</artifactId><version>1</version></project>
+    src/main/java/lib3/Demo.java: |
+      package lib3;
+
+      public class Demo {
+          public static void libraryCallSite(Interface i) {
+              i.method();
+          }
+      }
+    src/main/java/lib3/Interface.java: |
+      package lib3;
+
+      public interface Interface {
+          void method();
+      }
+    src/main/java/lib3/DismissedSuperclass.java: |
+      package lib3;
+
+      public final class DismissedSuperclass {
+          public void method() {
+          }
+      }
+    src/main/java/lib3/PotentialSuperclass.java: |
+      package lib3;
+
+      public class PotentialSuperclass {
+          public void method() {
+          }
+      }
+query:
+  symbol: method
+expect:
+  definitions:
+    - src/main/java/lib3/Interface.java::Interface.method
+    - src/main/java/lib3/DismissedSuperclass.java::DismissedSuperclass.method
+    - src/main/java/lib3/PotentialSuperclass.java::PotentialSuperclass.method
+  relations:
+    - from: src/main/java/lib3/Demo.java::Demo.libraryCallSite
+      to: src/main/java/lib3/Interface.java::Interface.method
+      kind: calls
+      resolution: resolved
+      site: 5
+  partial:
+    src/main/java/lib3/PotentialSuperclass.java::PotentialSuperclass.method:
+      calls: not_traced

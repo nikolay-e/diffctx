@@ -1,0 +1,50 @@
+name: java_public_class_method_an_outside_subclass_could_reach_through_an_interface_is_hedged
+mode: impact
+source: synthetic
+issue_state: open
+tags: [java, dispatch, library, open-world]
+repo:
+  initial_files:
+    pom.xml: |
+      <project><modelVersion>4.0.0</modelVersion><groupId>a</groupId><artifactId>a</artifactId><version>1</version></project>
+    src/main/java/lib3/Demo.java: |
+      package lib3;
+
+      public class Demo {
+          public static void libraryCallSite(Interface i) {
+              i.method();
+          }
+      }
+    src/main/java/lib3/Interface.java: |
+      package lib3;
+
+      public interface Interface {
+          void method();
+      }
+    src/main/java/lib3/PotentialSuperclass.java: |
+      package lib3;
+
+      public class PotentialSuperclass {
+          public void method() {
+          }
+      }
+  changed_files:
+    src/main/java/lib3/PotentialSuperclass.java: |
+      package lib3;
+
+      public class PotentialSuperclass {
+          public void method() {
+              System.out.println("changed");
+          }
+      }
+  commit_message: change
+expect:
+  changed: [src/main/java/lib3/PotentialSuperclass.java::PotentialSuperclass.method]
+  unknowns:
+    method: overridable
+  callers:
+    method: []
+  partial:
+    src/main/java/lib3/PotentialSuperclass.java::PotentialSuperclass.method:
+      calls: not_traced
+  discloses: true
