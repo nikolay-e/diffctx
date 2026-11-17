@@ -388,6 +388,7 @@ impl<'a> Walker<'a> {
             body_hash: hasher.finish().unwrap_or(1),
             text_hash: hash_text(program.as_bytes()),
             doc_hash: None,
+            initializer: Default::default(),
         }));
     }
 
@@ -447,6 +448,7 @@ impl<'a> Walker<'a> {
             body_hash: self.tree_hash(node),
             text_hash: hash_text(self.text_of(node).as_bytes()),
             doc_hash: None,
+            initializer: Default::default(),
             span,
         }));
         let inside = Scope::Def(local);
@@ -689,6 +691,7 @@ impl<'a> Walker<'a> {
                 body_hash: self.tree_hash(node),
                 text_hash: hash_text(self.text_of(node).as_bytes()),
                 doc_hash: None,
+                initializer: Default::default(),
             }));
         } else {
             self.facts.push(Fact::Reference(Ref {

@@ -486,6 +486,7 @@ impl<'t> Walker<'t> {
                 self.bytes[span_node.start_byte()..span_node.end_byte()].trim_ascii(),
             ),
             doc_hash: None,
+            initializer: Default::default(),
         }));
         key
     }

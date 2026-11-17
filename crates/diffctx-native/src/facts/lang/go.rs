@@ -451,6 +451,7 @@ impl<'t> Walker<'t> {
             body_hash,
             text_hash: hash_outside(self.bytes, span_node, members),
             doc_hash,
+            initializer: Default::default(),
         }));
         key
     }
