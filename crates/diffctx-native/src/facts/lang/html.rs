@@ -12,10 +12,12 @@
 //! is for a worker: the page sees the globals of the scripts it loads and no
 //! others. A module script's `src` loads nothing into the page's scope.
 //!
-//! Not read: attribute values (`onclick="…"`), template expressions of an Astro
-//! file (`{…}`), and every other part of the markup. A name spelled only there
-//! is not found by the cell, except in a comment or a text node without `{`, which
-//! are prose and recorded as comments.
+//! An Astro file's template expressions (`{…}` between tags) are code too, kept
+//! whole as the blocks they are to the parser, which reads their JSX as TSX.
+//!
+//! Not read: attribute values (`onclick="…"`, `href={…}`) and every other part of
+//! the markup. A name spelled only there is not found by the cell, except in a
+//! comment or a text node without `{`, which are prose and recorded as comments.
 
 use std::ops::Range;
 
@@ -104,6 +106,14 @@ fn scan(text: &[u8], astro: bool) -> Page {
     }
     let mut text_from = at;
     while at < text.len() {
+        if astro && text[at] == b'{' {
+            if let Some(end) = expression_end(text, at) {
+                masked[at..end].copy_from_slice(&text[at..end]);
+                at = end;
+                text_from = end;
+                continue;
+            }
+        }
         if text[at] != b'<' {
             at += 1;
             continue;
@@ -178,6 +188,33 @@ fn scan(text: &[u8], astro: bool) -> Page {
         loads,
         prose,
     }
+}
+
+/// The index past the `}` that closes the expression opened at `at`: strings,
+/// template literals and nested braces respected; `None` when it never closes.
+fn expression_end(text: &[u8], at: usize) -> Option<usize> {
+    let mut depth = 0usize;
+    let mut quote: Option<u8> = None;
+    let mut next = at;
+    while next < text.len() {
+        let byte = text[next];
+        match (quote, byte) {
+            (Some(_), b'\\') => next += 1,
+            (Some(open), byte) if byte == open => quote = None,
+            (Some(_), _) => {}
+            (None, b'"' | b'\'' | b'`') => quote = Some(byte),
+            (None, b'{') => depth += 1,
+            (None, b'}') => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some(next + 1);
+                }
+            }
+            (None, _) => {}
+        }
+        next += 1;
+    }
+    None
 }
 
 /// Records `run`, the text between two tags, as prose unless it may hold an
