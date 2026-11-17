@@ -85,6 +85,7 @@ pub(super) const NAMED_LOCALS: &[(Family, bool)] = &[
     (Family::Php, true),
     (Family::C, false),
     (Family::Shell, true),
+    (Family::Terraform, false),
 ];
 
 /// Families whose resolver pairs a prototype with its definition: a call binds both, and
