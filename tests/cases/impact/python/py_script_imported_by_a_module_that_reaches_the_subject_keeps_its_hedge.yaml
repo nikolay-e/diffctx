@@ -1,0 +1,36 @@
+name: py_script_imported_by_a_module_that_reaches_the_subject_keeps_its_hedge
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [python, script, hedge, untyped-receiver, decoy]
+repo:
+  initial_files:
+    tools/device.py: |
+      class Device:
+          def call(self, method, path):
+              return {"method": method, "path": path}
+    tools/migrate.py: |
+      import json
+
+
+      def fixture(client, path):
+          data = client.call("GET", path)
+          return json.dumps(data)
+    tools/runner.py: |
+      from tools.device import Device
+      from tools.migrate import fixture
+
+
+      def run(path):
+          return fixture(Device(), path)
+  changed_files:
+    tools/device.py: |
+      class Device:
+          def call(self, method, path):
+              return {"method": method, "path": path, "ok": True}
+  commit_message: "device: say it worked"
+expect:
+  changed: [tools/device.py::Device.call]
+  partial:
+    tools/device.py::Device.call:
+      calls: unlanded
