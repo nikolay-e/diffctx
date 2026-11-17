@@ -1378,7 +1378,9 @@ impl<'w> Engine<'w> {
         if self.has_magic(class, magic)
             || (call && !statics && self.has_magic(class, "__callStatic"))
         {
-            return unresolved(UnresolvedReason::Opaque);
+            return self
+                .caught_by(class, r, magic, call)
+                .unwrap_or_else(|| unresolved(UnresolvedReason::Opaque));
         }
         if self.open_above(class, 0) {
             // A parent outside the repository may forward a call by `__call` or
@@ -1390,6 +1392,23 @@ impl<'w> Engine<'w> {
             })
         } else {
             unresolved(UnresolvedReason::NoMember)
+        }
+    }
+
+    /// A call no member answers, made through a type that has a `__call` and has no
+    /// type below or above it that may hold the member: it runs the `__call`.
+    fn caught_by(&self, class: usize, r: &Ref, magic: &str, call: bool) -> Option<Resolution> {
+        let (ids, _) = self.members_of(class, &Name::new(magic), true, 0)?;
+        let named = self.ix.members.get(&lower(&r.name));
+        let held_below = named
+            .into_iter()
+            .flatten()
+            .any(|id| (self.holder_of(*id)).is_some_and(|owner| self.is_subtype(owner, class, 0)));
+        match ids[..] {
+            [catcher] if call && !held_below && !self.open_above(class, 0) => {
+                Some(self.resolved(catcher, EvidenceKind::TypedReceiver))
+            }
+            _ => None,
         }
     }
 
