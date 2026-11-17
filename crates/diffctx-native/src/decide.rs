@@ -1884,6 +1884,25 @@ impl Cell {
             })
     }
 
+    /// Whether the definition at the head is a C function the linker exports: any
+    /// language that loads the library reaches it by its bare name. The facts'
+    /// own visibility says it (`static` makes a definition private), never the
+    /// declaration's text.
+    pub(crate) fn exported_c_function_at(&self, file: &str, name: &str, lines: (u32, u32)) -> bool {
+        let Some(def) = self.first_definition_at(file, name, lines) else {
+            return false;
+        };
+        let Ok(Some(facts)) = facts_of(&self.ctx, SideTag::Head, &self.cache, &def.file) else {
+            return false;
+        };
+        facts.language() == Language::C
+            && facts.defs().any(|d| {
+                d.local == def.key.local
+                    && d.kind == DefKind::Function
+                    && d.visibility != Visibility::Private
+            })
+    }
+
     /// The annotations a Kotlin definition states at the head, by where it is:
     /// the JVM entry points a framework calls are read off them. `None` for
     /// another family or a definition the facts do not hold.
