@@ -135,6 +135,8 @@ pub enum Receiver {
     Path(Vec<String>),
     /// `make(…).f()`: the result of a plain call.
     Call(String),
+    /// `Type.make(…).f()`: the result of a call on a chain of names.
+    Member(Vec<String>),
     /// Anything else: a call result, an index, a literal.
     Expr,
 }
@@ -593,6 +595,7 @@ fn local_binding(node: &Node, bytes: &[u8], bindings: &mut Vec<Binding>) {
     };
     bindings.push(Binding {
         init_call: initializer_call(node, bytes),
+        alias: elvis_source(node, bytes),
         ..Binding::new(name, declared_type(node, bytes), start, scope)
     });
 }
@@ -805,11 +808,20 @@ fn receiver_of(node: Node, bytes: &[u8]) -> Receiver {
             .map(|t| Receiver::Name(t.to_string()))
             .unwrap_or(Receiver::Expr),
         "this_expression" => Receiver::This,
-        "call_expression" => node
-            .named_child(0)
-            .filter(|c| c.kind() == "simple_identifier")
-            .and_then(|c| name_text(c, bytes))
-            .map_or(Receiver::Expr, |callee| Receiver::Call(callee.to_string())),
+        "call_expression" => match node.named_child(0) {
+            Some(head) if head.kind() == "navigation_expression" => {
+                match receiver_of(head, bytes) {
+                    Receiver::Path(parts) if parts.first().is_some_and(|p| p != "this") => {
+                        Receiver::Member(parts)
+                    }
+                    _ => Receiver::Expr,
+                }
+            }
+            head => head
+                .filter(|c| c.kind() == "simple_identifier")
+                .and_then(|c| name_text(c, bytes))
+                .map_or(Receiver::Expr, |callee| Receiver::Call(callee.to_string())),
+        },
         "navigation_expression" => {
             let mut parts = Vec::new();
             let mut current = node;
@@ -879,7 +891,9 @@ fn declared_type(node: &Node, bytes: &[u8]) -> Option<String> {
 
 /// `val x = Make(…)`, `fun f() = Make(…)`: the callee of an initializer
 /// or an expression body that is a plain call.
-fn initializer_call(node: &Node, bytes: &[u8]) -> Option<InitCall> {
+/// What a property is initialised with, or a function with an expression body
+/// returns.
+fn initializer<'t>(node: &Node<'t>) -> Option<Node<'t>> {
     let holder = match node.kind() {
         "property_declaration" => *node,
         "function_declaration" => child(*node, "function_body")?,
@@ -891,11 +905,24 @@ fn initializer_call(node: &Node, bytes: &[u8]) -> Option<InitCall> {
         .iter()
         .position(|c| c.kind() == "=")
         .and_then(|i| children.get(i + 1))?;
-    let call = if after_eq.kind() == "call_expression" {
-        *after_eq
-    } else {
-        return None;
-    };
+    Some(*after_eq)
+}
+
+/// `val v = maybe ?: return false`: the name an elvis whose other side leaves the
+/// function is bound from, and so the type of.
+fn elvis_source(node: &Node, bytes: &[u8]) -> Option<String> {
+    let elvis = initializer(node).filter(|i| i.kind() == "elvis_expression")?;
+    let source = elvis
+        .named_child(0)
+        .filter(|l| l.kind() == "simple_identifier")?;
+    elvis
+        .named_child(1)
+        .filter(|r| r.kind() == "jump_expression")?;
+    name_text(source, bytes).map(str::to_string)
+}
+
+fn initializer_call(node: &Node, bytes: &[u8]) -> Option<InitCall> {
+    let call = initializer(node).filter(|i| i.kind() == "call_expression")?;
     let head = call.named_child(0)?;
     match head.kind() {
         "simple_identifier" => Some(InitCall {

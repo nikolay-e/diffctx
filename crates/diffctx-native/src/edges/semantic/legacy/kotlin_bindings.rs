@@ -649,7 +649,7 @@ impl<'a> KotlinResolver<'a> {
     ) -> Option<TypeRef> {
         match r {
             Receiver::This => self.enclosing_type(rel, facts, u.at),
-            Receiver::Expr => None,
+            Receiver::Expr | Receiver::Member(_) => None,
             Receiver::Call(callee) => self.call_type(rel, facts, callee, u.at),
             Receiver::Name(n) => self.name_type(rel, facts, n, u.at),
             Receiver::Path(parts) => {

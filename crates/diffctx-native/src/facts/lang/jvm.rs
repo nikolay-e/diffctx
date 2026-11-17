@@ -124,6 +124,10 @@ macro_rules! shared_reader_methods {
                 Some(old::Receiver::Call(callee)) => {
                     (Receiver::CallResult(vec![name(callee)]), Vec::new())
                 }
+                Some(old::Receiver::Member(path)) => (
+                    Receiver::CallResult(path.iter().map(name).collect()),
+                    Vec::new(),
+                ),
                 Some(old::Receiver::Name(head)) => self.chain(u.at, std::slice::from_ref(head)),
                 Some(old::Receiver::Path(parts)) => match parts.split_first() {
                     Some((first, rest)) if first == "this" => {
