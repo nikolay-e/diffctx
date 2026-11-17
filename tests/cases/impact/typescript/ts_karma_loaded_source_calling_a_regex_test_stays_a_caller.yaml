@@ -1,0 +1,41 @@
+name: ts_karma_loaded_source_calling_a_regex_test_stays_a_caller
+mode: impact
+source: synthetic
+tags:
+- typescript
+- tests-reach
+- karma-config
+repo:
+  initial_files:
+    karma.conf.js: |
+      module.exports = (config) => config.set({ files: ["src/**/*.ts"] });
+    src/format.ts: |
+      export function shout(s: string): string {
+        return s.toUpperCase();
+      }
+    src/validate.ts: |
+      import { shout } from "./format";
+
+      export function isLoud(s: string): boolean {
+        return /^[A-Z]+$/.test(shout(s));
+      }
+    libs/core/test/other.test.ts: |
+      test("s", () => expect(1).toBe(1));
+  changed_files:
+    src/format.ts: |
+      export function shout(s: string): string {
+        return s.toLocaleUpperCase();
+      }
+  commit_message: change shout
+expect:
+  changed:
+  - src/format.ts::shout
+  exact: false
+  relations:
+  - from: src/validate.ts::isLoud
+    to: src/format.ts::shout
+    kind: calls
+    resolution: resolved
+    site: 4
+  untested:
+  - shout
