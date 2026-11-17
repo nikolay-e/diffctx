@@ -1,0 +1,21 @@
+name: sql_pg_dump_quoted_table_flag_in_a_shell_script_names_the_table
+mode: impact
+source: synthetic
+tags: [sql, literal-name, relation-statement, false-absence]
+repo:
+  initial_files:
+    db/orders.sql: |
+      CREATE TABLE orders_v2 (id int);
+    bin/backup.sh: |
+      #!/usr/bin/env bash
+      pg_dump -t "orders_v2" appdb > backup.sql
+  changed_files:
+    db/orders.sql: |
+      CREATE TABLE orders_v2 (id bigint);
+  commit_message: "db: orders_v2 ids are bigint"
+expect:
+  exact: false
+  discloses: true
+  no_negative_claims: true
+  relations:
+    - {from: bin/backup.sh, to: db/orders.sql::orders_v2, kind: calls, resolution: unresolved}

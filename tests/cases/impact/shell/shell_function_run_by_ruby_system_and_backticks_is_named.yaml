@@ -1,0 +1,33 @@
+name: shell_function_run_by_ruby_system_and_backticks_is_named
+mode: impact
+source: synthetic
+tags: [shell, literal-name, shell-string, false-absence, ruby]
+repo:
+  initial_files:
+    lib/strings.sh: |
+      #!/usr/bin/env bash
+      slugify() {
+        echo "${1,,}"
+      }
+    lib/system.rb: |
+      def slug
+        system("slugify abc")
+      end
+    lib/ticks.rb: |
+      def slug
+        `slugify abc`
+      end
+  changed_files:
+    lib/strings.sh: |
+      #!/usr/bin/env bash
+      slugify() {
+        printf '%s\n' "${1,,}"
+      }
+  commit_message: "strings: slugify prints through printf"
+expect:
+  exact: false
+  discloses: true
+  no_negative_claims: true
+  relations:
+    - {from: lib/system.rb, to: lib/strings.sh::slugify, kind: calls, resolution: unresolved}
+    - {from: lib/ticks.rb, to: lib/strings.sh::slugify, kind: calls, resolution: unresolved}

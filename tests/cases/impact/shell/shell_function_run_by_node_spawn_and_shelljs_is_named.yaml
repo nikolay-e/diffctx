@@ -1,0 +1,39 @@
+name: shell_function_run_by_node_spawn_and_shelljs_is_named
+mode: impact
+source: synthetic
+tags: [shell, literal-name, shell-string, false-absence, javascript]
+repo:
+  initial_files:
+    lib/strings.sh: |
+      #!/usr/bin/env bash
+      slugify() {
+        echo "${1,,}"
+      }
+    scripts/spawn.js: |
+      const { spawn } = require("child_process");
+
+      function slug() {
+        return spawn("bash", ["-c", "slugify abc"]);
+      }
+      module.exports = { slug };
+    scripts/shell.js: |
+      const shell = require("shelljs");
+
+      function slug() {
+        return shell.exec("slugify abc");
+      }
+      module.exports = { slug };
+  changed_files:
+    lib/strings.sh: |
+      #!/usr/bin/env bash
+      slugify() {
+        printf '%s\n' "${1,,}"
+      }
+  commit_message: "strings: slugify prints through printf"
+expect:
+  exact: false
+  discloses: true
+  no_negative_claims: true
+  relations:
+    - {from: scripts/spawn.js, to: lib/strings.sh::slugify, kind: calls, resolution: unresolved}
+    - {from: scripts/shell.js, to: lib/strings.sh::slugify, kind: calls, resolution: unresolved}
