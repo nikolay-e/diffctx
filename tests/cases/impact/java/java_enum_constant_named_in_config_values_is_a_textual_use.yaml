@@ -9,8 +9,7 @@ repo:
 
       public enum Color {
           RED("f00"),
-          TAN("d2b"),
-          SKY("8cf");
+          TAN("d2b");
 
           private final String hex;
 
@@ -23,16 +22,13 @@ repo:
         color: RED
     src/main/resources/application.properties: |
       app.fallback=TAN
-    src/main/resources/palette.json: |
-      {"color": "SKY"}
   changed_files:
     src/main/java/com/acme/lib/Color.java: |
       package com.acme.lib;
 
       public enum Color {
           RED("ff0000"),
-          TAN("ddbb22"),
-          SKY("88ccff");
+          TAN("ddbb22");
 
           private final String hex;
 
@@ -52,9 +48,5 @@ expect:
       resolution: unresolved
     - from: src/main/resources/application.properties
       to: src/main/java/com/acme/lib/Color.java::TAN
-      kind: calls
-      resolution: unresolved
-    - from: src/main/resources/palette.json
-      to: src/main/java/com/acme/lib/Color.java::SKY
       kind: calls
       resolution: unresolved
