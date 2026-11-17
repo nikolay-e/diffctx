@@ -17,6 +17,5 @@ impact/typescript/ts_destructured_static_method_is_called_through_its_alias  # `
 impact/typescript/ts_later_declarator_of_a_multi_declarator_const_is_the_changed_one  # `hooks.MODEL` is an object member of the same name, an unresolved receiver, not the constant
 impact/typescript/ts_lazy_import_is_a_caller  # `m.MobileFullPlayer` is the site of the resolved dynamic-import row, and its receiver `m` is left unresolved
 impact/typescript/ts_lazy_import_through_a_tsconfig_alias_is_a_caller  # `m.Lazy` is the site of the resolved dynamic-import row, and its receiver `m` is left unresolved
-symbol/config/config_symbol_helm_dotted_dashed_template_name_without_a_path  # the define's name is spanned by its whole action and an include's site is the whole action, so both unlanded sites are the resolved rows; a named template is called outside (a parent chart), so the definition is unowned
 symbol/config/config_symbol_helm_named_template_and_its_includes  # as the sibling above, and the other chart's same-named template and include are counted as unlanded uses
 symbol/kotlin/gh490_companion_factory_and_elvis_return_receivers_resolve  # both unlanded sites are the resolved rows: the receivers of the companion factory and the elvis return are left unresolved

@@ -42,7 +42,7 @@ pub struct ConfigUse {
 pub struct Define {
     pub name: String,
     pub span: Span,
-    /// The `define` action alone.
+    /// The quoted name inside the `define` action, quotes left out.
     pub name_span: Span,
 }
 
@@ -83,13 +83,15 @@ pub fn analyse(templates: &[Template]) -> Analysis {
             }
             "if" | "range" | "with" => open.push(None),
             "define" | "block" => {
-                let named = first_string(&body[keyword.len()..]);
-                match named {
-                    Some(name) => {
+                let after = &body[keyword.len()..];
+                match first_string_at_start(after) {
+                    Some((name, taken)) => {
+                        let at = offset_in(&action.text, after);
+                        let from = at + (after.len() - after.trim_start().len()) + 1;
                         analysis.defines.push(Define {
                             name,
                             span: action.span.clone(),
-                            name_span: action.span.clone(),
+                            name_span: within(action, from..at + taken - 1),
                         });
                         open.push(Some(analysis.defines.len() - 1));
                     }
@@ -114,6 +116,24 @@ pub fn analyse(templates: &[Template]) -> Analysis {
         }
     }
     analysis
+}
+
+/// Where `part`, a slice of `whole`, starts.
+fn offset_in(whole: &str, part: &str) -> usize {
+    part.as_ptr() as usize - whole.as_ptr() as usize
+}
+
+/// The bytes of `action` at `range`, as a span of the file.
+fn within(action: &Template, range: std::ops::Range<usize>) -> Span {
+    let before = |at: usize| action.text[..at].matches('\n').count() as u32;
+    let start = action.span.bytes.start + range.start as u32;
+    Span::new(
+        start..action.span.bytes.start + range.end as u32,
+        (
+            action.span.lines.0 + before(range.start),
+            action.span.lines.0 + before(range.end),
+        ),
+    )
 }
 
 /// The text of an action without its delimiters, trim markers and blanks.
