@@ -31,6 +31,8 @@
 //!   struct literal is a `Write` of that field on `T`. A name handed to a call
 //!   as an argument is a `PassAsValue`; a name elsewhere a `Read`; the target of
 //!   an assignment, `++` or `--` a `Write`; a name in a type position a `TypeUse`.
+//! - A string literal that is the value of a `const`, a `var` or a `:=`, or the argument of a
+//!   call of `BY_NAME_LOOKUPS`, is a `CallableString`: a name the program may resolve by string.
 //! - A function the comment `//export name` above it gives to C carries the decorator `export`.
 //! - A `//go:linkname local path/pkg.name` directive is a `Call` of `name` with
 //!   `Receiver::Module` of the import path, sited at the directive.
@@ -48,12 +50,17 @@ use tree_sitter::Node;
 
 use super::walker::{hash_outside, hash_tree, is_member};
 use super::{ERROR_RANGES_KEPT, children, lines_of, merge_ranges, read_tree, span};
+use crate::facts::model::CallableString;
 use crate::facts::{
     BlobFacts, Def, DefKind, EntryKind, EntryPoint, Export, Extractor, Fact, Hasher, Import,
     ImportKind, Language, Local, LocalKey, LocalKind, ModulePath, Name, Namespace, Receiver, Ref,
     Scope, Star, TypeName, UseKind, Visibility, expired,
 };
 use crate::snapshot::RunBudget;
+
+/// The calls that resolve a name given as a string at run time: `plugin.Lookup`,
+/// `reflect.Value.MethodByName`, `reflect.Value.FieldByName`.
+pub const BY_NAME_LOOKUPS: &[&str] = &["Lookup", "MethodByName", "FieldByName"];
 
 const MAX_DEPTH: u16 = 256;
 const POLL_EVERY: usize = 256;
@@ -907,7 +914,30 @@ impl<'t> Walker<'t> {
                 self.type_refs(ty, &inside, 2);
             }
             if let Some(value) = value {
+                self.callable_strings(value, &inside);
                 self.walk(value, &inside, 2);
+            }
+        }
+    }
+
+    /// The string literals among `node`'s values: each holds a name a program may resolve.
+    fn callable_strings(&mut self, node: Node<'t>, cx: &Cx) {
+        let literals = if node.kind() == "expression_list" {
+            children(node)
+        } else {
+            vec![node]
+        };
+        for literal in literals {
+            if let ("interpreted_string_literal" | "raw_string_literal", Some(inner)) = (
+                literal.kind(),
+                self.text(literal)
+                    .get(1..self.text(literal).len().saturating_sub(1)),
+            ) {
+                self.facts.push(Fact::CallableString(CallableString {
+                    site: span(literal),
+                    enclosing: cx.scope.clone(),
+                    text: inner.to_string(),
+                }));
             }
         }
     }
@@ -1193,6 +1223,7 @@ impl<'t> Walker<'t> {
         ) else {
             return;
         };
+        self.callable_strings(right, cx);
         self.walk(right, cx, depth + 1);
         let targets: Vec<Node<'t>> = children(left);
         let values: Vec<Node<'t>> = children(right);
@@ -1227,6 +1258,7 @@ impl<'t> Walker<'t> {
             }
             let value = spec.child_by_field_name("value");
             if let Some(value) = value {
+                self.callable_strings(value, cx);
                 self.walk(value, cx, depth + 1);
             }
             let values: Vec<Node<'t>> = value.map_or_else(Vec::new, children);
@@ -1297,6 +1329,13 @@ impl<'t> Walker<'t> {
             .chain(function)
             .map_or_else(Vec::new, |path| Self::names(&path));
         let arguments = node.child_by_field_name("arguments").map(children);
+        if callee_names.last().is_some_and(|n| {
+            function.kind() == "selector_expression" && BY_NAME_LOOKUPS.contains(&n.as_str())
+        }) {
+            for argument in arguments.iter().flatten() {
+                self.callable_strings(*argument, cx);
+            }
+        }
         // `new(T)` and `make(T, …)` name their first argument as a type, said once.
         let mut typed_first = false;
         match function.kind() {

@@ -1932,13 +1932,17 @@ impl Cell {
         )
     }
 
-    /// The strings of `file` at the head that sit where PHP holds a callable by
-    /// name and span `line`: what the file's tree says, whatever the text around
-    /// the string is.
+    /// The strings of `file` at the head that sit where the language holds a callable
+    /// by name and span `line`: what the file's tree says, whatever the text around
+    /// the string is. A Go package's strings count only where the package itself
+    /// resolves a name by string (`Lookup`, `MethodByName`, `FieldByName`).
     pub(crate) fn callable_strings_at(&self, file: &str, line: u32) -> Vec<String> {
         let Ok(path) = RepoPath::new(file) else {
             return Vec::new();
         };
+        if self.family == Family::Go && !self.package_looks_up_by_name(file) {
+            return Vec::new();
+        }
         let Ok(Some(facts)) = facts_of(&self.ctx, SideTag::Head, &self.cache, &path) else {
             return Vec::new();
         };
@@ -1955,6 +1959,20 @@ impl Cell {
                 _ => None,
             })
             .collect()
+    }
+
+    /// Whether a file of `file`'s directory, the Go package, references one of the calls
+    /// that resolve a name given as a string.
+    fn package_looks_up_by_name(&self, file: &str) -> bool {
+        let dir = |path: &str| path.rsplit_once('/').map(|(dir, _)| dir.to_string());
+        self.bindings_by_file
+            .iter()
+            .filter(|(path, _)| dir(path) == dir(file))
+            .flat_map(|(_, at)| at)
+            .any(|&at| {
+                crate::facts::lang::go::BY_NAME_LOOKUPS
+                    .contains(&self.head.bindings()[at].name.as_str())
+            })
     }
 
     /// The entries a framework makes of the definition at the head, by where it
