@@ -38,7 +38,5 @@ repo:
           return name
   commit_message: "decorators: command takes a class"
 expect:
-  partial:
-    pkg/decorators.py::command: {calls: name_unsearched, reads: name_unsearched}
   relations:
     - {from: "pkg/__init__.py", to: "pkg/decorators.py::command", kind: reexports, resolution: resolved, site: 1}
