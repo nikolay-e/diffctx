@@ -1,0 +1,29 @@
+name: shell_function_called_after_a_source_in_an_inline_ci_run_is_named
+mode: impact
+source: synthetic
+tags: [shell, literal-name, same-line-source, false-absence]
+repo:
+  initial_files:
+    lib/strings.sh: |
+      #!/usr/bin/env bash
+      slugify() {
+        echo "${1,,}"
+      }
+    .github/workflows/ci.yml: |
+      jobs:
+        b:
+          steps:
+            - run: source lib/strings.sh && slugify abc
+  changed_files:
+    lib/strings.sh: |
+      #!/usr/bin/env bash
+      slugify() {
+        printf '%s\n' "${1,,}"
+      }
+  commit_message: "strings: slugify prints through printf"
+expect:
+  exact: false
+  discloses: true
+  no_negative_claims: true
+  relations:
+    - {from: .github/workflows/ci.yml, to: lib/strings.sh::slugify, kind: calls, resolution: unresolved}

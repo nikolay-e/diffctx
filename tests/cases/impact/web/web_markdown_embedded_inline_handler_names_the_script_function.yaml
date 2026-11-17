@@ -1,0 +1,26 @@
+name: web_markdown_embedded_inline_handler_names_the_script_function
+mode: impact
+source: synthetic
+tags: [web, inline-handler, template, false-absence]
+repo:
+  initial_files:
+    public/js/a.js: |
+      function doit(el) {
+        return 1;
+      }
+    docs/demo.md: |
+      # Demo
+
+      Press <button onclick="doit(this)">save</button>
+  changed_files:
+    public/js/a.js: |
+      function doit(el) {
+        return 2;
+      }
+  commit_message: "ui: doit returns two"
+expect:
+  exact: false
+  discloses: true
+  no_negative_claims: true
+  relations:
+    - {from: docs/demo.md, to: public/js/a.js::doit, kind: calls, resolution: unresolved}
