@@ -1,0 +1,83 @@
+name: java_receiver_typed_by_a_supertype_of_a_class_names_that_class
+mode: impact
+source: synthetic
+tags: [java, receiver, supertype, decoy]
+repo:
+  initial_files:
+    src/main/java/com/acme/lib/Shout.java: |
+      package com.acme.lib;
+
+      public class Shout implements CharSequence {
+          private final String text;
+
+          public Shout(String text) {
+              this.text = text;
+          }
+
+          public int length() {
+              return text.length();
+          }
+
+          public char charAt(int index) {
+              return text.charAt(index);
+          }
+
+          public CharSequence subSequence(int start, int end) {
+              return text.subSequence(start, end);
+          }
+      }
+    src/main/java/com/acme/app/Use.java: |
+      package com.acme.app;
+
+      import com.acme.lib.Shout;
+
+      public class Use {
+          public CharSequence viaSupertype(CharSequence s) {
+              return s.subSequence(0, 1);
+          }
+
+          public CharSequence viaLibraryClass(StringBuilder b) {
+              return b.subSequence(0, 1);
+          }
+
+          public CharSequence viaOwnClass(Shout s) {
+              return s.subSequence(0, 1);
+          }
+      }
+  changed_files:
+    src/main/java/com/acme/lib/Shout.java: |
+      package com.acme.lib;
+
+      public class Shout implements CharSequence {
+          private final String text;
+
+          public Shout(String text) {
+              this.text = text;
+          }
+
+          public int length() {
+              return text.length();
+          }
+
+          public char charAt(int index) {
+              return text.charAt(index);
+          }
+
+          public CharSequence subSequence(int start, int end) {
+              return text.subSequence(start, end).toString().trim();
+          }
+      }
+  commit_message: "Shout.subSequence trims"
+expect:
+  changed: [src/main/java/com/acme/lib/Shout.java::subSequence]
+  relations:
+    - from: "src/main/java/com/acme/app/Use.java::viaSupertype"
+      to: "src/main/java/com/acme/lib/Shout.java::subSequence"
+      kind: calls
+      resolution: candidate
+      site: 7
+    - from: "src/main/java/com/acme/app/Use.java::viaOwnClass"
+      to: "src/main/java/com/acme/lib/Shout.java::subSequence"
+      kind: calls
+      resolution: resolved
+      site: 15
