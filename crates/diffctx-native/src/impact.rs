@@ -5895,10 +5895,14 @@ fn key_references(
         rows
     };
     for (target, target_keys) in &keys {
-        let searchable: Vec<&String> = target_keys
+        let (searchable, too_common): (Vec<&String>, Vec<&String>) = target_keys
             .iter()
-            .filter(|k| rows_of(target, *k).len() <= MAX_UNTRACED_NAMERS)
-            .collect();
+            .partition(|k| rows_of(target, k).len() <= MAX_UNTRACED_NAMERS);
+        // A term too many files spell witnesses no reader: the answer says the
+        // search left it out, it never reads as nothing spelling it.
+        if !too_common.is_empty() {
+            unsearched += 1;
+        }
         if searchable.is_empty() {
             continue;
         }

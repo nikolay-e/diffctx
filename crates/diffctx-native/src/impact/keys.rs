@@ -178,21 +178,68 @@ fn changed_words(text: &str) -> std::vec::IntoIter<String> {
 /// it lost, `added` the lines the file now has): a renamed key or value of any length,
 /// `pgdb`, `web`, `pgdb5`. The change dropped the name, so what still spells it
 /// is stale; a name short or plain enough to be everyone's is searched all the
-/// same, and the search gives it up when too many files spell it.
+/// same, and the search gives it up when too many files spell it. A name the
+/// removed lines defined (`defined_names`) is searched whatever its length or
+/// vocabulary — `db`, `build`, `worker` are services and jobs — unless the file
+/// still defines it.
 pub(super) fn dropped_words<'a>(
     removed: impl Iterator<Item = &'a str>,
     added: impl Iterator<Item = &'a str>,
 ) -> Vec<String> {
+    let removed: Vec<&str> = removed.collect();
+    let added: Vec<&str> = added.collect();
     let kept: rustc_hash::FxHashSet<String> = added
+        .iter()
         .flat_map(|line| spelled_words(&without_sentences(line), plain_words))
         .collect();
+    let still_defined: rustc_hash::FxHashSet<String> =
+        added.iter().flat_map(|line| defined_names(line)).collect();
     let mut dropped: Vec<String> = removed
+        .iter()
         .flat_map(|line| spelled_words(&without_sentences(line), plain_words))
         .filter(|w| !kept.contains(w))
+        .chain(
+            removed
+                .iter()
+                .flat_map(|line| defined_names(line))
+                .filter(|n| !still_defined.contains(n)),
+        )
         .collect();
     dropped.sort();
     dropped.dedup();
     dropped
+}
+
+/// What a config line defines by name, for a reader elsewhere to spell: a mapping
+/// key (`db:`, `"./legacy":`), the value of a `name:`, a bare list item (`- web`),
+/// the suffix of an ini header (`[testenv:lint]`). A package's `./sub` export is
+/// spelled `pkg/sub` by its importers.
+fn defined_names(line: &str) -> Vec<String> {
+    let text = line.trim();
+    let item = text.strip_prefix("- ").map(str::trim_start);
+    let text = item.unwrap_or(text);
+    let unquote = |s: &str| s.trim().trim_matches(['"', '\'']).to_string();
+    let mut names: Vec<String> = Vec::new();
+    if let Some(header) = text.strip_prefix('[').and_then(|h| h.strip_suffix(']')) {
+        names.extend(header.split_once(':').map(|(_, suffix)| unquote(suffix)));
+    } else if let Some((key, value)) = text.split_once(':') {
+        names.push(unquote(key));
+        if key.trim() == "name" {
+            names.push(unquote(value));
+        }
+    } else if item.is_some() {
+        names.push(unquote(text));
+    }
+    names
+        .into_iter()
+        .map(|n| n.trim_start_matches("./").to_string())
+        .filter(|n| {
+            n.chars().count() >= 2
+                && n.chars().any(|c| c.is_ascii_alphabetic())
+                && n.chars()
+                    .all(|c| c.is_alphanumeric() || matches!(c, '_' | '-' | '.'))
+        })
+        .collect()
 }
 
 /// Every word of `text` an identifier-shaped reader may spell back: three

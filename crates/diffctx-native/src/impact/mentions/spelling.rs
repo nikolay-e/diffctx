@@ -61,6 +61,15 @@ static ASSIGNMENT: Lazy<Regex> = Lazy::new(|| {
 static WIKI_LINK: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"\[\[([^\[\]|#]+)(?:[|#][^\]]*)?\]\]").expect("wiki link regex"));
 
+/// A playbook line that lists a role by its short name: `- web`, `- role: web`,
+/// `- { role: web, tags: x }`, `name: web` of an `include_role`.
+static ROLE_LINE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(
+        r#"^\s*(?:-\s+)?(?:\{\s*)?(?:(?:role|name):\s*)?["']?([A-Za-z0-9_][A-Za-z0-9_.-]*)["']?\s*(?:,.*|\})?\s*$"#,
+    )
+    .expect("role line regex")
+});
+
 /// Which reader asks: a stale reference is one a link to a removed page or
 /// note also is; a reader of a changed file's content runs or loads it.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -128,6 +137,7 @@ impl Spellings {
                 needles.push(format!("bin/{}", stem(target)));
             }
             if reader == Reader::Stale {
+                needles.extend(role_of(target).map(str::to_string));
                 if is_document(target) {
                     needles.push(format!("[[{}", stem(target)));
                 }
@@ -173,6 +183,9 @@ impl Spellings {
             .find_iter(line)
             .map(|m| m.as_str().trim_end_matches('.').to_string())
             .collect();
+        if matches!(extension(referrer).as_str(), "yml" | "yaml") {
+            tokens.extend(ROLE_LINE.captures(line).map(|c| format!("roles/{}", &c[1])));
+        }
         if is_document(referrer) {
             tokens.extend(WIKI_LINK.captures_iter(line).map(|c| {
                 let name = c[1].trim();
@@ -241,6 +254,13 @@ impl Spellings {
             }
         })
     }
+}
+
+/// The role an Ansible role directory is: a playbook lists it by that name, not by
+/// the path `roles/<name>`.
+fn role_of(path: &str) -> Option<&str> {
+    let (parent, name) = path.rsplit_once('/')?;
+    (parent == "roles" || parent.ends_with("/roles")).then_some(name)
 }
 
 /// A relative `path` with `.` and `..` resolved, or `None` when it leaves the

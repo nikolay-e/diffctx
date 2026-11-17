@@ -398,7 +398,7 @@ pub fn unanalysed(out: &mut String, doc: &ImpactV2) {
     if doc.coverage.keys_unsearched > 0 {
         let _ = writeln!(
             out,
-            "(key search capped: the keys and values of {} changed config(s) were not searched)",
+            "(key search capped: the keys and values of {} changed config(s) were not all searched)",
             doc.coverage.keys_unsearched
         );
     }
@@ -691,7 +691,7 @@ pub fn tail(out: &mut String, a: &Answer) {
     if !unnamed.is_empty() {
         let _ = writeln!(
             out,
-            "(changed keys and values searched as text, named nowhere outside the diff: {})",
+            "(changed keys and values searched as text; no line outside the diff spells: {})",
             unnamed.join("; ")
         );
     }
