@@ -1251,7 +1251,45 @@ impl<'a> Engine<'a> {
             }
             from -= 1;
         }
-        self.callee_result(f, callee, depth)
+        match self.callee_result(f, callee, depth)? {
+            (Entity::Instance(manager), evidence) => Some((self.entered(manager), evidence)),
+            made => Some(made),
+        }
+    }
+
+    /// What `with` binds for a manager of the project: what its `__enter__` hands back,
+    /// the manager itself only when that is `return self`. A manager that defines none
+    /// here is bound as made.
+    fn entered(&self, manager: usize) -> Entity {
+        let enter = ["__enter__", "__aenter__"].into_iter().find_map(|hook| {
+            match self.class_member(manager, &Name::new(hook), false) {
+                Lookup::Found {
+                    entity: Entity::Def(id),
+                    ..
+                } => Some(id),
+                _ => None,
+            }
+        });
+        let Some(enter) = enter else {
+            return Entity::Instance(manager);
+        };
+        match self.return_instance(enter) {
+            Entity::Unknown if self.hands_back_self(enter) => Entity::Instance(manager),
+            handed => handed,
+        }
+    }
+
+    fn hands_back_self(&self, id: usize) -> bool {
+        let rec = &self.ix.defs[id];
+        let span = rec.def.span.bytes.start as usize..rec.def.span.bytes.end as usize;
+        let Some(text) = self.text(rec.file) else {
+            return false;
+        };
+        text.get(span).is_some_and(|body| {
+            String::from_utf8_lossy(body)
+                .lines()
+                .any(|line| line.trim() == "return self")
+        })
     }
 
     /// The object made by the call that is the fact `next`, when the text from

@@ -250,12 +250,35 @@ pub fn build_symbol_impact(
         }
     };
     let _in_run = state.run.enter();
-    Ok(crate::impact::build_impact(
-        &state,
-        None,
-        Some(query),
-        Some(deadline),
-    ))
+    let mut output = crate::impact::build_impact(&state, None, Some(query), Some(deadline));
+    output
+        .changed
+        .extend(crate::impact::local_blocks(sibling_locals(
+            root_dir, query, paths, &state.run,
+        )));
+    Ok(output)
+}
+
+/// The locals of a definition that the queried bare name also names, beside the
+/// definitions it has: a nested `helper` shadowing a module-level one is a use the
+/// answer owes, not one the module-level definition's answer may hide.
+fn sibling_locals(
+    root_dir: &Path,
+    query: &str,
+    paths: &[String],
+    run: &crate::resource::RunContext,
+) -> Vec<crate::impact::LocalOf> {
+    let Some((None, segments)) = crate::impact::parse_symbol_query(query) else {
+        return Vec::new();
+    };
+    let &[name] = segments.as_slice() else {
+        return Vec::new();
+    };
+    let root = dunce::canonicalize(root_dir).unwrap_or_else(|_| root_dir.to_path_buf());
+    grep::grep_files_with_word(&root, &run.source(), name, paths).map_or_else(
+        |_| Vec::new(),
+        |named| local_uses(&root, &named.rows, name, run),
+    )
 }
 
 /// Line count for an untracked file, or `None` when it is binary — the same
@@ -839,11 +862,28 @@ fn shadowed_definitions<'f>(
             if d.local.name.as_str() != name || (!container.is_empty() && joined != container) {
                 continue;
             }
-            let stands = fragments.iter().find(|f| {
-                f.path() == path
-                    && (f.start_line(), f.end_line()) == d.span.lines
-                    && f.symbol_name.as_deref().is_some_and(|s| s != name)
-            });
+            let spans =
+                |f: &&Fragment| f.path() == path && (f.start_line(), f.end_line()) == d.span.lines;
+            // A function that leaves its enclosing one (`global f` then `def f`) is cut
+            // as nothing when it ends where that one ends: the enclosing fragment stands.
+            let leaves = joined != container
+                && container.is_empty()
+                && found.is_empty()
+                && !fragments.iter().any(|f| spans(&f));
+            let stands = if leaves {
+                fragments
+                    .iter()
+                    .filter(|f| {
+                        f.path() == path
+                            && f.start_line() <= d.span.lines.0
+                            && d.span.lines.1 <= f.end_line()
+                    })
+                    .min_by_key(|f| f.end_line() - f.start_line())
+            } else {
+                fragments
+                    .iter()
+                    .find(|f| spans(f) && f.symbol_name.as_deref().is_some_and(|s| s != name))
+            };
             if let Some(f) =
                 stands.filter(|f| !found.iter().chain(&stand_ins).any(|k| k.id == f.id))
             {
