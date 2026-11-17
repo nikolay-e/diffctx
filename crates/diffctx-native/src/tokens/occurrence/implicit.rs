@@ -34,6 +34,11 @@ enum Part {
 /// pattern is lower case; one starting with `!` takes a name out of the row.
 type Row = (Family, Part, Implicit, &'static str);
 
+/// The decorators the C extractor gives a function another language calls by name
+/// (`extern "C"` linkage, an `__asm__` label). A prototype that carries one declares
+/// the function wherever its definition is.
+pub(super) const C_EXPORTS: &str = "extern_c asm_label";
+
 const TABLE: &[Row] = &[
     (
         Family::Python,
@@ -119,12 +124,7 @@ const TABLE: &[Row] = &[
     (Family::C, Part::Name, Implicit::Operator, "operator*"),
     (Family::C, Part::Name, Implicit::Protocol, "~*"),
     (Family::C, Part::Word, Implicit::Entry, "constructor"),
-    (
-        Family::C,
-        Part::Word,
-        Implicit::Outside,
-        "extern_c asm_label",
-    ),
+    (Family::C, Part::Word, Implicit::Outside, C_EXPORTS),
     (
         Family::Swift,
         Part::Name,
