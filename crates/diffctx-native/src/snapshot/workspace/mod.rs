@@ -671,6 +671,14 @@ impl WorkspaceModel {
         user != used && (self.open[user.index()] || self.reach[user.index()].contains(&used))
     }
 
+    /// Whether both projects are members of one workspace: its package manager
+    /// hoists every member to where the others resolve it, declared or not.
+    pub fn share_workspace(&self, user: ProjectId, used: ProjectId) -> bool {
+        self.projects
+            .iter()
+            .any(|root| root.members.contains(&user) && root.members.contains(&used))
+    }
+
     /// Whether a name used in `user_path` can refer to a definition in
     /// `used_path`: one project, a declared dependency, or a path under no
     /// manifest. The one place that decides it.
