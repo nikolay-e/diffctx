@@ -1566,10 +1566,11 @@ fn callable_by_name(path: &str) -> bool {
     crate::languages::get_language_for_file(path) != Some("dockerfile")
 }
 
-/// Code of a language no cell reads, or Swift, which no cell binds to C: a
-/// foreign-function binding there (`extern fn`, `ccall`, `ffi.cdef`, a bridging
-/// call) names a definition of another language by its bare name. A shell script
-/// runs a program of any language by its bare name, and its cell binds none.
+/// Code no cell reads, or Swift, which no cell binds to C: a foreign-function
+/// binding there (`extern fn`, `ccall`, `ffi.cdef`, a bridging call, a
+/// JavaScriptCore string) names a definition of another language by its bare name.
+/// A shell script runs a program of any language by its bare name, and its cell
+/// binds none.
 fn unread_code(path: &str) -> bool {
     use crate::vocabulary::family::{Family, Group};
     is_code_file(path)
@@ -1577,6 +1578,17 @@ fn unread_code(path: &str) -> bool {
             Group::of_name(path),
             None | Some(Group::Language(_) | Group::Family(Family::Swift | Family::Shell))
         )
+}
+
+/// A non-static C function: the linker exports it, so any language that loads
+/// the library reaches it by its bare name (`lib.nt_add`, `C.nt_add`).
+fn linked_by_name(core: &Fragment) -> bool {
+    core.kind == FragmentKind::Function
+        && crate::languages::get_language_for_file(core.path()) == Some("c")
+        && !core.content.split('(').next().is_some_and(|head| {
+            head.split(|c: char| !(c.is_alphanumeric() || c == '_'))
+                .any(|w| w == "static")
+        })
 }
 
 /// The name a reader spells: `var.region` is written `region`, a C++ member
@@ -1803,11 +1815,13 @@ impl UntracedNamers {
         left: impl Iterator<Item = &'a str>,
     ) -> Vec<UnanalysedFile> {
         let own = crate::vocabulary::family::Group::of_name(&rel(state, core.path()));
+        let linked = linked_by_name(core);
         let mut files: Vec<UnanalysedFile> = Vec::new();
         for name in spelled_name(core).into_iter().chain(left) {
             let named = self.named_in(name, |p| {
                 !is_code_file(p)
-                    || (unread_code(p) && crate::vocabulary::family::Group::of_name(p) != own)
+                    || ((linked || unread_code(p))
+                        && crate::vocabulary::family::Group::of_name(p) != own)
             });
             for (path, line) in named {
                 if !files.iter().any(|f| f.path == path) {
