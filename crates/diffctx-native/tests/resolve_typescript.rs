@@ -1438,10 +1438,7 @@ fn dynamic_imports_land_on_the_default_export_and_the_members_a_callback_takes()
         .filter(|b| b.site.lines.0 == 4)
         .map(|b| format!("{} {}", b.name, fx.lands(b)))
         .collect();
-    assert_eq!(
-        then,
-        ["./Player module Player.tsx", "Player Player.tsx::Player"]
-    );
+    assert_eq!(then, ["m module Player.tsx", "Player Player.tsx::Player"]);
     let awaited = fx.at("load.ts", "Other", 3);
     assert_eq!(fx.lands(awaited), "Player.tsx::Other");
     assert_eq!(evidence(awaited).0, EvidenceKind::ModuleAttribute);
