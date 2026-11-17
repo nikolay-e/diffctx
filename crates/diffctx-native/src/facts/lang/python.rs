@@ -36,9 +36,9 @@ use super::{ERROR_RANGES_KEPT, lines_of, merge_ranges, read_tree, span};
 use crate::facts::framework;
 use crate::facts::{
     BlobFacts, ComputedImport, Def, DefKind, Disambig, EntryKind, EntryPoint, Export, Extractor,
-    Fact, Framework, Hasher, Import, ImportKind, Language, Local, LocalKey, LocalKind, ModulePath,
-    Name, Namespace, PathMention, Receiver, Ref, Scope, Star, TypeName, UseKind, Visibility,
-    expired, hash_text,
+    Fact, Framework, Hasher, HeldAs, HeldString, Import, ImportKind, Language, Local, LocalKey,
+    LocalKind, ModulePath, Name, Namespace, PathMention, Receiver, Ref, Scope, Star, TypeName,
+    UseKind, Visibility, expired, hash_text,
 };
 use crate::snapshot::RunBudget;
 
@@ -626,6 +626,11 @@ impl<'t> Walker<'t> {
         if node.kind() != "string" || has_child_of_kind(node, "interpolation") {
             return None;
         }
+        self.string_inner(node)
+    }
+
+    /// The text between a string's quotes, as written: an f-string's fields included.
+    fn string_inner(&self, node: Node<'t>) -> Option<String> {
         let (mut from, mut to) = (node.start_byte(), node.end_byte());
         let mut cursor = node.walk();
         for child in node.children(&mut cursor) {
@@ -2117,6 +2122,20 @@ impl<'t> Walker<'t> {
         if let Some(right) = right {
             self.visit(right, cx, depth);
         }
+        if let (Some(left), Some(mut value)) = (left, right) {
+            while let Some(inner) = value
+                .named_child(0)
+                .filter(|_| value.kind() == "parenthesized_expression")
+            {
+                value = inner;
+            }
+            let name = self
+                .simple_chain(left)
+                .and_then(|chain| chain.last().copied());
+            if let (Some(name), Some(text)) = (name, self.plain_string(value)) {
+                self.held_string(value, text, HeldAs::Assigned(name.to_string()), cx);
+            }
+        }
         if let Some(left) = left {
             self.targets(left, node, cx, depth);
             let module_level = matches!(cx.scope, Scope::Module) && !cx.in_fn;
@@ -2502,6 +2521,12 @@ impl<'t> Walker<'t> {
                 }
                 ["eval" | "exec"] => self.computed_name(node, false),
                 ["globals" | "locals"] if looked_up_by_key(node) => self.computed_name(node, false),
+                ["os", "system" | "popen"]
+                | [
+                    "subprocess",
+                    "run" | "call" | "check_call" | "check_output" | "Popen" | "getoutput"
+                    | "getstatusoutput",
+                ] => self.shell_command(arguments.first(), cx),
                 _ => {}
             }
         }
@@ -2676,6 +2701,39 @@ impl<'t> Walker<'t> {
     }
 
     // ---- paths
+
+    /// The string a call hands to a shell: the command, or the words of an
+    /// argument list joined as a shell reads them.
+    fn shell_command(&mut self, argument: Option<&Node<'t>>, cx: &Cx) {
+        let Some(&argument) = argument else {
+            return;
+        };
+        let text = match argument.kind() {
+            "string" => self.string_inner(argument),
+            "list" | "tuple" => {
+                let mut cursor = argument.walk();
+                let words: Vec<String> = argument
+                    .named_children(&mut cursor)
+                    .filter(|word| word.kind() == "string")
+                    .filter_map(|word| self.string_inner(word))
+                    .collect();
+                Some(words.join(" "))
+            }
+            _ => None,
+        };
+        if let Some(text) = text {
+            self.held_string(argument, text, HeldAs::Command, cx);
+        }
+    }
+
+    fn held_string(&mut self, node: Node<'t>, text: String, held: HeldAs, cx: &Cx) {
+        self.facts.push(Fact::HeldString(HeldString {
+            site: span(node),
+            enclosing: cx.scope.clone(),
+            text,
+            held,
+        }));
+    }
 
     fn path_mention(&mut self, argument: Option<&Node<'t>>, cx: &Cx) {
         let Some(&argument) = argument else {

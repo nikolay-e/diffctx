@@ -26,7 +26,7 @@
 //!   property's is its modifiers, type and `$name`. `decorators` are the
 //!   attributes, as written without a leading `\`.
 //! - A string literal that is an array element's value, a `const` value or the
-//!   right side of an assignment is a [`CallableString`] fact: where PHP holds a
+//!   right side of an assignment is a [`HeldString`] fact: where PHP holds a
 //!   callable by name.
 //! - A reference names the last segment and carries the written namespace path
 //!   before it in `qualifier` (`\A\f()` is `f` with `["", A]`; `A\B::m()` is `m`
@@ -66,7 +66,7 @@ use super::{
     through_errors,
 };
 use crate::facts::framework;
-use crate::facts::model::CallableString;
+use crate::facts::model::{HeldAs, HeldString};
 use crate::facts::{
     BlobFacts, Def, DefKind, Disambig, EntryKind, EntryPoint, Extractor, Fact, Hasher, Import,
     ImportKind, Language, Local, LocalKey, LocalKind, ModulePath, Name, Namespace, Receiver, Ref,
@@ -1626,10 +1626,11 @@ impl<'t> Walker<'t> {
         }
         let text = self.text(node);
         if let Some(inner) = text.get(1..text.len().saturating_sub(1)) {
-            self.facts.push(Fact::CallableString(CallableString {
+            self.facts.push(Fact::HeldString(HeldString {
                 site: span(node),
                 enclosing: cx.scope.clone(),
                 text: inner.to_string(),
+                held: HeldAs::Callable,
             }));
         }
     }
