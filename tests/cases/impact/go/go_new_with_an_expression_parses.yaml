@@ -40,4 +40,9 @@ expect:
   exact: true
   coverage:
     p.go::F:
-      calls: complete
+      calls: partial
+  discloses: true
+  partial:
+    p.go::F:
+      calls: unaccounted
+      reads: unaccounted
