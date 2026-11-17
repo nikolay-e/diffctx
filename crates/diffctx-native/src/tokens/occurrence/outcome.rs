@@ -9,9 +9,9 @@ use std::rc::Rc;
 
 use super::rows::{
     BARE_HEADS, CLASS_CANDIDATES, CLASSIC_PAGES, COMMAND_ARGUMENTS, DECLARING_KEYWORDS,
-    DECLARING_LOCALS, IMPL_HEADS, KEYWORD_ARGUMENTS, LOCAL_CALLS, MEMBER_OBJECTS, MODULE_PATHS,
-    NAMED_LOCALS, OFFERING_MODULES, PACKAGE_HEADS, PAIRED_PROTOTYPES, PATH_SEPARATORS,
-    SCHEMA_OBJECTS, SCOPED_LOCALS, STATEMENT_NAMES, STRUCTURAL_TYPES,
+    DECLARING_LOCALS, FOREIGN_TEXT, IMPL_HEADS, KEYWORD_ARGUMENTS, LOCAL_CALLS, MEMBER_OBJECTS,
+    MODULE_PATHS, NAMED_LOCALS, OFFERING_MODULES, PACKAGE_HEADS, PAIRED_PROTOTYPES,
+    PATH_SEPARATORS, SCHEMA_OBJECTS, SCOPED_LOCALS, STATEMENT_NAMES, STRUCTURAL_TYPES,
 };
 use super::scanner::dollar_joins;
 use super::{
@@ -801,6 +801,7 @@ impl<'a> Reading<'a> {
             .or_else(|| self.local_call(occurrence, spelled))
             .or_else(|| self.command_argument(occurrence))
             .or_else(|| self.statement_name(occurrence))
+            .or_else(|| self.foreign_text(occurrence))
             .or_else(|| self.keyword_name(occurrence))
         {
             return Claim::not_ours(None, witness);
@@ -1295,6 +1296,45 @@ impl<'a> Reading<'a> {
             .split(' ')
             .any(|listed| listed == keyword)
             .then(|| Witness::Statement(Name::new(keyword)))
+    }
+
+    /// A word of an instruction that holds another language's text (`RUN go build`) names no
+    /// stage: a `$` or a flag (`--mount=from=build`) is how it would.
+    fn foreign_text(&self, occurrence: &Occurrence) -> Option<Witness> {
+        let (_, _, keywords) = FOREIGN_TEXT.iter().find(|(family, kinds, _)| {
+            family.has(self.file.language()) && kinds.contains(&self.subject.kind)
+        })?;
+        let (start, end) = (
+            occurrence.bytes.start as usize,
+            occurrence.bytes.end as usize,
+        );
+        let line_start = |before: usize| {
+            self.text[..before]
+                .iter()
+                .rposition(|b| *b == b'\n')
+                .map_or(0, |at| at + 1)
+        };
+        let mut first = line_start(start);
+        while first > 0 && self.text[..first - 1].trim_ascii_end().ends_with(b"\\") {
+            first = line_start(first - 1);
+        }
+        let head = self.text[first..].trim_ascii_start();
+        let keyword =
+            String::from_utf8_lossy(&head[..head.iter().position(u8::is_ascii_whitespace)?])
+                .to_ascii_lowercase();
+        let from = self.text[..start]
+            .iter()
+            .rposition(u8::is_ascii_whitespace)
+            .map_or(0, |at| at + 1);
+        let to = self.text[end..]
+            .iter()
+            .position(u8::is_ascii_whitespace)
+            .map_or(self.text.len(), |at| end + at);
+        let word = &self.text[from..to];
+        (keywords.split(' ').any(|listed| listed == keyword)
+            && !word.starts_with(b"-")
+            && !word.contains(&b'$'))
+        .then(|| Witness::Statement(Name::new(keyword)))
     }
 
     /// Whether the subject is a member of a class, and `at` is not in the class body. A
