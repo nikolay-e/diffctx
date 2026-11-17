@@ -1598,9 +1598,30 @@ impl<'w> Engine<'w> {
             Found::Blocked(reason) => (plain, unresolved(reason)),
             Found::External => (plain, unresolved(UnresolvedReason::External)),
             Found::Nothing if r.name.as_str().starts_with(char::is_uppercase) => {
-                (plain, unresolved(UnresolvedReason::External))
+                (plain, self.case_label_constants(f, r))
             }
             Found::Nothing => (plain, unresolved(UnresolvedReason::NoBinding)),
+        }
+    }
+
+    /// A bare upper-case name no scope, import or type binds: Java writes an
+    /// enum constant so only in a `case` label, whose selector's type is not
+    /// followed here, so every constant of the name the file can reach may be it.
+    fn case_label_constants(&self, f: usize, r: &Ref) -> Resolution {
+        let pool: Vec<usize> = self
+            .ix
+            .members
+            .get(&r.name)
+            .into_iter()
+            .flatten()
+            .copied()
+            .filter(|id| self.ix.defs[*id].def.kind == DefKind::EnumMember)
+            .filter(|id| self.reach(f, *id).is_ok())
+            .collect();
+        match pool.len() {
+            0 => unresolved(UnresolvedReason::External),
+            n if n > MAX_CANDIDATES => unresolved(UnresolvedReason::TooManyCandidates),
+            _ => self.candidates(&pool, CandidateReason::UntypedReceiver),
         }
     }
 
