@@ -1,0 +1,31 @@
+name: py_raised_class_is_reached_by_a_constructor_change
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [python, oracle, init-reach, passes-as-value, raise]
+repo:
+  initial_files:
+    store/__init__.py: ""
+    store/errors.py: |
+      class StorageError(Exception):
+          def __init__(self, message="storage"):
+              self.message = message
+    store/disk.py: |
+      from store.errors import StorageError
+
+
+      def read(path):
+          raise StorageError
+  changed_files:
+    store/errors.py: |
+      class StorageError(Exception):
+          def __init__(self, message="storage failed"):
+              self.message = message
+  commit_message: "errors: a clearer default message"
+expect:
+  relations:
+    - from: "store/disk.py::read"
+      to: "store/errors.py::StorageError"
+      kind: passes_as_value
+      resolution: resolved
+      site: 5
