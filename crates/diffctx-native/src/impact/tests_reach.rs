@@ -68,6 +68,9 @@ pub(super) struct TestsReach<'a> {
     /// Entries a test runs: binaries (`CARGO_BIN_EXE_<name>`, `cargo_bin("<name>")`:
     /// #391, #678), console scripts, scripts spelled by their path.
     runs: Vec<Run>,
+    /// The `>>>` and fenced examples that call a function of their own file: a test
+    /// of it that does not end the search for the tests that call it.
+    doctests: Vec<Run>,
     /// The strings of a changed definition that a test asserts (the literal channel).
     asserted: Vec<Run>,
     /// The fragments that hold such a string or use one that does: what a test
@@ -209,10 +212,12 @@ impl<'a> TestsReach<'a> {
             .map(|(path, shown)| (shown.as_str(), *path))
             .collect();
         let runs = runs::all(state, cells, diff_range, &spelled, &declared);
+        let doctests = runs::doctest_runs(state);
         let asserted = runs::literal_runs(state, diff_range, &declared);
         let repo_tests = test_fragments.is_empty()
             && named.is_empty()
             && runs.is_empty()
+            && doctests.is_empty()
             && asserted.is_empty()
             && repo_holds_test_file(state, &declared);
         Self {
@@ -226,6 +231,7 @@ impl<'a> TestsReach<'a> {
             test_spans,
             unread,
             runs,
+            doctests,
             asserted,
             text_reach: OnceCell::new(),
             repo_tests,
@@ -241,6 +247,7 @@ impl<'a> TestsReach<'a> {
         !self.test_fragments.is_empty()
             || !self.named.is_empty()
             || !self.runs.is_empty()
+            || !self.doctests.is_empty()
             || !self.asserted.is_empty()
             || self.repo_tests
     }
@@ -303,19 +310,8 @@ impl<'a> TestsReach<'a> {
         // names `main`.
         let name = caller.symbol_name.as_deref().map(base_symbol);
         let mut found: Vec<(String, Option<String>)> = self
-            .runs
-            .iter()
-            .chain(&self.asserted)
-            .filter(|run| run.enters(caller))
-            .flat_map(|run| &run.tests)
-            .map(|(path, line)| {
-                let name = self
-                    .cells
-                    .of(path)
-                    .and_then(|cell| cell.function_at(path, *line))
-                    .map(str::to_string);
-                (path.clone(), name)
-            })
+            .entered_by(&self.runs, caller)
+            .chain(self.entered_by(&self.asserted, caller))
             .collect();
         // A test that does not spell the name cannot link to it.
         if let Some(name) = name.filter(|s| s.len() >= 3) {
@@ -333,6 +329,25 @@ impl<'a> TestsReach<'a> {
             );
         }
         found
+    }
+
+    /// The tests of the runs that enter `caller`, as (file, function).
+    fn entered_by<'r>(
+        &'r self,
+        runs: &'r [Run],
+        caller: &'r Fragment,
+    ) -> impl Iterator<Item = (String, Option<String>)> + 'r {
+        runs.iter()
+            .filter(|run| run.enters(caller))
+            .flat_map(|run| &run.tests)
+            .map(|(path, line)| {
+                let name = self
+                    .cells
+                    .of(path)
+                    .and_then(|cell| cell.function_at(path, *line))
+                    .map(str::to_string);
+                (path.clone(), name)
+            })
     }
 
     /// Every test that reaches the caller at the fewest hops, the ones the change
@@ -536,8 +551,19 @@ impl<'a> TestsReach<'a> {
                 })
                 .collect()
         };
-        let found = direct(caller, None);
+        let doctested = |f: &Fragment, via: Option<&String>| -> Vec<TestLink> {
+            self.entered_by(&self.doctests, f)
+                .map(|(path, name)| TestLink {
+                    path,
+                    name,
+                    via: via.cloned(),
+                })
+                .collect()
+        };
+        let mut doctests = doctested(caller, None);
+        let mut found = direct(caller, None);
         if !found.is_empty() {
+            found.extend(doctests);
             return found;
         }
         // A chunk of a long definition (`Output[35]`) is reached by what
@@ -581,14 +607,16 @@ impl<'a> TestsReach<'a> {
                     });
                 } else {
                     found.extend(direct(up, up.symbol_name.as_ref()));
+                    doctests.extend(doctested(up, up.symbol_name.as_ref()));
                 }
             }
             if !found.is_empty() {
+                found.extend(doctests);
                 return found;
             }
             frontier = next;
         }
-        Vec::new()
+        doctests
     }
 
     /// Whether the search for a test of `caller`, a caller of `core`, is open: the
@@ -638,7 +666,10 @@ impl<'a> TestsReach<'a> {
                     .any(|changed| cell.hedged(changed))
             })
         };
-        let stops = self.is_test(f) || !self.direct(f, link).is_empty() || hedged();
+        let stops = self.is_test(f)
+            || !self.direct(f, link).is_empty()
+            || self.entered_by(&self.doctests, f).next().is_some()
+            || hedged();
         self.stops.borrow_mut().insert(f.id.clone(), stops);
         stops
     }
