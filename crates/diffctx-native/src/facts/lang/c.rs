@@ -56,6 +56,7 @@
 //! - Hashes are FNV-1a over the definition's own parts: members that are
 //!   definitions themselves are left out of their container's.
 
+use std::borrow::Cow;
 use std::cell::Cell;
 use std::collections::{HashMap, HashSet};
 
@@ -310,6 +311,22 @@ fn declared<'t>(declarator: Node<'t>, bytes: &[u8], too_deep: &Cell<bool>) -> Op
             "template_function" => {
                 node = node.child_by_field_name("name")?;
             }
+            "operator_cast" => {
+                let mut inner = node.child_by_field_name("declarator");
+                while let Some(n) = inner {
+                    if let Some(parameters) = n.child_by_field_name("parameters") {
+                        function = function.or(Some(parameters));
+                        break;
+                    }
+                    inner = n.child_by_field_name("declarator");
+                }
+                return Some(Declared {
+                    name: node,
+                    function,
+                    pointer,
+                    scope,
+                });
+            }
             "function_declarator" => {
                 let inner = node.child_by_field_name("declarator")?;
                 if function.is_none() {
@@ -377,7 +394,7 @@ impl<'t> Walker<'t> {
                             .child_by_field_name("declarator")
                             .and_then(|d| declared(d, self.bytes, &self.too_deep))
                         {
-                            let name = self.text(d.name).to_string();
+                            let name = self.name_of(d.name).to_string();
                             let full = if d.scope.is_empty() {
                                 name
                             } else {
@@ -900,8 +917,8 @@ impl<'t> Walker<'t> {
         members: &[Node<'t>],
         doc: Option<&'t str>,
     ) -> LocalKey {
-        let name = self.text(name_node);
-        let key = self.key_for(cx, container, name, ns);
+        let name = self.name_of(name_node);
+        let key = self.key_for(cx, container, &name, ns);
         self.facts.push(Fact::Definition(Def {
             local: key.clone(),
             kind,
@@ -922,6 +939,21 @@ impl<'t> Walker<'t> {
         Cx {
             scope: Scope::Def(key.clone()),
             ..cx.clone()
+        }
+    }
+
+    /// A conversion operator is named by its target type (`operator std::string`):
+    /// its declarator also holds the parameter list and the qualifiers.
+    fn name_of(&self, node: Node<'t>) -> Cow<'t, str> {
+        match node.child_by_field_name("type") {
+            Some(ty) if node.kind() == "operator_cast" => Cow::Owned(format!(
+                "operator {}",
+                self.text(ty)
+                    .split_whitespace()
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            )),
+            _ => Cow::Borrowed(self.text(node)),
         }
     }
 
@@ -953,7 +985,7 @@ impl<'t> Walker<'t> {
         if let Some(template) = &cx.template {
             signature = format!("{template} {signature}");
         }
-        let name = self.text(declarator.name).to_string();
+        let name = self.name_of(declarator.name).to_string();
         let kind = self.member_kind(cx, &declarator);
         let visibility = self.visibility_of(cx, is_static);
         let key = self.define(
@@ -1011,7 +1043,7 @@ impl<'t> Walker<'t> {
         match owner {
             Some(class) if self.cpp => {
                 let base = class.split('<').next().unwrap_or(class);
-                if self.text(d.name) == base {
+                if self.name_of(d.name) == base {
                     DefKind::Constructor
                 } else {
                     DefKind::Method
@@ -1161,7 +1193,7 @@ impl<'t> Walker<'t> {
                 } else {
                     spelled
                 };
-                let name = self.text(d.name).to_string();
+                let name = self.name_of(d.name).to_string();
                 let mut local_cx = cx.clone();
                 let qualified = |scope: &[String]| {
                     if scope.is_empty() {
@@ -1321,7 +1353,7 @@ impl<'t> Walker<'t> {
         let first_name = declarators
             .first()
             .and_then(|d| declared(*d, self.bytes, &self.too_deep))
-            .map(|d| self.text(d.name).to_string());
+            .map(|d| self.name_of(d.name).to_string());
         if let Some(ty) = ty {
             self.type_specifier(ty, first_name.as_deref(), cx, doc, depth);
         }
@@ -1329,7 +1361,7 @@ impl<'t> Walker<'t> {
             let Some(d) = declared(declarator, self.bytes, &self.too_deep) else {
                 continue;
             };
-            let name = self.text(d.name).to_string();
+            let name = self.name_of(d.name).to_string();
             let anonymous_body = ty.is_some_and(|t| {
                 matches!(
                     t.kind(),
