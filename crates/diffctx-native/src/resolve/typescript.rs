@@ -31,8 +31,8 @@ use super::{
     UnresolvedReason, plain_relation,
 };
 use crate::facts::{
-    Def, DefKey, DefKind, Export, Fact, FactsCache, FileFacts, Import, ImportKind, Language,
-    LocalKind, Name, Namespace, Receiver, Ref, Scope, Span, UseKind, Visibility,
+    Def, DefKey, DefKind, Export, Fact, FactsCache, FileFacts, Import, ImportKind, Initializer,
+    Language, LocalKind, Name, Namespace, Receiver, Ref, Scope, Span, UseKind, Visibility,
 };
 use crate::snapshot::workspace::{Alias, Ecosystem, Project, ProjectId, RootOrigin};
 use crate::snapshot::{
@@ -3018,44 +3018,8 @@ impl<'a> Engine<'a> {
         let Entity::Def(id) = entity else {
             return false;
         };
-        let rec = &self.ix.defs[*id];
-        let Some(text) = self.text(rec.file) else {
-            return false;
-        };
-        let range = rec.def.name_span.bytes.end as usize..rec.def.span.bytes.end as usize;
-        let (true, Some(body)) = (rec.def.kind == DefKind::Constant, text.get(range)) else {
-            return false;
-        };
-        let mut at = skip_blanks(body, 0);
-        if body.get(at) != Some(&b'=') || matches!(body.get(at + 1), Some(b'=' | b'>')) {
-            return false;
-        }
-        at = skip_blanks(body, at + 1);
-        if body.get(at) != Some(&b'{') {
-            return false;
-        }
-        let (mut depth, mut quote) = (0usize, None);
-        while let Some(&byte) = body.get(at) {
-            match (quote, byte) {
-                (Some(_), b'\\') => at += 1,
-                (Some(open), b) if b == open => quote = None,
-                (Some(_), _) => {}
-                (None, b'\'' | b'"') => quote = Some(byte),
-                (None, b'`') => return false,
-                (None, b'.') if body[at..].starts_with(b"...") => return false,
-                (None, b'{') => depth += 1,
-                (None, b'}') => {
-                    depth -= 1;
-                    if depth == 0 {
-                        let rest = &body[skip_blanks(body, at + 1)..];
-                        return rest.is_empty() || matches!(rest[0], b';' | b',');
-                    }
-                }
-                _ => {}
-            }
-            at += 1;
-        }
-        false
+        let def = &self.ix.defs[*id].def;
+        def.kind == DefKind::Constant && def.initializer == Initializer::ObjectLiteral
     }
 
     /// The key of an object literal the code types, a member of that type: the

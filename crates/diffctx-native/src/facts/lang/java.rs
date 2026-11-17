@@ -406,6 +406,7 @@ impl<'a> Reader<'a> {
             body_hash: body.unwrap_or(0),
             text_hash: hash_text(&text),
             doc_hash: self.doc_hash(d.span.start),
+            initializer: Default::default(),
         }
     }
 

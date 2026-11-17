@@ -529,6 +529,7 @@ impl<'t> Walker<'t> {
                 body_hash: 0,
                 text_hash: hash_outside(self.bytes, node, &members),
                 doc_hash: Self::doc_hash(doc),
+                initializer: Default::default(),
             }));
             inner.ns.push(segment);
             inner.scope = Scope::Def(key);
@@ -691,6 +692,7 @@ impl<'t> Walker<'t> {
             body_hash: hash_tree(self.bytes, ty, |n| is_member(&members, n)),
             text_hash: hash_outside(self.bytes, ty, &members),
             doc_hash: Self::doc_hash(doc),
+            initializer: Default::default(),
         }));
         let mut inner = Self::inside(cx, &key);
         inner.template = None;
@@ -911,6 +913,7 @@ impl<'t> Walker<'t> {
             body_hash: body.map_or(0, |b| hash_tree(self.bytes, b, |n| is_member(members, n))),
             text_hash: hash_outside(self.bytes, node, members),
             doc_hash: Self::doc_hash(doc),
+            initializer: Default::default(),
         }));
         key
     }
@@ -1428,6 +1431,7 @@ impl<'t> Walker<'t> {
                 body_hash: hash_tree(self.bytes, ty, |n| is_member(&members, n)),
                 text_hash: hash_outside(self.bytes, ty, &members),
                 doc_hash: Self::doc_hash(doc),
+                initializer: Default::default(),
             }));
             key
         };
@@ -1591,6 +1595,7 @@ impl<'t> Walker<'t> {
             body_hash,
             text_hash: hash_text(self.text(node).as_bytes()),
             doc_hash: Self::doc_hash(doc),
+            initializer: Default::default(),
         }));
         if let Some(value) = value {
             self.macro_refs(value, &params, &Self::inside(cx, &key));

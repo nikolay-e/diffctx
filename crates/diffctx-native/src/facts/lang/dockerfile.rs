@@ -255,6 +255,7 @@ impl<'a> Reader<'a> {
                 body_hash: stage.hasher.finish().unwrap_or(1),
                 text_hash: hash_text(text.as_bytes()),
                 doc_hash: None,
+                initializer: Default::default(),
             }));
         }
     }
@@ -372,6 +373,7 @@ impl<'a> Reader<'a> {
             body_hash: hasher.finish().unwrap_or(1),
             text_hash: hash_text(text.as_bytes()),
             doc_hash: None,
+            initializer: Default::default(),
         }));
     }
 

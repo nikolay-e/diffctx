@@ -648,6 +648,7 @@ fn facts_of(text: &str) -> Vec<Fact> {
             body_hash: hash_tokens(d.body.iter().map(bytes)).unwrap_or(0),
             text_hash: hash_text(&text.as_bytes()[d.bytes.clone()]),
             doc_hash: None,
+            initializer: Default::default(),
         }));
     }
     for named in &read.names {

@@ -7,8 +7,8 @@ use std::sync::atomic::AtomicBool;
 
 use _diffctx::facts::lang::typescript::{JavaScript, TypeScript};
 use _diffctx::facts::{
-    BlobFacts, Def, Disambig, Export, Extractor, Fact, Import, ImportKind, LocalKey, Namespace,
-    Receiver, Ref, Scope, Star, Visibility,
+    BlobFacts, Def, Disambig, Export, Extractor, Fact, Import, ImportKind, Initializer, LocalKey,
+    Namespace, Receiver, Ref, Scope, Star, Visibility,
 };
 use _diffctx::snapshot::{Loss, RunBudget};
 
@@ -1421,6 +1421,21 @@ fn a_pattern_taking_from_a_plain_name_reads_through_that_name() {
         read("w"),
         ("unknown".to_string(), "<untyped>.w".to_string())
     );
+}
+
+/// The tree states what a declarator holds: an object literal that spreads nothing
+/// is one, whatever its comments and templates spell; a spread, a cast or a
+/// destructured name is not.
+#[test]
+fn a_declarator_records_whether_it_holds_an_object_literal() {
+    let facts = ts(
+        "const a = {\n  // don't }\n  t: `${`{}`}`,\n};\nconst b = {...a}, c = {} as const, d = 1;\nconst {e} = {e: 1};\n",
+    );
+    let kind = |name: &str| def_named(&facts, name).initializer;
+    assert_eq!(kind("a"), Initializer::ObjectLiteral);
+    for other in ["b", "c", "d", "e"] {
+        assert_eq!(kind(other), Initializer::Other, "{other}");
+    }
 }
 
 #[test]
