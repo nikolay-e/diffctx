@@ -1,0 +1,25 @@
+name: config_renamed_ini_section_of_a_tool_is_no_name_a_ci_key_could_spell
+mode: impact
+source: synthetic
+tags: [config, key-search, ini, decoy]
+repo:
+  initial_files:
+    setup.cfg: |
+      [tool:pytest]
+      addopts = -q
+      [coverage:run]
+      branch = true
+    .github/ci.yml: |
+      steps:
+        - name: tests
+          run: coverage run -m pytest
+  changed_files:
+    setup.cfg: |
+      [tool:pytest]
+      addopts = -q
+      [coverage:execute]
+      branch = true
+  commit_message: "setup.cfg: rename the coverage section"
+expect:
+  exact: false
+  not_named_by: [.github/ci.yml]

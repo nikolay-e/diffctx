@@ -138,6 +138,8 @@ impact/config/config_renamed_gitlab_job_is_named_by_the_needs_of_another_file  #
 impact/config/config_renamed_ini_section_is_named_by_the_command_that_selects_its_suffix  # an ini header `[prefix:suffix]` is searched whole, never by the suffix the command line names
 impact/config/config_renamed_package_export_is_named_by_the_importer_of_its_subpath  # an exports subpath `./legacy` is searched whole, never as the `lib/legacy` an importer spells
 impact/config/config_renamed_workflow_is_named_by_the_workflow_that_runs_after_it  # the old workflow name is dropped from the text search when it is a stopword
+impact/config/config_renamed_ini_section_of_a_tool_is_no_name_a_ci_key_could_spell  # the suffix of any ini header is searched as a name, so `[coverage:run]` names a CI `run:` key
+impact/config/config_renamed_nested_compose_key_is_no_service_name_a_script_could_spell  # any mapping key of a removed line is searched as a name, a nested `db:` environment key included
 impact/config/config_shared_gradle_block_says_its_reach_is_not_analysed  # gh#516 open
 impact/web/web_astro_component_import_is_a_consumer  # gh#597 open
 impact/web/web_removed_css_rule_is_still_used_by_markup  # gh#631 open
