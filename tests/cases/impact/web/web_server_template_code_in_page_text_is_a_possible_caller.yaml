@@ -1,0 +1,50 @@
+name: web_server_template_code_in_page_text_is_a_possible_caller
+mode: impact
+source: synthetic
+tags:
+- web
+- html
+- template
+- absence-claim
+- decoy
+repo:
+  initial_files:
+    lib.js: |
+      function greet(name) {
+        return "hi " + name;
+      }
+    page.html: |
+      <!doctype html>
+      <html>
+      <body>
+      <p>Hello <%= greet(user) %></p>
+      </body>
+      </html>
+    prose.html: |
+      <!doctype html>
+      <html>
+      <body>
+      <p>Say hello with greet(name) when you arrive.</p>
+      </body>
+      </html>
+  changed_files:
+    lib.js: |
+      function greet(name) {
+        return "hello " + name;
+      }
+  commit_message: Change the greeting
+expect:
+  changed:
+  - lib.js::greet
+  relations: []
+  exact: true
+  decoys:
+    lib.js::greet:
+    - prose.html
+  coverage:
+    lib.js::greet:
+      calls: partial
+  partial:
+    lib.js::greet:
+      calls: unlanded
+      reads: unlanded
