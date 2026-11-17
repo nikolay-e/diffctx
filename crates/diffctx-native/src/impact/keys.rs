@@ -647,7 +647,11 @@ fn spells_literally(text: &str, name: &str, reading: Reading, held: &[String]) -
                 || value
                 || php_placed)
                 && !printed(&text[..from - 1]);
+            // `pkg.cli.main:run` names the module `main`: what follows a dotted
+            // path and a single colon is its member, never the path's last element.
+            let module = head.ends_with('.') && tail.starts_with(':') && !tail.starts_with("::");
             let reference = placed
+                && !module
                 && !head.contains(char::is_whitespace)
                 && !tail.contains(char::is_whitespace)
                 && (!qualified
