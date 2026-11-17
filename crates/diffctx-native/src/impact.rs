@@ -1447,6 +1447,74 @@ struct UntracedNamers {
     rows: FxHashMap<String, Vec<(String, u32)>>,
     /// The names spelled as a literal, a value or a query string.
     literal: keys::LiteralNames,
+    /// The files in scope that could spell a name no cell traces.
+    unread: UnreadFiles,
+}
+
+/// The files of the searched tree that could spell a definition's name without a
+/// cell having read them: a script, a template, a config, code of another language.
+#[derive(Default)]
+struct UnreadFiles {
+    /// The groups of the scripts, templates and configs that can run a name: no document,
+    /// data dump or manifest.
+    text: FxHashSet<Option<crate::vocabulary::family::Group>>,
+    /// The groups of the code no cell reads.
+    code: FxHashSet<Option<crate::vocabulary::family::Group>>,
+}
+
+impl UnreadFiles {
+    fn of(state: &ScoredState) -> Self {
+        let Ok(paths) = state.run.source().list_paths(&state.root_dir) else {
+            return Self {
+                text: FxHashSet::from_iter([None]),
+                ..Self::default()
+            };
+        };
+        let mut unread = Self::default();
+        for path in paths.iter().filter(|p| {
+            crate::source::in_scope(
+                &state.root_dir,
+                &crate::paths::repo_join(&state.root_dir, p),
+                &state.scope,
+            )
+        }) {
+            if !is_code_file(path) {
+                if reads_a_name(path) && !holds_no_command(path) {
+                    unread
+                        .text
+                        .insert(crate::vocabulary::family::Group::of_path(path));
+                }
+            } else if unread_code(path) {
+                unread
+                    .code
+                    .insert(crate::vocabulary::family::Group::of_path(path));
+            }
+        }
+        unread
+    }
+
+    /// Whether a file this definition's cell did not read could spell its name: one of
+    /// its own group is read by its cell, so only a file of another group counts.
+    fn could_spell(&self, own: Option<crate::vocabulary::family::Group>) -> bool {
+        self.text.iter().any(|group| own.is_none() || *group != own)
+            || self.code.iter().any(|group| *group != own)
+    }
+}
+
+/// A manifest or a file of variables: a config reader parses its keys and pointers,
+/// and no command or template of it calls a function by its name.
+fn holds_no_command(path: &str) -> bool {
+    matches!(extension(path).as_str(), "json" | "toml" | "env")
+}
+
+/// Whether a file outside code can name a definition: a document mentions a name
+/// without reading it, and a dump of data or a lockfile holds no call.
+fn reads_a_name(path: &str) -> bool {
+    !is_document(path)
+        && !matches!(
+            extension(path).as_str(),
+            "diff" | "patch" | "lock" | "tex" | "bib" | "txt" | "csv" | "tsv" | "log" | "svg"
+        )
 }
 
 /// The files that name a definition and are listed; the rest are counted. By a
@@ -1516,7 +1584,10 @@ fn literal_base(symbol: &str) -> &str {
 
 /// The word a reader spells for `core`.
 fn spelled_name(core: &Fragment) -> Option<&str> {
-    core.symbol_name.as_deref().map(literal_base)
+    core.symbol_name
+        .as_deref()
+        .map(literal_base)
+        .filter(|name| !name.is_empty())
 }
 
 fn module_stem(path: &str) -> Option<&str> {
@@ -1541,6 +1612,7 @@ impl UntracedNamers {
             .map(literal_base)
             .collect();
         let literal = keys::LiteralNames::build(state, diff_range, &literal_names, own);
+        let unread = UnreadFiles::of(state);
         let mut needles: Vec<String> = cores
             .iter()
             .filter_map(|c| spelled_name(c))
@@ -1559,6 +1631,7 @@ impl UntracedNamers {
         if needles.is_empty() {
             return Self {
                 literal,
+                unread,
                 ..Self::default()
             };
         }
@@ -1570,34 +1643,29 @@ impl UntracedNamers {
             // A comment or a document mentions a name without reading it. A file the
             // change edits is the diff's own, unless it is code no cell reads.
             if (changed.contains(path) && !unread_code(path))
-                || is_document(path)
-                || matches!(
-                    extension(path).as_str(),
-                    "diff"
-                        | "patch"
-                        | "lock"
-                        | "tex"
-                        | "bib"
-                        | "txt"
-                        | "csv"
-                        | "tsv"
-                        | "log"
-                        | "svg"
-                )
+                || !reads_a_name(path)
                 || mentions::commented_in(path, text)
             {
                 continue;
             }
             let mut seen: FxHashSet<&str> = FxHashSet::default();
             for word in text.split(|c: char| !(c.is_alphanumeric() || c == '_')) {
-                if wanted.contains(word) && seen.insert(word) {
+                // A plain word in a JSON file is a label or a value, no reader of a name.
+                if wanted.contains(word)
+                    && !(extension(path) == "json" && !distinctive(word))
+                    && seen.insert(word)
+                {
                     rows.entry(word.to_string())
                         .or_default()
                         .push((path.clone(), *line));
                 }
             }
         }
-        Self { rows, literal }
+        Self {
+            rows,
+            literal,
+            unread,
+        }
     }
 
     /// `sym` with the files that spell `name` as a literal named in its answer.
@@ -1638,7 +1706,9 @@ impl UntracedNamers {
     /// `sym`, a definition nothing reaches, with the files outside its language that
     /// spell its name, or the gap that says the name was not searched there.
     fn name_text(&self, sym: &mut ChangedSymbol, name: &str) {
-        let nothing_known = sym.callers.is_empty()
+        // A file as a whole has no name to spell: it is reached by its path.
+        let nothing_known = sym.symbol.is_some()
+            && sym.callers.is_empty()
             && sym.also_changed.is_empty()
             && sym.possibly_also_changed.is_empty()
             && sym.unresolved.is_none()
@@ -1662,7 +1732,7 @@ impl UntracedNamers {
                 files: named.len(),
             }));
             sym.missed_in.extend(named);
-        } else if !searched_as_text(literal_base(name)) {
+        } else if !searched_as_text(literal_base(name)) && self.unread.could_spell(own) {
             sym.coverage = sym.coverage.clone().with(Some(decide::Gap::NameUnsearched));
         }
     }
@@ -4321,7 +4391,13 @@ pub fn build_impact(
             && possibly_also_changed.is_empty()
             && entry.is_none()
             && callable_by_name(core.path())
-            && spelled_name(core).is_some_and(|n| !searched_as_text(n));
+            && spelled_name(core).is_some_and(|n| !searched_as_text(n))
+            && untraced
+                .unread
+                .could_spell(crate::vocabulary::family::Group::of_path(&rel(
+                    state,
+                    core.path(),
+                )));
         let coverage = search_coverage(verdict.as_ref(), unresolved.as_ref(), outside)
             .with(unsearched.then_some(decide::Gap::NameUnsearched));
         // No test found is an absence only from a closed search: the callers
