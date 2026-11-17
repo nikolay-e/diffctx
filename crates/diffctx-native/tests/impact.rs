@@ -5695,7 +5695,7 @@ fn a_key_search_over_many_changed_configs_is_capped_and_counts_the_rest() {
     );
     assert!(
         md.contains(
-            "(key search capped: the keys and values of 14 changed config(s) were not searched)"
+            "(key search capped: the keys and values of 14 changed config(s) were not all searched)"
         ),
         "{md}"
     );
@@ -5710,6 +5710,35 @@ fn a_key_search_over_many_changed_configs_is_capped_and_counts_the_rest() {
         !doc["named"]["key_searches"].to_string().contains("svc_19"),
         "the largest change was searched: {doc}"
     );
+}
+
+/// A renamed name too many files spell is left out of the text search, and the
+/// answer says the search left it out: "named nowhere" is a claim about what was
+/// searched, not about the repository.
+#[test]
+fn a_renamed_name_spelled_by_too_many_files_is_said_to_be_left_out_of_the_search() {
+    let scripts: Vec<(String, &str)> = (0..15)
+        .map(|n| {
+            (
+                format!("scripts/shell_{n:02}.sh"),
+                "#!/bin/sh\ndocker compose exec web sh\n",
+            )
+        })
+        .collect();
+    let compose = |service: &str| format!("services:\n  {service}:\n    image: busybox\n");
+    let (before, after) = (compose("web"), compose("frontend"));
+    let mut base: Vec<(&str, &str)> = vec![("docker-compose.yml", before.as_str())];
+    base.extend(scripts.iter().map(|(p, t)| (p.as_str(), *t)));
+    let tmp = repo(&base, &[("docker-compose.yml", after.as_str())]);
+
+    let md = impact_markdown(tmp.path(), "HEAD~1..HEAD");
+    assert!(
+        md.contains(
+            "(key search capped: the keys and values of 1 changed config(s) were not all searched)"
+        ),
+        "{md}"
+    );
+    assert!(!md.contains("named nowhere"), "{md}");
 }
 
 /// Forgejo #109: a run stopped at any poll inside the key search returns,
