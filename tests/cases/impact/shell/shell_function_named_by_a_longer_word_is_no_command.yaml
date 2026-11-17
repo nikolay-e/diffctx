@@ -1,0 +1,29 @@
+name: shell_function_named_by_a_longer_word_is_no_command
+mode: impact
+source: synthetic
+tags: [shell, literal-name, decoy, python]
+repo:
+  initial_files:
+    lib/strings.sh: |
+      #!/usr/bin/env bash
+      slugify() {
+        echo "${1,,}"
+      }
+    app.py: |
+      import os
+
+
+      def main():
+          os.system("slugify_all abc")
+  changed_files:
+    lib/strings.sh: |
+      #!/usr/bin/env bash
+      slugify() {
+        printf '%s\n' "${1,,}"
+      }
+  commit_message: "strings: slugify prints through printf"
+expect:
+  exact: true
+  callers: {slugify: []}
+  decoys:
+    lib/strings.sh::slugify: [app.py]
