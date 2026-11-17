@@ -900,9 +900,10 @@ enum Reach {
     /// Building the class: what a constructor's callers do.
     Construction,
     /// What a changed or removed constructor reaches (R11): the class's
-    /// instantiations and the explicit and `super()` calls of the constructor.
-    /// Annotations, `isinstance`, `raises` and the class passed as a value are
-    /// uses of the class a constructor change leaves alone.
+    /// instantiations, the class handed on as a value (whoever receives it builds
+    /// it: `map(Point, rows)`, `raise Error`, `kind = Cat`) and the explicit and
+    /// `super()` calls of the constructor. Annotations and `isinstance` are uses
+    /// of the class a constructor change leaves alone.
     Constructor,
 }
 
@@ -916,7 +917,10 @@ impl Reach {
             ),
             Self::Constructor => matches!(
                 relation,
-                Relation::Instantiates | Relation::Calls | Relation::Overrides
+                Relation::Instantiates
+                    | Relation::Calls
+                    | Relation::Overrides
+                    | Relation::PassesAsValue
             ),
         }
     }

@@ -2466,8 +2466,18 @@ impl<'t> Walker<'t> {
                 self.visit(list, cx, depth);
             }
         }
-        for argument in &arguments {
-            self.argument(*argument, cx, depth);
+        let type_test = matches!(callee.as_deref(), Some(["isinstance" | "issubclass"]));
+        let typed = Cx {
+            read: UseKind::TypeUse,
+            ..cx.clone()
+        };
+        for (index, argument) in arguments.iter().enumerate() {
+            // The class a type test names is a type there, never a value handed on.
+            self.argument(
+                *argument,
+                if type_test && index == 1 { &typed } else { cx },
+                depth,
+            );
         }
         if let (UseKind::Call, Some(path)) = (callee_kind, callee) {
             match path.as_slice() {
