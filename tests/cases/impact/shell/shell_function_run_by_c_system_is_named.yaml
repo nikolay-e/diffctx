@@ -1,0 +1,30 @@
+name: shell_function_run_by_c_system_is_named
+mode: impact
+source: synthetic
+tags: [shell, literal-name, shell-string, false-absence, c]
+repo:
+  initial_files:
+    lib/strings.sh: |
+      #!/usr/bin/env bash
+      slugify() {
+        echo "${1,,}"
+      }
+    src/slug.c: |
+      #include <stdlib.h>
+
+      int slug(void) {
+          return system("slugify abc");
+      }
+  changed_files:
+    lib/strings.sh: |
+      #!/usr/bin/env bash
+      slugify() {
+        printf '%s\n' "${1,,}"
+      }
+  commit_message: "strings: slugify prints through printf"
+expect:
+  exact: false
+  discloses: true
+  no_negative_claims: true
+  relations:
+    - {from: src/slug.c, to: lib/strings.sh::slugify, kind: calls, resolution: unresolved}
