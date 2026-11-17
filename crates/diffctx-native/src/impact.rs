@@ -1262,6 +1262,7 @@ fn header_row<'a>(rows: &[&'a str], line: u32) -> Option<(u32, &'a str)> {
     let own = indent(rows.get(at)?);
     rows[..at]
         .iter()
+        .enumerate()
         .rev()
         .find(|(_, l)| !l.trim().is_empty() && indent(l) < own)
         .map(|(n, l)| (n as u32 + 1, *l))
@@ -1604,6 +1605,19 @@ fn unread_code(path: &str) -> bool {
         }
 }
 
+/// Code of a language no cell of `own`'s language binds to it: a shell script
+/// runs a program of any language by its bare name.
+fn foreign_code(path: &str, own: Option<crate::vocabulary::family::Group>) -> bool {
+    unread_code(path) && crate::vocabulary::family::Group::of_name(path) != own
+}
+
+/// A file that may spell a definition of `own`'s group where no cell accounts for
+/// the spelling: text the definition's own cell does not read, or foreign code.
+fn unaccounted_reader(path: &str, own: Option<crate::vocabulary::family::Group>) -> bool {
+    let read_by_own = own.is_some() && crate::vocabulary::family::Group::of_name(path) == own;
+    (!is_code_file(path) && !read_by_own) || foreign_code(path, own)
+}
+
 /// The name a reader spells: `var.region` is written `region`, a C++ member
 /// `Engine::open` is written `open`.
 fn literal_base(symbol: &str) -> &str {
@@ -1730,6 +1744,45 @@ impl UntracedNamers {
         def: &decide::Changed,
         verdict: &decide::Verdict,
     ) {
+        let spelled = self.literal_spellings(sym, def, verdict);
+        Self::disclose(sym, spelled);
+    }
+
+    /// `name_literals` for a removed definition, which no head fragment carries: the
+    /// files outside what its language reads that spell it as a word (a command, a
+    /// template call) are named as well, and a name never searched as text says so.
+    fn name_removed(
+        &self,
+        sym: &mut ChangedSymbol,
+        def: &decide::Changed,
+        verdict: &decide::Verdict,
+    ) {
+        let mut spelled = self.literal_spellings(sym, def, verdict);
+        let word = literal_base(&def.name);
+        if searched_as_text(word) {
+            let own = crate::vocabulary::family::Group::of_name(&sym.path);
+            let named = |p: &str| spelled.iter().chain(&sym.missed_in).any(|f| f.path == p);
+            let fresh: Vec<UnanalysedFile> = self
+                .named_in(word, |p| unaccounted_reader(p, own))
+                .into_iter()
+                .filter(|(p, _)| !named(p))
+                .map(|(path, line)| UnanalysedFile::new(path, "not_traced", vec![line]))
+                .collect();
+            spelled.extend(fresh);
+        } else {
+            sym.coverage = (sym.coverage.clone()).with(Some(decide::Gap::NameUnsearched));
+        }
+        Self::disclose(sym, spelled);
+    }
+
+    /// The files that spell the name of `def`, or one it was renamed from, as a
+    /// literal or an assigned value, and are no caller `sym` already names.
+    fn literal_spellings(
+        &self,
+        sym: &ChangedSymbol,
+        def: &decide::Changed,
+        verdict: &decide::Verdict,
+    ) -> Vec<UnanalysedFile> {
         // Terragrunt's `inputs` and a `.tftest.hcl`'s `variables` set a Terraform
         // module's variable by its name, in files the module's extractor never reads.
         let sets_variable = crate::languages::get_language_for_file(&sym.path) == Some("terraform");
@@ -1759,6 +1812,10 @@ impl UntracedNamers {
                 }
             }
         }
+        spelled
+    }
+
+    fn disclose(sym: &mut ChangedSymbol, spelled: Vec<UnanalysedFile>) {
         if !spelled.is_empty() {
             sym.coverage = sym.coverage.clone().with(Some(decide::Gap::Unaccounted {
                 reason: decide::Reason::OtherLanguage,
@@ -1787,12 +1844,7 @@ impl UntracedNamers {
         }
         let own = crate::vocabulary::family::Group::of_name(&sym.path);
         let named: Vec<UnanalysedFile> = self
-            .naming(literal_base(name), |p| {
-                // A file the definition's own cell reads has its spelling accounted.
-                let group = crate::vocabulary::family::Group::of_name(p);
-                let read_by_own = own.is_some() && group == own;
-                (!is_code_file(p) && !read_by_own) || (unread_code(p) && group != own)
-            })
+            .naming(literal_base(name), |p| unaccounted_reader(p, own))
             .into_iter()
             .map(|(path, line)| UnanalysedFile::new(path, "not_traced", vec![line]))
             .collect();
@@ -4875,7 +4927,7 @@ pub fn build_impact(
         from_facts.extend(cell_removed.iter().filter_map(|entry| {
             let verdict = cells.of(&entry.file)?.verdict(entry);
             let mut sym = cell_symbol(entry, &verdict, "removed".to_string());
-            untraced.name_literals(&mut sym, entry, &verdict);
+            untraced.name_removed(&mut sym, entry, &verdict);
             // A removed override was reached through the member it overrode: the
             // answer names that route, whatever else it could not tell.
             if let Some(via) = verdict.overridden_via() {
@@ -5625,15 +5677,22 @@ fn dead_modules(
             .collect();
         importers.sort();
         importers.dedup();
-        let reaches = |c: &ChangedSymbol| {
+        // A definition whose name a file outside what reads it spells, or that was
+        // never searched as text, keeps its row: the module's line has no room for it.
+        let keeps_row = |c: &ChangedSymbol| {
             c.callers
                 .iter()
                 .any(|k| k.evidence != "candidate" || importers.contains(&k.path))
+                || !c.missed_in.is_empty()
+                || c.coverage
+                    .all()
+                    .gaps()
+                    .contains(&decide::Gap::NameUnsearched)
         };
         let folding: Vec<usize> = held
             .iter()
             .copied()
-            .filter(|&at| !reaches(&changed[at]))
+            .filter(|&at| !keeps_row(&changed[at]))
             .collect();
         if folding.is_empty() {
             continue;
