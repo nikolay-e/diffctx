@@ -34,6 +34,8 @@ pub(crate) struct Answer {
     pub entry_not_tested: Vec<Node>,
     /// Callers whose guard states that the search for a test is open.
     pub tests_open: Vec<Node>,
+    /// Callers whose guard names tests and says it is the whole search.
+    pub tests_closed: Vec<Node>,
     /// A definition whose callers the engine could not resolve, with the
     /// class of its sentence (`None` when no class matches it).
     pub unknowns: Vec<(Node, Option<UnknownClass>, String)>,
@@ -574,6 +576,12 @@ pub(crate) fn extract(doc: &Value) -> Result<Answer, String> {
                 answer.tests_open.push(from.clone());
             }
             if text(&row["guard"], "state") == Some("linked") {
+                // A list of the nearest tests says callers above were not searched.
+                if row["guard"]["open"].as_bool() == Some(true) {
+                    answer.tests_open.push(from.clone());
+                } else {
+                    answer.tests_closed.push(from.clone());
+                }
                 // The first test the guard names, then the others it lists.
                 for test in
                     std::iter::once(&row["guard"]).chain(items(&row["guard"], "also").iter())

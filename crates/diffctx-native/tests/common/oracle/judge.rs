@@ -544,6 +544,14 @@ fn check_lists(case: &Case, answer: &Answer, failures: &mut Vec<String>) {
             ));
         }
     }
+    for name in &expect.tests_not_open {
+        let node = Node::target(name);
+        if !answer.tests_closed.iter().any(|a| node.covers(a)) {
+            failures.push(format!(
+                "`{name}` does not name its tests as the whole search"
+            ));
+        }
+    }
     for path in &expect.stale {
         if !answer.stale.contains(path) {
             failures.push(format!("`{path}` is not listed as a stale reference"));
