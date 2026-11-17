@@ -1968,6 +1968,41 @@ fn a_name_spelled_where_nothing_is_traced_is_no_zero() {
     assert!(!text.contains("callers may be missing"), "{text}");
 }
 
+/// A name too common to search as text is a hedge only while a file the engine did
+/// not parse could spell it: a repository of Python files alone has none, and a
+/// definition nothing in it calls is a complete zero; one script beside it is the
+/// file that may.
+#[test]
+fn a_name_too_common_to_search_is_a_hedge_only_beside_an_unread_file() {
+    let apply = |tail: &str| format!("def apply(cart):\n    return cart.base{tail}\n");
+    let python_only = repo(
+        &[("shop/discount.py", &apply(""))],
+        &[("shop/discount.py", &apply(" - 1"))],
+    );
+    let doc = impact_json(python_only.path());
+    assert_eq!(doc["definitions"], serde_json::json!([]), "{doc:#}");
+    assert_eq!(doc["unlisted"]["no_caller"]["total"], 1, "{doc:#}");
+
+    let with_script = repo(
+        &[
+            ("shop/discount.py", &apply("")),
+            ("deploy.sh", "#!/bin/sh\necho deploy\n"),
+        ],
+        &[("shop/discount.py", &apply(" - 1"))],
+    );
+    let doc = impact_json(with_script.path());
+    assert!(
+        doc["definitions"][0]["gaps"]
+            .to_string()
+            .contains("name_unsearched"),
+        "{doc:#}"
+    );
+    assert_eq!(
+        doc["definitions"][0]["coverage"]["calls"]["complete"], false,
+        "{doc:#}"
+    );
+}
+
 /// Whether a definition says no binding model reads its language.
 fn not_modelled(definition: &serde_json::Value) -> bool {
     definition["gaps"]
