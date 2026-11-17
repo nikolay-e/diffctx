@@ -1,0 +1,59 @@
+name: ts_caller_of_a_definition_whose_text_a_test_asserts_has_an_open_test_search
+mode: impact
+source: synthetic
+tags: [typescript, literal-channel, tests-reach, decoy, class-b]
+repo:
+  initial_files:
+    src/SyncBanner.tsx: |
+      export function SyncBanner({ pending }: { pending: number }) {
+        return <p data-testid="sync-banner">{pending} waiting</p>;
+      }
+    src/InboxPage.tsx: |
+      import { SyncBanner } from './SyncBanner';
+
+      export function InboxPage() {
+        return <SyncBanner pending={3} />;
+      }
+    src/SettingsPage.tsx: |
+      export function SettingsPage() {
+        return <p>Preferences</p>;
+      }
+    tests/e2e/inbox.spec.ts: |
+      import { expect, test } from '@playwright/test';
+
+      test('shows the sync state', async ({ page }) => {
+        await page.goto('/inbox');
+        await expect(page.getByTestId('sync-banner')).toHaveText(/^Syncing your inbox in the background/);
+      });
+    tests/e2e/settings.spec.ts: |
+      import { expect, test } from '@playwright/test';
+
+      test('shows the preferences', async ({ page }) => {
+        await page.goto('/settings');
+        await expect(page.getByText('Preferences')).toBeVisible();
+      });
+  changed_files:
+    src/SyncBanner.tsx: |
+      const MESSAGES: Record<string, string> = {
+        idle: 'Everything is up to date',
+        busy: 'Syncing your inbox in the background',
+      };
+
+      export function SyncBanner({ pending }: { pending: number }) {
+        return <p data-testid="sync-banner">{MESSAGES[pending > 0 ? 'busy' : 'idle']} · {pending} waiting</p>;
+      }
+  commit_message: Say what the banner is doing
+expect:
+  relations:
+  - from: src/InboxPage.tsx::InboxPage
+    to: src/SyncBanner.tsx::SyncBanner
+    kind: calls
+    resolution: resolved
+  exact: false
+  not_untested:
+  - SyncBanner
+  tests_open:
+  - src/InboxPage.tsx::InboxPage
+  decoys:
+    src/SyncBanner.tsx:
+    - tests/e2e/settings.spec.ts
