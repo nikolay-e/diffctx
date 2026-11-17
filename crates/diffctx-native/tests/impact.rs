@@ -7822,3 +7822,34 @@ fn keys_past_the_per_config_search_cap_are_not_dropped_silently() {
         "{searched} of {KEYS} changed keys searched, no limit said: {doc:#}"
     );
 }
+
+/// A string a changed definition holds that a test asserts links the two, unless
+/// the project spells it in too many files to say which one the test means: then
+/// the definition has no test link nobody can rule out, and "none" was claimed
+/// exactly.
+#[test]
+fn a_string_too_widely_spelled_to_link_a_test_leaves_the_absence_open() {
+    for others in [1, 3] {
+        let before = "def code():\n    return 'unique_code_label'\n";
+        let after = "def code():\n    value = 'unique_code_label'\n    return value\n";
+        let test =
+            "def test_label(client):\n    assert client.get('/x').json() == 'unique_code_label'\n";
+        let spellers: Vec<(String, String)> = (0..others)
+            .map(|i| {
+                (
+                    format!("svc/other_{i}.py"),
+                    format!("def show_{i}():\n    print('unique_code_label')\n"),
+                )
+            })
+            .collect();
+        let mut base: Vec<(&str, &str)> = vec![("svc/m.py", before), ("tests/test_label.py", test)];
+        base.extend(spellers.iter().map(|(p, t)| (p.as_str(), t.as_str())));
+        let tmp = repo(&base, &[("svc/m.py", after)]);
+        let doc = impact(tmp.path(), "HEAD~1..HEAD");
+        let untested = &doc["tests"]["definitions_without_link"];
+        assert!(
+            untested["n"] == 0 || untested["exact"] == false,
+            "{others} other files spell the string: the definition is called untested, exactly: {doc:#}"
+        );
+    }
+}
