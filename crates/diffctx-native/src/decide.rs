@@ -3141,6 +3141,32 @@ impl Cell {
         found
     }
 
+    /// The files outside the run's pathspecs that could name the definition: those
+    /// holding a binding the cell left out, and those of its group that spell one
+    /// of its names or could not be tokenised, whether or not the resolver read a
+    /// binding in them.
+    fn outside_scope(&self, changed: &Changed) -> usize {
+        if self.scope.is_empty() {
+            return 0;
+        }
+        let group = self.tokens.group(self.family.group());
+        let names = self.reference_names(changed);
+        let mut spelled = group.spelling(&Names::new(names.iter().map(String::as_str)));
+        spelled.extend_from_slice(group.unread());
+        let unbound = (spelled.into_iter())
+            .map(|at| group.files()[at as usize].as_str())
+            .filter(|file| !within_scope(&self.scope, file));
+        let files: HashSet<&str> = self
+            .outside
+            .iter()
+            .map(String::as_str)
+            .chain(unbound)
+            .collect();
+        (files.into_iter())
+            .filter(|file| self.ctx.workspace.may_reference(file, &changed.file))
+            .count()
+    }
+
     /// What covered the search of each relation of use: the gaps of every
     /// relation (`lead`, `tail`), the files outside the run's pathspecs that could
     /// name the definition, a read the cell lost, and the hedges of the occurrence
@@ -3158,11 +3184,7 @@ impl Cell {
         Vec<(Relation, Hedge)>,
     ) {
         let mut tail = tail;
-        let outside = self
-            .outside
-            .iter()
-            .filter(|file| self.ctx.workspace.may_reference(file, &changed.file))
-            .count();
+        let outside = self.outside_scope(changed);
         if outside > 0 {
             tail.push(Gap::OutsideScope { files: outside });
         }
