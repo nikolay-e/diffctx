@@ -6796,6 +6796,9 @@ pub(crate) struct LocalOf {
     pub unplaced: Vec<u32>,
     /// The file was read in part.
     pub lossy: bool,
+    /// The file looks a name up in its namespace (`locals()[key]`, `eval`, `exec`),
+    /// which may be the local's.
+    pub computed: bool,
 }
 
 /// The answer of a `--symbol` query that has blocks of its own to fill in, and no
@@ -6922,6 +6925,9 @@ fn local_coverage(local: &LocalOf) -> decide::Coverages {
             reason: decide::Reason::Unparsed,
             files: 1,
         });
+    }
+    if local.computed {
+        gaps.push(decide::Gap::NotTraced);
     }
     if !handed.is_empty() {
         let uses = handed.len();

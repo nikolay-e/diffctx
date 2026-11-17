@@ -412,6 +412,13 @@ pub enum Fact {
     StateBackend {
         site: Span,
     },
+    /// A call that reaches a definition by a name the code computes: `getattr(obj,
+    /// name)`, `eval`, `exec`, `globals()[key]`. `member` is set when only a
+    /// member of a class can be what it reaches (`getattr`).
+    ComputedName {
+        site: Span,
+        member: bool,
+    },
 }
 
 impl Fact {
@@ -438,7 +445,7 @@ impl Fact {
             Self::ConfigRelease(release) => &release.site,
             Self::ShellPath(path) => &path.site,
             Self::CallableString(held) => &held.site,
-            Self::StateBackend { site } => site,
+            Self::StateBackend { site } | Self::ComputedName { site, .. } => site,
         }
     }
 
@@ -463,6 +470,7 @@ impl Fact {
             Self::ShellPath(_) => 15,
             Self::StateBackend { .. } => 16,
             Self::CallableString(_) => 17,
+            Self::ComputedName { .. } => 18,
         }
     }
 }

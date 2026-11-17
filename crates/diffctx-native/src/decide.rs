@@ -3355,6 +3355,18 @@ impl Cell {
                 });
             }
         }
+        // A name the code computes (`getattr(obj, name)`, `eval`, `globals()[key]`) may
+        // be the definition's, and nothing in the text says so.
+        if let Resolver::Python(python) = &self.head {
+            let member = changed
+                .subjects
+                .iter()
+                .any(|s| !s.key.local.container.is_empty());
+            let reach = |file: &str| self.ctx.workspace.may_reference(file, &changed.file);
+            if python.name_computers(member, reach) > 0 {
+                tail.push(Gap::NotTraced);
+            }
+        }
         let reasons = self.stops();
         if !reasons.is_empty() {
             tail.push(Gap::Stopped { reasons });
