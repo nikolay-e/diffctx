@@ -32,6 +32,8 @@ pub(crate) struct Answer {
     /// whose role names none.
     pub entry_tested: Vec<Node>,
     pub entry_not_tested: Vec<Node>,
+    /// Callers whose guard states that the search for a test is open.
+    pub tests_open: Vec<Node>,
     /// A definition whose callers the engine could not resolve, with the
     /// class of its sentence (`None` when no class matches it).
     pub unknowns: Vec<(Node, Option<UnknownClass>, String)>,
@@ -568,6 +570,9 @@ pub(crate) fn extract(doc: &Value) -> Result<Answer, String> {
                 continue;
             }
             answer.relations.push(relation);
+            if text(&row["guard"], "state") == Some("not_established") {
+                answer.tests_open.push(from.clone());
+            }
             if text(&row["guard"], "state") == Some("linked") {
                 // The first test the guard names, then the others it lists.
                 for test in

@@ -164,6 +164,9 @@ pub(crate) struct Expect {
     pub entry_tested: Vec<String>,
     #[serde(default)]
     pub entry_not_tested: Vec<String>,
+    /// Callers whose row says the search for a test is open: no absence is claimed.
+    #[serde(default)]
+    pub tests_open: Vec<String>,
     #[serde(default)]
     pub stale: Vec<String>,
     #[serde(default)]
