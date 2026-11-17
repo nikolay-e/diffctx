@@ -572,8 +572,9 @@ pub(super) fn commented(text: &str) -> bool {
 
 /// `commented`, read as the file's language reads it: a `#` opens a comment in a
 /// script or a config, and a directive, an attribute or a macro in C, Rust and
-/// Swift (`#define X "name"`, `#[cfg(feature = "x")]`, `#externalMacro`); `--`
-/// opens one in SQL, Lua and Haskell, `(*` in ML, `<!--` in markup.
+/// Swift (`#define X "name"`, `#[cfg(feature = "x")]`, `#externalMacro`) and an
+/// attribute in PHP (`#[DataProvider('Calc::cases')]`); `--` opens one in SQL, Lua
+/// and Haskell, `(*` in ML, `<!--` in markup.
 pub(super) fn commented_in(path: &str, text: &str) -> bool {
     let hash_is_code = matches!(
         extension(path).as_str(),
@@ -591,6 +592,8 @@ pub(super) fn commented_in(path: &str, text: &str) -> bool {
             | "cs"
     );
     let t = text.trim_start();
+    let attribute =
+        matches!(extension(path).as_str(), "php" | "phtml" | "inc") && t.starts_with("#[");
     let opens = match extension(path).as_str() {
         "sql" | "lua" | "hs" | "ada" => Some("--"),
         "ml" | "mli" | "pas" => Some("(*"),
@@ -598,7 +601,7 @@ pub(super) fn commented_in(path: &str, text: &str) -> bool {
         _ => None,
     };
     opens.is_some_and(|m| t.starts_with(m))
-        || (!(hash_is_code && t.starts_with('#')) && commented(text))
+        || (!((hash_is_code && t.starts_with('#')) || attribute) && commented(text))
 }
 
 /// An ignore or attribute file lists paths to include or exclude them; it

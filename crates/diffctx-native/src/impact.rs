@@ -25,6 +25,7 @@ use crate::vocabulary;
 
 mod keys;
 mod mentions;
+mod php;
 mod runs;
 mod rust;
 mod tests_reach;
@@ -4031,6 +4032,13 @@ pub fn build_impact(
                             .next()
                     })?;
                     Some(Entered::Registered(format!("\"{key}\": {value}")))
+                })
+                .or_else(|| {
+                    sources
+                        .is_empty()
+                        .then(|| php::registered_by(state, diff_range, core, file_of(core)))
+                        .flatten()
+                        .map(Entered::Registered)
                 })
         });
         // A dict entry is no call: the fragment that holds it stays a caller
