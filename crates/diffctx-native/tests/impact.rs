@@ -7758,3 +7758,34 @@ fn a_file_naming_more_removed_definitions_than_the_cap_is_never_dropped_silently
         "{named} of {REMOVED} removed definitions answered with their consumer, no limit said: {doc:#}"
     );
 }
+
+/// The strings a changed definition holds are looked for in the tests, up to a
+/// cap: a definition past it read "no static test link" while a test asserts its
+/// string.
+#[test]
+fn strings_past_the_test_search_cap_do_not_make_an_exact_absence() {
+    const DEFINITIONS: usize = 80;
+    let body = |tag: &str| -> String {
+        (0..DEFINITIONS)
+            .map(|i| format!("def code_{i:03}():\n    return 'label_{i:03}_{tag}'\n\n"))
+            .collect()
+    };
+    let test: String = std::iter::once("def test_labels(client):\n".to_string())
+        .chain(
+            (0..DEFINITIONS)
+                .map(|i| format!("    assert client.get('/{i}').json() == 'label_{i:03}_b'\n")),
+        )
+        .collect();
+    let (before, after) = (body("a"), body("b"));
+    let tmp = repo(
+        &[("svc/m.py", &before), ("tests/test_labels.py", &test)],
+        &[("svc/m.py", &after)],
+    );
+    let doc = impact(tmp.path(), "HEAD~1..HEAD");
+    let untested = &doc["tests"]["definitions_without_link"];
+    assert!(
+        untested["n"] == 0 || untested["exact"] == false,
+        "{} definitions called untested, exactly, past the search cap: {doc:#}",
+        untested["n"]
+    );
+}
