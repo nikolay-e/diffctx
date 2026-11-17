@@ -71,14 +71,23 @@ pub const PIPELINE_SECS: u64 = 20;
 /// which prints nothing.
 const TAIL_GRACE_SECS: u64 = 10;
 
-/// The ceiling of this run: `HOOK_DEADLINE_SECS`, unless a test sets its own.
-/// A test ceiling that is no number is the run's error, never the shipped one.
-fn ceiling_secs() -> Result<u64, Silence> {
-    match std::env::var(crate::resource::TEST_HOOK_CEILING_SECS_ENV) {
+/// The ceiling of this run, the one place the test hooks that move it are read:
+/// `HOOK_DEADLINE_SECS` unless a test sets its own, and whether a test spent it
+/// before the analysis starts. A test ceiling that is no number is the run's
+/// error, never the shipped one.
+struct Ceiling {
+    secs: u64,
+    spent: bool,
+}
+
+fn ceiling() -> Result<Ceiling, Silence> {
+    let secs = match std::env::var(crate::resource::TEST_HOOK_CEILING_SECS_ENV) {
         Err(std::env::VarError::NotPresent) => Ok(HOOK_DEADLINE_SECS),
         Ok(secs) => secs.parse().map_err(|_| "error:test-ceiling"),
         Err(std::env::VarError::NotUnicode(_)) => Err("error:test-ceiling"),
-    }
+    }?;
+    let spent = std::env::var(crate::resource::TEST_HOOK_CEILING_EXPIRED_ENV).as_deref() == Ok("1");
+    Ok(Ceiling { secs, spent })
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -3649,14 +3658,12 @@ fn within_budget<T: Send + 'static>(
     started: Instant,
     work: impl FnOnce(u64) -> Result<T, Silence> + Send + 'static,
 ) -> Result<T, Silence> {
-    let ceiling = ceiling_secs()?;
-    let left = ceiling.saturating_sub(started.elapsed().as_secs());
-    if left == 0
-        || std::env::var(crate::resource::TEST_HOOK_CEILING_EXPIRED_ENV).as_deref() == Ok("1")
-    {
+    let Ceiling { secs, spent } = ceiling()?;
+    let left = secs.saturating_sub(started.elapsed().as_secs());
+    if left == 0 || spent {
         return Err("timeout");
     }
-    let engine_secs = (left.saturating_mul(PIPELINE_SECS) / ceiling).max(1);
+    let engine_secs = (left.saturating_mul(PIPELINE_SECS) / secs).max(1);
     let (tx, rx) = std::sync::mpsc::channel();
     std::thread::spawn(crate::profile::carry(move || {
         let _ = tx.send(work(engine_secs));
@@ -4326,8 +4333,8 @@ pub fn respond_within_deadline(event: Event, stdin_json: String, gate: bool) -> 
     let mut trace = Trace::default();
     // The git calls that pick the range run on this thread before any
     // pipeline does; the hook's own context bounds them together.
-    let ceiling = ceiling_secs();
-    let hook_run = crate::resource::RunContext::for_run(ceiling.unwrap_or(0));
+    let ceiling = ceiling();
+    let hook_run = crate::resource::RunContext::for_run(ceiling.as_ref().map_or(0, |c| c.secs));
     let _in_hook = hook_run.enter();
     let answer = ceiling.and_then(|_| decide(event, &stdin_json, gate, started, &mut trace));
     let outcome = match &answer {
