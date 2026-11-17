@@ -9,10 +9,9 @@ const HANDLERS: &str = "def on_event(e):\n    return e\n";
 const HANDLERS_CHANGED: &str = "def on_event(e):\n    return e + 1\n";
 const BUS: &str =
     "from app.handlers import on_event\n\n\ndef setup(bus):\n    bus.register(on_event)\n";
-const REQUEST: &str = "class Request:\n    def __init__(self, url):\n        self.url = url\n";
-const REQUEST_CHANGED: &str =
-    "class Request:\n    def __init__(self, url):\n        self.url = url.strip()\n";
-const MAKE: &str = "from app.request import Request\n\n\ndef make():\n    return Request('x')\n";
+const APP: &str = "package app\n\nvar ready bool\n\nfunc init() {\n\tready = false\n}\n";
+const APP_CHANGED: &str = "package app\n\nvar ready bool\n\nfunc init() {\n\tready = true\n}\n";
+const USE: &str = "package app\n\nfunc Ready() bool {\n\treturn ready\n}\n";
 
 fn impact(repo: &std::path::Path, format: &str) -> std::process::Output {
     let out = diffctx_unclocked()
@@ -69,16 +68,12 @@ fn a_callback_handed_to_a_callee_names_the_callee() {
 }
 
 #[test]
-fn a_constructor_a_language_calls_says_it_is_constructed_implicitly() {
+fn an_initializer_a_language_calls_says_it_is_constructed_implicitly() {
     let tmp = repo(
-        &[
-            ("app/__init__.py", ""),
-            ("app/request.py", REQUEST),
-            ("app/make.py", MAKE),
-        ],
-        &[("app/request.py", REQUEST_CHANGED)],
+        &[("app.go", APP), ("use.go", USE)],
+        &[("app.go", APP_CHANGED)],
     );
-    let gaps = gaps_of(tmp.path(), "Request");
+    let gaps = gaps_of(tmp.path(), "init");
     assert_eq!(
         gaps,
         [serde_json::json!({"kind": "implicitly_constructed"})]
