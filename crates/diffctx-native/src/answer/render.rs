@@ -209,13 +209,28 @@ fn callers_phrase(a: &Answer, scope: &str) -> String {
                 && !d.gaps.iter().any(|g| matches!(g, Gap::Stopped { .. }))
         })
         .map(|d| d.symbol.as_deref().unwrap_or(&d.path))
+        .chain(
+            doc.omitted
+                .iter()
+                .flat_map(|o| &o.definitions.items)
+                .filter(|d| d.incomplete)
+                .map(|d| d.def.symbol.as_deref().unwrap_or(&d.def.path)),
+        )
         .collect();
+    // The cap names only the first shed definitions; the others whose search was
+    // open are counted.
+    let unnamed_open = doc.omitted.as_ref().map_or(0, |o| {
+        o.incomplete
+            .saturating_sub(o.definitions.items.iter().filter(|d| d.incomplete).count())
+    });
+    let open = unresolved.len() + unnamed_open;
     let unresolved_names = {
-        let page = Page::of(&unresolved, 3, 0);
+        let page = Page::of(&unresolved, 3, unnamed_open);
         let shown: Vec<String> = page.shown.iter().map(|n| format!("`{n}`")).collect();
-        match page.rest() {
-            0 => shown.join(", "),
-            more => format!("{} and {more} more", shown.join(", ")),
+        match (page.rest(), shown.is_empty()) {
+            (0, _) => shown.join(", "),
+            (more, true) => format!("{more} definition(s)"),
+            (more, false) => format!("{} and {more} more", shown.join(", ")),
         }
     };
     let mut phrase = if !stops.is_empty() {
@@ -239,14 +254,11 @@ fn callers_phrase(a: &Answer, scope: &str) -> String {
                 tally.undetermined
             );
         }
-        if !unresolved.is_empty() {
+        if open > 0 {
             let _ = write!(p, ", callers unresolved for {unresolved_names}");
         }
         p
-    } else if callers == 0
-        && !unresolved.is_empty()
-        && Page::of(&unresolved, 0, 0).total == tally.listed
-    {
+    } else if callers == 0 && open > 0 && open == tally.listed {
         format!("callers unresolved for {unresolved_names}")
     } else {
         // A count of nothing is an absence: said as one only with the scope whole.
@@ -257,7 +269,7 @@ fn callers_phrase(a: &Answer, scope: &str) -> String {
             (false, n) => format!("at least {n} caller(s){scope}{folded_note}"),
             (true, n) => format!("{n} caller(s){scope}{folded_note}"),
         };
-        if !unresolved.is_empty() {
+        if open > 0 {
             let _ = write!(p, ", callers unresolved for {unresolved_names}");
         }
         p
