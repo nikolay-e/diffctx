@@ -7,6 +7,7 @@
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
+use super::implicit::C_EXPORTS;
 use super::rows::{
     BARE_HEADS, CLASS_CANDIDATES, CLASSIC_PAGES, COMMAND_ARGUMENTS, DECLARING_KEYWORDS,
     DECLARING_LOCALS, FOREIGN_TEXT, IMPL_HEADS, KEYWORD_ARGUMENTS, LOCAL_CALLS, MEMBER_OBJECTS,
@@ -86,7 +87,11 @@ impl Index {
                 .filter(|file| PAIRED_PROTOTYPES.iter().any(|f| f.has(file.language())))
                 .flat_map(|file| {
                     file.defs()
-                        .filter(|def| !def.decorators.is_empty())
+                        .filter(|def| {
+                            (def.decorators.iter()).any(|d| {
+                                C_EXPORTS.split_ascii_whitespace().any(|w| w == d.as_str())
+                            })
+                        })
                         .map(|def| {
                             let key = file.key(&def.local);
                             (key.project, key.local.container, key.local.name)
