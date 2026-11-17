@@ -1,0 +1,29 @@
+name: py_enum_hook_the_library_calls_by_name_is_a_gap_not_zero_callers
+mode: symbol
+source: synthetic
+issue_state: open
+tags: [python, enum, protocol, gap, symbol]
+repo:
+  initial_files:
+    main.py: |
+      from enum import Enum
+
+
+      class Status(Enum):
+          ACTIVE = "active"
+          UNKNOWN = "unknown"
+
+          @classmethod
+          def _missing_(cls, value):
+              return cls.UNKNOWN
+
+
+      def parse(value):
+          return Status(value)
+  commit_message: init
+query:
+  symbol: _missing_
+expect:
+  exact: false
+  definitions: [main.py::_missing_]
+  unknowns: {_missing_: overridable}

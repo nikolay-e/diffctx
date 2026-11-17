@@ -1,0 +1,31 @@
+name: py_nested_function_shadowing_a_module_function_is_answered_too
+mode: symbol
+source: synthetic
+issue_state: open
+tags: [python, symbol, nested-function, local-of-definition, shadowing]
+# `helper` inside `outer` is a local of it and shadows the module-level `helper`: the
+# call on line 7 reaches the local, the one on line 10 the module function. The name
+# has a definition, so the answer must still name the local and its use.
+repo:
+  initial_files:
+    main.py: |
+      def helper():
+          pass
+
+
+      def outer():
+          def helper():
+              pass
+          helper()
+
+
+      outer()
+      helper()
+  commit_message: init
+query:
+  symbol: helper
+expect:
+  definitions: [main.py::helper]
+  relations:
+    - {from: main.py::outer, to: main.py::helper, kind: calls, resolution: resolved, site: 8}
+    - {from: main.py, to: main.py::helper, kind: calls, resolution: resolved, site: 12}
