@@ -600,25 +600,28 @@ impl<'a> TestsReach<'a> {
     }
 
     fn asserts_text_of(&self, f: &Fragment, link: &Link) -> bool {
+        let state: &'a ScoredState = self.state;
         self.text_reach
             .get_or_init(|| {
                 let mut reached = FxHashSet::default();
-                let mut frontier: Vec<&'a Fragment> = self
-                    .state
-                    .all_fragments
-                    .iter()
+                let mut frontier: Vec<&'a Fragment> = state
+                    .run
+                    .bounded(&state.all_fragments)
                     .filter(|held| self.asserted.iter().any(|run| run.enters(held)))
                     .collect();
                 for _ in 0..=MAX_TEST_HOPS {
-                    frontier = frontier
-                        .into_iter()
+                    frontier = state
+                        .run
+                        .bounded(frontier)
                         .filter(|held| reached.insert(held.id.clone()))
-                        .flat_map(|held| self.up(held, self.state, link).fragments)
+                        .flat_map(|held| self.up(held, state, link).fragments)
                         .collect();
                 }
+                crate::profile::count("impact.tests.asserted", reached.len() as u64);
                 reached
             })
             .contains(&f.id)
+            || state.run.tripped()
     }
 
     /// Ends the search above it: a test, one that names it, or a definition whose
