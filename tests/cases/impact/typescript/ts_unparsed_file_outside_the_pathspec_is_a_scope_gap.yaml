@@ -1,0 +1,35 @@
+name: ts_unparsed_file_outside_the_pathspec_is_a_scope_gap
+mode: impact
+source: synthetic
+tags: [typescript, absence-claim, scope]
+repo:
+  initial_files:
+    app/a.js: |
+      export function compute(x) {
+        return x + 1;
+      }
+    other/App.vue: |
+      <script>
+      import { compute } from "../app/a.js";
+      export default { methods: { run() { return compute(2); } } };
+      </script>
+  changed_files:
+    app/a.js: |
+      export function compute(x) {
+        return x + 2;
+      }
+  commit_message: Change compute
+query:
+  args: ["app"]
+expect:
+  changed: [app/a.js::compute]
+  relations: []
+  exact: true
+  coverage:
+    app/a.js::compute:
+      calls: partial
+  partial:
+    app/a.js::compute:
+      calls: outside_scope
+      reads: outside_scope
+  no_negative_claims: true
