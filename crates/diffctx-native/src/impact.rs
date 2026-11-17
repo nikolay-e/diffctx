@@ -3500,6 +3500,32 @@ pub fn build_impact(
         }
         one_project(test, caller) && references_module(test, &files, None, caller.path())
     };
+    // What the tests say of a caller: the ones that reach it, and why an absent
+    // link is or is not a finding.
+    // A caller of a changed fragment (`core`) is open too where a test asserts
+    // that fragment's text.
+    let test_links = |frag: &Fragment, core: Option<&Fragment>| -> Caller {
+        let tested = tests.tested_by(frag, state, &by_id, &link);
+        let registered_by = tested.is_empty().then(|| registration(frag)).flatten();
+        Caller {
+            file_tested: tested.is_empty()
+                && registered_by.is_none()
+                && tests.file_tested(frag, &reaches_file),
+            unread_test: tested
+                .is_empty()
+                .then(|| tests.unread_naming(frag, &rel(state, frag.path())))
+                .flatten(),
+            tests_open: tested.is_empty()
+                && core.map_or_else(
+                    || tests.open_above(frag, &link, true),
+                    |core| tests.caller_open(frag, core, &link),
+                ),
+            tests_partial: !tested.is_empty() && tests.nearest_only(frag, state, &by_id, &link),
+            registered_by,
+            tests: tested,
+            ..Caller::default()
+        }
+    };
     // A field changes its class too: how the class is built (a dataclass's
     // constructor, a column's default) is its callers' business, and what
     // reads the field is the field's (#388, #488); so does an attribute the
@@ -4129,26 +4155,12 @@ pub fn build_impact(
         let callers: Vec<Caller> = innermost(sources.iter().map(|(f, _, _)| *f).collect())
             .into_iter()
             .flat_map(|frag| {
-                let tested = tests.tested_by(frag, state, &by_id, &link);
                 let found = findings.get(&frag.id);
-                let registered_by = tested.is_empty().then(|| registration(frag)).flatten();
                 let row = Caller {
                     path: rel(state, frag.path()),
                     symbol: frag.symbol_name.clone(),
                     lines: lines_of(&frag.id),
                     weight: (weights[&frag.id] * 1e3).round() / 1e3,
-                    file_tested: tested.is_empty()
-                        && registered_by.is_none()
-                        && tests.file_tested(frag, &reaches_file),
-                    unread_test: tested
-                        .is_empty()
-                        .then(|| tests.unread_naming(frag, &rel(state, frag.path())))
-                        .flatten(),
-                    tests_open: tested.is_empty() && tests.caller_open(frag, core, &link),
-                    tests_partial: !tested.is_empty()
-                        && tests.nearest_only(frag, state, &by_id, &link),
-                    registered_by,
-                    tests: tested,
                     evidence: found.map_or("name", Reach::evidence),
                     reason: found.and_then(Reach::reason),
                     relation: found.map_or("call", |f| f.relation),
@@ -4165,6 +4177,7 @@ pub fn build_impact(
                             .into_iter()
                             .collect(),
                     },
+                    ..test_links(frag, Some(core))
                 };
                 let rest: Vec<Caller> = other_kinds
                     .get(&frag.id)
@@ -4644,7 +4657,7 @@ pub fn build_impact(
     // The definition has no fragment of its own (a one-line class holds its
     // method on its own lines), but each use sits in one: the caller's row is
     // that fragment's, with the test links it has.
-    let in_fragment = |mut row: Caller| -> Caller {
+    let in_fragment = |row: Caller| -> Caller {
         let Some(frag) = row.sites.first().and_then(|&site| {
             let frags = files
                 .fragments
@@ -4653,20 +4666,18 @@ pub fn build_impact(
         }) else {
             return row;
         };
-        row.symbol.clone_from(&frag.symbol_name);
-        row.lines = lines_of(&frag.id);
-        row.tests = tests.tested_by(frag, state, &by_id, &link);
-        row.registered_by = row.tests.is_empty().then(|| registration(frag)).flatten();
-        row.file_tested = row.tests.is_empty()
-            && row.registered_by.is_none()
-            && tests.file_tested(frag, &reaches_file);
-        row.unread_test = row
-            .tests
-            .is_empty()
-            .then(|| tests.unread_naming(frag, &rel(state, frag.path())))
-            .flatten();
-        row.tests_open = row.tests.is_empty() && tests.open_above(frag, &link, true);
-        row
+        let found = test_links(frag, None);
+        Caller {
+            symbol: frag.symbol_name.clone(),
+            lines: lines_of(&frag.id),
+            tests: found.tests,
+            registered_by: found.registered_by,
+            file_tested: found.file_tested,
+            unread_test: found.unread_test,
+            tests_open: found.tests_open,
+            tests_partial: found.tests_partial,
+            ..row
+        }
     };
     let mut traced_apart = 0u64;
     let mut apart_unreached: Vec<&decide::Changed> = Vec::new();
