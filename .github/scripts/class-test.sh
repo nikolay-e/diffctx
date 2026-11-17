@@ -2,7 +2,7 @@
 # The class-test gate (T9). A pull request that carries a `fix` commit touching
 # engine source (crates/*/src, src) must carry the test that would have caught
 # the fix's class: an added or changed case under tests/cases/{diff,impact,symbol}
-# or the metamorphic, fault or hook-property suite. That test must FAIL on the
+# or the metamorphic, fault, hook-property or gap-reasons suite. That test must FAIL on the
 # pull request's base and PASS on its head, or any unrelated test change would
 # satisfy the gate. At least one of them must be red on the base; the others
 # may be green there (a guard that keeps a right answer, a moved expectation),
@@ -37,7 +37,7 @@ PR_BODY=${PR_BODY:-}
 
 crate=crates/diffctx-native
 engine='^(crates/[^/]+/src/|src/)'
-suites='^crates/[^/]+/tests/(metamorphic|git_faults|hook_property)\.rs$'
+suites='^crates/[^/]+/tests/(metamorphic|git_faults|hook_property|gap_reasons)\.rs$'
 cases='^tests/cases/(diff|impact|symbol)/.+\.ya?ml$'
 suite_overlay='^(crates/[^/]+/tests/|tests/cases/)|^crates/[^/]+/Cargo\.toml$|^Cargo\.lock$'
 selection_cases='^tests/cases/diff/'
@@ -70,7 +70,7 @@ class_cases=$(awk -F'\t' '$1 != "D" {print $2}' <<<"$changes" | grep -E "$cases"
 class_suites=$(awk -F'\t' '$1 != "D" {print $2}' <<<"$changes" | grep -E "$suites" || true)
 if [[ -z "$class_cases$class_suites" ]]; then
   echo "::error::a fix commit touches engine source and no class test was added or changed" \
-    "(tests/cases/{diff,impact,symbol}/, metamorphic.rs, git_faults.rs, hook_property.rs)." \
+    "(tests/cases/{diff,impact,symbol}/, metamorphic.rs, git_faults.rs, hook_property.rs, gap_reasons.rs)." \
     "Add one, or write 'Class test: none — truth|leak|delivery gh#N' in the PR body."
   exit 1
 fi
