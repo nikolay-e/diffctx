@@ -121,13 +121,13 @@ const TABLE: &[Row] = &[
         Family::Swift,
         Part::Name,
         Implicit::Operator,
-        "subscript callAsFunction",
+        "subscript callAsFunction ~= buildBlock buildExpression buildOptional buildEither buildArray buildLimitedAvailability buildFinalResult buildPartialBlock",
     ),
     (
         Family::Swift,
         Part::Name,
         Implicit::Protocol,
-        "description debugDescription deinit makeIterator next",
+        "description debugDescription deinit makeIterator next hash hashValue",
     ),
     (
         Family::Terraform,
