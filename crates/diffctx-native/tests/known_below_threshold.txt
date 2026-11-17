@@ -206,3 +206,6 @@ impact/go/go_plugin_lookup_through_a_const_names_the_file  # a name held in a `c
 impact/swift/swift_hash_into_of_a_hashable_type_is_called_by_a_set_of_it  # `hash(into:)` is not in the Swift protocol row: a Set or a dictionary key calls it and the answer says nothing calls it
 impact/swift/swift_pattern_match_operator_is_called_by_a_case_pattern  # `~=` is not in the Swift operator row: a case pattern calls it and the answer says nothing calls it
 impact/swift/swift_result_builder_methods_are_called_by_the_builder_whatever_its_layout  # a result builder method is "registered by" only when its struct is not written on one line; the table names no builder method
+impact/rust/rust_cross_language_export_attribute_hedges_the_function  # a wasm_bindgen, pyfunction, pymethods or napi export is called from another language: "nothing calls them", not a hedge
+impact/c/c_asm_label_function_is_reached_by_its_label_from_outside  # a function with an __asm__ label is called by the label from another file: "nothing calls them", not a hedge
+impact/cpp/cpp_extern_c_function_is_reached_from_another_language  # an extern "C" function is called by name from another language: "nothing calls them", not a hedge
