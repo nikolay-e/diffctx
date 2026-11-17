@@ -80,7 +80,7 @@ fields, one v2 field. Dropped = derived or internal, with the reason.
 | `reason` | `reason` | kept, candidates only |
 | `relation` (`call`, `reference`, `implementation`, `reexports`; absent for `call`) | `class` (always present) | renamed |
 | `kind` | `kind` | kept: stated only where the (language, relation) cell is precise |
-| `tested_by`, `tested_via`, `file_tested`, `registered_by`, `unread_test` | `guard{state, test, via, registrar}` | merged; `state` is `linked`, `file_only`, `none`, `registered`, `entry_point` (a framework enters it; `registrar` is its sentence), `unread`, `no_tests` or `not_established` (the search above it is open, so no absence is claimed) |
+| `tested_by`, `tested_via`, `file_tested`, `registered_by`, `unread_test` | `guard{state, test, via, registrar}` | merged; `state` is `linked`, `file_only`, `none`, `registered`, `entry_point` (a framework enters it; `registrar` is its sentence), `unread`, `no_tests` or `not_established` (the search is open, so no absence is claimed) |
 | `folded_by` | `folded_by` | kept, only under `--unfold` |
 
 ### Gaps (`unresolved` sentences → `gaps`)

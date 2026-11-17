@@ -486,9 +486,9 @@ pub enum GuardState {
     Unread,
     /// No test file was in view.
     NoTests,
-    /// The search for a test is open above the definition: a test past the naming
-    /// bound, a use whose account holds a hedge, or a stopped run. A test may be
-    /// there, so no absence is claimed.
+    /// The search for a test is open: a test past the naming bound, a use whose
+    /// account holds a hedge, a stopped run, or text a test asserts that the
+    /// definition renders. A test may be there, so no absence is claimed.
     NotEstablished,
 }
 
