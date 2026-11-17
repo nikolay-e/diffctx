@@ -37,13 +37,3 @@ expect:
   decoys:
     hashicorp/consul/aws/main.tf::output.addr:
     - main.tf
-  coverage:
-    hashicorp/consul/aws/main.tf::output.addr:
-      calls: partial
-  partial:
-    # No module block in the repository sources the directory (the registry
-    # source is no path), so it is a root module, whose outputs whoever applies
-    # it reads (fj#193). The registry module `hashicorp/consul/aws` cannot
-    # reach a directory of this repository: it is no external caller.
-    hashicorp/consul/aws/main.tf::output.addr:
-      calls: not_traced
