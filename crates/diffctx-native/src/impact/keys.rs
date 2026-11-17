@@ -503,8 +503,9 @@ struct Reading {
     php: bool,
     /// Go: a `const`, a `var` or a `:=` holds a callable string, and a lookup's argument is one.
     go: bool,
-    /// Java or Kotlin: a string held in a value, a comparison, a `case` label or
-    /// an array is a name the program may look up by reflection.
+    /// Java or Kotlin: a string the tree holds as a name — a value, a comparison,
+    /// a `case` label, an array or an annotation element — may be looked up by
+    /// reflection.
     jvm: bool,
 }
 
@@ -621,38 +622,6 @@ fn data_provider_named(text: &str, name: &str) -> bool {
         .is_some_and(|provider| provider.rsplit("::").next() == Some(name))
 }
 
-/// Whether `before`, the text ahead of a string, ends where a JVM file holds
-/// a bare name as a value: the right side of `=` or `==` (a constant, a
-/// local, a comparison), a `case` label, an element of an array or of an
-/// annotation's.
-fn held_name(before: &str) -> bool {
-    let before = before.trim_end();
-    before.ends_with(['=', '{', '['])
-        || before
-            .strip_suffix("case")
-            .is_some_and(|rest| !rest.chars().next_back().is_some_and(word_char))
-}
-
-/// Whether `before`, the text ahead of a string, is inside an annotation's
-/// parentheses: the string may be an expression the framework evaluates.
-fn in_annotation(before: &str) -> bool {
-    let mut closed = 0usize;
-    for (at, c) in before.char_indices().rev() {
-        match c {
-            ')' => closed += 1,
-            '(' if closed > 0 => closed -= 1,
-            '(' => {
-                return before[..at]
-                    .trim_end()
-                    .trim_end_matches(|c: char| word_char(c) || c == '.')
-                    .ends_with('@');
-            }
-            _ => {}
-        }
-    }
-    false
-}
-
 /// Whether `text` spells `name` as a literal in a file read as `reading`.
 fn spells_literally(text: &str, name: &str, reading: Reading, held: &[String]) -> bool {
     let spans = quoted_spans(text);
@@ -684,7 +653,9 @@ fn spells_literally(text: &str, name: &str, reading: Reading, held: &[String]) -
             // a line of its own, a mapping's, an assignment's. `"a.f(x)"` is prose.
             let value =
                 qualified && tail.is_empty() && matches!(lead, None | Some('{' | ':' | '='));
-            let php_placed = held.iter().any(|h| h == inside);
+            // A held JVM string is a bare name; `Pricing.total(items)` in one is prose.
+            let held_here =
+                (reading.php || reading.go || !qualified) && held.iter().any(|h| h == inside);
             let indexed = !qualified && indexed_call(text, from, to);
             let placed = (reading.values
                 || indexed
@@ -692,9 +663,8 @@ fn spells_literally(text: &str, name: &str, reading: Reading, held: &[String]) -
                 || (matches!(lead, Some(':' | '=')) && labeled(&text[..from - 1]))
                 || (qualified && lead == Some('['))
                 || macro_value(&text[..from - 1])
-                || (reading.jvm && !qualified && held_name(&text[..from - 1]))
                 || value
-                || php_placed)
+                || held_here)
                 && !printed(&text[..from - 1]);
             // `pkg.cli.main:run` names the module `main`: what follows a dotted
             // path and a single colon is its member, never the path's last element.
@@ -717,12 +687,10 @@ fn spells_literally(text: &str, name: &str, reading: Reading, held: &[String]) -
                 && head.ends_with('.')
                 && tail.starts_with(['}', '!', ':', '.', '['])
                 && text[to + 1..].starts_with(".format(");
-            // `@PreAuthorize("hasRole('A') and @authz.canView(#id)")`: the name
-            // is called inside an expression, whatever else the string says.
-            let expression = reading.jvm
-                && before == Some('.')
-                && after == Some('(')
-                && in_annotation(&text[..from - 1]);
+            // `@PreAuthorize("hasRole('A') and @authz.canView(#id)")`: the tree
+            // holds the name the expression calls, whatever else the string says.
+            let expression =
+                before == Some('.') && after == Some('(') && held.iter().any(|h| h == name);
             return reference || query || formatted || expression;
         }
         if !reading.values {
@@ -947,7 +915,7 @@ impl LiteralNames {
                         })
                     };
                     let held = match reading {
-                        Some(r) if (r.php || r.go) && shape == Shape::Literal => cells
+                        Some(r) if (r.php || r.go || r.jvm) && shape == Shape::Literal => cells
                             .of(path)
                             .map_or_else(Vec::new, |cell| cell.callable_strings_at(path, *line)),
                         _ => Vec::new(),

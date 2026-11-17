@@ -12,8 +12,8 @@ use std::ops::Range;
 use tree_sitter::Node;
 
 use super::kotlin::{
-    Binding, Declaration, Import, InitCall, KotlinFacts, Receiver, Use, UseKind, Visibility, child,
-    line_of, push_use, squash, text, walk,
+    Binding, Declaration, Holds, Import, InitCall, KotlinFacts, Receiver, Use, UseKind, Visibility,
+    child, hold, line_of, push_use, squash, text, walk,
 };
 
 /// The types around a node: each name, its visibility, and whether it is an
@@ -45,6 +45,9 @@ pub(super) fn extract(root: Node, bytes: &[u8]) -> KotlinFacts {
             }
             "line_comment" | "block_comment" | "string_literal" | "text_block"
             | "character_literal" => {
+                if node.kind() == "string_literal" {
+                    hold(node, bytes, java_holds(&node, bytes), &mut facts.held);
+                }
                 facts.text.push(node.byte_range());
                 return None;
             }
@@ -77,6 +80,53 @@ pub(super) fn extract(root: Node, bytes: &[u8]) -> KotlinFacts {
         uses_at(&node, bytes, &mut facts.uses);
         Some(inner)
     })
+}
+
+/// Where a Java string literal names something: a variable's value, an
+/// operand of `==` or `equals`, a `case` label, an element of an array or of
+/// an annotation. Inside an annotation it may be an expression.
+fn java_holds(node: &Node, bytes: &[u8]) -> Holds {
+    let Some(parent) = node.parent() else {
+        return Holds::No;
+    };
+    let mut up = Some(parent);
+    while let Some(at) = up {
+        match at.kind() {
+            "annotation" => return Holds::Expression,
+            "element_value_pair"
+            | "element_value_array_initializer"
+            | "annotation_argument_list" => up = at.parent(),
+            _ => break,
+        }
+    }
+    let name = |n: Option<Node>| n.and_then(|n| text(n, bytes));
+    let held = match parent.kind() {
+        "variable_declarator" | "assignment_expression" | "switch_label" | "array_initializer" => {
+            true
+        }
+        "binary_expression" => matches!(
+            name(parent.child_by_field_name("operator")),
+            Some("==" | "!=")
+        ),
+        "argument_list" => parent
+            .parent()
+            .filter(|call| call.kind() == "method_invocation")
+            .is_some_and(|call| {
+                matches!(
+                    name(call.child_by_field_name("name")),
+                    Some("equals" | "equalsIgnoreCase")
+                )
+            }),
+        "method_invocation" => {
+            parent.child_by_field_name("object").map(|o| o.id()) == Some(node.id())
+                && matches!(
+                    name(parent.child_by_field_name("name")),
+                    Some("equals" | "equalsIgnoreCase")
+                )
+        }
+        _ => false,
+    };
+    if held { Holds::Name } else { Holds::No }
 }
 
 fn declaration_kind(node: &Node) -> Option<&'static str> {

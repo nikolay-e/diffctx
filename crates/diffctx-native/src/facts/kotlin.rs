@@ -198,9 +198,31 @@ pub struct KotlinFacts {
     pub bindings: Vec<Binding>,
     /// Comments and string text; `${…}` and `$name` inside a string are code.
     pub text: Vec<Range<usize>>,
+    /// Strings the program may look up by name, in source order.
+    pub held: Vec<HeldString>,
     /// Lines with an ERROR or MISSING node: what was read elsewhere is right,
     /// what sits there may be missing.
     pub error_lines: Vec<u32>,
+}
+
+/// A string literal in a place that names something: a variable's value, an
+/// operand of `==` or `equals`, a `case` label, an element of an array or of
+/// an annotation. `text` is the string, or — for an annotation's expression
+/// — a name it calls (`@authz.canView(#id)` holds `canView`).
+#[derive(Debug, Clone)]
+pub struct HeldString {
+    pub range: Range<usize>,
+    pub text: String,
+}
+
+/// The names `expression` calls as `.name(`.
+pub(super) fn called_names(expression: &str) -> impl Iterator<Item = &str> {
+    expression.match_indices('(').filter_map(|(at, _)| {
+        let head = &expression[..at];
+        let name = head.trim_end_matches(|c: char| c.is_alphanumeric() || c == '_');
+        let name_at = name.len();
+        (name_at < head.len() && name.ends_with('.')).then(|| &head[name_at..])
+    })
 }
 
 impl KotlinFacts {
@@ -341,7 +363,10 @@ pub(super) fn extract(root: Node, bytes: &[u8]) -> KotlinFacts {
                 facts.text.push(node.byte_range());
                 return None;
             }
-            "string_literal" | "character_literal" => string_text(node, &mut facts.text),
+            "string_literal" | "character_literal" => {
+                hold(node, bytes, kotlin_holds(&node, bytes), &mut facts.held);
+                string_text(node, &mut facts.text)
+            }
             _ => {}
         }
         if let Some(kind) = declaration_kind(&node) {
@@ -1229,6 +1254,80 @@ pub(super) fn push_use(
         at: at.start_byte() + opening,
         line: line_of(at),
     });
+}
+
+/// Records the string `node` as held, and the names it calls when it sits in
+/// an annotation (`Holds::Expression`).
+pub(super) fn hold(node: Node, bytes: &[u8], holds: Holds, out: &mut Vec<HeldString>) {
+    if holds == Holds::No {
+        return;
+    }
+    let Some(inner) = text(node, bytes)
+        .and_then(|t| t.get(1..t.len().saturating_sub(1)))
+        .filter(|t| !t.contains('$') && !t.is_empty())
+    else {
+        return;
+    };
+    let range = node.byte_range();
+    out.push(HeldString {
+        range: range.clone(),
+        text: inner.to_string(),
+    });
+    if holds == Holds::Expression {
+        out.extend(called_names(inner).map(|name| HeldString {
+            range: range.clone(),
+            text: name.to_string(),
+        }));
+    }
+}
+
+#[derive(PartialEq, Clone, Copy)]
+pub(super) enum Holds {
+    No,
+    Name,
+    Expression,
+}
+
+/// Where a Kotlin string literal names something: a property's value, an
+/// assignment, an operand of `==` or `equals`, a `when` condition, a
+/// collection literal, an annotation's argument.
+fn kotlin_holds(node: &Node, bytes: &[u8]) -> Holds {
+    let Some(parent) = node.parent() else {
+        return Holds::No;
+    };
+    let mut up = Some(parent);
+    while let Some(at) = up {
+        match at.kind() {
+            "annotation" => return Holds::Expression,
+            "value_argument"
+            | "value_arguments"
+            | "constructor_invocation"
+            | "collection_literal" => {
+                up = at.parent();
+            }
+            _ => break,
+        }
+    }
+    match parent.kind() {
+        "property_declaration"
+        | "assignment"
+        | "equality_expression"
+        | "when_condition"
+        | "collection_literal" => Holds::Name,
+        "value_argument" => {
+            let call = parent
+                .parent()
+                .and_then(|a| a.parent())
+                .and_then(|s| s.parent());
+            let equals = call
+                .and_then(|c| c.named_child(0))
+                .filter(|callee| callee.kind() == "navigation_expression")
+                .and_then(|callee| text(callee, bytes))
+                .is_some_and(|t| t.ends_with(".equals"));
+            if equals { Holds::Name } else { Holds::No }
+        }
+        _ => Holds::No,
+    }
 }
 
 pub(super) fn string_text(node: Node, out: &mut Vec<Range<usize>>) {
