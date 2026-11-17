@@ -1,0 +1,46 @@
+name: py_removed_required_field_reaches_every_construction_site
+mode: impact
+source: gh#400
+issue_state: closed
+tags: [python, removed-field, construction, control]
+repo:
+  initial_files:
+    svc/__init__.py: ""
+    svc/config.py: |
+      from pydantic_settings import BaseSettings
+
+
+      class AppSettings(BaseSettings):
+          alpha: str
+          bravo: str
+    svc/passes.py: |
+      from svc.config import AppSettings
+
+
+      def build():
+          return AppSettings(alpha="x", bravo="x")
+    svc/also.py: |
+      from svc.config import AppSettings
+
+
+      def build():
+          return AppSettings(alpha="y", bravo="y")
+  changed_files:
+    svc/config.py: |
+      from pydantic_settings import BaseSettings
+
+
+      class AppSettings(BaseSettings):
+          alpha: str
+  commit_message: "config: drop the required bravo setting"
+expect:
+  removed: [bravo]
+  # A field without a default is passed by every construction, whether or not
+  # the call names it: each construction site is a caller of the class.
+  relations:
+    - from: "svc/passes.py::build"
+      to: "svc/config.py::AppSettings"
+      kind: instantiates
+      resolution: resolved
+      site: 5
+    - {from: "svc/also.py::build", to: "svc/config.py::AppSettings", kind: instantiates, resolution: resolved, site: 5}
