@@ -33,3 +33,9 @@ expect:
     columns: []
   decoys:
     columns: [reports/summary.py]
+  partial:
+    # `df = pd.read_csv(path)`: nothing here says what an outside function hands
+    # back, so `df.columns` may or may not be a Table. The reader is not listed as
+    # a caller and the answer says the reads are not resolved, as gh#399 asks.
+    models/table.py::columns:
+      reads: unlanded
