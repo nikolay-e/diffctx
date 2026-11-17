@@ -13,6 +13,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use crate::facts::EntryKind;
 use crate::facts::framework::jvm;
 use crate::facts::{Fact, ImportKind, Scope};
+use crate::snapshot::workspace::dir_of;
 use crate::testfiles::{Bound, DeclaredTests};
 
 use super::mentions::{Naming, basename_of, commented, naming, path_search, starts_a_program};
@@ -143,7 +144,8 @@ fn is_document(path: &str) -> bool {
 }
 
 /// What the module-level imports of a Python file bind: the namespace its doctests
-/// run in. A relative import is left out; so is a star import, which binds no name.
+/// run in. A relative import is the package of `shown` moved up `relative - 1`
+/// levels, as the resolver reads it; a star import binds no name.
 fn module_namespace(shown: &str, text: &str) -> Vec<Bound> {
     let Some(blob) = crate::facts::local_facts(shown, text) else {
         return Vec::new();
@@ -152,18 +154,34 @@ fn module_namespace(shown: &str, text: &str) -> Vec<Bound> {
     for fact in &blob.facts {
         let Fact::Import(import) = fact else { continue };
         if import.enclosing != Scope::Module
-            || import.relative > 0
             || import.kind != ImportKind::Static
             || import.star.is_star()
         {
             continue;
         }
-        let module = import.module.as_str();
+        let module = if import.relative == 0 {
+            import.module.as_str().to_string()
+        } else {
+            let mut package = dir_of(shown);
+            for _ in 1..import.relative {
+                package = dir_of(package);
+            }
+            let package = package.replace('/', ".");
+            [package.as_str(), import.module.as_str()]
+                .iter()
+                .filter(|part| !part.is_empty())
+                .copied()
+                .collect::<Vec<_>>()
+                .join(".")
+        };
+        if module.is_empty() {
+            continue;
+        }
         if import.names.is_empty() {
             let (local, module) = match &import.default {
-                Some(alias) => (alias.as_str(), module),
+                Some(alias) => (alias.as_str(), module.as_str()),
                 None => {
-                    let head = module.split('.').next().unwrap_or(module);
+                    let head = module.split('.').next().unwrap_or(&module);
                     (head, head)
                 }
             };
@@ -176,7 +194,7 @@ fn module_namespace(shown: &str, text: &str) -> Vec<Bound> {
         for (name, alias) in &import.names {
             bound.push(Bound {
                 local: alias.as_ref().unwrap_or(name).to_string(),
-                module: module.to_string(),
+                module: module.clone(),
                 name: Some(name.to_string()),
             });
         }
