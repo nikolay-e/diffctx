@@ -181,3 +181,7 @@ impact/python/py_inherited_self_call_in_another_file_leaves_the_test_list_open  
 impact/python/py_operator_dunder_above_the_caller_leaves_the_test_list_open  # `x in span` reaches `index` through `__contains__`, which no call names: the list of tests claims no limit
 impact/python/py_test_at_the_nearest_hop_and_another_through_a_longer_path_is_open  # the walk stops at the nearest hop and the test one hop further is dropped without a word
 impact/typescript/ts_destructured_static_method_is_called_through_its_alias  # `const {normalizeArguments} = Request` reads the static method: the read is an unresolved row, not the resolved `reads` the case expects
+impact/web/web_server_template_code_in_page_text_is_a_possible_caller  # server template code in a page's text is read as prose, so the call in it is neither a caller nor an unresolved row
+impact/typescript/ts_unparsed_file_outside_the_pathspec_is_a_scope_gap  # an unparsed file outside the pathspec that spells the name is not named as a scope gap
+impact/terraform/tf_renamed_variable_leaves_the_input_that_set_it_named  # the old name of a renamed definition is not searched outside code, so the terragrunt input that set it is not named
+symbol/python/py_local_function_read_where_no_use_is_stated_stays_open  # a local's spelling that states no use is answered complete where the case declares the calls and reads open
