@@ -174,3 +174,6 @@ impact/python/py_getattr_with_a_string_prefix_discloses_the_dynamic_dispatch  # 
 impact/typescript/ts_caller_of_a_definition_whose_text_a_test_asserts_has_an_open_test_search  # a test asserts text the changed definition renders; its caller's row says "no static test link found" where a path the engine does not trace may reach it
 impact/python/py_doctest_on_the_caller_does_not_end_the_search_for_its_tests  # the caller's own doctest is the only test link the answer names: the search stops there and the test file that calls it under another name is never listed
 impact/python/py_nested_def_in_a_test_names_its_enclosing_test  # a def or class nested in a test function is named as the caller and as the test: the enclosing test function is the test
+impact/python/py_inherited_self_call_in_another_file_leaves_the_test_list_open  # the nearest test is listed as the whole list although the subclass in another file calls `visit` too, so the test through it is missing without a word
+impact/python/py_operator_dunder_above_the_caller_leaves_the_test_list_open  # `x in span` reaches `index` through `__contains__`, which no call names: the list of tests claims no limit
+impact/python/py_test_at_the_nearest_hop_and_another_through_a_longer_path_is_open  # the walk stops at the nearest hop and the test one hop further is dropped without a word

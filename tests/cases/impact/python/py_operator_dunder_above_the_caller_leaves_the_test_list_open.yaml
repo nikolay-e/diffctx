@@ -1,0 +1,69 @@
+name: py_operator_dunder_above_the_caller_leaves_the_test_list_open
+mode: impact
+source: synthetic
+issue_state: closed
+tags:
+- python
+- tests-reach
+- operator
+repo:
+  initial_files:
+    pkg/__init__.py: ""
+    pkg/span.py: |
+      class Span:
+          def __init__(self, n):
+              self.n = n
+
+          def index(self, value):
+              return self._near(value)
+
+          def _near(self, value):
+              return value % self.n
+
+          def __contains__(self, value):
+              try:
+                  self.index(value)
+              except ValueError:
+                  return False
+              return True
+    tests/test_span.py: |
+      from pkg.span import Span
+
+
+      def test_index():
+          assert Span(3).index(4) == 1
+
+
+      def test_contains():
+          assert 1 in Span(3)
+  changed_files:
+    pkg/span.py: |
+      class Span:
+          def __init__(self, n):
+              self.n = n
+
+          def index(self, value):
+              return self._near(value)
+
+          def _near(self, value):
+              extra = 0
+              return value % self.n
+
+          def __contains__(self, value):
+              try:
+                  self.index(value)
+              except ValueError:
+                  return False
+              return True
+  commit_message: name the unused extra
+expect:
+  changed:
+  - pkg/span.py::_near
+  exact: false
+  relations:
+  - {from: pkg/span.py::index, to: pkg/span.py::_near, kind: calls}
+  - {from: tests/test_span.py::test_index, to: pkg/span.py::index, kind: tests_reach}
+  # `x in span` runs `__contains__`, which calls `index`: no call names it, so the
+  # tests of `index` listed are the nearest and the search above is open.
+  tests_open:
+  - pkg/span.py::index

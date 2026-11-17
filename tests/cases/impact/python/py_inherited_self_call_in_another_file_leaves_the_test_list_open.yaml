@@ -1,0 +1,72 @@
+name: py_inherited_self_call_in_another_file_leaves_the_test_list_open
+mode: impact
+source: synthetic
+issue_state: closed
+tags:
+- python
+- tests-reach
+- self-dispatch
+repo:
+  initial_files:
+    pkg/__init__.py: ""
+    pkg/visitor.py: |
+      class NodeVisitor:
+          def get_visitor(self, node):
+              return getattr(self, "visit_" + type(node).__name__, None)
+
+          def visit(self, node):
+              found = self.get_visitor(node)
+              if found is not None:
+                  return found(node)
+              return None
+    pkg/compiler.py: |
+      from pkg.visitor import NodeVisitor
+
+
+      class CodeGenerator(NodeVisitor):
+          def visit_Name(self, node):
+              return node
+
+          def compile(self, node):
+              return self.visit(node)
+    pkg/api.py: |
+      from pkg.compiler import CodeGenerator
+
+
+      def render(node):
+          return CodeGenerator().compile(node)
+    tests/test_api.py: |
+      from pkg.api import render
+      from pkg.visitor import NodeVisitor
+
+
+      def test_render():
+          assert render(1) is None
+
+
+      def test_visit():
+          assert NodeVisitor().visit(1) is None
+  changed_files:
+    pkg/visitor.py: |
+      class NodeVisitor:
+          def get_visitor(self, node):
+              marker = 0
+              return getattr(self, "visit_" + type(node).__name__, None)
+
+          def visit(self, node):
+              found = self.get_visitor(node)
+              if found is not None:
+                  return found(node)
+              return None
+  commit_message: mark the lookup
+expect:
+  changed:
+  - pkg/visitor.py::get_visitor
+  exact: false
+  relations:
+  - {from: pkg/visitor.py::visit, to: pkg/visitor.py::get_visitor, kind: calls}
+  - {from: tests/test_api.py::test_visit, to: pkg/visitor.py::visit, kind: tests_reach}
+  # `test_render` reaches `visit` through the subclass in another file: the
+  # list names the nearest test and says the callers above it were not searched.
+  tests_open:
+  - pkg/visitor.py::visit

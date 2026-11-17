@@ -79,6 +79,7 @@ expect:
   entry_tested: [list_reviews]        # an entry role (route, command) names a test that reaches it
   entry_not_tested: [archive]         # one that names none
   tests_open: [shop/checkout.py::charge]  # a caller row whose test search is open, not a flat "no static test link"
+  tests_not_open: [shop/checkout.py::refund]  # a caller whose named tests are the whole search
   stale: [ops.md]
   not_stale: [README.md]
   named_by: [Dockerfile]
@@ -181,8 +182,11 @@ Everything is optional; an absent field asserts nothing.
   exact sets use `relations`.
 - `mention_class` reads the `class` of the row of `stale_references` or `named_by`
   that names the path; `named_by` lists `code`, `config` and `command` only.
-- `tests_open` reads the caller rows whose guard is `not_established`: a test may
-  reach the caller by a path nothing traces, so the row claims no absence.
+- `tests_open` reads the caller rows whose guard is `not_established`, or `linked`
+  with `open`: a test may reach the caller by a path nothing traces, or the tests
+  named are the nearest only, so the row claims neither an absence nor a whole list.
+  `tests_not_open` reads the `linked` rows without `open`: the list is the whole
+  search.
 - `entry_tested` / `entry_not_tested` read the entry role of a definition no
   caller lists (`entry_unlisted`, or `changed[].entry`): whether the role says
   `reachable from tests:`.
