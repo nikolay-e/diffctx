@@ -12,7 +12,8 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::facts::EntryKind;
 use crate::facts::framework::jvm;
-use crate::testfiles::DeclaredTests;
+use crate::facts::{Fact, ImportKind, Scope};
+use crate::testfiles::{Bound, DeclaredTests};
 
 use super::mentions::{Naming, basename_of, commented, naming, path_search, starts_a_program};
 use super::rust;
@@ -112,7 +113,8 @@ pub(super) fn doctest_runs(state: &ScoredState) -> Vec<Run> {
             doctest_runs_of(&mut runs, path, &shown, lines, &defined);
             if python_read.insert(path) {
                 if let Some(text) = state.run.source().read_to_string(Path::new(path)) {
-                    imported_doctest_runs(&mut runs, state, &shown, &text, true);
+                    let namespace = module_namespace(&shown, &text);
+                    imported_doctest_runs(&mut runs, state, &shown, &text, namespace);
                 }
             }
         }
@@ -125,7 +127,7 @@ pub(super) fn doctest_runs(state: &ScoredState) -> Vec<Run> {
             .read_to_string(&state.root_dir.join(document))
             .filter(|text| text.contains(">>>"))
         {
-            imported_doctest_runs(&mut runs, state, document, &text, false);
+            imported_doctest_runs(&mut runs, state, document, &text, Vec::new());
         }
     }
     runs
@@ -140,6 +142,48 @@ fn is_document(path: &str) -> bool {
     })
 }
 
+/// What the module-level imports of a Python file bind: the namespace its doctests
+/// run in. A relative import is left out; so is a star import, which binds no name.
+fn module_namespace(shown: &str, text: &str) -> Vec<Bound> {
+    let Some(blob) = crate::facts::local_facts(shown, text) else {
+        return Vec::new();
+    };
+    let mut bound = Vec::new();
+    for fact in &blob.facts {
+        let Fact::Import(import) = fact else { continue };
+        if import.enclosing != Scope::Module
+            || import.relative > 0
+            || import.kind != ImportKind::Static
+            || import.star.is_star()
+        {
+            continue;
+        }
+        let module = import.module.as_str();
+        if import.names.is_empty() {
+            let (local, module) = match &import.default {
+                Some(alias) => (alias.as_str(), module),
+                None => {
+                    let head = module.split('.').next().unwrap_or(module);
+                    (head, head)
+                }
+            };
+            bound.push(Bound {
+                local: local.to_string(),
+                module: module.to_string(),
+                name: None,
+            });
+        }
+        for (name, alias) in &import.names {
+            bound.push(Bound {
+                local: alias.as_ref().unwrap_or(name).to_string(),
+                module: module.to_string(),
+                name: Some(name.to_string()),
+            });
+        }
+    }
+    bound
+}
+
 /// The run each `>>>` example of `shown` makes of a function another file defines,
 /// the example's own imports saying which file.
 fn imported_doctest_runs(
@@ -147,9 +191,9 @@ fn imported_doctest_runs(
     state: &ScoredState,
     shown: &str,
     text: &str,
-    python: bool,
+    namespace: Vec<Bound>,
 ) {
-    for (row, module, name) in crate::testfiles::imported_doctest_calls(text, python) {
+    for (row, module, name) in crate::testfiles::imported_doctest_calls(text, namespace) {
         let module_path = module.replace('.', "/");
         let places = [
             format!("{module_path}.py"),
