@@ -1,0 +1,32 @@
+name: java_symbol_method_of_a_one_line_class_is_a_definition
+mode: symbol
+source: synthetic
+tags: [java, one-line, tests-reach]
+repo:
+  initial_files:
+    src/main/java/com/acme/lib/W.java: |
+      package com.acme.lib;
+      public class W { public int wm() { return 1; } }
+    src/main/java/com/acme/app/Use.java: |
+      package com.acme.app;
+      import com.acme.lib.W;
+      public class Use {
+        public int go() {
+          W w = new W();
+          return w.wm();
+        }
+      }
+    src/test/java/com/acme/app/UseTest.java: |
+      package com.acme.app;
+      import org.junit.jupiter.api.Test;
+      class UseTest {
+        @Test
+        void t() {
+          new Use().go();
+        }
+      }
+query: {symbol: wm}
+expect:
+  definitions: [src/main/java/com/acme/lib/W.java::W.wm]
+  callers: {wm: ["src/main/java/com/acme/app/Use.java::Use.go"]}
+  not_untested: [wm]

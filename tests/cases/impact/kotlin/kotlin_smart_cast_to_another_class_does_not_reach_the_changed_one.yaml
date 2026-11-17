@@ -1,0 +1,62 @@
+name: kotlin_smart_cast_to_another_class_does_not_reach_the_changed_one
+mode: impact
+source: synthetic
+tags: [kotlin, smart-cast, receiver, decoy]
+repo:
+  initial_files:
+    src/main/kotlin/com/acme/lib/Repo.kt: |
+      package com.acme.lib
+
+      class Repo {
+          fun load(): Int {
+              return 1
+          }
+      }
+
+      class Other {
+          fun load(): Int = 7
+      }
+    src/main/kotlin/com/acme/app/Use.kt: |
+      package com.acme.app
+
+      import com.acme.lib.Other
+      import com.acme.lib.Repo
+
+      class Use {
+          fun narrowed(x: Any): Int {
+              if (x is Repo) return x.load()
+              return 0
+          }
+
+          fun elsewhere(x: Any): Int {
+              if (x is Other) return x.load()
+              return 0
+          }
+
+          fun leaves(x: Any, o: Other): Int {
+              if (x is Repo) println("repo")
+              return o.load()
+          }
+      }
+  changed_files:
+    src/main/kotlin/com/acme/lib/Repo.kt: |
+      package com.acme.lib
+
+      class Repo {
+          fun load(): Int {
+              return 2
+          }
+      }
+
+      class Other {
+          fun load(): Int = 7
+      }
+  commit_message: "Repo.load returns 2"
+expect:
+  changed: [src/main/kotlin/com/acme/lib/Repo.kt::Repo.load]
+  relations:
+    - from: "src/main/kotlin/com/acme/app/Use.kt::Use.narrowed"
+      to: "src/main/kotlin/com/acme/lib/Repo.kt::Repo.load"
+      kind: calls
+      resolution: resolved
+      site: 8
