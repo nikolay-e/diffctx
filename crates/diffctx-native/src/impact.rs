@@ -4641,6 +4641,33 @@ pub fn build_impact(
             reason,
         ));
     }
+    // The definition has no fragment of its own (a one-line class holds its
+    // method on its own lines), but each use sits in one: the caller's row is
+    // that fragment's, with the test links it has.
+    let in_fragment = |mut row: Caller| -> Caller {
+        let Some(frag) = row.sites.first().and_then(|&site| {
+            let frags = files
+                .fragments
+                .get(crate::paths::join_native(&state.root_dir, &row.path).as_str())?;
+            cell_caller(frags, site).map(|f| lifted_caller(frags, f))
+        }) else {
+            return row;
+        };
+        row.symbol.clone_from(&frag.symbol_name);
+        row.lines = lines_of(&frag.id);
+        row.tests = tests.tested_by(frag, state, &by_id, &link);
+        row.registered_by = row.tests.is_empty().then(|| registration(frag)).flatten();
+        row.file_tested = row.tests.is_empty()
+            && row.registered_by.is_none()
+            && tests.file_tested(frag, &reaches_file);
+        row.unread_test = row
+            .tests
+            .is_empty()
+            .then(|| tests.unread_naming(frag, &rel(state, frag.path())))
+            .flatten();
+        row.tests_open = row.tests.is_empty() && tests.open_above(frag, &link, true);
+        row
+    };
     let mut traced_apart = 0u64;
     let mut apart_unreached: Vec<&decide::Changed> = Vec::new();
     for entry in &cell_apart {
@@ -4673,6 +4700,9 @@ pub fn build_impact(
         traced_apart += 1;
         let verdict = cell.verdict(entry);
         let mut sym = cell_symbol(entry, &verdict, format!("{:?}", entry.kind).to_lowercase());
+        let rows = std::mem::take(&mut sym.callers);
+        sym.callers = merge_by_symbol(rows.into_iter().map(in_fragment).collect());
+        sym.callers.sort_by_key(|c| relation_rank(c.relation));
         untraced.name_literals(&mut sym, entry, &verdict);
         untraced.name_text(&mut sym, &entry.name, verdict.names_quoted());
         let callerless = query.is_none()

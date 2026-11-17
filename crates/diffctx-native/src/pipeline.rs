@@ -850,7 +850,7 @@ fn shadowed_definitions<'f>(
                 .map(|n| n.as_str())
                 .collect::<Vec<_>>()
                 .join(".");
-            if d.local.name.as_str() != name || joined != container {
+            if d.local.name.as_str() != name || (!container.is_empty() && joined != container) {
                 continue;
             }
             let stands = fragments.iter().find(|f| {
