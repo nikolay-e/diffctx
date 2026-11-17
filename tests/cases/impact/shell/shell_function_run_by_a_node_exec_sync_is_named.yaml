@@ -1,0 +1,31 @@
+name: shell_function_run_by_a_node_exec_sync_is_named
+mode: impact
+source: synthetic
+tags: [shell, literal-name, shell-string, false-absence, javascript]
+repo:
+  initial_files:
+    lib/strings.sh: |
+      #!/usr/bin/env bash
+      slugify() {
+        echo "${1,,}"
+      }
+    scripts/slug.js: |
+      const { execSync } = require("child_process");
+
+      function slug() {
+        return execSync("slugify abc");
+      }
+      module.exports = { slug };
+  changed_files:
+    lib/strings.sh: |
+      #!/usr/bin/env bash
+      slugify() {
+        printf '%s\n' "${1,,}"
+      }
+  commit_message: "strings: slugify prints through printf"
+expect:
+  exact: false
+  discloses: true
+  no_negative_claims: true
+  relations:
+    - {from: scripts/slug.js, to: lib/strings.sh::slugify, kind: calls, resolution: unresolved}
