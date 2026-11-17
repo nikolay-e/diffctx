@@ -3750,7 +3750,7 @@ impl Cells {
             .map(|(path, _)| path.as_str().to_string())
             .collect();
         for entry in &listing.entries {
-            match Group::of_path(entry.path.as_str()) {
+            match Group::of_path(&entry.path) {
                 Some(group) => {
                     if !groups.contains(&group) {
                         groups.push(group);
@@ -3935,10 +3935,10 @@ mod tests {
             ("a.rb", Group::Language("ruby")),
         ];
         for (path, group) in groups {
-            assert_eq!(Group::of_path(path), Some(group), "{path}");
+            assert_eq!(Group::of_name(path), Some(group), "{path}");
             assert!(group.has_path(path), "{path}");
         }
-        assert_eq!(Group::of_path("LICENSE"), None);
+        assert_eq!(Group::of_name("LICENSE"), None);
     }
 
     #[test]

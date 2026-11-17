@@ -1037,7 +1037,7 @@ impl Files<'_> {
     /// spelling them.
     fn spells(&self, path: &str, words: &[&str]) -> bool {
         let shown = rel(self.state, path);
-        let Some(group) = crate::vocabulary::family::Group::of_path(&shown) else {
+        let Some(group) = crate::vocabulary::family::Group::of_name(&shown) else {
             return true;
         };
         let Some(tokens) = self.cells.group_tokens(self.state, group) else {
@@ -1485,12 +1485,12 @@ impl UnreadFiles {
                 if reads_a_name(path) && !holds_no_command(path) {
                     unread
                         .text
-                        .insert(crate::vocabulary::family::Group::of_path(path));
+                        .insert(crate::vocabulary::family::Group::of_name(path));
                 }
             } else if unread_code(path) {
                 unread
                     .code
-                    .insert(crate::vocabulary::family::Group::of_path(path));
+                    .insert(crate::vocabulary::family::Group::of_name(path));
             }
         }
         unread
@@ -1573,7 +1573,7 @@ fn unread_code(path: &str) -> bool {
     use crate::vocabulary::family::{Family, Group};
     is_code_file(path)
         && matches!(
-            Group::of_path(path),
+            Group::of_name(path),
             None | Some(Group::Language(_) | Group::Family(Family::Swift | Family::Shell))
         )
 }
@@ -1721,11 +1721,11 @@ impl UntracedNamers {
         if !nothing_known {
             return;
         }
-        let own = crate::vocabulary::family::Group::of_path(&sym.path);
+        let own = crate::vocabulary::family::Group::of_name(&sym.path);
         let named: Vec<UnanalysedFile> = self
             .naming(literal_base(name), |p| {
                 !is_code_file(p)
-                    || (unread_code(p) && crate::vocabulary::family::Group::of_path(p) != own)
+                    || (unread_code(p) && crate::vocabulary::family::Group::of_name(p) != own)
             })
             .into_iter()
             .map(|(path, line)| UnanalysedFile::new(path, "not_traced", vec![line]))
@@ -1778,10 +1778,10 @@ impl UntracedNamers {
         let Some(name) = spelled_name(core) else {
             return Vec::new();
         };
-        let own = crate::vocabulary::family::Group::of_path(&rel(state, core.path()));
+        let own = crate::vocabulary::family::Group::of_name(&rel(state, core.path()));
         self.named_in(name, |p| {
             !is_code_file(p)
-                || (unread_code(p) && crate::vocabulary::family::Group::of_path(p) != own)
+                || (unread_code(p) && crate::vocabulary::family::Group::of_name(p) != own)
         })
         .into_iter()
         .map(|(path, line)| UnanalysedFile::new(path, "not_traced", vec![line]))
@@ -1877,7 +1877,7 @@ fn unaccounted_rows(verdict: &decide::Verdict, own: &str) -> Vec<UnanalysedFile>
 /// answer prints it: what the token index holds, whatever a builder linked. A file
 /// of no group, or a group the run could not read, has none.
 fn spelling_files(state: &ScoredState, cells: &Cells, file: &str, names: &[String]) -> Vec<String> {
-    let Some(tokens) = crate::vocabulary::family::Group::of_path(file)
+    let Some(tokens) = crate::vocabulary::family::Group::of_name(file)
         .and_then(|group| cells.group_tokens(state, group))
     else {
         return Vec::new();
@@ -4407,7 +4407,7 @@ pub fn build_impact(
             && (verdict.as_ref().is_some_and(decide::Verdict::names_quoted)
                 || untraced
                     .unread
-                    .could_spell(crate::vocabulary::family::Group::of_path(&rel(
+                    .could_spell(crate::vocabulary::family::Group::of_name(&rel(
                         state,
                         core.path(),
                     ))));

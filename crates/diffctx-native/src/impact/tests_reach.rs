@@ -256,7 +256,7 @@ impl<'a> TestsReach<'a> {
     /// files of the caller's own group.
     pub(super) fn unread_naming(&self, caller: &Fragment, own: &str) -> Option<String> {
         let name = caller.symbol_name.as_deref().map(base_symbol)?;
-        let group = Group::of_path(own)?;
+        let group = Group::of_name(own)?;
         let tokens = self.cells.group_tokens(self.state, group)?;
         let names = Names::new([name]);
         self.unread
@@ -808,7 +808,7 @@ fn in_source_scopes(
         return Vec::new();
     }
     let names = Names::new(markers.iter().copied());
-    let spells = Group::of_path(shown)
+    let spells = Group::of_name(shown)
         .and_then(|group| cells.group_tokens(state, group))
         .and_then(|tokens| tokens.spells(shown, &names));
     if spells != Some(true) {
