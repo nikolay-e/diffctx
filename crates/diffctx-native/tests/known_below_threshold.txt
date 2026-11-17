@@ -168,9 +168,6 @@ impact/shell/sh_function_run_through_an_echo_function_of_the_script_is_a_caller 
 impact/shell/sh_function_run_through_an_xargs_function_of_the_script_is_a_caller  # the script defines `xargs`: the word after it is a possible call, said so (partial), but no resolved caller is named
 impact/typescript/ts_global_augmentation_of_a_builtin_type_is_called_through_it  # the call on a `string` receiver is a candidate of the member the global augmentation declares (possibly called), not a resolved caller: a builtin receiver carries no type to pick `String` by
 impact/typescript/ts_namespace_merged_into_a_class_in_another_file_reads_its_member_bare  # `defaults` read bare in another file's body of a namespace merged into the class `Foo` is a hedged read, not a resolved caller: the file's scope does not hold the other file's member
-impact/java/java_public_class_method_an_outside_subclass_could_reach_through_an_interface_is_hedged  # a public extensible class method no one calls is answered complete although an outside subclass may implement the interface
-impact/java/java_package_private_class_method_a_same_package_subclass_could_reach_is_hedged  # same for a package-private class and interface of one package
-impact/java/java_method_a_public_subclass_inherits_is_hedged_against_an_outside_implementer  # same for a method a public subclass inherits from a package-private class
 impact/c/go_cgo_call_of_a_changed_c_function_is_named  # a Go cgo call of a changed C function is no relation of the answer: it says nothing calls it
 impact/cpp/cpp_conversion_operators_beside_another_changed_member_are_rows  # a C++ conversion operator is no definition: the answer names only the member beside it
 impact/cpp/cpp_out_of_line_conversion_operator_beside_another_changed_member_is_a_row  # an out-of-line C++ conversion operator is no definition: the answer names only the member beside it
