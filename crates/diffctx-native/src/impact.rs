@@ -1578,7 +1578,7 @@ impl UntracedNamers {
     }
 
     /// `sym` with the files that spell `name` as a literal named in its answer.
-    fn name_literals(&self, sym: &mut ChangedSymbol, name: &str) {
+    fn name_literals(&self, sym: &mut ChangedSymbol, name: &str, verdict: &decide::Verdict) {
         // Terragrunt's `inputs` and a `.tftest.hcl`'s `variables` set a Terraform
         // module's variable by its name, in files the module's extractor never reads.
         let sets_variable = crate::languages::get_language_for_file(&sym.path) == Some("terraform");
@@ -1593,7 +1593,10 @@ impl UntracedNamers {
             .into_iter()
             .chain(assigned)
             .filter(|f| {
-                !sym.callers.iter().any(|c| c.path == f.path)
+                !f.lines
+                    .iter()
+                    .any(|line| verdict.names_another(&f.path, *line))
+                    && !sym.callers.iter().any(|c| c.path == f.path)
                     && !matches!(&sym.unresolved, Some(Unknown::Candidates { sites, .. })
                         if sites.iter().any(|s| s.path == f.path))
             })
@@ -4221,6 +4224,12 @@ pub fn build_impact(
         let mut outside_tests = 0;
         for (file, literal) in named {
             if !missed_in.iter().any(|m| m.path == file.path)
+                && !(literal
+                    && verdict.as_ref().is_some_and(|v| {
+                        file.lines
+                            .iter()
+                            .any(|line| v.names_another(&file.path, *line))
+                    }))
                 && !callers.iter().any(|c| c.path == file.path)
                 && !verdict
                     .as_ref()
@@ -4421,7 +4430,7 @@ pub fn build_impact(
         traced_apart += 1;
         let verdict = cell.verdict(entry);
         let mut sym = cell_symbol(entry, &verdict, format!("{:?}", entry.kind).to_lowercase());
-        untraced.name_literals(&mut sym, &entry.name);
+        untraced.name_literals(&mut sym, &entry.name, &verdict);
         let callerless = query.is_none()
             && sym.callers.is_empty()
             && sym.also_changed.is_empty()
@@ -4513,7 +4522,7 @@ pub fn build_impact(
         from_facts.extend(cell_removed.iter().filter_map(|entry| {
             let verdict = cells.of(&entry.file)?.verdict(entry);
             let mut sym = cell_symbol(entry, &verdict, "removed".to_string());
-            untraced.name_literals(&mut sym, &entry.name);
+            untraced.name_literals(&mut sym, &entry.name, &verdict);
             // A removed override was reached through the member it overrode: the
             // answer names that route, whatever else it could not tell.
             if let Some(via) = verdict.overridden_via() {

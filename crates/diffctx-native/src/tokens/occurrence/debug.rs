@@ -82,6 +82,9 @@ pub struct Accounted {
     pub callers: Vec<Use>,
     /// One of them is at a place the base resolved a use to what the range removed.
     pub stranded: bool,
+    /// The lines, at the head, whose quoted spelling resolved to another definition: a
+    /// literal on one of them is that use, not a mention the cell could not read.
+    pub elsewhere: HashSet<(RepoPath, u32)>,
 }
 
 #[derive(Default)]
@@ -90,6 +93,14 @@ struct Found {
     unread: HashMap<RepoPath, Loss>,
     mentions: usize,
     files: HashSet<RepoPath>,
+    elsewhere: HashSet<(RepoPath, u32)>,
+}
+
+/// Whether `bytes` of `text` is a whole quoted string.
+fn quoted(text: &[u8], bytes: &std::ops::Range<u32>) -> bool {
+    let (start, end) = (bytes.start as usize, bytes.end as usize);
+    let open = start.checked_sub(1).and_then(|at| text.get(at));
+    open.is_some_and(|quote| b"\"'`".contains(quote)) && text.get(end) == open
 }
 
 fn label(definition: &Definition) -> String {
@@ -255,6 +266,11 @@ impl Shadow<'_> {
             whole,
             callers: Vec::new(),
             stranded: false,
+            elsewhere: if side == SideTag::Head {
+                found.elsewhere
+            } else {
+                HashSet::new()
+            },
         }
     }
 
@@ -320,6 +336,13 @@ impl Shadow<'_> {
                 }
                 if let Outcome::Alias(alias) = &entry.outcome {
                     aliases.push(alias.clone());
+                }
+                if matches!(entry.outcome, Outcome::NotOurs(Witness::OtherDefinition(_)))
+                    && quoted(&text, &entry.occurrence.bytes)
+                {
+                    found
+                        .elsewhere
+                        .insert((entry.occurrence.file.clone(), entry.occurrence.line));
                 }
                 found.entries.push(entry);
             }
