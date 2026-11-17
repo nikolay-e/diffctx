@@ -59,6 +59,9 @@ fn repo_with_pending_change() -> TempDir {
 struct Hook {
     stdout: String,
     code: Option<i32>,
+    /// The event and command it answered, and the hook's own log line for the
+    /// run: what a silent answer's failure names, so a red reads itself.
+    call: String,
 }
 
 fn hook_with(repo: &Path, cache: &Path, event: &str, extra: &[&str], stdin: &str) -> Hook {
@@ -92,9 +95,18 @@ fn hook_in_env(
         .write_all(stdin.as_bytes())
         .unwrap();
     let out = child.wait_with_output().unwrap();
+    let command = serde_json::from_str::<serde_json::Value>(stdin)
+        .ok()
+        .and_then(|doc| doc["tool_input"]["command"].as_str().map(str::to_string))
+        .unwrap_or_default();
+    let logged = std::fs::read_to_string(cache.join("diffctx").join("hook-runs.log"))
+        .ok()
+        .and_then(|log| log.lines().last().map(str::to_string))
+        .unwrap_or_else(|| "no log line".to_string());
     Hook {
         stdout: String::from_utf8(out.stdout).unwrap(),
         code: out.status.code(),
+        call: format!("{event} `{command}`, its log line: {logged}"),
     }
 }
 
@@ -118,14 +130,15 @@ fn payload(repo: &Path, command: &str) -> String {
 }
 
 fn output_of(h: &Hook, event: &str) -> serde_json::Value {
-    let doc: serde_json::Value = serde_json::from_str(h.stdout.trim()).expect("hook JSON");
+    let doc: serde_json::Value = serde_json::from_str(h.stdout.trim())
+        .unwrap_or_else(|_| panic!("no hook JSON: {:?} from {}", h.stdout, h.call));
     assert_eq!(doc["hookSpecificOutput"]["hookEventName"], event);
     doc["hookSpecificOutput"].clone()
 }
 
 fn context_of(h: &Hook) -> String {
     let doc: serde_json::Value = serde_json::from_str(h.stdout.trim())
-        .unwrap_or_else(|_| panic!("no hook JSON: {:?}", h.stdout));
+        .unwrap_or_else(|_| panic!("no hook JSON: {:?} from {}", h.stdout, h.call));
     doc["hookSpecificOutput"]["additionalContext"]
         .as_str()
         .unwrap()
