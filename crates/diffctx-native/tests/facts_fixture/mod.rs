@@ -274,6 +274,7 @@ fn definition(
         body_hash: hash_tokens(tokens.iter().map(Vec::as_slice)).unwrap_or(0),
         text_hash: hash_text(text[from..last.end].as_bytes()),
         doc_hash: doc,
+        initializer: Default::default(),
     }
 }
 

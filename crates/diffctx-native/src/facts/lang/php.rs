@@ -535,6 +535,7 @@ impl<'t> Walker<'t> {
             body_hash: body.map_or(0, |b| hash_tree(self.bytes, b, |n| is_member(members, n))),
             text_hash: hash_outside(self.bytes, node, members),
             doc_hash: self.doc_hash(doc),
+            initializer: Default::default(),
         }));
         key
     }
@@ -821,6 +822,7 @@ impl<'t> Walker<'t> {
             body_hash: value.map_or(0, |v| hash_tree(self.bytes, v, |_| false)),
             text_hash: hasher.finish().unwrap_or(0),
             doc_hash: self.doc_hash(doc),
+            initializer: Default::default(),
         }));
         key
     }
@@ -1017,6 +1019,7 @@ impl<'t> Walker<'t> {
                     body_hash: 0,
                     text_hash: hash_text(self.text(parameter).as_bytes()),
                     doc_hash: self.doc_hash(doc),
+                    initializer: Default::default(),
                 }));
             }
         }

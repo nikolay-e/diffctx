@@ -19,8 +19,9 @@ use super::merge_ranges;
 use crate::facts::framework;
 use crate::facts::{
     BlobFacts, ComputedImport, Def, DefKind, Disambig, Export, Extractor, Fact, Import, ImportKind,
-    Language, Local, LocalKey, LocalKind, ModulePath, Name, Namespace, PathMention, Receiver, Ref,
-    Scope, Span, Star, TypeName, UseKind, Visibility, expired, hash_text, hash_tokens,
+    Initializer, Language, Local, LocalKey, LocalKind, ModulePath, Name, Namespace, PathMention,
+    Receiver, Ref, Scope, Span, Star, TypeName, UseKind, Visibility, expired, hash_text,
+    hash_tokens,
 };
 use crate::snapshot::RunBudget;
 
@@ -2662,6 +2663,7 @@ impl<'t> Declarer<'t> {
                 } else {
                     entry.spec.visibility
                 };
+            let initializer = initializer(&entry.spec);
             defs.push(Def {
                 local,
                 kind: entry.spec.kind,
@@ -2679,6 +2681,7 @@ impl<'t> Declarer<'t> {
                 body_hash,
                 text_hash,
                 doc_hash: entry.doc,
+                initializer,
             });
         }
         Declared {
@@ -2688,6 +2691,23 @@ impl<'t> Declarer<'t> {
             module_types,
             declarators,
         }
+    }
+}
+
+/// What a declarator's name is bound to: an object literal that spreads nothing
+/// at its own level holds exactly the keys it writes.
+fn initializer(spec: &Spec<'_>) -> Initializer {
+    let named_by_declarator = spec.node.kind() == "variable_declarator"
+        && field(spec.node, "name") == Some(spec.name_node);
+    match spec.body {
+        Body::Whole(value)
+            if named_by_declarator
+                && value.kind() == "object"
+                && kids(value).iter().all(|k| k.kind() != "spread_element") =>
+        {
+            Initializer::ObjectLiteral
+        }
+        _ => Initializer::Other,
     }
 }
 
