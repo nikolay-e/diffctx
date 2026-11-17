@@ -2024,6 +2024,38 @@ fn a_short_name_quoted_in_a_parsed_file_is_no_complete_zero() {
     assert!(!hedged("print(\"the tax is due\")"));
 }
 
+/// A language whose parsed files hide a region from their cell (a C macro body, a
+/// shell command word) can spell a removed name in a sibling of its own group: the
+/// hedge stays there, and a header alone, with no such sibling, is a complete zero.
+#[test]
+fn a_removed_name_too_common_to_search_hedges_beside_a_sibling_that_hides_a_region() {
+    let header = |field: &str| format!("struct ctx {{\n{field}    int user;\n}};\n");
+    let alone = repo(
+        &[("src/ctx.h", &header("    int request;\n"))],
+        &[("src/ctx.h", &header(""))],
+    );
+    let doc = impact_json(alone.path());
+    assert!(
+        !doc["definitions"].to_string().contains("name_unsearched"),
+        "{doc:#}"
+    );
+
+    let with_macro = repo(
+        &[
+            ("src/ctx.h", &header("    int request;\n")),
+            ("src/req.c", "#define REQ(c) ((c)->request)\n"),
+        ],
+        &[("src/ctx.h", &header(""))],
+    );
+    let doc = impact_json(with_macro.path());
+    assert!(
+        doc["definitions"][0]["gaps"]
+            .to_string()
+            .contains("name_unsearched"),
+        "{doc:#}"
+    );
+}
+
 /// Whether a definition says no binding model reads its language.
 fn not_modelled(definition: &serde_json::Value) -> bool {
     definition["gaps"]
