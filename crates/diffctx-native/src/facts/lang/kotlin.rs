@@ -47,6 +47,7 @@ use super::jvm::shared_reader_methods;
 use super::{ERROR_RANGES_KEPT, LineStarts, parse_tree};
 use crate::facts::framework;
 use crate::facts::kotlin as old;
+use crate::facts::model::CallableString;
 use crate::facts::{
     BlobFacts, Def, DefKind, Disambig, EntryKind, EntryPoint, Export, Extractor, Fact, Import,
     ImportKind, Language, Local, LocalKey, LocalKind, ModulePath, Name, Namespace, Receiver, Ref,
@@ -253,6 +254,7 @@ impl<'a> Reader<'a> {
             return;
         }
         self.locals();
+        self.held_strings();
     }
 
     // ---- package and imports
