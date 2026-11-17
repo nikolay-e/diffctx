@@ -133,6 +133,16 @@ pub struct Def {
     pub text_hash: u64,
     /// The docstring or doc comment, as tokens: semantics, not layout (#637).
     pub doc_hash: Option<u64>,
+    /// What a name bound to a value is initialised with, as the tree states it.
+    pub initializer: Initializer,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default, Serialize, Deserialize)]
+pub enum Initializer {
+    #[default]
+    Other,
+    /// An object literal that spreads nothing at its own level.
+    ObjectLiteral,
 }
 
 /// Who owns a site.

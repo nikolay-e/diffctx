@@ -93,6 +93,7 @@ fn template_facts(reading: &config::Reading, source: &str) -> Vec<Fact> {
             body_hash: hash_tokens(text.split_whitespace().map(str::as_bytes)).unwrap_or(0),
             text_hash: hash_text(text.as_bytes()),
             doc_hash: None,
+            initializer: Default::default(),
         }));
         locals.push(local);
     }
@@ -161,6 +162,7 @@ fn walk(node: &Node, path: &mut Vec<Name>, source: &str, facts: &mut Vec<Fact>, 
             body_hash: tree_hash(&entry.value),
             text_hash: hash_text(slice(source, &span).as_bytes()),
             doc_hash: None,
+            initializer: Default::default(),
             span,
         }));
         if matches!(entry.value.value, Value::Map(_)) {

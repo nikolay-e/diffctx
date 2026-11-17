@@ -1773,6 +1773,7 @@ impl<'t> Walker<'t> {
             body_hash,
             text_hash,
             doc_hash: None,
+            initializer: Default::default(),
         }));
     }
 
@@ -1917,6 +1918,7 @@ impl<'t> Walker<'t> {
             body_hash,
             text_hash: self.text_hash(outer, def),
             doc_hash: doc.map(|d| self.doc_hash(d)),
+            initializer: Default::default(),
         }));
         let inner = Cx {
             scope: Scope::Def(known.key.clone()),

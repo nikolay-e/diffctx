@@ -130,6 +130,7 @@ pub(super) fn facts_of_reading(
             body_hash: tree_hash(found.node),
             text_hash: hash_text(slice(source, &found.object.site).as_bytes()),
             doc_hash: None,
+            initializer: Default::default(),
         }));
         let typed = config::extract(&found, &enclosing, k8s::references());
         let sites: Vec<Range<u32>> = typed.iter().map(|r| r.site.bytes.clone()).collect();
@@ -183,6 +184,7 @@ pub(super) fn facts_of_reading(
                 body_hash: tree_hash(labels),
                 text_hash: hash_text(slice(source, &labels.span).as_bytes()),
                 doc_hash: None,
+                initializer: Default::default(),
             }));
             facts.push(Fact::ConfigLabels(Labels {
                 site: labels.span.clone(),
