@@ -28,8 +28,8 @@ repo:
   commit_message: "base: widgets start not ready"
 expect:
   relations:
-    - from: "widgets/build.py"
+    - from: "widgets/build.py::Dynamic"
       to: "widgets/base.py::Base"
       kind: passes_as_value
       resolution: resolved
-      site: 9
+      site: 8
