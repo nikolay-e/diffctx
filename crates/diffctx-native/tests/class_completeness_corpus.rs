@@ -301,7 +301,6 @@ fn ask(planted: &Planted, case: &Case) -> Result<Option<Value>, String> {
     args.extend(["--budget".into(), "1000000".into()]);
     let output: Output = diffctx_unclocked()
         .current_dir(planted.tmp.path().join("repo"))
-        .arg(".")
         .args(&args)
         .env("GIT_CONFIG_GLOBAL", "/dev/null")
         .env("GIT_CONFIG_NOSYSTEM", "1")
