@@ -227,6 +227,11 @@ pub enum Gap {
         directories: Vec<String>,
         total: usize,
     },
+    /// The name is too short or too common to search as text: where a script, a
+    /// template or a string spells it was not looked for.
+    NameUnsearched {
+        name: String,
+    },
 }
 
 impl From<crate::facts::Delta> for Delta {
@@ -335,6 +340,10 @@ impl std::fmt::Display for Gap {
                     more => write!(f, " and {more} more"),
                 }
             }
+            Self::NameUnsearched { name } => write!(
+                f,
+                "`{name}` is too short or too common to search as text: a script, a template or a string that spells it was not looked for"
+            ),
         }
     }
 }
@@ -372,6 +381,7 @@ impl Gap {
             Self::ExternalSource { .. } => 18,
             Self::SourceFlag { .. } => 19,
             Self::UnreadDirectories { .. } => 21,
+            Self::NameUnsearched { .. } => 22,
         }
     }
 
@@ -421,6 +431,9 @@ impl Gap {
             decide::Gap::UnreadDirectories { directories, total } => Self::UnreadDirectories {
                 directories: directories.clone(),
                 total: *total,
+            },
+            decide::Gap::NameUnsearched => Self::NameUnsearched {
+                name: name.to_string(),
             },
         }
     }

@@ -493,6 +493,7 @@ fn class_of_gap(gap: &Value) -> Option<UnknownClass> {
         "not_modelled" => Some(UnknownClass::NotModelled),
         "unlanded" if count(gap, "uses") > COMMON_WORD_LINES => Some(UnknownClass::CommonWord),
         "unlanded" => Some(UnknownClass::UnresolvedReads),
+        "name_unsearched" => Some(UnknownClass::CommonWord),
         _ => None,
     }
 }

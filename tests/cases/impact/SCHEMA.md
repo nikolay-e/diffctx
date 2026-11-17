@@ -155,7 +155,8 @@ Everything is optional; an absent field asserts nothing.
 - `removed: []` and `unknowns: {}` mean exactly none; a non-empty list or map
   asserts membership.
 - `unknowns` classes: `not_modelled`, `dispatched`, `ambiguous`,
-  `common_word`, `unresolved_reads`, `overridable`. Keys are a bare name or a
+  `common_word` (a name too common to trace, or too short or common to search
+  as text), `unresolved_reads`, `overridable`. Keys are a bare name or a
   path.
 - `coverage` per (target, relation kind): `complete` holds when the answer
   names no unknown, gap, limit or unanalysed file for the target (and, for
