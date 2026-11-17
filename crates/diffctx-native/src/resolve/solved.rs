@@ -21,6 +21,7 @@ pub struct Solved {
     by_target: HashMap<DefKey, Vec<usize>>,
     losses: Vec<Loss>,
     read: Vec<RepoPath>,
+    open_routes: HashMap<DefKey, String>,
 }
 
 impl Solved {
@@ -43,7 +44,21 @@ impl Solved {
             by_target,
             losses,
             read,
+            open_routes: HashMap::new(),
         }
+    }
+
+    /// Sets the interface each public Java method may be reached through by a class
+    /// outside the repository.
+    pub(super) fn with_open_routes(mut self, routes: HashMap<DefKey, String>) -> Self {
+        self.open_routes = routes;
+        self
+    }
+
+    /// The interface a class outside the repository could implement to reach a public
+    /// Java method nothing in the repository calls through it.
+    pub fn open_route(&self, key: &DefKey) -> Option<&str> {
+        self.open_routes.get(key).map(String::as_str)
     }
 
     pub fn bindings(&self) -> &[Binding] {
