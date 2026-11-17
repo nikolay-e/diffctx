@@ -200,3 +200,6 @@ impact/php/php_event_listener_attribute_method_is_an_entry_point  # an `#[AsEven
 impact/php/php_callable_string_on_its_own_line_names_the_function  # a string on the line after `'callback' =>` is read by the text before it: "nothing calls them", not a hedge
 impact/php/php_callable_string_after_a_comment_in_an_array_names_the_function  # a comment between `=>` and the string hides the array position: "nothing calls them", not a hedge
 impact/php/php_callable_string_in_a_multi_line_array_names_the_function  # an element of a multi-line array literal is no argument of its line: "nothing calls them", not a hedge
+impact/go/go_exported_function_called_from_c_is_named  # a `//export`ed Go function the C file calls by name is answered as called by nothing
+impact/go/go_function_called_only_from_assembly_is_named  # `CALL ·Helper(SB)` in a `.s` file is no caller and no named file: the answer says nothing calls the function
+impact/go/go_plugin_lookup_through_a_const_names_the_file  # a name held in a `const` and looked up in the package is not a literal the search reads
