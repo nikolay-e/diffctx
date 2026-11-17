@@ -84,7 +84,7 @@ pub(super) fn class_of(
         Class::Data
     } else if is_document(path)
         || matches!(extension(path).as_str(), "diff" | "patch")
-        || commented_in(path, text)
+        || (commented_in(path, text) && comment_syntax_known(path))
         || prints_a_name(text)
         || (!is_code_file(path) && token.is_some_and(|t| is_prose_about(text, t)))
     {
@@ -96,6 +96,16 @@ pub(super) fn class_of(
     } else {
         Class::Config
     }
+}
+
+/// Whether the file's language, a config or a script says which lines are comments.
+/// A source in a language nothing here reads (a `.jsonnet`) has none: its `//` or `#`
+/// line may be code, and a path spelled there is named, not set aside.
+fn comment_syntax_known(path: &str) -> bool {
+    extension(path).is_empty()
+        || is_code_file(path)
+        || is_config_file(path)
+        || crate::languages::get_language_for_file(path).is_some()
 }
 
 /// A line that prints words (`echo lib.sh is mentioned`) names the path to the
