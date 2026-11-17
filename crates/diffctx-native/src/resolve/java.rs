@@ -70,14 +70,31 @@ pub(super) fn solve(
     reader: &SnapshotReader,
     files: &[FileFacts],
     foreign: &[FileFacts],
-) -> (Vec<Definition>, Vec<Binding>, bool, Vec<Loss>) {
+) -> Solution {
     if files.is_empty() {
-        return (Vec::new(), Vec::new(), false, Vec::new());
+        return Solution::default();
     }
     let index = Index::build(files.to_vec(), foreign.to_vec(), &ctx.workspace);
     let engine = Engine::new(index, &ctx.workspace, reader, side);
     let (definitions, bindings, stopped) = engine.run(ctx);
-    (definitions, bindings, stopped, engine.losses.take())
+    Solution {
+        definitions,
+        bindings,
+        stopped,
+        losses: engine.losses.take(),
+        open_routes: engine.open_routes(),
+    }
+}
+
+/// What the Java engine settled: the bindings and, for each public method a class
+/// outside the repository could reach through an interface, that interface.
+#[derive(Default)]
+pub(super) struct Solution {
+    pub definitions: Vec<Definition>,
+    pub bindings: Vec<Binding>,
+    pub stopped: bool,
+    pub losses: Vec<Loss>,
+    pub open_routes: HashMap<DefKey, String>,
 }
 
 // ---- the header of a definition
@@ -1371,6 +1388,77 @@ impl<'w> Engine<'w> {
             }
         }
         found
+    }
+
+    /// The interface of the repository through which a subclass the repository
+    /// does not hold could reach each public instance method of a class: it
+    /// implements an interface that declares the method's name, in a package that
+    /// sees both, and inherits the method.
+    fn open_routes(&self) -> HashMap<DefKey, String> {
+        let mut routes = HashMap::new();
+        for (declared, rec) in self.ix.defs.iter().enumerate() {
+            let interface = self
+                .holder_of(declared)
+                .filter(|h| self.ix.defs[*h].def.kind == DefKind::Interface);
+            let Some(interface) = interface.filter(|_| rec.def.kind == DefKind::Method) else {
+                continue;
+            };
+            for id in self
+                .ix
+                .members
+                .get(&rec.def.local.name)
+                .into_iter()
+                .flatten()
+            {
+                let method = &self.ix.defs[*id];
+                let holder = self.holder_of(*id).filter(|h| {
+                    self.ix.defs[*h].def.kind == DefKind::Class
+                        && !self.is_subtype(*h, interface, 0)
+                });
+                let Some(holder) = holder.filter(|_| {
+                    method.def.kind == DefKind::Method
+                        && method.sig.has("public")
+                        && !method.sig.has("static")
+                        && !self.ix.files[method.file].foreign
+                }) else {
+                    continue;
+                };
+                let open = std::iter::once(holder)
+                    .chain(self.descendants(holder))
+                    .any(|class| self.extensible(class) && self.usable_together(class, interface));
+                if open {
+                    let name = self.ix.defs[interface].def.local.name.as_str();
+                    routes
+                        .entry(method.key.clone())
+                        .or_insert_with(|| format!("`{name}`"));
+                }
+            }
+        }
+        routes
+    }
+
+    /// Whether code outside the repository can extend the type.
+    fn extensible(&self, class: usize) -> bool {
+        let rec = &self.ix.defs[class];
+        rec.def.kind == DefKind::Class
+            && !rec.def.local.name.as_str().starts_with("new ")
+            && rec.sig.keyword.as_deref() != Some("record")
+            && !(rec.sig.has("final") || rec.sig.has("sealed"))
+    }
+
+    /// Whether one class can implement the interface and extend the other: neither is
+    /// private, and the package-private ones share a package.
+    fn usable_together(&self, class: usize, interface: usize) -> bool {
+        let held = [&self.ix.defs[class], &self.ix.defs[interface]];
+        let mut packages = held
+            .iter()
+            .filter(|rec| rec.def.visibility == Visibility::Package)
+            .map(|rec| &self.ix.files[rec.file].package);
+        held.iter()
+            .all(|rec| rec.def.visibility != Visibility::Private)
+            && packages
+                .next()
+                .is_none_or(|first| packages.all(|other| other == first))
     }
 
     /// The types that inherit from `class`, directly or not.
