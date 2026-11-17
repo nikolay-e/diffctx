@@ -871,7 +871,7 @@ impl LiteralNames {
 
     /// The files that spell `name` as a literal, one line each.
     pub(super) fn naming(&self, name: &str) -> Vec<(String, u32)> {
-        let mut named = self.rows.get(name).cloned().unwrap_or_default();
+        let mut named = self.rows.get(name).map_or_else(Vec::new, Clone::clone);
         named.sort();
         named
     }
