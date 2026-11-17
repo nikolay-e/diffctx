@@ -1,0 +1,40 @@
+name: ts_workspace_member_import_without_a_declared_dependency_is_a_caller
+mode: impact
+source: synthetic
+tags:
+- typescript
+- workspace
+- monorepo
+- hoisting
+repo:
+  initial_files:
+    package.json: |
+      {"name":"root","private":true,"workspaces":["packages/*"]}
+    packages/lib/package.json: |
+      {"name":"@acme/lib","main":"src/index.ts"}
+    packages/lib/src/index.ts: |
+      export function compute(x: number): number {
+        return x;
+      }
+    packages/app/package.json: |
+      {"name":"@acme/app"}
+    packages/app/src/use.ts: |
+      import { compute } from "@acme/lib";
+
+      export const run = () => compute(1);
+  changed_files:
+    packages/lib/src/index.ts: |
+      export function compute(x: number): number {
+        return x + 1;
+      }
+  commit_message: change compute
+expect:
+  changed:
+  - packages/lib/src/index.ts::compute
+  exact: false
+  relations:
+  - from: packages/app/src/use.ts::run
+    to: packages/lib/src/index.ts::compute
+    kind: calls
+    resolution: resolved
+    site: 3
