@@ -1,0 +1,39 @@
+name: py_eval_of_a_built_string_hedges_the_names_of_its_file
+mode: impact
+source: synthetic
+issue_state: open
+tags: [python, eval, dynamic-name, coverage]
+repo:
+  initial_files:
+    main.py: |
+      def area():
+          pass
+
+
+      def volume():
+          pass
+
+
+      measure = "area"
+      eval(measure + "()")
+  changed_files:
+    main.py: |
+      def area():
+          return 1
+
+
+      def volume():
+          pass
+
+
+      measure = "area"
+      eval(measure + "()")
+  commit_message: "main: area returns one"
+expect:
+  changed: [main.py::area]
+  discloses: true
+  no_negative_claims: true
+  partial:
+    main.py::area:
+      calls: not_traced
+      reads: not_traced

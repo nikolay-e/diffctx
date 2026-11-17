@@ -1,0 +1,26 @@
+name: py_attribute_call_on_a_dunder_import_of_a_dotted_module_is_a_candidate_caller
+mode: impact
+source: synthetic
+issue_state: open
+tags: [python, dunder-import, dynamic-name, candidate]
+repo:
+  initial_files:
+    main.py: |
+      package = __import__("shop.cart")
+      package.cart.total()
+    shop/__init__.py: ""
+    shop/cart.py: |
+      def total():
+          pass
+  changed_files:
+    shop/cart.py: |
+      def total():
+          return 1
+  commit_message: "cart: total returns one"
+expect:
+  exact: false
+  discloses: true
+  never_empty: true
+  no_negative_claims: true
+  relations:
+    - {from: main.py, to: shop/cart.py::total, kind: calls, resolution: unresolved}
