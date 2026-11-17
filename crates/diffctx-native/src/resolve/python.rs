@@ -417,17 +417,7 @@ impl<'a> Engine<'a> {
             return None;
         }
         let scope = scope_path(&r.enclosing);
-        let (receiver, class) = self.receiver_name(f, &scope)?;
-        let method = (1..=scope.len()).rev().find_map(|depth| {
-            self.ix
-                .owner(f, &scope[..depth])
-                .filter(|id| self.ix.defs[*id].def.kind != DefKind::Class)
-        })?;
-        let classmethod = self.ix.defs[method]
-            .def
-            .decorators
-            .iter()
-            .any(|d| d.as_str() == "classmethod");
+        let (receiver, class, classmethod) = self.receiver(f, &scope)?;
         let by_cls = classmethod
             && r.qualifier.is_empty()
             && matches!(r.receiver, Receiver::None)
@@ -987,6 +977,12 @@ impl<'a> Engine<'a> {
 
     /// The name a method calls its instance by, and the class it belongs to.
     fn receiver_name(&self, f: usize, scope: &[Name]) -> Option<(Name, usize)> {
+        let (name, class, _) = self.receiver(f, scope)?;
+        Some((name, class))
+    }
+
+    /// `receiver_name` and whether the method is a classmethod.
+    fn receiver(&self, f: usize, scope: &[Name]) -> Option<(Name, usize, bool)> {
         for depth in (1..=scope.len()).rev() {
             let Some(owner) = self.ix.owner(f, &scope[..depth]) else {
                 continue;
@@ -996,12 +992,9 @@ impl<'a> Engine<'a> {
                 rec.def.kind,
                 DefKind::Method | DefKind::Constructor | DefKind::Property
             ) {
-                if rec
-                    .def
-                    .decorators
-                    .iter()
-                    .any(|d| d.as_str() == "staticmethod")
-                {
+                let decorated =
+                    |wanted: &str| rec.def.decorators.iter().any(|d| d.as_str() == wanted);
+                if decorated("staticmethod") {
                     return None;
                 }
                 let class = self.ix.owner(f, &scope[..depth - 1])?;
@@ -1009,7 +1002,7 @@ impl<'a> Engine<'a> {
                     return None;
                 }
                 let name = self.ix.files[f].first_param.get(&scope[..depth])?.clone();
-                return Some((name, class));
+                return Some((name, class, decorated("classmethod")));
             }
         }
         None
