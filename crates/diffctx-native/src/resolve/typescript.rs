@@ -2879,6 +2879,7 @@ impl<'a> Engine<'a> {
         let outcome = self.outcome(f, r, 0);
         let jsx = self.is_jsx_tag(f, r);
         let (relation, resolution) = self.finish(f, r.use_kind, jsx, outcome);
+        let (relation, resolution) = self.loaded_by_then(f, r, relation, resolution);
         let binding = |name: &Name, relation: Relation, resolution: Resolution| Binding {
             file: file.facts.path.clone(),
             site: r.site.clone(),
@@ -2905,6 +2906,38 @@ impl<'a> Engine<'a> {
                     ..binding(&name, Relation::Reads, resolution)
                 });
             }
+        }
+    }
+
+    /// A read of what `import(m).then((ns) => …)` loads (`ns.a`, or `a` of `({ a }) => …`) is
+    /// the import's own use of it: the lazy import is the line that needs the member.
+    fn loaded_by_then(
+        &self,
+        f: usize,
+        r: &Ref,
+        relation: Relation,
+        resolution: Resolution,
+    ) -> (Relation, Resolution) {
+        let head = match r.qualifier.as_slice() {
+            [] => &r.name,
+            [head] => head,
+            _ => return (relation, resolution),
+        };
+        let loaded = self.ix.files[f].imports.iter().any(|rec| {
+            rec.kind == ImportKind::Dynamic
+                && rec.local == *head
+                && matches!(&rec.scope, Scope::Callback { callee, .. } if callee.as_slice() == [Name::new("then")])
+                && ancestors(&r.enclosing).contains(&&rec.scope)
+        });
+        match resolution {
+            Resolution::Resolved {
+                target,
+                mut evidence,
+            } if loaded => {
+                evidence.kind = EvidenceKind::DynamicImport;
+                (Relation::Imports, Resolution::Resolved { target, evidence })
+            }
+            other => (relation, other),
         }
     }
 
@@ -3356,54 +3389,7 @@ impl<'a> Engine<'a> {
         }
         if !bound {
             out.push(make(Name::new(import.module.as_str()), whole()));
-            for name in self.then_members(f, import) {
-                out.push(make(
-                    name.clone(),
-                    self.member_resolution(f, &found, &name, kind),
-                ));
-            }
         }
-    }
-
-    /// The members of a module that `import('m').then((m) => ... m.name ...)`
-    /// uses: the callback's first parameter is the module.
-    fn then_members(&self, f: usize, import: &Import) -> Vec<Name> {
-        let Some(text) = self.text(f) else {
-            return Vec::new();
-        };
-        let mut at = skip_blanks(&text, import.site.bytes.end as usize);
-        if !text[at..].starts_with(b".then") {
-            return Vec::new();
-        }
-        at = skip_blanks(&text, at + ".then".len());
-        if text.get(at) != Some(&b'(') {
-            return Vec::new();
-        }
-        let callback = skip_blanks(&text, at + 1) as u32;
-        let facts = &self.ix.files[f].facts.blob.facts;
-        let is_callback = |scope: &Scope| matches!(scope, Scope::Callback { site, .. } if site.bytes.start == callback);
-        let Some(module) = facts.iter().find_map(|fact| match fact {
-            Fact::LocalBinding(local)
-                if local.kind == LocalKind::Parameter && is_callback(&local.enclosing) =>
-            {
-                Some(local.name.clone())
-            }
-            _ => None,
-        }) else {
-            return Vec::new();
-        };
-        let mut names: Vec<Name> = Vec::new();
-        for fact in facts {
-            if let Fact::Reference(r) = fact {
-                if r.qualifier.as_slice() == [module.clone()]
-                    && ancestors(&r.enclosing).into_iter().any(is_callback)
-                    && !names.contains(&r.name)
-                {
-                    names.push(r.name.clone());
-                }
-            }
-        }
-        names
     }
 
     /// What `name` of the module the import landed on is.

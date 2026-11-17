@@ -341,6 +341,24 @@ fn span(node: Node<'_>) -> Span {
     }
 }
 
+/// Whether a function is the callback of `then` called on an `import(…)`.
+fn is_import_then_callback(function: Option<Node<'_>>) -> bool {
+    let call = function
+        .filter(|f| is_function_kind(f.kind()))
+        .and_then(|f| f.parent())
+        .filter(|p| p.kind() == "arguments")
+        .and_then(|a| a.parent())
+        .filter(|c| c.kind() == "call_expression");
+    let then = call
+        .and_then(|c| field(c, "function"))
+        .filter(|f| f.kind() == "member_expression");
+    let loaded = then
+        .and_then(|t| field(t, "object"))
+        .filter(|o| o.kind() == "call_expression");
+    then.is_some_and(|t| field(t, "property").is_some_and(|p| p.kind() == "property_identifier"))
+        && loaded.is_some_and(|l| field(l, "function").is_some_and(|f| f.kind() == "import"))
+}
+
 fn is_function_kind(kind: &str) -> bool {
     matches!(
         kind,
@@ -2930,6 +2948,8 @@ struct Bindings {
     names: Vec<(Name, Option<Name>)>,
     star: Star,
     default: Option<Name>,
+    /// Where the names are bound, when that is not where the import is written.
+    scope: Option<Scope>,
 }
 
 type TypeFrame = FxHashMap<String, Option<TypeName>>;
@@ -3530,10 +3550,11 @@ impl<'t> Walker<'t> {
             names,
             star,
             default,
+            scope,
         } = self.import_bindings(call, dynamic);
         self.facts.push(Fact::Import(Import {
             site: span(call),
-            enclosing: self.written_scope(call),
+            enclosing: scope.unwrap_or_else(|| self.written_scope(call)),
             relative: relative_of(&module),
             module: ModulePath::from(module),
             kind: if dynamic {
@@ -3607,15 +3628,51 @@ impl<'t> Walker<'t> {
                 {
                     return self.lazy_bindings(parent);
                 }
+                "call_expression"
+                    if dynamic
+                        && member.as_deref() == Some("then")
+                        && field(parent, "function").is_some_and(|f| f.id() == current.id()) =>
+                {
+                    return self.then_bindings(parent, current);
+                }
                 _ => return Bindings::default(),
             }
         }
     }
 
     fn declarator_bindings(&self, declarator: Node<'t>, member: Option<String>) -> Bindings {
-        let Some(name) = field(declarator, "name") else {
+        field(declarator, "name").map_or_else(Bindings::default, |name| {
+            self.pattern_bindings(name, member)
+        })
+    }
+
+    /// `import(m).then((ns) => …)` binds the callback's first parameter as
+    /// `const ns = await import(m)` binds `ns`, and `({ a }) => …` as the
+    /// destructuring of it, within the callback.
+    fn then_bindings(&self, call: Node<'t>, then: Node<'t>) -> Bindings {
+        let callback = field(call, "arguments")
+            .and_then(first_named)
+            .filter(|c| is_function_kind(c.kind()));
+        let parameter = callback.and_then(|c| {
+            field(c, "parameter").or_else(|| {
+                let first = field(c, "parameters").and_then(first_named)?;
+                field(first, "pattern").or(Some(first))
+            })
+        });
+        let (Some(callback), Some(parameter)) = (callback, parameter) else {
             return Bindings::default();
         };
+        Bindings {
+            scope: Some(Scope::Callback {
+                callee: path_of(self.src, then),
+                site: span(callback),
+                parent: Box::new(self.current()),
+            }),
+            ..self.pattern_bindings(parameter, None)
+        }
+    }
+
+    fn pattern_bindings(&self, name: Node<'t>, member: Option<String>) -> Bindings {
         let mut bindings = Bindings::default();
         match (name.kind(), member) {
             ("identifier", Some(member)) => {
@@ -3872,10 +3929,12 @@ impl<'t> Walker<'t> {
         frame: &mut TypeFrame,
         children: &mut Vec<(Node<'t>, Ctx)>,
     ) {
+        let module_parameter = first_named(list).filter(|_| is_import_then_callback(list.parent()));
         for parameter in kids(list) {
             if !parameter.is_named() || parameter.kind() == "comment" {
                 continue;
             }
+            let module = module_parameter.is_some_and(|first| first.id() == parameter.id());
             if matches!(
                 parameter.kind(),
                 "required_parameter" | "optional_parameter"
@@ -3885,7 +3944,7 @@ impl<'t> Walker<'t> {
                     .filter(|_| bind);
                 if let Some(pattern) = pattern {
                     let written = field(parameter, "type").and_then(|t| type_name(self.src, t));
-                    if pattern.kind() == "object_pattern" {
+                    if pattern.kind() == "object_pattern" && !module {
                         self.destructured(pattern, written.clone(), Vec::new());
                     }
                     let annotated = written.filter(|_| pattern.kind() == "identifier");
@@ -3900,7 +3959,7 @@ impl<'t> Walker<'t> {
                     }
                 }
             } else if bind {
-                if parameter.kind() == "object_pattern" {
+                if parameter.kind() == "object_pattern" && !module {
                     self.destructured(parameter, None, Vec::new());
                 }
                 self.bind_parameter(parameter, None, frame, children);
