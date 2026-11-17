@@ -1,0 +1,34 @@
+name: py_test_taking_a_fixture_receiver_keeps_its_hedge_beside_an_unimported_file
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [python, test, fixture, hedge, untyped-receiver, decoy]
+repo:
+  initial_files:
+    tools/device.py: |
+      class Device:
+          def call(self, method, path):
+              return {"method": method, "path": path}
+    tests/conftest.py: |
+      import pytest
+
+      from tools.device import Device
+
+
+      @pytest.fixture
+      def client():
+          return Device()
+    tests/test_device.py: |
+      def test_call(client):
+          assert client.call("GET", "/x")["path"] == "/x"
+  changed_files:
+    tools/device.py: |
+      class Device:
+          def call(self, method, path):
+              return {"method": method, "path": path, "ok": True}
+  commit_message: "device: say it worked"
+expect:
+  changed: [tools/device.py::Device.call]
+  partial:
+    tools/device.py::Device.call:
+      calls: unlanded

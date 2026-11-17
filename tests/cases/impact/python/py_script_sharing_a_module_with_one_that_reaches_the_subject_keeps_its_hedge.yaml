@@ -1,0 +1,36 @@
+name: py_script_sharing_a_module_with_one_that_reaches_the_subject_keeps_its_hedge
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [python, script, hedge, untyped-receiver, shared-state, decoy]
+repo:
+  initial_files:
+    tools/device.py: |
+      class Device:
+          def call(self, method, path):
+              return {"method": method, "path": path}
+    tools/registry.py: |
+      DEVICES = []
+    tools/boot.py: |
+      from tools import registry
+      from tools.device import Device
+
+      registry.DEVICES.append(Device())
+    tools/migrate.py: |
+      from tools import registry
+
+
+      def fixture(path):
+          client = registry.DEVICES[0]
+          return client.call("GET", path)
+  changed_files:
+    tools/device.py: |
+      class Device:
+          def call(self, method, path):
+              return {"method": method, "path": path, "ok": True}
+  commit_message: "device: say it worked"
+expect:
+  changed: [tools/device.py::Device.call]
+  partial:
+    tools/device.py::Device.call:
+      calls: unlanded
