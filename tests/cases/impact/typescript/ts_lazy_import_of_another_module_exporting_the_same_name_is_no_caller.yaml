@@ -1,0 +1,36 @@
+name: ts_lazy_import_of_another_module_exporting_the_same_name_is_no_caller
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [typescript, react-lazy, dynamic-import, decoy]
+repo:
+  initial_files:
+    src/pages/Lazy.tsx: |
+      export function Lazy() {
+        return <div className="a">lazy</div>;
+      }
+    src/pages/Other.tsx: |
+      export function Lazy() {
+        return <div className="a">other</div>;
+      }
+    src/App.tsx: |
+      import { lazy, Suspense } from 'react';
+
+      const Other = lazy(() => import('./pages/Other').then((m) => ({ default: m.Lazy })));
+
+      export function App() {
+        return (
+          <Suspense>
+            <Other />
+          </Suspense>
+        );
+      }
+  changed_files:
+    src/pages/Lazy.tsx: |
+      export function Lazy() {
+        return <div className="b">lazy</div>;
+      }
+  commit_message: "pages: restyle"
+expect:
+  changed: [src/pages/Lazy.tsx::Lazy]
+  relations: []
