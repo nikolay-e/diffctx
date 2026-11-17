@@ -220,6 +220,14 @@ fn first_identifier_deep(node: Node) -> Option<Node> {
     }
 }
 
+/// Whether `name` says it holds a relation: `TABLE`, `view_name`.
+fn names_a_relation(name: &str) -> bool {
+    let name = name.to_lowercase();
+    ["table", "view", "relation"]
+        .iter()
+        .any(|w| name.contains(w))
+}
+
 fn has_child_of_kind(node: Node, kind: &str) -> bool {
     let mut cursor = node.walk();
     node.named_children(&mut cursor).any(|c| c.kind() == kind)
@@ -2132,8 +2140,10 @@ impl<'t> Walker<'t> {
             let name = self
                 .simple_chain(left)
                 .and_then(|chain| chain.last().copied());
-            if let (Some(name), Some(text)) = (name, self.plain_string(value)) {
-                self.held_string(value, text, HeldAs::Assigned(name.to_string()), cx);
+            if let (true, Some(text)) =
+                (name.is_some_and(names_a_relation), self.plain_string(value))
+            {
+                self.held_string(value, text, HeldAs::Relation, cx);
             }
         }
         if let Some(left) = left {
@@ -2717,7 +2727,7 @@ impl<'t> Walker<'t> {
                     .filter(|word| word.kind() == "string")
                     .filter_map(|word| self.string_inner(word))
                     .collect();
-                Some(words.join(" "))
+                Some(super::runner::command_text(&words))
             }
             _ => None,
         };
