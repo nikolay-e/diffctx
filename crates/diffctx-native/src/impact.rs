@@ -5617,7 +5617,8 @@ fn typed_readers(state: &ScoredState, untraced: &[String]) -> Vec<(String, Strin
 /// matches every needle against every line, so a diff of hundreds of configs
 /// (an epoch's corpus cases and workflows) turned a 10 s answer into 330 s
 /// (Forgejo #109). The smallest changes are searched first, a file's longest
-/// terms first; a config left out stays "not followed" and is counted.
+/// terms first; a config left out stays "not followed" and is counted, and a
+/// config with more terms than the cap says the run was limited.
 const MAX_KEY_TERMS_PER_FILE: usize = 16;
 const MAX_KEY_NEEDLES: usize = 96;
 
@@ -5683,7 +5684,10 @@ fn key_references(
     let mut chosen: Vec<(usize, String, Vec<String>)> = Vec::new();
     for (index, path, mut words, mut readers) in candidates {
         words.sort_by(|a, b| b.len().cmp(&a.len()).then_with(|| a.cmp(b)));
-        words.truncate(MAX_KEY_TERMS_PER_FILE);
+        if words.len() > MAX_KEY_TERMS_PER_FILE {
+            state.run.note(crate::resource::LimitReason::CandidateLimit);
+            words.truncate(MAX_KEY_TERMS_PER_FILE);
+        }
         let fresh = words.iter().filter(|w| !searched.contains(*w)).count();
         if searched.len() + fresh > MAX_KEY_NEEDLES {
             if readers.is_empty() {
