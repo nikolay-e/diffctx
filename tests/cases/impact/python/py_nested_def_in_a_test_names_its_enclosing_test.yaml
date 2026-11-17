@@ -1,0 +1,44 @@
+name: py_nested_def_in_a_test_names_its_enclosing_test
+mode: impact
+source: synthetic
+issue_state: closed
+tags:
+- python
+- tests-reach
+- nested-def
+repo:
+  initial_files:
+    pkg/__init__.py: ""
+    pkg/deco.py: |
+      def with_obj(func):
+          return func
+    tests/test_deco.py: |
+      from pkg.deco import with_obj
+
+
+      def test_decorated_command_runs():
+          @with_obj
+          def cmd(obj):
+              return obj
+
+          assert cmd(1) == 1
+
+
+      def test_class_declared_inside_a_test():
+          @with_obj
+          class Local:
+              pass
+
+          assert Local
+  changed_files:
+    pkg/deco.py: |
+      def with_obj(func):
+          func.wrapped = True
+          return func
+  commit_message: mark the wrapped function
+expect:
+  changed:
+  - pkg/deco.py::with_obj
+  relations:
+  - {from: tests/test_deco.py::test_decorated_command_runs, to: pkg/deco.py::with_obj, kind: calls}
+  - {from: tests/test_deco.py::test_class_declared_inside_a_test, to: pkg/deco.py::with_obj, kind: calls}
