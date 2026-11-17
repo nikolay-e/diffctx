@@ -68,7 +68,12 @@ fn candidates(name: &str, uses: usize, sites: &[Site]) -> String {
         parts.push(format!("{at} runs code naming it that is not analysed"));
     }
     if uses > sites.len() {
-        parts.push(format!("and {} more", uses - sites.len()));
+        let more = uses - sites.len();
+        parts.push(if sites.is_empty() {
+            format!("{more} use(s) of `{name}` no binding settles, on lines listed above")
+        } else {
+            format!("and {more} more")
+        });
     }
     parts.join("; ")
 }
