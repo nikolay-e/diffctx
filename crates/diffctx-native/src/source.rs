@@ -477,12 +477,11 @@ impl Source {
             .collect())
     }
 
-    /// What the snapshot layer decided for `rel` on this side, `None` when
+    /// What the snapshot layer decided for `path` on this side, `None` when
     /// the side does not hold the path.
-    fn decision(&self, rel: &str) -> Option<snap::Decision> {
+    fn decision(&self, path: &snap::RepoPath) -> Option<snap::Decision> {
         let (analysis, end) = self.view.as_ref()?;
-        let path = snap::RepoPath::new(rel).ok()?;
-        match analysis.reader(*end).decision(&path) {
+        match analysis.reader(*end).decision(path) {
             Ok(decision) => decision,
             // A decision that could not be made is a withheld path, and the
             // run says it could not read.
@@ -499,13 +498,13 @@ impl Source {
     /// own directory, `.gitignore` and `.diffctx/ignore`, as the snapshot
     /// layer's admission decided them for this side, else for the base side
     /// (a deleted path), else by name alone.
-    pub fn admitted(&self, rel: &str) -> Admitted {
+    pub fn admitted(&self, path: &snap::RepoPath) -> Admitted {
         let Some((analysis, _)) = &self.view else {
             return Admitted::Yes;
         };
         let held = self
-            .decision(rel)
-            .or_else(|| Self::over(analysis, End::Base).decision(rel));
+            .decision(path)
+            .or_else(|| Self::over(analysis, End::Base).decision(path));
         match held {
             Some(snap::Decision::Withhold(why)) => Admitted::Withheld(match why {
                 snap::WithholdReason::Secret | snap::WithholdReason::RepoInternal => Why::Secret,
@@ -513,10 +512,18 @@ impl Source {
                 snap::WithholdReason::Gitignore => Why::Gitignore,
             }),
             Some(snap::Decision::Admit | snap::Decision::NotAnalysed(_)) => Admitted::Yes,
-            None if is_secret_path(Path::new(rel)) || rel.split('/').any(|p| p == ".git") => {
-                Admitted::Withheld(Why::Secret)
-            }
-            None => Admitted::Yes,
+            None => by_name(path.as_str()),
+        }
+    }
+
+    /// `admitted` for a name a layer holds as text. A string that is no
+    /// repository path (a place outside the checkout) has only its name to be
+    /// asked about.
+    pub fn admitted_name(&self, name: &str) -> Admitted {
+        match snap::RepoPath::new(name) {
+            Ok(path) => self.admitted(&path),
+            Err(_) if self.view.is_some() => by_name(name),
+            Err(_) => Admitted::Yes,
         }
     }
 
@@ -563,9 +570,20 @@ impl Source {
     /// Which of `rels` this side withholds.
     pub fn withheld(&self, rels: &[String]) -> Vec<String> {
         rels.iter()
-            .filter(|rel| self.admitted(rel) != Admitted::Yes)
+            .filter(|rel| self.admitted_name(rel) != Admitted::Yes)
             .cloned()
             .collect()
+    }
+}
+
+/// What a name alone decides: a key or git's own directory is withheld
+/// wherever it lies, and a string that is no repository path has nothing else
+/// to be asked.
+fn by_name(name: &str) -> Admitted {
+    if is_secret_path(Path::new(name)) || name.split('/').any(|p| p == ".git") {
+        Admitted::Withheld(Why::Secret)
+    } else {
+        Admitted::Yes
     }
 }
 

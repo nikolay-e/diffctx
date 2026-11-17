@@ -415,7 +415,7 @@ fn withhold_secret_hunks(
         let Some(rel) = rel_path_string(root_dir, Path::new(&*h.path)) else {
             return true;
         };
-        if source.admitted(&rel) == Admitted::Withheld(Why::Secret) {
+        if source.admitted_name(&rel) == Admitted::Withheld(Why::Secret) {
             secret_excluded_paths.insert(rel);
             false
         } else {
@@ -443,7 +443,7 @@ fn ignore_disclosure(
         let Some(rel) = rel_path_string(root_dir, p) else {
             continue;
         };
-        match source.admitted(&rel) {
+        match source.admitted_name(&rel) {
             Admitted::Withheld(Why::Gitignore) => ignored_display.push(rel),
             Admitted::Withheld(Why::Policy | Why::Secret) => {
                 policy_excluded_paths.insert(rel);
@@ -2480,7 +2480,7 @@ pub(crate) fn rel_path_string(root_dir: &Path, path: &Path) -> Option<String> {
 /// directory, not excluded by `.gitignore` or `.diffctx/ignore` — one
 /// admission, read where the run's snapshot is read (#507, #153).
 pub(crate) fn is_admitted(root_dir: &Path, source: &Source, path: &Path) -> bool {
-    rel_path_string(root_dir, path).is_none_or(|rel| source.admitted(&rel) == Admitted::Yes)
+    rel_path_string(root_dir, path).is_none_or(|rel| source.admitted_name(&rel) == Admitted::Yes)
 }
 
 pub(crate) fn is_withheld(root_dir: &Path, source: &Source, path: &Path) -> bool {
