@@ -6675,6 +6675,8 @@ pub(crate) struct LocalOf {
     pub enclosing: String,
     pub line: u32,
     pub uses: Vec<LocalUse>,
+    /// The lines of its body that spell the name where no fact states a use.
+    pub unplaced: Vec<u32>,
     /// The file was read in part.
     pub lossy: bool,
 }
@@ -6785,13 +6787,15 @@ pub(crate) fn symbol_local_output(
 }
 
 /// A local's uses all lie in its enclosing body: its calls and reads are complete unless the
-/// file was read in part, or a use hands the local on (returned, stored, passed), where the
-/// receiver may call it.
+/// file was read in part, a use hands the local on (returned, stored, passed), where the
+/// receiver may call it, or the body spells the name where no use is stated.
 fn local_coverage(local: &LocalOf) -> decide::Coverages {
     let handed: Vec<decide::Site> = (local.uses.iter().filter(|u| !u.call))
-        .map(|u| decide::Site {
+        .map(|u| u.line)
+        .chain(local.unplaced.iter().copied())
+        .map(|line| decide::Site {
             path: local.path.clone(),
-            line: u.line,
+            line,
             via: decide::Via::Read,
         })
         .collect();
