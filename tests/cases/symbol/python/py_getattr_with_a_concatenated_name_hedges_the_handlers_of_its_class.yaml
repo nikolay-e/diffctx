@@ -1,0 +1,31 @@
+name: py_getattr_with_a_concatenated_name_hedges_the_handlers_of_its_class
+mode: symbol
+source: synthetic
+issue_state: open
+tags: [python, getattr, dynamic-name, coverage]
+repo:
+  initial_files:
+    main.py: |
+      class Handler:
+          def on_open(self):
+              pass
+
+          def on_close(self):
+              pass
+
+
+      def dispatch(handler, event):
+          getattr(handler, "on_" + event)()
+
+
+      dispatch(Handler(), "close")
+  commit_message: Add the handler
+query:
+  symbol: on_close
+expect:
+  definitions: [main.py::on_close]
+  discloses: true
+  partial:
+    main.py::on_close:
+      calls: not_traced
+      reads: not_traced
