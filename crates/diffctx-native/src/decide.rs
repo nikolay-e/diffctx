@@ -779,6 +779,12 @@ impl Verdict {
         self.found.unused
     }
 
+    /// Whether a literal spelled on `line` of `file` is a use the accounting resolved to
+    /// another definition (an `include` of a second chart's template of the same name).
+    pub(crate) fn names_another(&self, file: &str, line: u32) -> bool {
+        RepoPath::new(file).is_ok_and(|file| self.found.elsewhere.contains(&(file, line)))
+    }
+
     /// The type a removed override was reached through, when it was one: what
     /// called the member it overrode reached it, and no model traces that.
     pub(crate) fn overridden_via(&self) -> Option<&str> {
@@ -2904,6 +2910,7 @@ impl Cell {
             whole: true,
             callers,
             stranded,
+            elsewhere: HashSet::new(),
         };
         for (definition, side) in heads.chain(removed) {
             let known = Known {
@@ -2916,6 +2923,7 @@ impl Cell {
             all.hedges.extend(done.hedges);
             all.unused &= done.unused;
             all.whole &= done.whole;
+            all.elsewhere.extend(done.elsewhere);
         }
         all
     }
