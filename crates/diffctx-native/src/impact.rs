@@ -59,8 +59,8 @@ const MAX_CONTRACTS: usize = 12;
 const MAX_SIGNATURE_LINES: usize = 12;
 /// Paths listed before the rest fold into a count: the reader has the diff.
 const MAX_CHANGED_FILES_LISTED: usize = 24;
-/// Lines a removed name is read from per file: one caller per function is
-/// the answer, and a flood of one common word is not.
+/// Lines the removed names are read from per file: one caller per function is
+/// the answer, and a flood of one common word is not. A file past it is said.
 const MAX_REMOVED_HITS_PER_FILE: usize = 20;
 /// Past this many lines a removed name is a common word: unresolved, not
 /// traced.
@@ -5189,11 +5189,31 @@ fn removed_definitions(
             &state.run.source(),
             &names,
             head,
-            MAX_REMOVED_HITS_PER_FILE,
+            MAX_REMOVED_HITS_PER_FILE + 1,
         ),
     );
     state.run.note_withheld(grepped.withheld);
-    for (path, line, text) in grepped.rows {
+    // The line past the cap says a file held more than it kept, whichever names
+    // they spell.
+    let mut in_file: (&str, usize) = ("", 0);
+    let mut cut = false;
+    let rows: Vec<_> = grepped
+        .rows
+        .iter()
+        .filter(|(path, _, _)| {
+            in_file = if in_file.0 == path.as_str() {
+                (in_file.0, in_file.1 + 1)
+            } else {
+                (path.as_str(), 1)
+            };
+            cut |= in_file.1 > MAX_REMOVED_HITS_PER_FILE;
+            in_file.1 <= MAX_REMOVED_HITS_PER_FILE
+        })
+        .collect();
+    if cut {
+        state.run.note(crate::resource::LimitReason::CandidateLimit);
+    }
+    for (path, line, text) in rows {
         let spelled: FxHashSet<&str> = text
             .split(|c: char| !(c.is_alphanumeric() || c == '_' || c == '$'))
             .filter_map(|w| wanted.get(w).copied())
@@ -5202,7 +5222,7 @@ fn removed_definitions(
             hits_of
                 .entry(name)
                 .or_default()
-                .push((path.clone(), line, text.clone()));
+                .push((path.clone(), *line, text.clone()));
         }
     }
     let holders = definition_holders(state);
