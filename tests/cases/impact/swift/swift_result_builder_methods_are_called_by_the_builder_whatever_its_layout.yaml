@@ -1,0 +1,46 @@
+name: swift_result_builder_methods_are_called_by_the_builder_whatever_its_layout
+mode: impact
+source: synthetic
+tags: [swift, result-builder, layout, false-absence]
+repo:
+  initial_files:
+    Sources/Lib/Builders.swift: |
+      @resultBuilder public struct OneLine { public static func buildBlock(_ parts: Int...) -> Int { parts.count } }
+
+      @resultBuilder
+      public struct Split { public static func buildBlock(_ parts: Int...) -> Int { parts.count } }
+
+      @resultBuilder public struct Spread {
+          public static func buildOptional(_ part: Int?) -> Int { part ?? 0 }
+      }
+
+      public func one(@OneLine _ content: () -> Int) -> Int { content() }
+      public func split(@Split _ content: () -> Int) -> Int { content() }
+      public func spread(@Spread _ content: () -> Int) -> Int { content() }
+    Sources/App/main.swift: |
+      import Lib
+
+      let a = one { 1; 2 }
+      let b = split { 1; 2 }
+      let c = spread { if a > 1 { 1 } }
+  changed_files:
+    Sources/Lib/Builders.swift: |
+      @resultBuilder public struct OneLine { public static func buildBlock(_ parts: Int...) -> Int { parts.count + 1 } }
+
+      @resultBuilder
+      public struct Split { public static func buildBlock(_ parts: Int...) -> Int { parts.count + 1 } }
+
+      @resultBuilder public struct Spread {
+          public static func buildOptional(_ part: Int?) -> Int { part ?? 1 }
+      }
+
+      public func one(@OneLine _ content: () -> Int) -> Int { content() }
+      public func split(@Split _ content: () -> Int) -> Int { content() }
+      public func spread(@Spread _ content: () -> Int) -> Int { content() }
+  commit_message: "builders: count one more"
+expect:
+  changed:
+    - Sources/Lib/Builders.swift::buildBlock
+    - Sources/Lib/Builders.swift::buildOptional
+  discloses: true
+  no_negative_claims: true
