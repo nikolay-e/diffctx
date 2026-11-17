@@ -7,7 +7,7 @@
 
 use std::sync::Arc;
 
-use _diffctx::facts::lang::c::CExtractor;
+use _diffctx::facts::lang::c::{CExtractor, CppExtractor};
 use _diffctx::facts::lang::go::GoExtractor;
 use _diffctx::facts::lang::java::JavaExtractor;
 use _diffctx::facts::lang::kotlin::KotlinExtractor;
@@ -176,6 +176,30 @@ fn every_kind_has_a_seed_and_each_seed_reports_its_kind() {
             Implicit::Outside,
             &RustExtractor,
             "#[no_mangle]\npub extern \"C\" fn exported() {}\n",
+            "exported",
+        ),
+        seed(
+            Implicit::Outside,
+            &RustExtractor,
+            "struct Acc;\n#[pymethods]\nimpl Acc {\n    pub fn add(&self) {}\n}\n",
+            "Acc.add",
+        ),
+        seed(
+            Implicit::Outside,
+            &RustExtractor,
+            "#[wasm_bindgen::prelude::wasm_bindgen]\npub fn exported() {}\n",
+            "exported",
+        ),
+        seed(
+            Implicit::Outside,
+            &CExtractor,
+            "int labelled(int x) __asm__(\"public_name\");\n",
+            "labelled",
+        ),
+        seed(
+            Implicit::Outside,
+            &CppExtractor,
+            "extern \"C\" int exported(int x) { return x; }\n",
             "exported",
         ),
         seed(

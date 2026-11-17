@@ -3012,6 +3012,7 @@ impl Cell {
                 dispatched: self.dispatched_via(definition).is_some(),
                 consumed_outside: self.consumed_outside(),
                 root_module: self.head.root_module(definition.file.as_str()),
+                exported: false,
             };
             let mut written = self.shadow_written.borrow_mut();
             let done = shadow.write(out.as_mut(), &mut written, definition, side, known);

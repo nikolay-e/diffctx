@@ -17,6 +17,8 @@ pub struct Known {
     pub dispatched: bool,
     pub consumed_outside: bool,
     pub root_module: bool,
+    /// Another language reaches it by name (`exported` of its [`View`]).
+    pub exported: bool,
 }
 
 /// Where a row looks: the definition's name, its decorators and the words of its
@@ -75,7 +77,7 @@ const TABLE: &[Row] = &[
         Family::Rust,
         Part::Word,
         Implicit::Outside,
-        "no_mangle export_name extern",
+        "no_mangle export_name extern wasm_bindgen pyfunction pymethods pyclass napi",
     ),
     (Family::Kotlin, Part::Word, Implicit::Operator, "operator"),
     (
@@ -118,6 +120,12 @@ const TABLE: &[Row] = &[
     (Family::C, Part::Name, Implicit::Protocol, "~*"),
     (Family::C, Part::Word, Implicit::Entry, "constructor"),
     (
+        Family::C,
+        Part::Word,
+        Implicit::Outside,
+        "extern_c asm_label",
+    ),
+    (
         Family::Swift,
         Part::Name,
         Implicit::Operator,
@@ -153,15 +161,19 @@ pub fn implicit_kinds(file: &FileFacts, def: &Def, known: Known) -> Vec<Implicit
     if known.dispatched {
         found.push(Implicit::Override);
     }
-    if known.consumed_outside {
+    if known.consumed_outside || known.exported {
         found.push(Implicit::Outside);
     }
     let mut tags = vec![(Part::Name, def.local.name.as_str().to_string())];
-    let words = def.decorators.iter().map(|d| d.as_str()).chain(
-        def.signature
-            .iter()
-            .flat_map(|s| s.split(|c: char| !c.is_alphanumeric() && c != '_')),
-    );
+    let words = def
+        .decorators
+        .iter()
+        .flat_map(|d| d.as_str().split("::"))
+        .chain(
+            def.signature
+                .iter()
+                .flat_map(|s| s.split(|c: char| !c.is_alphanumeric() && c != '_')),
+        );
     tags.extend(
         words
             .filter(|word| !word.is_empty())
