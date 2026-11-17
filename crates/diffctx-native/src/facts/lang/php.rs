@@ -25,6 +25,9 @@
 //!   (`use T {}` when the use has an adaptation block: `insteadof`, `as`). A
 //!   property's is its modifiers, type and `$name`. `decorators` are the
 //!   attributes, as written without a leading `\`.
+//! - A string literal that is an array element's value, a `const` value or the
+//!   right side of an assignment is a [`CallableString`] fact: where PHP holds a
+//!   callable by name.
 //! - A reference names the last segment and carries the written namespace path
 //!   before it in `qualifier` (`\A\f()` is `f` with `["", A]`; `A\B::m()` is `m`
 //!   with `[A, B]`; `self::m()` is `m` with `[self]`; `parent::__construct()`
@@ -63,6 +66,7 @@ use super::{
     through_errors,
 };
 use crate::facts::framework;
+use crate::facts::model::CallableString;
 use crate::facts::{
     BlobFacts, Def, DefKind, Disambig, EntryKind, EntryPoint, Extractor, Fact, Hasher, Import,
     ImportKind, Language, Local, LocalKey, LocalKind, ModulePath, Name, Namespace, Receiver, Ref,
@@ -774,6 +778,7 @@ impl<'t> Walker<'t> {
             );
             if let Some(value) = value {
                 let inner = self.inside(cx, &key);
+                self.callable_string(value, &inner);
                 self.expr(value, &inner, depth + 1);
             }
         }
@@ -1608,7 +1613,24 @@ impl<'t> Walker<'t> {
             self.target(left, cx, depth + 1);
         }
         if let Some(right) = node.child_by_field_name("right") {
+            self.callable_string(right, cx);
             self.expr(right, cx, depth + 1);
+        }
+    }
+
+    /// `node` is a plain string where an array element, a constant or an
+    /// assignment holds it: the name of a callable, if the program resolves it.
+    fn callable_string(&mut self, node: Node<'t>, cx: &Cx) {
+        if node.kind() != "string" {
+            return;
+        }
+        let text = self.text(node);
+        if let Some(inner) = text.get(1..text.len().saturating_sub(1)) {
+            self.facts.push(Fact::CallableString(CallableString {
+                site: span(node),
+                enclosing: cx.scope.clone(),
+                text: inner.to_string(),
+            }));
         }
     }
 
@@ -1737,6 +1759,11 @@ impl<'t> Walker<'t> {
                         self.emit(method, cx, receiver, UseKind::PassAsValue, &name, qualifier);
                     }
                 }
+            }
+        }
+        for element in &elements {
+            if let Some(value) = named_children(*element).into_iter().last() {
+                self.callable_string(value, cx);
             }
         }
         for child in named_children(node) {

@@ -1909,6 +1909,31 @@ impl Cell {
         )
     }
 
+    /// The strings of `file` at the head that sit where PHP holds a callable by
+    /// name and span `line`: what the file's tree says, whatever the text around
+    /// the string is.
+    pub(crate) fn callable_strings_at(&self, file: &str, line: u32) -> Vec<String> {
+        let Ok(path) = RepoPath::new(file) else {
+            return Vec::new();
+        };
+        let Ok(Some(facts)) = facts_of(&self.ctx, SideTag::Head, &self.cache, &path) else {
+            return Vec::new();
+        };
+        facts
+            .blob
+            .facts
+            .iter()
+            .filter_map(|fact| match fact {
+                Fact::CallableString(held)
+                    if (held.site.lines.0..=held.site.lines.1).contains(&line) =>
+                {
+                    Some(held.text.clone())
+                }
+                _ => None,
+            })
+            .collect()
+    }
+
     /// The entries a framework makes of the definition at the head, by where it
     /// is: what the facts state of who calls it (a route, a scheduled job, a
     /// command, a tool, a fixture). Empty for a definition no rule matches, and
