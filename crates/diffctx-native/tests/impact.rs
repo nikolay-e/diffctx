@@ -7789,3 +7789,36 @@ fn strings_past_the_test_search_cap_do_not_make_an_exact_absence() {
         untested["n"]
     );
 }
+
+/// The changed keys of a config are searched as text, the longest first and a
+/// bounded number: the keys past the bound were never searched and the answer
+/// said nothing of them.
+#[test]
+fn keys_past_the_per_config_search_cap_are_not_dropped_silently() {
+    const KEYS: usize = 30;
+    let config = |value: u32| -> String {
+        (0..KEYS)
+            .map(|i| format!("setting_key_{i:03}: {value}\n"))
+            .collect()
+    };
+    let reader: String = std::iter::once("def load(cfg):\n".to_string())
+        .chain((0..KEYS).map(|i| format!("    x{i} = cfg['setting_key_{i:03}']\n")))
+        .chain(std::iter::once("    return 1\n".to_string()))
+        .collect();
+    let (before, after) = (config(1), config(2));
+    let tmp = repo(
+        &[("conf/app.yaml", &before), ("svc/read.py", &reader)],
+        &[("conf/app.yaml", &after)],
+    );
+    let doc = impact(tmp.path(), "HEAD~1..HEAD");
+    let searched: usize = doc["named"]["key_searches"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .map(|s| s["keys"].as_array().map_or(0, Vec::len))
+        .sum();
+    assert!(
+        searched == KEYS || limits_of(&doc).contains(&"candidate_limit".to_string()),
+        "{searched} of {KEYS} changed keys searched, no limit said: {doc:#}"
+    );
+}
