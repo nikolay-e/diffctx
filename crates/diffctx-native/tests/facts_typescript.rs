@@ -1392,6 +1392,37 @@ export const usePlayer = create()((set) => ({
     );
 }
 
+/// A pattern that takes from a plain chain of names reads through that chain,
+/// which the resolver can type; one that takes from anything else waits for no type.
+#[test]
+fn a_pattern_taking_from_a_plain_name_reads_through_that_name() {
+    let facts = ts(
+        "import Request from './request';\nconst {normalize} = Request;\nexport function f(opts) { const {retry} = opts.nested; return retry; }\nconst {w} = make();\n",
+    );
+    let read = |name: &str| {
+        let found: Vec<&Ref> = ref_named(&facts, name)
+            .into_iter()
+            .filter(|r| !r.qualifier.is_empty())
+            .collect();
+        let [only] = found.as_slice() else {
+            panic!("{name} is read through one chain: {:?}", refs(&facts));
+        };
+        (receiver(&only.receiver), qualified(only))
+    };
+    assert_eq!(
+        read("normalize"),
+        ("unknown".to_string(), "Request.normalize".to_string())
+    );
+    assert_eq!(
+        read("retry"),
+        ("unknown".to_string(), "opts.nested.retry".to_string())
+    );
+    assert_eq!(
+        read("w"),
+        ("unknown".to_string(), "<untyped>.w".to_string())
+    );
+}
+
 #[test]
 fn a_global_object_assignment_is_a_definition_and_a_script_load_is_an_import() {
     let facts = js(r#"importScripts('/kit/sw-kit.js', "../x.js");

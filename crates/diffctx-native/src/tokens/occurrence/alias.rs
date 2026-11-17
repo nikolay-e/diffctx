@@ -7,7 +7,7 @@ use std::ops::Range;
 use super::rows::STATEMENT_KEYWORDS;
 use super::{Alias, AliasBound, AliasScope, Basis, Outcome, Reason, ValuePlace};
 use crate::facts::config::UseOf;
-use crate::facts::{DefKind, Fact, FileFacts, Language, LocalKey, Name, Scope, UseKind};
+use crate::facts::{DefKind, Fact, FileFacts, Language, LocalKey, LocalKind, Name, Scope, UseKind};
 use crate::resolve::Relation;
 
 /// Repeats `step` over each new scoped name until none appears: it accounts one
@@ -63,6 +63,9 @@ const ARGUMENT_FAMILIES: [Language; 8] = [
     Language::Html,
     Language::Astro,
 ];
+
+/// Families whose extractors read the shorthand of an object pattern at the span of the local it binds.
+const PATTERN_FAMILIES: [Language; 2] = [Language::JavaScript, Language::TypeScript];
 
 /// The scope a definition is declared in; a container no definition names reads
 /// as the module (wider).
@@ -250,6 +253,24 @@ pub fn value_use(
     }
     if use_kind == UseKind::TypeUse {
         return None;
+    }
+    // A shorthand in an object pattern is the read of the member and the name it goes by.
+    let shorthand = file.blob.facts.iter().find_map(|fact| match fact {
+        Fact::Definition(def)
+            if matches!(def.kind, DefKind::Variable | DefKind::Constant)
+                && def.name_span.bytes == *at =>
+        {
+            Some((def.local.name.clone(), declared_in(file, &def.local)))
+        }
+        Fact::LocalBinding(local)
+            if local.kind == LocalKind::Variable && local.site.bytes == *at =>
+        {
+            Some((local.name.clone(), local.enclosing.clone()))
+        }
+        _ => None,
+    });
+    if let Some((name, scope)) = shorthand.filter(|_| PATTERN_FAMILIES.contains(&file.language())) {
+        return alias(&name, scope, Basis::Assignment);
     }
     if let Some((name, scope, store)) = assigned_to(file, text, at) {
         return if store {
