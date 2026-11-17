@@ -5112,6 +5112,63 @@ fn a_path_filtered_inspection_reviews_only_that_path() {
     }
 }
 
+/// Commits `before`, then rewrites those files as `after` (the same sizes)
+/// within the timestamp tick of the commit, git's racy-clean case on any
+/// coarse-clock filesystem: each file carries its committed mtime and the
+/// index is no newer, so git reads those entries by content. ctime cannot be
+/// set; the repository does not trust it, and a rewrite within one tick leaves
+/// it equal anyway.
+fn rewrite_within_the_commits_tick(repo: &Path, before: &[(&str, &str)], after: &[(&str, &str)]) {
+    let tick = std::time::UNIX_EPOCH + std::time::Duration::from_secs(1_000_000_000);
+    let stamp = |rel: &str| {
+        std::fs::File::options()
+            .write(true)
+            .open(repo.join(rel))
+            .unwrap()
+            .set_modified(tick)
+            .unwrap();
+    };
+    for (rel, content) in before {
+        write(repo, rel, content);
+        stamp(rel);
+    }
+    commit_all(repo, "base");
+    for (rel, content) in after {
+        write(repo, rel, content);
+        stamp(rel);
+    }
+    stamp(".git/index");
+}
+
+/// The rewrite of `a_path_filtered_inspection_reviews_only_that_path`, forced
+/// into the tick instead of left to the clock: git reads the index by its own
+/// mtime, so a review that works on a copy of it must too.
+#[test]
+fn a_same_size_rewrite_within_the_commits_tick_is_still_reviewed() {
+    let tmp = TempDir::new().unwrap();
+    let repo = tmp.path();
+    support::init_repo(repo);
+    git(repo, &["config", "core.trustctime", "false"]);
+    let source = |d: &str, n: u32| {
+        format!("def {d}():\n    return {n}\n\n\ndef use_{d}():\n    return {d}()\n")
+    };
+    rewrite_within_the_commits_tick(
+        repo,
+        &[
+            ("dirA/a.py", &source("a", 1)),
+            ("dirB/b.py", &source("b", 1)),
+        ],
+        &[
+            ("dirA/a.py", &source("a", 2)),
+            ("dirB/b.py", &source("b", 2)),
+        ],
+    );
+    let cache = TempDir::new().unwrap();
+    let context = context_of(&run_line(repo, cache.path(), "git diff -- dirA"));
+    assert!(context.contains("dirA/a.py::a"), "{context}");
+    assert!(!context.contains("dirB/"), "{context}");
+}
+
 /// fj#127: a reminder repeats what the review it points at asked to check.
 /// A review that found no caller never gets "those callers still apply";
 /// one that asked for nothing is pointed at in one line.
