@@ -1,0 +1,30 @@
+name: ts_object_literal_constant_with_comments_and_a_template_is_the_literal_itself
+mode: impact
+source: gh#614
+issue_state: open
+tags: [javascript, multi-declarator, changed-definition, body-only, object-literal]
+repo:
+  initial_files:
+    config.js: |
+      const NAME = "demo", MODEL = "model-1";
+      export const hooks = {
+        // don't close the literal with a } here
+        label: `${NAME}: ${`{${NAME}}`}`,
+        MODEL,
+      };
+    use.js: |
+      import { hooks } from "./config.js";
+      export function modelOf() { return hooks.MODEL; }
+  worktree: true
+  changed_files:
+    config.js: |
+      const NAME = "demo", MODEL = "model-2";
+      export const hooks = {
+        // don't close the literal with a } here
+        label: `${NAME}: ${`{${NAME}}`}`,
+        MODEL,
+      };
+expect:
+  changed: [config.js::MODEL]
+  relations:
+    - {from: "config.js::hooks", to: "config.js::MODEL", kind: reads, resolution: resolved, site: 5}
