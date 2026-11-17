@@ -1,0 +1,33 @@
+name: config_renamed_ansible_role_is_still_named_by_the_playbook_that_lists_it
+mode: impact
+source: synthetic
+tags: [config, ansible, directory-rename, false-absence]
+repo:
+  initial_files:
+    roles/web/tasks/main.yml: |
+      - name: install nginx
+        package:
+          name: nginx
+    site.yml: |
+      - hosts: all
+        roles:
+          - web
+    deploy.yml: |
+      - hosts: web
+        tasks:
+          - include_role:
+              name: web
+    inventory.yml: |
+      all:
+        children:
+          web:
+            hosts:
+              a.example.org:
+  renamed_files:
+    roles/web: roles/frontend
+  commit_message: "ansible: web role becomes frontend"
+expect:
+  exact: false
+  no_negative_claims: true
+  stale: [site.yml, deploy.yml]
+  not_stale: [inventory.yml]

@@ -1,0 +1,29 @@
+name: config_renamed_gitlab_job_is_named_by_the_needs_of_another_file
+mode: impact
+source: synthetic
+tags: [config, key-search, generic-name, false-absence]
+repo:
+  initial_files:
+    .gitlab-ci.yml: |
+      include: ci/deploy.yml
+      stages: [build, deploy]
+      build:
+        stage: build
+        script: make
+    ci/deploy.yml: |
+      deploy_app:
+        stage: deploy
+        needs: [build]
+        script: make deploy
+  changed_files:
+    .gitlab-ci.yml: |
+      include: ci/deploy.yml
+      stages: [build, deploy]
+      compiled_job:
+        stage: build
+        script: make
+  commit_message: "ci: rename the build job"
+expect:
+  exact: false
+  no_negative_claims: true
+  named_by: [ci/deploy.yml]
