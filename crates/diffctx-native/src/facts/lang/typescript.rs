@@ -3866,7 +3866,7 @@ impl<'t> Walker<'t> {
                 if let Some(pattern) = pattern {
                     let written = field(parameter, "type").and_then(|t| type_name(self.src, t));
                     if pattern.kind() == "object_pattern" {
-                        self.destructured(pattern, written.clone());
+                        self.destructured(pattern, written.clone(), Vec::new());
                     }
                     let annotated = written.filter(|_| pattern.kind() == "identifier");
                     self.bind_parameter(pattern, annotated, frame, children);
@@ -3881,7 +3881,7 @@ impl<'t> Walker<'t> {
                 }
             } else if bind {
                 if parameter.kind() == "object_pattern" {
-                    self.destructured(parameter, None);
+                    self.destructured(parameter, None, Vec::new());
                 }
                 self.bind_parameter(parameter, None, frame, children);
             }
@@ -3976,7 +3976,11 @@ impl<'t> Walker<'t> {
                         .filter(|v| v.kind() == "identifier")
                         .and_then(|v| self.lookup(self.t(v)))
                 });
-                self.destructured(name, typed);
+                let source = match (&typed, value) {
+                    (None, Some(v)) => self.static_path(v),
+                    _ => Vec::new(),
+                };
+                self.destructured(name, typed, source);
             }
             for bound in pattern_bounds(name) {
                 match bound {
@@ -4069,11 +4073,24 @@ impl<'t> Walker<'t> {
         }
     }
 
+    /// The names an expression is written as, when it is a plain chain of names
+    /// (`Request`, `this.options`, `a.b`): what a pattern taking from it reads.
+    fn static_path(&self, value: Node<'t>) -> Vec<Name> {
+        if !matches!(value.kind(), "identifier" | "member_expression") {
+            return Vec::new();
+        }
+        let chain = self.chain(value);
+        match (chain.inner, chain.receiver) {
+            (None, Receiver::Unknown) => chain.qualifier,
+            _ => Vec::new(),
+        }
+    }
+
     /// What an object pattern takes of a value: each name is a read of the member
     /// of that name of the type the code states for the value, or, when it states
     /// none, of a value nothing types, which the resolver leaves as an unresolved
     /// read and never drops.
-    fn destructured(&mut self, pattern: Node<'t>, typed: Option<TypeName>) {
+    fn destructured(&mut self, pattern: Node<'t>, typed: Option<TypeName>, source: Vec<Name>) {
         for entry in kids(pattern) {
             let name_node = match entry.kind() {
                 "shorthand_property_identifier_pattern" => Some(entry),
@@ -4086,7 +4103,7 @@ impl<'t> Walker<'t> {
                     if let Some(inner) =
                         field(entry, "value").filter(|v| v.kind() == "object_pattern")
                     {
-                        self.destructured(inner, None);
+                        self.destructured(inner, None, Vec::new());
                     }
                     field(entry, "key")
                         .filter(|k| matches!(k.kind(), "property_identifier" | "string"))
@@ -4099,7 +4116,8 @@ impl<'t> Walker<'t> {
             let name = strip_quotes(self.t(node)).to_string();
             let (receiver, qualifier) = match &typed {
                 Some(t) => (Receiver::Typed(t.clone()), Vec::new()),
-                None => (Receiver::Unknown, vec![Name::from(UNTYPED_SOURCE)]),
+                None if source.is_empty() => (Receiver::Unknown, vec![Name::from(UNTYPED_SOURCE)]),
+                None => (Receiver::Unknown, source.clone()),
             };
             self.reference(node, &name, qualifier, receiver, UseKind::Read);
         }
