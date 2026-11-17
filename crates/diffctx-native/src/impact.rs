@@ -561,6 +561,9 @@ pub struct Caller {
     /// The search for a test above this caller is open: an absent `tests` is not
     /// established.
     pub tests_open: bool,
+    /// The `tests` are the nearest only: a user above them was left unwalked, or a
+    /// use on the walked path is hedged.
+    pub tests_partial: bool,
     /// `resolved`: a binding links the reference to the changed definition.
     /// `name`: a word match — the lexical model of a language without a
     /// binding model, or a removed definition's name found by search; the
@@ -2373,6 +2376,7 @@ fn merge_by_symbol(callers: Vec<Caller>) -> Vec<Caller> {
                 m.unread_test = m.unread_test.take().or(c.unread_test);
                 m.file_tested = m.tests.is_empty() && (m.file_tested || c.file_tested);
                 m.tests_open = m.tests.is_empty() && (m.tests_open || c.tests_open);
+                m.tests_partial = !m.tests.is_empty() && (m.tests_partial || c.tests_partial);
             }
             None => merged.push(c),
         }
@@ -4080,6 +4084,8 @@ pub fn build_impact(
                         .then(|| tests.unread_naming(frag, &rel(state, frag.path())))
                         .flatten(),
                     tests_open: tested.is_empty() && tests.caller_open(frag, core, &link),
+                    tests_partial: !tested.is_empty()
+                        && tests.nearest_only(frag, state, &by_id, &link),
                     registered_by,
                     tests: tested,
                     evidence: found.map_or("name", Reach::evidence),
@@ -4742,6 +4748,8 @@ pub fn build_impact(
                 let tested = tests.tested_by(frag, state, &by_id, &link);
                 c.file_tested = tested.is_empty() && tests.file_tested(frag, &reaches_file);
                 c.tests_open = tested.is_empty() && tests.open_above(frag, &link, true);
+                c.tests_partial =
+                    !tested.is_empty() && tests.nearest_only(frag, state, &by_id, &link);
                 c.tests = tested;
             }
             if let Some(c) =

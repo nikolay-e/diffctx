@@ -60,3 +60,6 @@ expect:
   - total
   untested:
   - tax
+  # The caller is the test itself: its list is whole, nothing above it is left.
+  tests_not_open:
+  - shop/price.py::test_total

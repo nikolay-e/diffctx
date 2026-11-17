@@ -528,6 +528,11 @@ pub struct Guard {
     /// How many more reach it beyond those named.
     #[serde(default, skip_serializing_if = "is_zero_u32")]
     pub more: u32,
+    /// The tests named are the nearest only: a caller above them was left unwalked,
+    /// or a use on the way is hedged (a dispatch, an operator or a protocol call
+    /// no use names). A test further up may be missing; none is claimed absent.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub open: bool,
     /// The decorator (`registered`), or the framework's own sentence (`entry_point`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub registrar: Option<String>,
@@ -542,6 +547,7 @@ impl Guard {
             via: None,
             also: Vec::new(),
             more: 0,
+            open: false,
             registrar: None,
         }
     }
@@ -563,6 +569,7 @@ impl Guard {
                     })
                     .collect(),
                 more: u32::try_from(caller.tests.len() - named.len()).unwrap_or(u32::MAX),
+                open: caller.tests_partial,
                 ..bare(GuardState::Linked)
             };
         }
