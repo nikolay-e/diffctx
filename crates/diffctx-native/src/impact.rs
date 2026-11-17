@@ -1580,17 +1580,6 @@ fn unread_code(path: &str) -> bool {
         )
 }
 
-/// A non-static C function: the linker exports it, so any language that loads
-/// the library reaches it by its bare name (`lib.nt_add`, `C.nt_add`).
-fn linked_by_name(core: &Fragment) -> bool {
-    core.kind == FragmentKind::Function
-        && crate::languages::get_language_for_file(core.path()) == Some("c")
-        && !core.content.split('(').next().is_some_and(|head| {
-            head.split(|c: char| !(c.is_alphanumeric() || c == '_'))
-                .any(|w| w == "static")
-        })
-}
-
 /// The name a reader spells: `var.region` is written `region`, a C++ member
 /// `Engine::open` is written `open`.
 fn literal_base(symbol: &str) -> &str {
@@ -1813,9 +1802,9 @@ impl UntracedNamers {
         state: &ScoredState,
         core: &'a Fragment,
         left: impl Iterator<Item = &'a str>,
+        linked: bool,
     ) -> Vec<UnanalysedFile> {
         let own = crate::vocabulary::family::Group::of_name(&rel(state, core.path()));
-        let linked = linked_by_name(core);
         let mut files: Vec<UnanalysedFile> = Vec::new();
         for name in spelled_name(core).into_iter().chain(left) {
             let named = self.named_in(name, |p| {
@@ -4418,8 +4407,15 @@ pub fn build_impact(
             .chain(left())
             .flat_map(|n| untraced.literal_files(n))
             .map(|file| (file, true));
+        // The linker exports a non-static C function: another language that
+        // loads the library names it by its bare name.
+        let linked = py.is_some_and(|def| {
+            cells
+                .of(&def.file)
+                .is_some_and(|cell| cell.exported_c_function_at(&def.file, &def.name, def.lines))
+        });
         let named = untraced
-            .of(state, core, left())
+            .of(state, core, left(), linked)
             .into_iter()
             .filter(|f| nothing_known || runs_script(f))
             .map(|file| (file, false))
