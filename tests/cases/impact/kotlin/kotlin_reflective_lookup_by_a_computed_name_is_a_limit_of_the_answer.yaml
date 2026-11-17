@@ -1,0 +1,53 @@
+name: kotlin_reflective_lookup_by_a_computed_name_is_a_limit_of_the_answer
+mode: impact
+source: synthetic
+tags: [kotlin, reflection, dynamic-name, coverage]
+repo:
+  initial_files:
+    src/main/kotlin/shop/Lib.kt: |
+      package shop
+
+      class Lib {
+          fun viaThing(): Int {
+              return 1
+          }
+      }
+    src/main/kotlin/shop/Spare.kt: |
+      package shop
+
+      class Spare {
+          fun keep(): Int {
+              return 1
+          }
+      }
+    src/main/kotlin/shop/Boot.kt: |
+      package shop
+
+      fun lookup(suffix: String): Any? = Lib::class.java.getDeclaredMethod("via" + suffix)
+  changed_files:
+    src/main/kotlin/shop/Lib.kt: |
+      package shop
+
+      class Lib {
+          fun viaThing(): Int {
+              return 2
+          }
+      }
+    src/main/kotlin/shop/Spare.kt: |
+      package shop
+
+      class Spare {
+          fun keep(): Int {
+              return 2
+          }
+      }
+  commit_message: "lib and spare: bump"
+expect:
+  exact: false
+  discloses: true
+  partial:
+    src/main/kotlin/shop/Lib.kt::viaThing:
+      calls: not_traced
+      reads: not_traced
+  untested:
+    - src/main/kotlin/shop/Spare.kt::keep

@@ -165,3 +165,8 @@ impact/shell/sh_function_run_through_an_echo_function_of_the_script_is_a_caller 
 impact/shell/sh_function_run_through_an_xargs_function_of_the_script_is_a_caller  # the script defines `xargs`: the word after it is a possible call, said so (partial), but no resolved caller is named
 impact/typescript/ts_global_augmentation_of_a_builtin_type_is_called_through_it  # the call on a `string` receiver is a candidate of the member the global augmentation declares (possibly called), not a resolved caller: a builtin receiver carries no type to pick `String` by
 impact/typescript/ts_namespace_merged_into_a_class_in_another_file_reads_its_member_bare  # `defaults` read bare in another file's body of a namespace merged into the class `Foo` is a hedged read, not a resolved caller: the file's scope does not hold the other file's member
+impact/java/java_jackson_getter_of_a_serialized_class_is_entered_by_jackson  # a getter of a class Jackson serializes is reached by no caller of ours, and the answer says nothing calls it
+impact/java/java_entry_annotation_from_an_unlisted_package_may_be_entered  # an entry annotation from a package the table does not trust says nothing calls the member
+impact/java/java_reflective_lookup_by_a_computed_name_is_a_limit_of_the_answer  # getMethod("via" + x) reaches a member by a name no text holds, and the answer calls it uncalled
+impact/kotlin/kotlin_reflective_lookup_by_a_computed_name_is_a_limit_of_the_answer  # the Kotlin twin: getDeclaredMethod with a built name
+impact/java/java_enum_constant_named_in_config_values_is_a_textual_use  # a JSON value names the constant, and no JSON file is read as config
