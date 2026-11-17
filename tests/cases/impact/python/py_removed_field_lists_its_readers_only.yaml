@@ -50,3 +50,7 @@ expect:
     "config.py::AppSettings": []
   decoys:
     "config.py::AppSettings.b": [app.py]
+  partial:
+    config.py::AppSettings.b:
+      calls: name_unsearched
+      reads: name_unsearched

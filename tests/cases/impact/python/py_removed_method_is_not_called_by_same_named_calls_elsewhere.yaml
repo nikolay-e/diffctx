@@ -55,3 +55,10 @@ expect:
   decoys:
     describe: [web/e2e/home.spec.ts, web/src/unit.test.tsx]
     callback: [web/e2e/home.spec.ts]
+  partial:
+    lib/profile.py::callback:
+      calls: name_unsearched
+      reads: name_unsearched
+    lib/profile.py::describe:
+      calls: name_unsearched
+      reads: name_unsearched

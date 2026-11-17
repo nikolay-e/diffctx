@@ -32,3 +32,7 @@ expect:
     usage: []
   removed:
   - usage
+  partial:
+    bin/tool.sh:
+      calls: [name_unsearched, not_traced]
+      reads: name_unsearched

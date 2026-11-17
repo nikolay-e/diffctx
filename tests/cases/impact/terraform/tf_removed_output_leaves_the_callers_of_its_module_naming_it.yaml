@@ -42,3 +42,7 @@ expect:
   exact: true
   removed:
   - vpc
+  partial:
+    modules/net/main.tf::output.vpc:
+      calls: name_unsearched
+      reads: name_unsearched

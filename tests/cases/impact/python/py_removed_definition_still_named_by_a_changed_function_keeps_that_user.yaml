@@ -36,3 +36,7 @@ expect:
   relations:
     - {from: "app.py::run", to: "lib.py::old", kind: calls, resolution: resolved, site: 5}
   removed: [old]
+  partial:
+    lib.py::old:
+      calls: name_unsearched
+      reads: name_unsearched

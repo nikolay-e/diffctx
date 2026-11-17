@@ -35,3 +35,7 @@ expect:
   relations:
     - {from: "shop/cart.py::total", to: "shop/helpers.py::helper", kind: calls, resolution: resolved, site: 5}
     - {from: "tests/test_cart.py", to: "shop/cart.py::total", kind: tests_reach, resolution: resolved}
+  partial:
+    shop/helpers.py::helper:
+      calls: name_unsearched
+      reads: name_unsearched

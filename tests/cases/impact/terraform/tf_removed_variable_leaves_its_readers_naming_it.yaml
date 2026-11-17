@@ -37,3 +37,7 @@ expect:
   exact: true
   removed:
   - zone
+  partial:
+    variables.tf::var.zone:
+      calls: name_unsearched
+      reads: name_unsearched

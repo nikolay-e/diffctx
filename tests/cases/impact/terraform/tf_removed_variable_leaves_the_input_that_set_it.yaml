@@ -39,3 +39,7 @@ expect:
   exact: true
   removed:
   - size
+  partial:
+    modules/net/main.tf::var.size:
+      calls: name_unsearched
+      reads: name_unsearched
