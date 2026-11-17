@@ -96,7 +96,10 @@ first of the uses; `via` is `call`, `read`, `unbound` or `embedded`), `unpaired{
 `ambiguous{name, definitions, language}`, `not_modelled{language}`,
 `overridable{via}`, `templated{files}`, `context_unbound{files}`,
 `rendered_elsewhere{files}`, `external_source{pointers}`, `source_flag{files}`,
-`unread_directories{directories, total}`.
+`unread_directories{directories, total}`,
+`name_unsearched{name}` (the name is too short or too common to search as
+text, so a script, template or string spelling it was not looked for; said
+when nothing else reaches the definition).
 `unaccounted` is the file account of the definition's interaction group: `files`
 of them could be neither bound by a cell nor ruled out by the names they spell,
 and `reason` says why (`read_failed`, `changed`, `too_large`, `not_read`,

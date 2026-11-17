@@ -37,4 +37,6 @@ repo:
           return Reply(url=order.url, title=order.title, verdict="kept")
   worktree: true
 expect:
-  unknowns: {}
+  unknowns:
+    handle: common_word
+    Order: common_word
