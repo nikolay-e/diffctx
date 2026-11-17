@@ -1,0 +1,30 @@
+name: metric_rename_names_no_rule_that_spells_it_outside_an_expression
+mode: impact
+source: gh#610
+issue_state: open
+tags: [config, python, prometheus, decoy]
+repo:
+  initial_files:
+    app/metrics.py: |
+      from prometheus_client import Counter
+      EVENTS = Counter("demo_events", "Events by type", ["type"])
+      def record(kind):
+          EVENTS.labels(type=kind).inc()
+    rules/notes.yaml: |
+      groups:
+        - name: notes
+          rules:
+            - alert: OtherStalls
+              expr: sum(rate(demo_events_other_total[6h])) > 5
+              annotations:
+                description: "demo_events_total counts what this alert does not read"
+  changed_files:
+    app/metrics.py: |
+      from prometheus_client import Counter
+      EVENTS = Counter("demo_signals", "Events by type", ["type"])
+      def record(kind):
+          EVENTS.labels(type=kind).inc()
+expect:
+  exact: false
+  changed: [app/metrics.py::EVENTS]
+  decoys: {app/metrics.py::EVENTS: [rules/notes.yaml]}

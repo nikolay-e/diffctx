@@ -1,0 +1,31 @@
+name: metric_rename_names_the_recording_rule_that_reads_its_buckets
+mode: impact
+source: gh#610
+issue_state: open
+tags: [config, python, prometheus, histogram, recording-rule]
+repo:
+  initial_files:
+    app/latency.py: |
+      from prometheus_client import Histogram
+      LATENCY = Histogram("demo_request_seconds", "Request time", ["route"])
+      def observe(route, seconds):
+          LATENCY.labels(route=route).observe(seconds)
+    rules/recording.yaml: |
+      groups:
+        - name: demo
+          rules:
+            - record: demo:request_seconds:p99
+              expr: |
+                histogram_quantile(0.99,
+                  sum by (le) (rate(demo_request_seconds_bucket[5m])))
+  changed_files:
+    app/latency.py: |
+      from prometheus_client import Histogram
+      LATENCY = Histogram("demo_latency_seconds", "Request time", ["route"])
+      def observe(route, seconds):
+          LATENCY.labels(route=route).observe(seconds)
+expect:
+  exact: false
+  changed: [app/latency.py::LATENCY]
+  relations:
+    - {from: rules/recording.yaml, to: app/latency.py::LATENCY, kind: reads, resolution: candidate, site: 7}
