@@ -3003,9 +3003,59 @@ impl<'a> Engine<'a> {
                 reason: CandidateReason::UntypedReceiver,
             },
             Lookup::Absent(reason) => Outcome::Unresolved(reason),
+            Lookup::Untyped if r.use_kind == UseKind::Read && self.holds_object_literal(&base) => {
+                Outcome::Unresolved(UnresolvedReason::Builtin)
+            }
             Lookup::Untyped => self.untyped(f, r, false),
             Lookup::Any => self.untyped(f, r, true),
         }
+    }
+
+    /// Whether the entity is a constant initialised by an object literal that
+    /// spreads nothing: a read of a property of it is the literal's own key, never
+    /// a member of a type of the repository.
+    fn holds_object_literal(&self, entity: &Entity) -> bool {
+        let Entity::Def(id) = entity else {
+            return false;
+        };
+        let rec = &self.ix.defs[*id];
+        let Some(text) = self.text(rec.file) else {
+            return false;
+        };
+        let range = rec.def.name_span.bytes.end as usize..rec.def.span.bytes.end as usize;
+        let (true, Some(body)) = (rec.def.kind == DefKind::Constant, text.get(range)) else {
+            return false;
+        };
+        let mut at = skip_blanks(body, 0);
+        if body.get(at) != Some(&b'=') || matches!(body.get(at + 1), Some(b'=' | b'>')) {
+            return false;
+        }
+        at = skip_blanks(body, at + 1);
+        if body.get(at) != Some(&b'{') {
+            return false;
+        }
+        let (mut depth, mut quote) = (0usize, None);
+        while let Some(&byte) = body.get(at) {
+            match (quote, byte) {
+                (Some(_), b'\\') => at += 1,
+                (Some(open), b) if b == open => quote = None,
+                (Some(_), _) => {}
+                (None, b'\'' | b'"') => quote = Some(byte),
+                (None, b'`') => return false,
+                (None, b'.') if body[at..].starts_with(b"...") => return false,
+                (None, b'{') => depth += 1,
+                (None, b'}') => {
+                    depth -= 1;
+                    if depth == 0 {
+                        let rest = &body[skip_blanks(body, at + 1)..];
+                        return rest.is_empty() || matches!(rest[0], b';' | b',');
+                    }
+                }
+                _ => {}
+            }
+            at += 1;
+        }
+        false
     }
 
     /// The key of an object literal the code types, a member of that type: the
