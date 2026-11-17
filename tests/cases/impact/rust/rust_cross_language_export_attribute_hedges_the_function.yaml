@@ -1,0 +1,172 @@
+name: rust_cross_language_export_attribute_hedges_the_function
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [rust, export, gap, absence-claim]
+repo:
+  initial_files:
+    Cargo.toml: |
+      [package]
+      name = "exp"
+      version = "0.1.0"
+      edition = "2021"
+
+      [lib]
+      crate-type = ["cdylib"]
+    src/lib.rs: |
+      use wasm_bindgen::prelude::*;
+      use pyo3::prelude::*;
+
+      #[wasm_bindgen]
+      pub fn wasm_only(x: i32) -> i32 {
+          x + 1
+      }
+
+      #[wasm_bindgen(js_name = "renamedJs")]
+      pub fn wasm_renamed(x: i32) -> i32 {
+          x + 1
+      }
+
+      #[pyfunction]
+      pub fn py_only(x: i32) -> i32 {
+          x + 1
+      }
+
+      #[pyo3::pyfunction]
+      pub fn py_qualified(x: i32) -> i32 {
+          x + 1
+      }
+
+      #[napi]
+      pub fn napi_sum(a: i32, b: i32) -> i32 {
+          a + b
+      }
+
+      #[no_mangle]
+      pub extern "C" fn c_only(x: i32) -> i32 {
+          x + 1
+      }
+
+      pub struct Acc {
+          n: i32,
+      }
+
+      #[pymethods]
+      impl Acc {
+          pub fn add(&mut self, x: i32) {
+              self.n += x;
+          }
+      }
+
+      pub struct Counter {
+          n: i32,
+      }
+
+      #[wasm_bindgen]
+      impl Counter {
+          pub fn bump(&mut self) {
+              self.n += 1;
+          }
+      }
+    web/app.js: |
+      import init, { wasm_only, renamedJs, Counter } from "../pkg/exp.js";
+
+      await init();
+      console.log(wasm_only(1), renamedJs(2));
+      new Counter().bump();
+    web/index.js: |
+      const { napi_sum } = require("../index.node");
+
+      console.log(napi_sum(1, 2));
+    py/test_exp.py: |
+      import exp
+
+
+      def test_all():
+          assert exp.py_only(1) == 2
+          assert exp.py_qualified(1) == 2
+          exp.Acc().add(3)
+    c/main.c: |
+      extern int c_only(int);
+
+      int main(void) { return c_only(1); }
+  changed_files:
+    src/lib.rs: |
+      use wasm_bindgen::prelude::*;
+      use pyo3::prelude::*;
+
+      #[wasm_bindgen]
+      pub fn wasm_only(x: i32) -> i32 {
+          x + 2
+      }
+
+      #[wasm_bindgen(js_name = "renamedJs")]
+      pub fn wasm_renamed(x: i32) -> i32 {
+          x + 2
+      }
+
+      #[pyfunction]
+      pub fn py_only(x: i32) -> i32 {
+          x + 2
+      }
+
+      #[pyo3::pyfunction]
+      pub fn py_qualified(x: i32) -> i32 {
+          x + 2
+      }
+
+      #[napi]
+      pub fn napi_sum(a: i32, b: i32) -> i32 {
+          a + b + 0
+      }
+
+      #[no_mangle]
+      pub extern "C" fn c_only(x: i32) -> i32 {
+          x + 2
+      }
+
+      pub struct Acc {
+          n: i32,
+      }
+
+      #[pymethods]
+      impl Acc {
+          pub fn add(&mut self, x: i32) {
+              self.n += x + 0;
+          }
+      }
+
+      pub struct Counter {
+          n: i32,
+      }
+
+      #[wasm_bindgen]
+      impl Counter {
+          pub fn bump(&mut self) {
+              self.n += 2;
+          }
+      }
+  commit_message: "exp: change every exported function"
+expect:
+  changed:
+    - src/lib.rs::wasm_only
+    - src/lib.rs::wasm_renamed
+    - src/lib.rs::py_only
+    - src/lib.rs::py_qualified
+    - src/lib.rs::napi_sum
+    - src/lib.rs::c_only
+    - src/lib.rs::add
+    - src/lib.rs::bump
+  callers:
+    wasm_only: []
+    wasm_renamed: []
+    py_only: []
+    py_qualified: []
+    napi_sum: []
+    c_only: []
+    add: []
+    bump: []
+  no_negative_claims: true
+  never_empty: true
+  partial:
+    src/lib.rs::c_only: {calls: not_traced}
