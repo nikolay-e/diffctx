@@ -49,7 +49,8 @@ impl Fixture {
         format!("{} in {}", path.join("."), found.file)
     }
 
-    /// What each use of a file lands on, by line, in order.
+    /// What each use of a file lands on, by line, in order: a read of `a.b` lands as `a.b`, then
+    /// as each key of its path (`a`, `b`), which the action spells by itself.
     fn lands(&self, file: &str) -> Vec<(u32, String)> {
         self.head
             .bindings()
@@ -96,10 +97,20 @@ fn a_chart_default_is_a_candidate_for_a_read_when_no_release_is_written_down() {
     ]);
     assert_eq!(
         fixture.lands("chart/templates/deploy.yaml"),
-        [(
-            10,
-            "candidate(NoRelease) image.tag in chart/values.yaml".to_string()
-        )]
+        [
+            (
+                10,
+                "candidate(NoRelease) image.tag in chart/values.yaml".to_string()
+            ),
+            (
+                10,
+                "candidate(NoRelease) image in chart/values.yaml".to_string()
+            ),
+            (
+                10,
+                "candidate(NoRelease) image.tag in chart/values.yaml".to_string()
+            ),
+        ]
     );
     assert_eq!(fixture.head.unbound_values(), 0);
 }
@@ -120,6 +131,16 @@ fn a_values_file_a_release_gives_the_chart_is_read_as_resolved() {
     assert_eq!(
         fixture.lands("chart/templates/deploy.yaml"),
         [
+            (10, "image.tag in envs/values-prod.yaml".to_string()),
+            (
+                10,
+                "candidate(NoRelease) image.tag in chart/values.yaml".to_string()
+            ),
+            (10, "image in envs/values-prod.yaml".to_string()),
+            (
+                10,
+                "candidate(NoRelease) image in chart/values.yaml".to_string()
+            ),
             (10, "image.tag in envs/values-prod.yaml".to_string()),
             (
                 10,
@@ -155,7 +176,11 @@ spec:
     ]);
     assert_eq!(
         fixture.lands("chart/templates/deploy.yaml"),
-        [(10, "image.tag in chart/values-prod.yaml".to_string())]
+        [
+            (10, "image.tag in chart/values-prod.yaml".to_string()),
+            (10, "image in chart/values-prod.yaml".to_string()),
+            (10, "image.tag in chart/values-prod.yaml".to_string()),
+        ]
     );
     assert_eq!(fixture.head.unbound_values(), 0);
 }
@@ -173,6 +198,14 @@ fn a_key_no_values_file_sets_is_a_read_of_nothing_and_a_parent_key_is_the_neares
     assert_eq!(
         fixture.lands("chart/templates/a.yaml"),
         [
+            (
+                1,
+                "candidate(NoRelease) image in chart/values.yaml".to_string()
+            ),
+            (
+                1,
+                "candidate(NoRelease) image in chart/values.yaml".to_string()
+            ),
             (
                 1,
                 "candidate(NoRelease) image in chart/values.yaml".to_string()
