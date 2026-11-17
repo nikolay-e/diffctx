@@ -87,11 +87,10 @@ impl Solved {
                 }
             }
         }
-        let (java_definitions, java_bindings, java_stopped, java_losses) =
-            java::solve(ctx, side, reader, &java_files, &kotlin_files);
-        bindings.extend(java_bindings);
-        losses.extend(java_losses);
-        if kotlin_stopped || java_stopped {
+        let java = java::solve(ctx, side, reader, &java_files, &kotlin_files);
+        bindings.extend(java.bindings);
+        losses.extend(java.losses);
+        if kotlin_stopped || java.stopped {
             losses.push(Loss::Deadline {
                 stage: Stage::Search,
             });
@@ -99,9 +98,9 @@ impl Solved {
         let definitions = if own == Language::Kotlin {
             kotlin_definitions
         } else {
-            java_definitions
+            java.definitions
         };
-        Ok(Self::new(definitions, bindings, losses, read))
+        Ok(Self::new(definitions, bindings, losses, read).with_open_routes(java.open_routes))
     }
 }
 

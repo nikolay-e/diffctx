@@ -27,8 +27,6 @@
 
 #![deny(clippy::disallowed_methods)]
 
-mod open_world;
-
 use std::cell::{OnceCell, RefCell};
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::ops::Range;
@@ -3637,6 +3635,22 @@ impl Cell {
                     |holder| format!("`{}`", holder.as_str()),
                 ),
         )
+    }
+
+    /// The interface a class outside the repository could implement to reach a Java
+    /// method nothing calls: the head resolver names it for each public method.
+    fn open_world_via(&self, changed: &Changed, uses: &[Use]) -> Option<String> {
+        let Resolver::Java(head) = &self.head else {
+            return None;
+        };
+        if !uses.is_empty() {
+            return None;
+        }
+        changed
+            .subjects
+            .iter()
+            .find_map(|subject| head.open_route(&subject.key))
+            .map(str::to_string)
     }
 
     /// Whether a line range of `user_file` holds a resolved use of the
