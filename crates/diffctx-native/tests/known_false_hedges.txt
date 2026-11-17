@@ -8,7 +8,6 @@
 # it stands for written beside it, and never listed here.
 impact/config/config_helm_edited_named_template_is_called_by_the_includes_of_its_own_chart  # the define line itself and a second chart's include count as unlanded uses (a quoted define name is no declaration), and a named template gets the outside reason that only objects and files earn
 impact/config/config_helm_release_values_file_is_read_by_the_template_of_its_chart_as_resolved  # a `.Values` read inside a template scalar is unexplained text in the real and the decoy chart, and a chart that does not take the values file has no witness that the read is not its own
-impact/dockerfile/dockerfile_copy_from_by_name_reaches_the_stage_and_not_the_other  # embedded shell (`RUN go build`) falls through the witnesses to an unexplained candidate and is counted as a read of the stage `build`
 impact/python/py_attribute_read_through_a_local_alias_is_a_read_of_the_member  # an attribute of an unrelated object with the same name (decoy other.py) is an unresolved receiver the file's imports exclude
 impact/python/py_console_script_run_by_a_sys_executable_sibling_has_a_test_link_an_unrun_one_has_none  # `pkg.interfaces.cli.main:run_from_cli` (pyproject.toml:6) names the module main.py, but its `main` is read as a literal spelling of graph.main and counted as unaccounted
 impact/python/py_member_shared_with_third_party_types_is_not_resolved_by_name  # `df.columns` is an attribute of a third-party type: the receiver is unresolved, though its type is external

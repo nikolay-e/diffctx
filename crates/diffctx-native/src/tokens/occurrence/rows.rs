@@ -108,6 +108,12 @@ pub(super) const STATEMENT_NAMES: &[(Family, &[DefKind], &str)] = &[
     (Family::Sql, &[DefKind::Object], "view"),
 ];
 
+/// The instructions whose words are another language's text: a shell's word is no name of a
+/// subject of the kinds listed (a stage is named by `FROM` and `--from=`), unless a `$` or a
+/// flag writes it.
+pub(super) const FOREIGN_TEXT: &[(Family, &[DefKind], &str)] =
+    &[(Family::Dockerfile, &[DefKind::Object], "run")];
+
 /// Families whose names live in schemas, not in classes: a definition of one key in several files
 /// (a migration's `CREATE OR REPLACE`) is one object, and a routine of another schema is no
 /// member a call through an unknown receiver may run.
