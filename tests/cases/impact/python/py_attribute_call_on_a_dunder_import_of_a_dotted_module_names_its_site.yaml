@@ -1,8 +1,8 @@
-name: py_attribute_call_on_a_dunder_import_of_a_dotted_module_is_a_candidate_caller
+name: py_attribute_call_on_a_dunder_import_of_a_dotted_module_names_its_site
 mode: impact
 source: synthetic
 issue_state: open
-tags: [python, dunder-import, dynamic-name, candidate]
+tags: [python, dunder-import, dynamic-name, coverage]
 repo:
   initial_files:
     main.py: |
@@ -18,9 +18,10 @@ repo:
           return 1
   commit_message: "cart: total returns one"
 expect:
-  exact: false
+  changed: [shop/cart.py::total]
   discloses: true
   never_empty: true
   no_negative_claims: true
-  relations:
-    - {from: main.py, to: shop/cart.py::total, kind: calls, resolution: unresolved}
+  partial:
+    shop/cart.py::total:
+      calls: unlanded

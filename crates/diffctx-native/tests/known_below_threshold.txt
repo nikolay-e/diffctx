@@ -222,6 +222,6 @@ symbol/python/py_getattr_with_a_concatenated_name_hedges_the_handlers_of_its_cla
 impact/python/py_eval_of_a_built_string_hedges_the_names_of_its_file  # eval(measure + "()") calls a name the text does not write; area stays complete with no caller
 impact/python/py_exec_of_a_string_that_calls_a_function_hedges_it  # exec of a string that calls helper(): the call is in a string, helper stays complete with no caller
 impact/python/py_globals_lookup_with_a_built_key_hedges_the_functions_of_its_file  # globals()["handle_" + kind]() reaches handle_post by a built key; answered complete with no caller
-impact/python/py_attribute_call_on_a_dunder_import_result_is_a_candidate_caller  # mod = __import__('M8'); mod.foo(1): the builtin's result is taken for the language's own object, so foo has no candidate caller
-impact/python/py_attribute_call_on_a_dunder_import_of_a_dotted_module_is_a_candidate_caller  # package = __import__("shop.cart"); package.cart.total(): same reading of the builtin's result
+impact/python/py_attribute_call_on_a_dunder_import_result_names_its_site  # mod = __import__('M8'); mod.foo(1): the builtin's result is taken for the language's own object, so no gap names the call site
+impact/python/py_attribute_call_on_a_dunder_import_of_a_dotted_module_names_its_site  # package = __import__("shop.cart"); package.cart.total(): same reading of the builtin's result
 symbol/python/py_locals_lookup_of_a_nested_function_is_not_a_complete_local  # locals()["step"]() reaches the nested function by name; its local coverage stays complete with no use
