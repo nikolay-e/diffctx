@@ -643,14 +643,17 @@ pub(super) fn has_data_extension(path: &str) -> bool {
 /// until proven otherwise (`Procfile`, `CODEOWNERS`) and goes by extension
 /// alone (#123).
 pub(super) fn is_data(root_dir: &Path, source: &crate::source::Source, path: &str) -> bool {
-    let name = path.rsplit('/').next().unwrap_or(path);
-    if !name.contains('.') {
-        return crate::languages::get_language_for_file(path).is_none()
-            && !source
-                .read_to_string(&root_dir.join(path))
-                .is_some_and(|t| t.starts_with("#!"));
-    }
-    has_data_extension(path)
+    unclassified(root_dir, source, path) || has_data_extension(path)
+}
+
+/// An extensionless file no table names and no shebang runs: data as a referrer of
+/// a path, but unknown as a reader of a name, which any program may read from it.
+pub(super) fn unclassified(root_dir: &Path, source: &crate::source::Source, path: &str) -> bool {
+    !path.rsplit('/').next().unwrap_or(path).contains('.')
+        && crate::languages::get_language_for_file(path).is_none()
+        && !source
+            .read_to_string(&root_dir.join(path))
+            .is_some_and(|t| t.starts_with("#!"))
 }
 
 /// A structured config: its keys and values are read by a program.

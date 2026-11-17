@@ -8,14 +8,11 @@
 # is not listed is a regression, and a listed variant that passes fails the run
 # so that a stale entry cannot absorb a future regression. The release gate is
 # an empty file.
-#
 # Fill it from a report: run the suite with DIFFCTX_CLASS_IGNORE_RED=1 and
 # DIFFCTX_CLASS_REPORT=<file>, then
 #   awk -F'\t' '{print $1" | "$2" | "$3" | "$4" | "$5" | "$6" # "$7}' <file> | sort -u
 # The synthetic suite's rows are below. The corpus suite's rows ("corpus A/…"
 # and "corpus B/…") come from its own run on the release profile.
-A/config | A | config | synthetic | Use: unchanged without an extension (unread) | Impact # complete_empty=true
-A/config | A | config | synthetic | Use: unchanged .xyz (unread) | Impact # complete_empty=true
 corpus A/c | A | c | impact/c/fj176_c_struct_that_lost_a_field_is_no_layout_edit | unchanged, command position (Makefile) | impact # removed definition: `request` is gone; the answer says nothing calls it beside the spelling (an unread-language file, not searched for a removed name)
 corpus A/c | A | c | impact/c/fj176_c_struct_that_lost_a_field_is_no_layout_edit | unchanged, command position (script) | impact # removed definition: `request` is gone; the answer says nothing calls it beside the spelling (an unread-language file, not searched for a removed name)
 corpus A/c | A | c | impact/c/fj176_c_struct_that_lost_a_field_is_no_layout_edit | unchanged, macro body | impact # removed definition: `request` is gone; the answer says nothing calls it beside the spelling (an unread-language file, not searched for a removed name)
