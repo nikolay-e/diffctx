@@ -1,8 +1,8 @@
-name: py_attribute_call_on_a_dunder_import_result_is_a_candidate_caller
+name: py_attribute_call_on_a_dunder_import_result_names_its_site
 mode: impact
 source: synthetic
 issue_state: open
-tags: [python, dunder-import, dynamic-name, candidate]
+tags: [python, dunder-import, dynamic-name, coverage]
 repo:
   initial_files:
     modules/M8.py: |
@@ -17,9 +17,10 @@ repo:
           return x + 2
   commit_message: "M8: foo adds two"
 expect:
-  exact: false
+  changed: [modules/M8.py::foo]
   discloses: true
   never_empty: true
   no_negative_claims: true
-  relations:
-    - {from: modules/Main.py, to: modules/M8.py::foo, kind: calls, resolution: unresolved}
+  partial:
+    modules/M8.py::foo:
+      calls: unlanded
