@@ -1,0 +1,38 @@
+name: go_function_called_only_from_assembly_is_named
+mode: impact
+source: synthetic
+tags: [go, assembly, false-absence]
+repo:
+  initial_files:
+    go.mod: |
+      module example.com/app
+
+      go 1.22
+    lib/lib.go: |
+      package lib
+
+      func add(a, b int) int
+
+      func Helper() int { return 1 }
+    lib/add_amd64.s: |
+      #include "textflag.h"
+
+      TEXT ·add(SB), NOSPLIT, $0-24
+          CALL ·Helper(SB)
+          RET
+  changed_files:
+    lib/lib.go: |
+      package lib
+
+      func add(a, b int) int
+
+      func Helper() int { return 2 }
+  commit_message: "lib: Helper returns two"
+expect:
+  exact: false
+  discloses: true
+  never_empty: true
+  no_negative_claims: true
+  coverage: {Helper: {calls: partial}}
+  relations:
+    - {from: lib/add_amd64.s, to: lib/lib.go::Helper, kind: calls, resolution: unresolved}

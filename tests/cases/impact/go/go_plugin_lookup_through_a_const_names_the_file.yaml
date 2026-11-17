@@ -1,0 +1,36 @@
+name: go_plugin_lookup_through_a_const_names_the_file
+mode: impact
+source: synthetic
+tags: [go, plugin, reflection, false-absence]
+repo:
+  initial_files:
+    go.mod: |
+      module example.com/app
+
+      go 1.22
+    plug/plug.go: |
+      package main
+
+      func Handler() int { return 1 }
+    app/use.go: |
+      package app
+
+      import "plugin"
+
+      const sym = "Handler"
+
+      func Load(p *plugin.Plugin) (plugin.Symbol, error) { return p.Lookup(sym) }
+  changed_files:
+    plug/plug.go: |
+      package main
+
+      func Handler() int { return 2 }
+  commit_message: "plug: Handler returns two"
+expect:
+  exact: false
+  discloses: true
+  never_empty: true
+  no_negative_claims: true
+  coverage: {Handler: {calls: partial}}
+  relations:
+    - {from: app/use.go, to: plug/plug.go::Handler, kind: calls, resolution: unresolved}
