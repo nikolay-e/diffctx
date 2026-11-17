@@ -490,6 +490,8 @@ struct Reading {
     /// PHP: an array value, a constant or an assignment holds a callable string,
     /// and `Class@method` is a route action.
     php: bool,
+    /// Go: a `const`, a `var` or a `:=` holds a callable string, and a lookup's argument is one.
+    go: bool,
 }
 
 impl Reading {
@@ -522,7 +524,8 @@ impl Reading {
         ) || !name.contains('.')
             || name.starts_with("dockerfile");
         let php = matches!(super::extension(path).as_str(), "php" | "phtml" | "inc");
-        (code || values).then_some(Self { values, php })
+        let go = super::extension(path) == "go";
+        (code || values).then_some(Self { values, php, go })
     }
 }
 
@@ -872,7 +875,7 @@ impl LiteralNames {
                         })
                     };
                     let held = match reading {
-                        Some(r) if r.php && shape == Shape::Literal => cells
+                        Some(r) if (r.php || r.go) && shape == Shape::Literal => cells
                             .of(path)
                             .map_or_else(Vec::new, |cell| cell.callable_strings_at(path, *line)),
                         _ => Vec::new(),
