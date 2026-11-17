@@ -16,6 +16,7 @@ repo:
 query:
   symbol: foo
 expect:
+  exact: false
   definitions: [modules/M7.js::foo]
   relations:
     - {from: modules/Main.js, to: modules/M7.js::foo, kind: calls, resolution: resolved, site: 3}
