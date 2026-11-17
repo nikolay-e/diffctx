@@ -1530,6 +1530,10 @@ impl UnreadFiles {
 /// and no command or template of it calls a function by its name.
 fn holds_no_command(path: &str) -> bool {
     matches!(extension(path).as_str(), "json" | "toml" | "env")
+        || matches!(
+            Path::new(path).file_name().and_then(|n| n.to_str()),
+            Some("go.mod" | "go.work" | "go.sum")
+        )
 }
 
 /// Whether a file outside code can name a definition: a document mentions a name
