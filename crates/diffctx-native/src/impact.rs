@@ -3193,6 +3193,10 @@ fn lifted_caller<'a>(frags: &[&'a Fragment], source: &'a Fragment) -> &'a Fragme
 /// ranked against each other, the cap deals the rows out among them.
 const FINDING_WEIGHT: f64 = 1.0;
 
+/// Why a reader the typed key table found is a candidate: the name it spells is
+/// the key the definition registers, and no binding says it is that definition's.
+const KEY_MATCH: &str = "key_match";
+
 /// What the cell states of the uses one caller makes of a changed definition.
 #[derive(Clone)]
 struct Reach {
@@ -3527,6 +3531,13 @@ pub fn build_impact(
         |user: &str, used: &str| source.may_reference(&rel(state, user), &rel(state, used));
     let one_project = |user: &Fragment, used: &Fragment| one_tree(user.path(), used.path());
     let file_of = |f: &Fragment| files.fragments.get(f.path()).map_or(&[][..], Vec::as_slice);
+    let metric_readers = std::cell::LazyCell::new(|| {
+        crate::keytable::metric_readers(
+            &state.all_fragments,
+            Some(state.root_dir.as_path()),
+            state.run.changed_lines(),
+        )
+    });
     let registration = |f: &Fragment| -> Option<String> {
         let path = rel(state, f.path());
         let stated_entry = f.symbol_name.as_deref().map(base_symbol).and_then(|name| {
@@ -4118,6 +4129,38 @@ pub fn build_impact(
                         lines: vec![line],
                     }),
                 ));
+            }
+        }
+        // A metric the definition registers is read by name in the rules that
+        // query it: no import or path ties the two, the key table does.
+        let path = rel(state, core.path());
+        if state
+            .run
+            .source()
+            .read_to_string(&state.root_dir.join(&path))
+            .is_some_and(|text| crate::keytable::registers_metrics(&text))
+        {
+            let span = core.start_line() as usize..=core.end_line() as usize;
+            for reader in metric_readers
+                .iter()
+                .filter(|c| rel(state, &c.changed_path) == path && span.contains(&c.changed_line))
+            {
+                let frags = files.fragments.get(
+                    crate::paths::join_native(&state.root_dir, &rel(state, &reader.path)).as_str(),
+                );
+                if let Some(frag) = frags.and_then(|f| cell_caller(f, reader.line as u32)) {
+                    sources.push((
+                        frag,
+                        FINDING_WEIGHT,
+                        Some(Reach {
+                            standing: decide::Standing::Candidate(KEY_MATCH),
+                            relation: "reference",
+                            kind: Some(vocabulary::RelationKind::Reads),
+                            fold: None,
+                            lines: vec![reader.line as u32],
+                        }),
+                    ));
+                }
             }
         }
         // A local `const items = rows(xs)` is a line of its function, not a
