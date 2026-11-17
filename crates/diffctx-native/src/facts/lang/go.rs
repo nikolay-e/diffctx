@@ -32,7 +32,7 @@
 //!   as an argument is a `PassAsValue`; a name elsewhere a `Read`; the target of
 //!   an assignment, `++` or `--` a `Write`; a name in a type position a `TypeUse`.
 //! - A string literal that is the value of a `const`, a `var` or a `:=`, or the argument of a
-//!   call of `BY_NAME_LOOKUPS`, is a `CallableString`: a name the program may resolve by string.
+//!   call of `BY_NAME_LOOKUPS`, is a `HeldString` held as callable: a name the program may resolve by string.
 //! - A function the comment `//export name` above it gives to C carries the decorator `export`.
 //! - A `//go:linkname local path/pkg.name` directive is a `Call` of `name` with
 //!   `Receiver::Module` of the import path, sited at the directive.
@@ -50,7 +50,7 @@ use tree_sitter::Node;
 
 use super::walker::{hash_outside, hash_tree, is_member};
 use super::{ERROR_RANGES_KEPT, children, lines_of, merge_ranges, read_tree, span};
-use crate::facts::model::CallableString;
+use crate::facts::model::{HeldAs, HeldString};
 use crate::facts::{
     BlobFacts, Def, DefKind, EntryKind, EntryPoint, Export, Extractor, Fact, Hasher, Import,
     ImportKind, Language, Local, LocalKey, LocalKind, ModulePath, Name, Namespace, Receiver, Ref,
@@ -933,10 +933,11 @@ impl<'t> Walker<'t> {
                 self.text(literal)
                     .get(1..self.text(literal).len().saturating_sub(1)),
             ) {
-                self.facts.push(Fact::CallableString(CallableString {
+                self.facts.push(Fact::HeldString(HeldString {
                     site: span(literal),
                     enclosing: cx.scope.clone(),
                     text: inner.to_string(),
+                    held: HeldAs::Callable,
                 }));
             }
         }
