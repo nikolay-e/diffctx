@@ -1074,6 +1074,15 @@ impl Changed {
         (!(self.kind == DefKind::Module && self.name == self.file)).then(|| self.display_name())
     }
 
+    /// The names a renamed definition left: files outside the analysed code may
+    /// still spell them.
+    pub fn left_names(&self) -> impl Iterator<Item = &str> {
+        self.stale
+            .iter()
+            .map(|key| key.local.name.as_str())
+            .filter(|name| *name != self.name)
+    }
+
     fn key(&self) -> Option<&DefKey> {
         self.subjects
             .first()

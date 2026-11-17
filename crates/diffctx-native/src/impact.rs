@@ -1585,6 +1585,11 @@ fn literal_base(symbol: &str) -> &str {
     name.rsplit(['.', ':']).next().unwrap_or(name)
 }
 
+/// The words a reader may still spell for the names `def` was renamed from.
+fn left_words(def: &decide::Changed) -> impl Iterator<Item = &str> {
+    def.left_names().map(literal_base)
+}
+
 /// The word a reader spells for `core`.
 fn spelled_name(core: &Fragment) -> Option<&str> {
     core.symbol_name
@@ -1605,6 +1610,7 @@ impl UntracedNamers {
         state: &ScoredState,
         cores: &[&Fragment],
         removed: &[&str],
+        left: &[&str],
         own: &[keys::OwnSpan],
         diff_range: Option<&str>,
     ) -> Self {
@@ -1613,6 +1619,7 @@ impl UntracedNamers {
             .filter_map(|c| c.symbol_name.as_deref())
             .chain(removed.iter().copied())
             .map(literal_base)
+            .chain(left.iter().copied())
             .collect();
         let literal = keys::LiteralNames::build(state, diff_range, &literal_names, own);
         let unread = UnreadFiles::of(state);
@@ -1620,6 +1627,7 @@ impl UntracedNamers {
             .iter()
             .filter_map(|c| spelled_name(c))
             .chain(removed.iter().copied().map(literal_base))
+            .chain(left.iter().copied())
             .chain(
                 own.iter()
                     .filter(|o| extension(&o.0) == "tf")
@@ -1671,30 +1679,39 @@ impl UntracedNamers {
         }
     }
 
-    /// `sym` with the files that spell `name` as a literal named in its answer.
-    fn name_literals(&self, sym: &mut ChangedSymbol, name: &str, verdict: &decide::Verdict) {
+    /// `sym` with the files that spell the name of `def`, or one it was renamed
+    /// from, as a literal named in its answer.
+    fn name_literals(
+        &self,
+        sym: &mut ChangedSymbol,
+        def: &decide::Changed,
+        verdict: &decide::Verdict,
+    ) {
         // Terragrunt's `inputs` and a `.tftest.hcl`'s `variables` set a Terraform
         // module's variable by its name, in files the module's extractor never reads.
         let sets_variable = crate::languages::get_language_for_file(&sym.path) == Some("terraform");
-        let assigned = self
-            .naming(literal_base(name), |p| {
-                sets_variable && extension(p) == "hcl"
-            })
-            .into_iter()
-            .map(|(path, line)| UnanalysedFile::new(path, "not_traced", vec![line]));
-        let spelled: Vec<UnanalysedFile> = self
-            .literal_files(name)
-            .into_iter()
-            .chain(assigned)
-            .filter(|f| {
-                !f.lines
+        let mut spelled: Vec<UnanalysedFile> = Vec::new();
+        for name in std::iter::once(def.name.as_str()).chain(left_words(def)) {
+            let assigned = self
+                .naming(literal_base(name), |p| {
+                    sets_variable && extension(p) == "hcl"
+                })
+                .into_iter()
+                .map(|(path, line)| UnanalysedFile::new(path, "not_traced", vec![line]));
+            for file in self.literal_files(name).into_iter().chain(assigned) {
+                let named = file
+                    .lines
                     .iter()
-                    .any(|line| verdict.names_another(&f.path, *line))
-                    && !sym.callers.iter().any(|c| c.path == f.path)
-                    && !matches!(&sym.unresolved, Some(Unknown::Candidates { sites, .. })
-                        if sites.iter().any(|s| s.path == f.path))
-            })
-            .collect();
+                    .any(|line| verdict.names_another(&file.path, *line))
+                    || sym.callers.iter().any(|c| c.path == file.path)
+                    || matches!(&sym.unresolved, Some(Unknown::Candidates { sites, .. })
+                        if sites.iter().any(|s| s.path == file.path))
+                    || spelled.iter().any(|f| f.path == file.path);
+                if !named {
+                    spelled.push(file);
+                }
+            }
+        }
         if !spelled.is_empty() {
             sym.coverage = sym.coverage.clone().with(Some(decide::Gap::Unaccounted {
                 reason: decide::Reason::OtherLanguage,
@@ -1772,20 +1789,29 @@ impl UntracedNamers {
         named
     }
 
-    /// The files outside code that spell `core`'s name, every one: the answer
-    /// lists the first `MAX_UNTRACED_NAMERS` and counts the rest.
-    fn of(&self, state: &ScoredState, core: &Fragment) -> Vec<UnanalysedFile> {
-        let Some(name) = spelled_name(core) else {
-            return Vec::new();
-        };
+    /// The files outside code that spell `core`'s name, or a name it was renamed
+    /// from, every one: the answer lists the first `MAX_UNTRACED_NAMERS` and counts
+    /// the rest.
+    fn of<'a>(
+        &self,
+        state: &ScoredState,
+        core: &'a Fragment,
+        left: impl Iterator<Item = &'a str>,
+    ) -> Vec<UnanalysedFile> {
         let own = crate::vocabulary::family::Group::of_name(&rel(state, core.path()));
-        self.named_in(name, |p| {
-            !is_code_file(p)
-                || (unread_code(p) && crate::vocabulary::family::Group::of_name(p) != own)
-        })
-        .into_iter()
-        .map(|(path, line)| UnanalysedFile::new(path, "not_traced", vec![line]))
-        .collect()
+        let mut files: Vec<UnanalysedFile> = Vec::new();
+        for name in spelled_name(core).into_iter().chain(left) {
+            let named = self.named_in(name, |p| {
+                !is_code_file(p)
+                    || (unread_code(p) && crate::vocabulary::family::Group::of_name(p) != own)
+            });
+            for (path, line) in named {
+                if !files.iter().any(|f| f.path == path) {
+                    files.push(UnanalysedFile::new(path, "not_traced", vec![line]));
+                }
+            }
+        }
+        files
     }
 
     /// The lines naming a changed module by its name outside the code that
@@ -3677,7 +3703,12 @@ pub fn build_impact(
                     }),
             )
             .collect();
-        UntracedNamers::build(state, &cores, &removed, &own, diff_range)
+        let left: Vec<&str> = cell_defs
+            .values()
+            .chain(&cell_apart)
+            .flat_map(left_words)
+            .collect();
+        UntracedNamers::build(state, &cores, &removed, &left, &own, diff_range)
     };
     drop(setup);
     crate::profile::count("impact.cores", cores.len() as u64);
@@ -4354,13 +4385,16 @@ pub fn build_impact(
             ) && (!name.contains('.')
                 || matches!(extension(name).as_str(), "yml" | "yaml" | "rake"))
         };
+        let left = || py.into_iter().flat_map(left_words);
         let spelled = core
             .symbol_name
             .iter()
+            .map(String::as_str)
+            .chain(left())
             .flat_map(|n| untraced.literal_files(n))
             .map(|file| (file, true));
         let named = untraced
-            .of(state, core)
+            .of(state, core, left())
             .into_iter()
             .filter(|f| nothing_known || runs_script(f))
             .map(|file| (file, false))
@@ -4602,7 +4636,7 @@ pub fn build_impact(
         traced_apart += 1;
         let verdict = cell.verdict(entry);
         let mut sym = cell_symbol(entry, &verdict, format!("{:?}", entry.kind).to_lowercase());
-        untraced.name_literals(&mut sym, &entry.name, &verdict);
+        untraced.name_literals(&mut sym, entry, &verdict);
         untraced.name_text(&mut sym, &entry.name, verdict.names_quoted());
         let callerless = query.is_none()
             && sym.callers.is_empty()
@@ -4695,7 +4729,7 @@ pub fn build_impact(
         from_facts.extend(cell_removed.iter().filter_map(|entry| {
             let verdict = cells.of(&entry.file)?.verdict(entry);
             let mut sym = cell_symbol(entry, &verdict, "removed".to_string());
-            untraced.name_literals(&mut sym, &entry.name, &verdict);
+            untraced.name_literals(&mut sym, entry, &verdict);
             // A removed override was reached through the member it overrode: the
             // answer names that route, whatever else it could not tell.
             if let Some(via) = verdict.overridden_via() {
