@@ -39,6 +39,7 @@ mod extract;
 mod routes;
 mod tech;
 
+pub(crate) use self::extract::registers_metrics;
 use self::extract::{
     CodeLang, FileClass, Kind, Mount, RawRecord, Role, Strength, builds, classify, compatible,
     extract, route_key, worth_reading,
@@ -798,7 +799,7 @@ fn weight(kind: Kind, strength: Strength) -> (f64, f64) {
         (Kind::Image, Strength::Weak) => &EDGE_WEIGHTS["config_image_weak"],
         (Kind::Route, Strength::Strong) => &EDGE_WEIGHTS["config_route"],
         (Kind::Route, Strength::Weak) => &EDGE_WEIGHTS["config_route_prefix"],
-        (Kind::Table, _) => &EDGE_WEIGHTS["config_table"],
+        (Kind::Table | Kind::Metric, _) => &EDGE_WEIGHTS["config_table"],
         (Kind::Proto, Strength::Strong) => &EDGE_WEIGHTS["config_proto"],
         (Kind::Proto, Strength::Weak) => &EDGE_WEIGHTS["config_proto_weak"],
     };
@@ -853,6 +854,9 @@ pub(crate) struct Counterpart {
     pub kind: &'static str,
     pub key: String,
     pub changed_path: String,
+    /// Where the touched record sits in its file; 0 stands for the file as a
+    /// whole.
+    pub changed_line: usize,
     pub path: String,
     /// 1-based; 0 stands for the file as a whole.
     pub line: usize,
@@ -884,6 +888,7 @@ pub(crate) fn counterparts_of_change(
                         kind: changed.kind.as_str(),
                         key: changed.key.clone(),
                         changed_path: table.paths[changed.file].to_string(),
+                        changed_line: changed.line,
                         path: table.paths[other.file].to_string(),
                         line: other.line,
                     });
@@ -892,6 +897,18 @@ pub(crate) fn counterparts_of_change(
         }
         out
     })
+}
+
+/// The readers of the metrics the change registered, renamed or dropped: the
+/// rule files that query a name the touched definition no longer exposes.
+pub(crate) fn metric_readers(
+    fragments: &[Fragment],
+    repo_root: Option<&Path>,
+    lines: Option<std::sync::Arc<ChangedLines>>,
+) -> Vec<Counterpart> {
+    let mut found = counterparts_of_change(fragments, repo_root, lines);
+    found.retain(|c| c.kind == Kind::Metric.as_str());
+    found
 }
 
 /// The files that run an image no build in the tree declares, under a name
@@ -954,6 +971,7 @@ pub(crate) fn runs_named_after(
                 kind: Kind::Image.as_str(),
                 key: rec.key.clone(),
                 changed_path: (*dockerfile).to_string(),
+                changed_line: 0,
                 path: table.paths[rec.file].to_string(),
                 line: spelling_line(fragments, table.paths[rec.file], rec, &spelled),
             });
