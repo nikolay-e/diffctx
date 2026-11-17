@@ -14,7 +14,6 @@ impact/python/py_never_imported_script_method_has_no_sibling_hedge  # gh#666: `c
 impact/python/py_table_registered_tool_a_test_calls_by_name_has_a_test_link  # the tuple member `("get_x", get_x, ...)` is a resolved row and also unlanded, and the analysed Python test tests/test_tools.py:6 is cited as unaccounted (`other_language`)
 impact/terraform/tf_changed_output_reaches_the_callers_of_its_module  # a quoted template `"vpc-${var.cidr}"` is unexplained text, counted as a read of output.vpc
 impact/terraform/tf_every_traversal_form_reaches_its_variable  # the for-expression variable `n` shadows var.n but the shadowed use is unexplained text
-impact/terraform/tf_registry_source_is_not_a_path_even_when_a_directory_has_that_name  # the registry source `hashicorp/consul/aws` is named as external_source for a directory it cannot reach (a source that does not start with `./` or `../` is an address, not a path)
 impact/typescript/ts_destructured_static_method_is_called_through_its_alias  # `const {normalizeArguments} = Request` is the alias the resolved call goes through, and its receiver is left unresolved
 impact/typescript/ts_later_declarator_of_a_multi_declarator_const_is_the_changed_one  # `hooks.MODEL` is an object member of the same name, an unresolved receiver, not the constant
 impact/typescript/ts_lazy_import_is_a_caller  # `m.MobileFullPlayer` is the site of the resolved dynamic-import row, and its receiver `m` is left unresolved
