@@ -19,7 +19,7 @@
 //! says tests are in view and the search above it is closed
 //! ([`TestsReach::open_above`]): every definition above it is accounted for.
 
-use std::cell::RefCell;
+use std::cell::{OnceCell, RefCell};
 use std::path::Path;
 
 use rustc_hash::{FxHashMap, FxHashSet};
@@ -68,6 +68,11 @@ pub(super) struct TestsReach<'a> {
     /// Entries a test runs: binaries (`CARGO_BIN_EXE_<name>`, `cargo_bin("<name>")`:
     /// #391, #678), console scripts, scripts spelled by their path.
     runs: Vec<Run>,
+    /// The strings of a changed definition that a test asserts (the literal channel).
+    asserted: Vec<Run>,
+    /// The fragments that hold such a string or use one that does: what a test
+    /// of the text can reach.
+    text_reach: OnceCell<FxHashSet<FragmentId>>,
     /// The repository holds a test file the walk never reached: tests the
     /// change does not touch and nothing links to are still tests in view
     /// (#123), so an absent link is a finding and not a blank.
@@ -204,9 +209,11 @@ impl<'a> TestsReach<'a> {
             .map(|(path, shown)| (shown.as_str(), *path))
             .collect();
         let runs = runs::all(state, cells, diff_range, &spelled, &declared);
+        let asserted = runs::literal_runs(state, diff_range, &declared);
         let repo_tests = test_fragments.is_empty()
             && named.is_empty()
             && runs.is_empty()
+            && asserted.is_empty()
             && repo_holds_test_file(state, &declared);
         Self {
             state,
@@ -219,6 +226,8 @@ impl<'a> TestsReach<'a> {
             test_spans,
             unread,
             runs,
+            asserted,
+            text_reach: OnceCell::new(),
             repo_tests,
             memo: RefCell::default(),
             stops: RefCell::default(),
@@ -232,6 +241,7 @@ impl<'a> TestsReach<'a> {
         !self.test_fragments.is_empty()
             || !self.named.is_empty()
             || !self.runs.is_empty()
+            || !self.asserted.is_empty()
             || self.repo_tests
     }
 
@@ -295,13 +305,8 @@ impl<'a> TestsReach<'a> {
         let mut found: Vec<(String, Option<String>)> = self
             .runs
             .iter()
-            .filter(|run| {
-                run.file == caller.path()
-                    && run
-                        .symbol
-                        .as_deref()
-                        .is_none_or(|symbol| name == Some(symbol))
-            })
+            .chain(&self.asserted)
+            .filter(|run| run.enters(caller))
             .flat_map(|run| &run.tests)
             .map(|(path, line)| {
                 let name = self
@@ -584,6 +589,36 @@ impl<'a> TestsReach<'a> {
             frontier = next;
         }
         Vec::new()
+    }
+
+    /// Whether the search for a test of `caller`, a caller of `core`, is open: the
+    /// search above it is, or a test asserts text `core` renders (a string it holds
+    /// or one a definition it uses holds) and may reach the caller by a path nothing
+    /// here traces, a page that renders it.
+    pub(super) fn caller_open(&self, caller: &'a Fragment, core: &Fragment, link: &Link) -> bool {
+        self.open_above(caller, link, true) || self.asserts_text_of(core, link)
+    }
+
+    fn asserts_text_of(&self, f: &Fragment, link: &Link) -> bool {
+        self.text_reach
+            .get_or_init(|| {
+                let mut reached = FxHashSet::default();
+                let mut frontier: Vec<&'a Fragment> = self
+                    .state
+                    .all_fragments
+                    .iter()
+                    .filter(|held| self.asserted.iter().any(|run| run.enters(held)))
+                    .collect();
+                for _ in 0..=MAX_TEST_HOPS {
+                    frontier = frontier
+                        .into_iter()
+                        .filter(|held| reached.insert(held.id.clone()))
+                        .flat_map(|held| self.up(held, self.state, link).fragments)
+                        .collect();
+                }
+                reached
+            })
+            .contains(&f.id)
     }
 
     /// Ends the search above it: a test, one that names it, or a definition whose

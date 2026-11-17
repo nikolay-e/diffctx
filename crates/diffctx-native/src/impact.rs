@@ -4075,7 +4075,7 @@ pub fn build_impact(
                         .is_empty()
                         .then(|| tests.unread_naming(frag, &rel(state, frag.path())))
                         .flatten(),
-                    tests_open: tested.is_empty() && tests.open_above(frag, &link, true),
+                    tests_open: tested.is_empty() && tests.caller_open(frag, core, &link),
                     registered_by,
                     tests: tested,
                     evidence: found.map_or("name", Reach::evidence),

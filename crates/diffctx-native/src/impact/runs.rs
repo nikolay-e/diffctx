@@ -30,6 +30,17 @@ pub(super) struct Run {
     pub(super) tests: Vec<(String, u32)>,
 }
 
+impl Run {
+    /// Whether the run enters `f`: its file, and its function when it names one.
+    pub(super) fn enters(&self, f: &Fragment) -> bool {
+        self.file == f.path()
+            && self
+                .symbol
+                .as_deref()
+                .is_none_or(|symbol| f.symbol_name.as_deref().map(base_symbol) == Some(symbol))
+    }
+}
+
 /// Every run the tests in view make. `spelled` maps the path the answer prints
 /// to the path the fragments spell.
 pub(super) fn all(
@@ -44,7 +55,6 @@ pub(super) fn all(
     runs.extend(console_runs(state, diff_range, spelled, declared));
     runs.extend(script_runs(state, diff_range, spelled, declared));
     runs.extend(framework_runs(state, cells, diff_range, spelled, declared));
-    runs.extend(literal_runs(state, diff_range, declared));
     runs.extend(doctest_runs(state));
     runs
 }
@@ -1108,7 +1118,7 @@ fn distinctive(literal: &str) -> bool {
 /// The test reaches the definition the way it reaches one it runs, through what
 /// the code says rather than what it calls (an error code, a label), which no
 /// resolved use shows.
-fn literal_runs(
+pub(super) fn literal_runs(
     state: &ScoredState,
     diff_range: Option<&str>,
     declared: &DeclaredTests,

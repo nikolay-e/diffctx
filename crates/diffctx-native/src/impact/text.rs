@@ -475,7 +475,7 @@ fn guard_text(row: &Row) -> String {
         GuardState::None => "no static test link found".to_string(),
         GuardState::NoTests => "no test files in view".to_string(),
         GuardState::NotEstablished => {
-            format!("{NOT_ESTABLISHED}: the search above it is open")
+            format!("{NOT_ESTABLISHED}: the search is open")
         }
     }
 }
