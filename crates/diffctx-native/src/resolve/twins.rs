@@ -231,6 +231,54 @@ macro_rules! jvm_engine_methods {
                 })
         }
 
+        /// Whether the type inherits from a type of that name outside the
+        /// repository.
+        fn has_foreign_super(&self, class: usize, name: &Name, depth: usize) -> bool {
+            depth < MAX_DEPTH
+                && self.supers_of(class).iter().any(|s| match s {
+                    Super::Foreign(n) => n == name,
+                    Super::Repo(id) => self.has_foreign_super(*id, name, depth + 1),
+                })
+        }
+
+        /// A call on a value of a type the repository does not declare, which may still
+        /// hold a class of it: `Any`, `Object`, a type parameter, or a type a class
+        /// extends or implements. The candidates are that class's methods of the name; a
+        /// type no class inherits from stays outside the repository.
+        fn foreign_holder(
+            &self,
+            f: usize,
+            scope: &[Name],
+            held: &Name,
+            r: &Ref,
+        ) -> Option<Resolution> {
+            if !matches!(r.use_kind, UseKind::Call | UseKind::PassAsValue) {
+                return None;
+            }
+            let open = matches!(held.as_str(), "Any" | "Object")
+                || self.type_param_bounds(f, scope, None, held).is_some();
+            let pool: Vec<usize> = self
+                .ix
+                .members
+                .get(&r.name)
+                .into_iter()
+                .flatten()
+                .copied()
+                .filter(|id| is_callable(self.ix.defs[*id].def.kind))
+                .filter(|id| self.reach(f, *id).is_ok())
+                .filter(|id| {
+                    open || self
+                        .holder_of(*id)
+                        .is_some_and(|class| self.has_foreign_super(class, held, 0))
+                })
+                .collect();
+            match pool.len() {
+                0 => None,
+                n if n > MAX_CANDIDATES => Some(unresolved(UnresolvedReason::TooManyCandidates)),
+                _ => Some(self.candidates(&pool, CandidateReason::AnyReceiver)),
+            }
+        }
+
         /// The bounds of the type parameter `name` as the declaration `own` and the
         /// ones around `scope` state them, the innermost declaring it; none when no
         /// declaration does.

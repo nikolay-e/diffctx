@@ -1201,13 +1201,14 @@ impl<'w> Engine<'w> {
             Head::Resolved(entity, how) => (entity, how),
             Head::Bare => return self.bare(f, scope, r, plain),
         };
-        self.apply(f, r, entity, how, plain, call)
+        self.apply(f, scope, r, entity, how, plain, call)
     }
 
     /// What a reference lands on given what its chain stands for before the name.
     fn apply(
         &self,
         f: usize,
+        scope: &[Name],
         r: &Ref,
         entity: Ent,
         how: EvidenceKind,
@@ -1244,7 +1245,12 @@ impl<'w> Engine<'w> {
                     }
                 }
             }
-            Ent::Foreign(_) | Ent::External => (plain, unresolved(UnresolvedReason::External)),
+            Ent::Foreign(held) => (
+                plain,
+                self.foreign_holder(f, scope, held, r)
+                    .unwrap_or_else(|| unresolved(UnresolvedReason::External)),
+            ),
+            Ent::External => (plain, unresolved(UnresolvedReason::External)),
             Ent::Package(package) => {
                 let ids: Vec<usize> = self
                     .ix
@@ -1400,7 +1406,7 @@ impl<'w> Engine<'w> {
         if let Receiver::CallResult(chain) = &r.receiver {
             let entity = self.call_result(f, scope, chain, 0);
             let call = matches!(r.use_kind, UseKind::Call | UseKind::PassAsValue);
-            return self.apply(f, r, entity, EvidenceKind::Constructed, plain, call);
+            return self.apply(f, scope, r, entity, EvidenceKind::Constructed, plain, call);
         }
         // `new T(..)` names a type, whatever a member of the class around it is
         // called.

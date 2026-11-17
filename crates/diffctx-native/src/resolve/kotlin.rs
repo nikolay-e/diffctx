@@ -841,16 +841,6 @@ impl<'w> Engine<'w> {
         out
     }
 
-    /// Whether the type inherits from a type of that name outside the
-    /// repository.
-    fn has_foreign_super(&self, class: usize, name: &Name, depth: usize) -> bool {
-        depth < MAX_DEPTH
-            && self.supers_of(class).iter().any(|s| match s {
-                Super::Foreign(n) => n == name,
-                Super::Repo(id) => self.has_foreign_super(*id, name, depth + 1),
-            })
-    }
-
     // ---- members
 
     /// The members called `name` of the class, of its companion, or of what it
@@ -1434,14 +1424,16 @@ impl<'w> Engine<'w> {
                     }
                 }
             }
-            Ent::Foreign(_) => match self.extension_for(f, &entity, &r.name, |_| true) {
+            Ent::Foreign(held) => match self.extension_for(f, &entity, &r.name, |_| true) {
                 Some(id) => {
                     return (
                         relation_for(r.use_kind, self.ix.defs[id].def.kind),
                         self.resolved_checked(f, id, EvidenceKind::TypedReceiver),
                     );
                 }
-                None => unresolved(UnresolvedReason::External),
+                None => self
+                    .foreign_holder(f, scope, held, r)
+                    .unwrap_or_else(|| unresolved(UnresolvedReason::External)),
             },
             Ent::Package(package) => {
                 let ids: Vec<usize> = self
@@ -1677,7 +1669,6 @@ impl<'w> Engine<'w> {
         entity: Ent,
         how: EvidenceKind,
     ) -> (Relation, Resolution) {
-        let _ = scope;
         let plain = plain_relation(r.use_kind);
         let call = matches!(r.use_kind, UseKind::Call | UseKind::PassAsValue);
         match &entity {
@@ -1704,12 +1695,16 @@ impl<'w> Engine<'w> {
                     },
                 }
             }
-            Ent::Foreign(_) => match self.extension_for(f, &entity, &r.name, |_| true) {
+            Ent::Foreign(held) => match self.extension_for(f, &entity, &r.name, |_| true) {
                 Some(id) => (
                     relation_for(r.use_kind, self.ix.defs[id].def.kind),
                     self.resolved_checked(f, id, how),
                 ),
-                None => (plain, unresolved(UnresolvedReason::External)),
+                None => (
+                    plain,
+                    self.foreign_holder(f, scope, held, r)
+                        .unwrap_or_else(|| unresolved(UnresolvedReason::External)),
+                ),
             },
             Ent::Outside => (plain, unresolved(UnresolvedReason::OutsideProject)),
             Ent::External | Ent::Package(_) => (plain, unresolved(UnresolvedReason::External)),
