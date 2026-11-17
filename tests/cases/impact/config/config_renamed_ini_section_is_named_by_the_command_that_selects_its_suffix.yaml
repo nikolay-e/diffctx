@@ -1,0 +1,42 @@
+name: config_renamed_ini_section_is_named_by_the_command_that_selects_its_suffix
+mode: impact
+source: synthetic
+tags: [config, key-search, ini, false-absence]
+repo:
+  initial_files:
+    tox.ini: |
+      [tox]
+      envlist = py311
+
+      [testenv:lintcheck]
+      commands = flake8 src
+    supervisord.conf: |
+      [supervisord]
+      nodaemon=true
+
+      [program:mailer]
+      command=python mailer.py
+    .github/ci.yml: |
+      steps:
+        - run: tox -e lintcheck
+    deploy.sh: |
+      #!/usr/bin/env bash
+      supervisorctl restart mailer
+  changed_files:
+    tox.ini: |
+      [tox]
+      envlist = py311
+
+      [testenv:stylecheck]
+      commands = flake8 src
+    supervisord.conf: |
+      [supervisord]
+      nodaemon=true
+
+      [program:dispatcher]
+      command=python mailer.py
+  commit_message: "rename the tox env and the supervisor program"
+expect:
+  exact: false
+  no_negative_claims: true
+  named_by: [.github/ci.yml, deploy.sh]

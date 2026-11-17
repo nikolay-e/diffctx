@@ -128,6 +128,12 @@ symbol/other/erlang_symbol_module_qualified_call_is_a_caller  # gh#616 open
 symbol/shell/shell_symbol_sourced_variable_is_a_definition  # gh#659 open
 impact/config/config_argo_workflow_field_reaches_the_referenced_template  # gh#689 open
 impact/config/config_lock_bump_names_the_moved_package_and_its_importers  # gh#620 open
+impact/config/config_renamed_ansible_role_is_still_named_by_the_playbook_that_lists_it  # a role directory renamed names no playbook line that lists the role by its short name
+impact/config/config_renamed_compose_service_with_a_generic_name_is_named_where_a_script_spells_it  # the old name of a renamed key is dropped from the text search when it is 2 characters or a stopword
+impact/config/config_renamed_gitlab_job_is_named_by_the_needs_of_another_file  # the old name of a renamed key is dropped from the text search when it is a stopword
+impact/config/config_renamed_ini_section_is_named_by_the_command_that_selects_its_suffix  # an ini header `[prefix:suffix]` is searched whole, never by the suffix the command line names
+impact/config/config_renamed_package_export_is_named_by_the_importer_of_its_subpath  # an exports subpath `./legacy` is searched whole, never as the `lib/legacy` an importer spells
+impact/config/config_renamed_workflow_is_named_by_the_workflow_that_runs_after_it  # the old workflow name is dropped from the text search when it is a stopword
 impact/config/config_shared_gradle_block_says_its_reach_is_not_analysed  # gh#516 open
 impact/web/web_astro_component_import_is_a_consumer  # gh#597 open
 impact/web/web_removed_css_rule_is_still_used_by_markup  # gh#631 open
