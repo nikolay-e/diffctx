@@ -311,8 +311,18 @@ pub(super) const MIN_LITERAL_NAME: usize = 4;
 const MIN_CALL_NAME: usize = 2;
 const NAMES_PER_SEARCH: usize = 40;
 const SQL_VERBS: &[&str] = &[
-    "select", "insert", "update", "delete", "with", "call", "merge",
+    "select", "insert", "update", "delete", "with", "call", "merge", "refresh", "truncate",
+    "grant", "revoke", "drop", "alter", "create", "copy", "vacuum", "analyze", "reindex",
+    "comment", "lock", "explain",
 ];
+/// The calls that hand their string argument to a shell.
+const SHELL_CALLEES: &str = "system popen run call check_call check_output getoutput exec execsync spawn command shell sh bash exec_command";
+/// The words after which a shell, a Dockerfile or a CI step reads a command.
+const COMMAND_LEADS: &str =
+    "&& || ; | then do else run cmd entrypoint run: command: script: entrypoint: - @ -@ @-";
+/// The files whose markup an inline handler (`onclick="fn(this)"`) sits in
+/// although the language of the file is read without its markup.
+const HANDLER_EXTENSIONS: &str = "php phtml jinja j2 jinja2 md mdx markdown";
 /// The calls and commands that only write their argument out: a name they are
 /// handed is printed for a reader, never resolved by the program.
 const PRINTERS: &[&str] = &[
@@ -372,15 +382,20 @@ enum Shape {
     /// A name too short for the literal forms, handed as a string to a
     /// reflective accessor or used as an index key in code.
     Argument,
+    /// A shell function's name in command position in a file that is no shell script.
+    Command,
+    /// A name an inline handler attribute of a template or a page calls.
+    Handler,
+}
+
+/// The regex alternation of `names`, each escaped.
+fn alternation<'a>(names: impl Iterator<Item = &'a str>) -> String {
+    names.map(regex::escape).collect::<Vec<_>>().join("|")
 }
 
 /// The lines that quote one of `names` whole.
 fn quoted_pattern(names: &[&str]) -> String {
-    let all = names
-        .iter()
-        .map(|n| regex::escape(n))
-        .collect::<Vec<_>>()
-        .join("|");
+    let all = alternation(names.iter().copied());
     format!(r#"["'`]({all})["'`]"#)
 }
 
@@ -510,6 +525,8 @@ struct Reading {
     /// a `case` label, an array or an annotation element — may be looked up by
     /// reflection.
     jvm: bool,
+    /// A shell script: its commands name relations as arguments and statements.
+    shell: bool,
 }
 
 impl Reading {
@@ -546,12 +563,14 @@ impl Reading {
         let go = extension == "go";
         let jvm = matches!(extension.as_str(), "java" | "kt" | "kts");
         let json = crate::keytable::is_json(path);
+        let shell = crate::languages::get_language_for_file(path) == Some("bash");
         (code || values || json).then_some(Self {
             values,
             php,
             go,
             json,
             jvm,
+            shell,
         })
     }
 }
@@ -628,6 +647,109 @@ fn data_provider_named(text: &str, name: &str) -> bool {
         .is_some_and(|provider| provider.rsplit("::").next() == Some(name))
 }
 
+/// Whether `before`, the text ahead of a string, assigns it to a name that says
+/// it holds a relation: `TABLE = "orders"`, `self.view_name = "daily"`.
+fn names_a_relation(before: &str) -> bool {
+    let Some(target) = before.trim_end().strip_suffix('=') else {
+        return false;
+    };
+    if target.ends_with(['=', '!', '<', '>']) {
+        return false;
+    }
+    let target = target
+        .rsplit([',', '(', ';', '{'])
+        .next()
+        .unwrap_or(target)
+        .to_lowercase();
+    ["table", "view", "relation"]
+        .iter()
+        .any(|w| target.contains(w))
+}
+
+/// Whether the name at `at` on a line of a shell script is a relation: the
+/// argument of a table flag (`pg_dump -t name`).
+fn shell_relation(text: &str, at: usize) -> bool {
+    let token_start = text[..at].rfind(char::is_whitespace).map_or(0, |i| i + 1);
+    let head = &text[token_start..at];
+    let flag = text[..token_start]
+        .trim_end()
+        .rsplit(char::is_whitespace)
+        .next()
+        .unwrap_or("");
+    (head.is_empty() && matches!(flag, "-t" | "-T" | "--table" | "--tables"))
+        || matches!(head, "--table=" | "--tables=")
+}
+
+/// Whether `before`, the text ahead of a word, leaves the word where a shell
+/// reads a command: after a separator, a Dockerfile instruction or a CI key,
+/// or at the head of a line.
+fn command_lead(before: &str, line_head: bool) -> bool {
+    let before = before.trim_end();
+    if before.is_empty() {
+        return line_head;
+    }
+    before.ends_with([';', '|', '&', '(', '{', '`'])
+        || before
+            .rsplit(char::is_whitespace)
+            .next()
+            .is_some_and(|w| COMMAND_LEADS.split(' ').any(|l| l == w.to_lowercase()))
+}
+
+/// Whether `text` runs `name` as a command: a word of its own in command position
+/// on a line of a command file, or in a string a shell is handed.
+fn command_called(text: &str, name: &str) -> bool {
+    let spans = quoted_spans(text);
+    text.match_indices(name).any(|(at, _)| {
+        let end = at + name.len();
+        let before = text[..at].chars().next_back();
+        let after = text[end..].chars().next();
+        if before.is_some_and(|c| word_char(c) || matches!(c, '-' | '.' | '/' | '$' | ':'))
+            || after.is_some_and(|c| {
+                !(c.is_whitespace() || matches!(c, ';' | '|' | '&' | ')' | '`' | '"' | '\''))
+            })
+        {
+            return false;
+        }
+        if let Some(&(from, _)) = spans.iter().find(|(f, t)| *f <= at && end <= *t) {
+            let inside = &text[from..at];
+            return if inside.trim().is_empty() {
+                open_call(&text[..from - 1]).is_some_and(|callee| {
+                    let callee = callee.rsplit(['.', ':']).next().unwrap_or(callee);
+                    SHELL_CALLEES.split(' ').any(|c| c == callee.to_lowercase())
+                })
+            } else {
+                command_lead(inside, false)
+            };
+        }
+        let head = text[..at].trim().is_empty();
+        command_lead(&text[..at], head) && (!head || !text[end..].trim().is_empty())
+    })
+}
+
+/// Whether `text` has an inline handler attribute that calls `name`:
+/// `onclick="name(this)"`, `onClick={() => name(1)}`.
+fn handler_calls(text: &str, name: &str) -> bool {
+    text.match_indices('=').any(|(at, _)| {
+        let attribute = text[..at]
+            .trim_end()
+            .rsplit(|c: char| !c.is_ascii_alphabetic())
+            .next()
+            .unwrap_or("");
+        let value = text[at + 1..].trim_start();
+        let close = match value.chars().next() {
+            Some(quote @ ('"' | '\'')) => quote,
+            Some('{') => '}',
+            _ => return false,
+        };
+        attribute.len() > 2
+            && attribute[..2].eq_ignore_ascii_case("on")
+            && value[1..]
+                .split(close)
+                .next()
+                .is_some_and(|body| called(body, name))
+    })
+}
+
 /// Whether `text` spells `name` as a literal in a file read as `reading`.
 fn spells_literally(text: &str, name: &str, reading: Reading, held: &[String]) -> bool {
     let spans = quoted_spans(text);
@@ -665,6 +787,7 @@ fn spells_literally(text: &str, name: &str, reading: Reading, held: &[String]) -
             let indexed = !qualified && indexed_call(text, from, to);
             let placed = (reading.values
                 || indexed
+                || (lead == Some('=') && names_a_relation(&text[..from - 1]))
                 || matches!(lead, Some('(' | ','))
                 || (matches!(lead, Some(':' | '=')) && labeled(&text[..from - 1]))
                 || (qualified && lead == Some('['))
@@ -700,7 +823,7 @@ fn spells_literally(text: &str, name: &str, reading: Reading, held: &[String]) -
             return reference || query || formatted || expression;
         }
         if !reading.values {
-            return false;
+            return reading.shell && sql && shell_relation(text, at);
         }
         if before == Some('.') && after == Some('(') {
             return true;
@@ -736,13 +859,7 @@ fn spells_literally(text: &str, name: &str, reading: Reading, held: &[String]) -
 /// The grep selecting the lines that can hold `names` as a literal, over the
 /// forms `spells_literally` reads back.
 fn literal_pattern(names: &[&str]) -> String {
-    let alt = |words: Vec<&str>| {
-        words
-            .into_iter()
-            .map(regex::escape)
-            .collect::<Vec<_>>()
-            .join("|")
-    };
+    let alt = |words: Vec<&str>| alternation(words.into_iter());
     let all = alt(names.to_vec());
     let query = alt(names
         .iter()
@@ -783,14 +900,24 @@ fn literal_pattern(names: &[&str]) -> String {
     forms.join("|")
 }
 
+/// The lines where one of `names` stands as a word a shell may run.
+fn command_pattern(names: &[&str]) -> String {
+    let all = alternation(names.iter().copied());
+    format!(r#"(^|[[:space:];&|(`{{"'])({all})([[:space:];&|)`}}"']|$)"#)
+}
+
+/// The lines with an inline handler attribute that calls one of `names`.
+fn handler_pattern(names: &[&str]) -> String {
+    let all = alternation(names.iter().copied());
+    format!(
+        r#"[Oo][Nn][[:alpha:]]+[[:space:]]*=[[:space:]]*["'{{][^"'{{}}]*({all})[[:space:]]*[(]"#
+    )
+}
+
 /// The lines that call one of `names` — `name(` — where a program of any
 /// language would: the search leaves out the extensions a reader parses.
 fn call_pattern(names: &[&str]) -> String {
-    let all = names
-        .iter()
-        .map(|n| regex::escape(n))
-        .collect::<Vec<_>>()
-        .join("|");
+    let all = alternation(names.iter().copied());
     format!(r"(^|[^[:alnum:]_$])({all})[[:space:]]*[(]")
 }
 
@@ -817,6 +944,18 @@ fn unread_file(state: &ScoredState, path: &str) -> bool {
                 .source()
                 .read_to_string(&state.root_dir.join(path))
                 .is_none_or(|text| crate::languages::sniff_language(path, &text).is_none()))
+}
+
+/// Whether the file is a shell script, by its name or its shebang.
+fn runs_as_shell(state: &ScoredState, path: &str) -> bool {
+    match crate::languages::get_language_for_file(path) {
+        Some(language) => language == "bash",
+        None => state
+            .run
+            .source()
+            .read_to_string(&state.root_dir.join(path))
+            .is_some_and(|text| crate::languages::sniff_language(path, &text) == Some("bash")),
+    }
 }
 
 /// A definition's own lines: (file, literal name, lines). A literal inside its
@@ -852,6 +991,11 @@ impl LiteralNames {
         if wanted.is_empty() {
             return Self::default();
         }
+        let shell_functions: rustc_hash::FxHashSet<&str> = own
+            .iter()
+            .filter(|(file, ..)| runs_as_shell(state, file))
+            .map(|(_, name, _)| name.as_str())
+            .collect();
         let head = super::head_of(diff_range);
         let source = state.run.source();
         let mapped = crate::languages::EXTENSION_TO_LANGUAGE
@@ -872,15 +1016,18 @@ impl LiteralNames {
             let mut found = Vec::new();
             if !callable.is_empty() {
                 found.push((call_pattern(&callable), unmapped.clone(), Shape::Call));
+                found.push((handler_pattern(&callable), Vec::new(), Shape::Handler));
+            }
+            let commands: Vec<&str> = chunk
+                .iter()
+                .copied()
+                .filter(|n| shell_functions.contains(n) && call_name(n))
+                .collect();
+            if !commands.is_empty() {
+                found.push((command_pattern(&commands), Vec::new(), Shape::Command));
             }
             if !long.is_empty() {
-                let templates = format!(
-                    r"[.]({})[(]",
-                    long.iter()
-                        .map(|n| regex::escape(n))
-                        .collect::<Vec<_>>()
-                        .join("|")
-                );
+                let templates = format!(r"[.]({})[(]", alternation(long.iter().copied()));
                 found.push((literal_pattern(&long), Vec::new(), Shape::Literal));
                 found.push((templates, TEMPLATE_GLOBS.to_vec(), Shape::Literal));
             }
@@ -900,7 +1047,7 @@ impl LiteralNames {
                 );
                 state.run.note_withheld(grepped.withheld);
                 for (path, line, text) in state.run.bounded(&grepped.rows) {
-                    if super::is_document(path)
+                    if (super::is_document(path) && shape != Shape::Handler)
                         || super::mentions::selects_paths(path)
                         || (super::mentions::commented_in(path, text)
                             && !Reading::of(path)
@@ -921,6 +1068,10 @@ impl LiteralNames {
                         Shape::Argument => {
                             reading.is_some_and(|r| !r.values && !r.json) && language.is_some()
                         }
+                        Shape::Command => reading.is_some() && !runs_as_shell(state, path),
+                        Shape::Handler => HANDLER_EXTENSIONS
+                            .split(' ')
+                            .any(|e| e == super::extension(path)),
                     };
                     if !eligible {
                         continue;
@@ -956,6 +1107,8 @@ impl LiteralNames {
                         (Shape::Argument, _, Some(language)) => {
                             !literal_name(name) && reflects(text, name, language)
                         }
+                        (Shape::Command, ..) => command_called(text, name),
+                        (Shape::Handler, ..) => handler_calls(text, name),
                         _ => false,
                     };
                     for name in chunk.iter().filter(|n| !inside(n) && hit(n, &held)) {
