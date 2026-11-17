@@ -35,10 +35,12 @@ use crate::paths::index_key_of;
 use crate::resource::read_file_cached;
 use crate::types::{Fragment, FragmentId};
 
+mod definitions;
 mod extract;
 mod routes;
 mod tech;
 
+pub(crate) use self::definitions::defined_names;
 use self::extract::{
     CodeLang, FileClass, Kind, Mount, RawRecord, Role, Strength, builds, classify, compatible,
     extract, route_key, worth_reading,
