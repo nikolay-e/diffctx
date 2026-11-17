@@ -2990,6 +2990,84 @@ fn a_new_branch_is_reviewed_and_a_rejected_push_is_not() {
     assert_eq!(h.stdout, "", "{}", last_log_line(cache.path()));
 }
 
+/// `commit_all` with the dates named, so the order git lists commits in does
+/// not depend on how fast the test ran.
+fn commit_all_on(repo: &Path, message: &str, date: &str) {
+    git(repo, &["add", "-A"]);
+    let out = git_command(repo)
+        .args(["commit", "-q", "-m", message])
+        .env("GIT_AUTHOR_DATE", date)
+        .env("GIT_COMMITTER_DATE", date)
+        .output()
+        .expect("run git commit");
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+}
+
+/// A new branch is reviewed from the remote's commit nearest its tip, however
+/// old the oldest commit the push sends: `topic` grows from the remote's `stage`
+/// and merges the local `main`, whose commit is older than `topic`'s own. The
+/// remote holds `stage`'s restock already, so the push did not send it.
+#[test]
+fn a_new_branch_is_reviewed_from_the_remote_commit_nearest_it() {
+    let (_seed, remote) = repo_beside_a_bare_remote();
+    let work = TempDir::new().unwrap();
+    let repo = work.path();
+    git(
+        repo,
+        &[
+            "clone",
+            "-q",
+            "-b",
+            "main",
+            &remote.path().to_string_lossy(),
+            ".",
+        ],
+    );
+    git(repo, &["config", "user.email", "test@example.com"]);
+    git(repo, &["config", "user.name", "diffctx tests"]);
+    git(repo, &["checkout", "-q", "-b", "stage"]);
+    add_unrelated_edit(repo);
+    commit_all_on(repo, "restock", "2020-01-01T00:00:00Z");
+    git(repo, &["push", "-q", "origin", "stage"]);
+    git(repo, &["checkout", "-q", "main"]);
+    write(
+        repo,
+        "shop/labels.py",
+        "def label(item):\n    return item.name\n",
+    );
+    commit_all_on(repo, "label", "2020-01-02T00:00:00Z");
+    git(repo, &["checkout", "-q", "-b", "topic", "stage"]);
+    write(
+        repo,
+        "shop/pricing.py",
+        "def total(items):\n    return round(sum(i.price for i in items) * 1.19, 2)\n",
+    );
+    commit_all_on(repo, "vat", "2020-01-03T00:00:00Z");
+    git(repo, &["merge", "-q", "--no-edit", "main"]);
+    git(repo, &["checkout", "-q", "main"]);
+    let tip = |rev: &str| {
+        let out = git_command(repo).args(["rev-parse", rev]).output().unwrap();
+        String::from_utf8(out.stdout).unwrap().trim().to_string()
+    };
+    let (stage, topic) = (tip("stage"), tip("topic"));
+    let cache = TempDir::new().unwrap();
+    let command = "git push origin topic";
+    let pre = hook(repo, cache.path(), &payload_in_session("s1", repo, command));
+    assert_eq!(pre.stdout, "");
+    let output = sh_printed(repo, command);
+    assert!(output.contains("[new branch]"), "{output}");
+    let after = after_with_output("s1", repo, command, &output);
+    let context = context_of(&hook_with(repo, cache.path(), "posttooluse", &[], &after));
+    assert!(
+        context.contains(&format!("{stage}..{topic}")),
+        "the remote held everything up to {stage}: {context}"
+    );
+}
+
 /// Forgejo #121, the #462 shape: a push through a second remote alias, whose
 /// tracking ref was left behind, is the range git printed, not everything
 /// since the stale ref.
