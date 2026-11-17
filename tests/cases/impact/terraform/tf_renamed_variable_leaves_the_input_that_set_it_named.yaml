@@ -1,0 +1,32 @@
+name: tf_renamed_variable_leaves_the_input_that_set_it_named
+mode: impact
+source: synthetic
+tags: [terraform, terragrunt, rename, false-absence]
+repo:
+  initial_files:
+    modules/db/main.tf: |
+      variable "db_port" {
+        type = number
+      }
+    live/prod/terragrunt.hcl: |
+      terraform {
+        source = "../../modules/db"
+      }
+      inputs = {
+        db_port = 5432
+      }
+  changed_files:
+    modules/db/main.tf: |
+      variable "port" {
+        type = number
+      }
+  commit_message: "db: db_port is now port"
+expect:
+  exact: false
+  discloses: true
+  no_negative_claims: true
+  relations:
+    - from: live/prod/terragrunt.hcl
+      to: modules/db/main.tf::var.port
+      kind: calls
+      resolution: unresolved
