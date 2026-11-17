@@ -1609,6 +1609,7 @@ fn module_stem(path: &str) -> Option<&str> {
 impl UntracedNamers {
     fn build(
         state: &ScoredState,
+        cells: &Cells,
         cores: &[&Fragment],
         removed: &[&str],
         left: &[&str],
@@ -1622,7 +1623,7 @@ impl UntracedNamers {
             .map(literal_base)
             .chain(left.iter().copied())
             .collect();
-        let literal = keys::LiteralNames::build(state, diff_range, &literal_names, own);
+        let literal = keys::LiteralNames::build(state, cells, diff_range, &literal_names, own);
         let unread = UnreadFiles::of(state);
         let mut needles: Vec<String> = cores
             .iter()
@@ -3711,7 +3712,7 @@ pub fn build_impact(
             .chain(&cell_apart)
             .flat_map(left_words)
             .collect();
-        UntracedNamers::build(state, &cores, &removed, &left, &own, diff_range)
+        UntracedNamers::build(state, &cells, &cores, &removed, &left, &own, diff_range)
     };
     drop(setup);
     crate::profile::count("impact.cores", cores.len() as u64);
