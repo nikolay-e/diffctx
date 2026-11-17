@@ -19,6 +19,7 @@ pub(crate) enum Kind {
     Route,
     Table,
     Proto,
+    Metric,
 }
 
 impl Kind {
@@ -29,6 +30,7 @@ impl Kind {
             Self::Route => "route",
             Self::Table => "table",
             Self::Proto => "proto",
+            Self::Metric => "metric",
         }
     }
 }
@@ -80,6 +82,9 @@ pub(crate) fn compatible(kind: Kind, a: Role, b: Role) -> bool {
         // A message or service is declared in a .proto and used by the code
         // generated from it.
         Kind::Proto => matches!((a, b), (Read, Set) | (Set, Read)),
+        // A metric is registered by the code that exposes it and read by the
+        // PromQL of the rules and dashboards that query it.
+        Kind::Metric => matches!((a, b), (Read, Set) | (Set, Read)),
         Kind::Image => matches!(
             (a, b),
             (Build, Consume)
@@ -1704,6 +1709,108 @@ fn tables(class: FileClass, text: &str, lines: &Lines, out: &mut Vec<RawRecord>)
     }
 }
 
+// ---------------------------------------------------------------- metrics
+
+/// The series a metric exposes carry these behind the registered name.
+const SERIES_SUFFIXES: &[&str] = &["_total", "_created", "_count", "_sum", "_bucket"];
+
+static METRIC_DEF: Lazy<Regex> = Lazy::new(|| {
+    pattern(&format!(
+        r#"\b(?:Counter|Gauge|Histogram|Summary|Info|Enum)\(\s*['"]{NAME}['"]|Opts\{{[^}}]*?\bName:\s*"{NAME}"|\bnew\s+(?:\w+\.)?(?:Counter|Gauge|Histogram|Summary)\(\s*\{{[^}}]*?\bname\s*:\s*['"]{NAME}['"]"#
+    ))
+});
+static PROMQL_NOISE: Lazy<Regex> = Lazy::new(|| pattern(r#""[^"]*"|'[^']*'|\{[^}]*\}"#));
+static PROMQL_NAME: Lazy<Regex> = Lazy::new(|| pattern(r"[A-Za-z_][A-Za-z0-9_]*:?[A-Za-z0-9_:]*"));
+
+/// A metric by the name its registration gives: the series suffixes drop, so
+/// `demo_events_total` and `Counter("demo_events")` are one key. A name
+/// without an underscore (`up`) is the vocabulary of `PromQL`, not a metric
+/// of the project.
+fn metric_record(
+    name: &str,
+    role: Role,
+    mechanism: &'static str,
+    line: usize,
+) -> Option<RawRecord> {
+    let key = SERIES_SUFFIXES
+        .iter()
+        .find_map(|suffix| name.strip_suffix(suffix))
+        .unwrap_or(name);
+    (key.len() >= 4 && key.contains('_') && !key.contains(':')).then(|| RawRecord {
+        kind: Kind::Metric,
+        key: key.to_string(),
+        strength: Strength::Strong,
+        role,
+        mechanism,
+        line,
+        end: line,
+        anchor: None,
+        artifact: None,
+        router: None,
+        mount: None,
+    })
+}
+
+/// Whether a file's text may register a metric: a Prometheus client names itself.
+pub(crate) fn registers_metrics(text: &str) -> bool {
+    text.contains("prometheus") || text.contains("prom-client")
+}
+
+fn metric_defs(text: &str, lines: &Lines, out: &mut Vec<RawRecord>) {
+    if !registers_metrics(text) {
+        return;
+    }
+    for cap in METRIC_DEF.captures_iter(text) {
+        if let Some((name, at)) = first_group(&cap) {
+            out.extend(metric_record(name, Role::Set, "metric-def", lines.of(at)));
+        }
+    }
+}
+
+/// The metrics a rule file's `expr:` queries, a block scalar included: the
+/// names before a `(` are functions, and labels and strings are no series.
+fn promql_reads(text: &str, out: &mut Vec<RawRecord>) {
+    let mut rows = text.lines().enumerate().peekable();
+    while let Some((at, row)) = rows.next() {
+        let Some(rest) = row
+            .trim_start()
+            .trim_start_matches("- ")
+            .trim_start()
+            .strip_prefix("expr:")
+            .map(str::trim)
+        else {
+            continue;
+        };
+        let indent = row.len() - row.trim_start().len();
+        let mut expression = vec![(at, rest)];
+        if rest.starts_with(['|', '>']) {
+            expression.clear();
+            while let Some(line) = rows
+                .next_if(|(_, l)| l.trim().is_empty() || l.len() - l.trim_start().len() > indent)
+            {
+                expression.push(line);
+            }
+        }
+        for (line, expr) in expression {
+            let expr = ['"', '\'']
+                .iter()
+                .find_map(|q| expr.strip_prefix(*q)?.strip_suffix(*q))
+                .unwrap_or(expr);
+            let plain = PROMQL_NOISE.replace_all(expr, "");
+            for m in PROMQL_NAME.find_iter(&plain) {
+                if !plain[m.end()..].trim_start().starts_with('(') {
+                    out.extend(metric_record(
+                        m.as_str(),
+                        Role::Read,
+                        "promql-expr",
+                        line + 1,
+                    ));
+                }
+            }
+        }
+    }
+}
+
 // ---------------------------------------------------------------- protobuf
 
 static PROTO_PACKAGE: Lazy<Regex> = Lazy::new(|| pattern(r"(?m)^\s*package\s+([\w.]+)\s*;"));
@@ -2019,6 +2126,7 @@ fn scan(rel: &str, class: FileClass, text: &str) -> Vec<RawRecord> {
             code_reads(lang, text, &lines, &mut out);
             super::routes::code_routes(lang, text, &lines, &mut out);
             tables(class, text, &lines, &mut out);
+            metric_defs(text, &lines, &mut out);
             proto_uses(lang, text, &lines, &mut out);
             match lang {
                 CodeLang::Jvm => spring_value_reads(text, &lines, &mut out),
@@ -2031,7 +2139,10 @@ fn scan(rel: &str, class: FileClass, text: &str) -> Vec<RawRecord> {
         }
         FileClass::Dotenv => dotenv(text, &lines, &mut out),
         FileClass::Dockerfile => dockerfile(text, &mut out),
-        FileClass::Yaml { compose } => yaml(rel, text, &lines, compose, &mut out),
+        FileClass::Yaml { compose } => {
+            yaml(rel, text, &lines, compose, &mut out);
+            promql_reads(text, &mut out);
+        }
         FileClass::Terraform => terraform(text, &lines, &mut out),
         FileClass::Conf => {
             nginx(text, &lines, &mut out);
