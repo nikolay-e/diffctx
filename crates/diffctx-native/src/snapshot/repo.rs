@@ -264,6 +264,22 @@ pub struct StagedSnapshot {
     pub head: Option<String>,
 }
 
+/// A copy of `index` with its mtime: git reads an entry no older than its
+/// index by content (racy-clean), and a copy stamped now would trust the stat
+/// of a file rewritten, same size, in the tick of the commit.
+fn copy_index(index: &Path, copy: &Path) -> std::io::Result<()> {
+    let stamped = std::fs::File::options()
+        .read(true)
+        .open(index)?
+        .metadata()?
+        .modified()?;
+    std::fs::copy(index, copy)?;
+    std::fs::File::options()
+        .write(true)
+        .open(copy)?
+        .set_modified(stamped)
+}
+
 /// One `git add`/`git rm` of a command line, run in its own directory.
 pub type PlanStep = (PathBuf, Vec<String>);
 
@@ -287,7 +303,7 @@ pub fn capture_planned(root: &Path, steps: &[PlanStep]) -> Result<StagedSnapshot
     )));
     let head = rev_oid(root, "HEAD")?;
     if index.try_exists()? {
-        std::fs::copy(&index, &scratch.0)?;
+        copy_index(&index, &scratch.0)?;
     }
     for (dir, args) in steps {
         let args: Vec<&str> = args.iter().map(String::as_str).collect();
@@ -422,7 +438,7 @@ pub(crate) fn index_tree_with(exec: &Exec, work: &Path) -> Result<Oid> {
         SCRATCH_SEQ.fetch_add(1, Ordering::Relaxed)
     )));
     if index.try_exists()? {
-        std::fs::copy(&index, &scratch.0)?;
+        copy_index(&index, &scratch.0)?;
     }
     let mut cmd = git_command(work);
     cmd.env("GIT_INDEX_FILE", &scratch.0)
