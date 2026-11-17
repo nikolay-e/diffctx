@@ -225,6 +225,16 @@ fn has_child_of_kind(node: Node, kind: &str) -> bool {
     node.named_children(&mut cursor).any(|c| c.kind() == kind)
 }
 
+/// Whether the namespace `globals()` or `locals()` returns is indexed (`globals()[k]`,
+/// `globals().get(k)`) rather than handed on whole (`render(**locals())`).
+fn looked_up_by_key(call: Node) -> bool {
+    call.parent().is_some_and(|parent| match parent.kind() {
+        "subscript" => parent.child_by_field_name("value") == Some(call),
+        "attribute" => parent.child_by_field_name("object") == Some(call),
+        _ => false,
+    })
+}
+
 /// The methods of a dict, list or set that change it in place.
 const MUTATING_METHODS: [&str; 12] = [
     "pop",
@@ -2339,6 +2349,13 @@ impl<'t> Walker<'t> {
         }));
     }
 
+    fn computed_name(&mut self, call: Node<'t>, member: bool) {
+        self.facts.push(Fact::ComputedName {
+            site: span(call),
+            member,
+        });
+    }
+
     fn dynamic_import(&mut self, argument: Option<&Node<'t>>, cx: &Cx) {
         let Some(&argument) = argument else {
             return;
@@ -2459,6 +2476,15 @@ impl<'t> Walker<'t> {
                 ["importlib", "import_module"] | ["import_module"] | ["__import__"] => {
                     self.dynamic_import(arguments.first(), cx);
                 }
+                ["getattr"]
+                    if arguments
+                        .get(1)
+                        .is_none_or(|n| self.plain_string(*n).is_none()) =>
+                {
+                    self.computed_name(node, true);
+                }
+                ["eval" | "exec"] => self.computed_name(node, false),
+                ["globals" | "locals"] if looked_up_by_key(node) => self.computed_name(node, false),
                 _ => {}
             }
         }

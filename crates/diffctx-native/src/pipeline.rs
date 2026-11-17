@@ -1070,6 +1070,10 @@ fn local_uses(
                 uses,
                 unplaced,
                 lossy: !blob.losses.is_empty(),
+                computed: blob
+                    .facts
+                    .iter()
+                    .any(|f| matches!(f, Fact::ComputedName { member: false, .. })),
             });
         }
     }

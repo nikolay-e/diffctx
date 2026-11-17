@@ -45,6 +45,9 @@ const MAX_HOPS: usize = 8;
 /// The bindings of one snapshot's Python files.
 pub struct PythonResolver {
     solved: Solved,
+    /// The files that call something by a name they compute, each with whether
+    /// every such call reaches members only.
+    name_computers: Vec<(RepoPath, bool)>,
 }
 
 impl PythonResolver {
@@ -67,6 +70,17 @@ impl PythonResolver {
             },
             |file| file.language() == Language::Python,
         )?;
+        let name_computers = files
+            .iter()
+            .filter_map(|file| {
+                let mut computed = file.blob.facts.iter().filter_map(|fact| match fact {
+                    Fact::ComputedName { member, .. } => Some(*member),
+                    _ => None,
+                });
+                let first = computed.next()?;
+                Some((file.path.clone(), first && computed.all(|member| member)))
+            })
+            .collect();
         let engine = Engine::new(
             Index::build(files, &ctx.workspace),
             &ctx.workspace,
@@ -77,7 +91,17 @@ impl PythonResolver {
         losses.extend(engine.losses.take());
         Ok(Self {
             solved: Solved::new(definitions, bindings, losses, read),
+            name_computers,
         })
+    }
+
+    /// How many files that `may_reach` computes a name in could call what it
+    /// names: any of them for a function, only the ones that reach members for a
+    /// member of a class.
+    pub fn name_computers(&self, member: bool, may_reach: impl Fn(&str) -> bool) -> usize {
+        (self.name_computers.iter())
+            .filter(|(file, members_only)| (member || !members_only) && may_reach(file.as_str()))
+            .count()
     }
 
     /// The modules of the snapshot a dotted name, whole or by its tail, names:
@@ -1281,7 +1305,11 @@ impl<'a> Engine<'a> {
         depth: usize,
     ) -> Option<(Entity, EvidenceKind)> {
         match self.outcome(f, callee, depth + 1) {
-            Outcome::Unresolved(UnresolvedReason::Builtin) => {
+            // What `getattr`, `eval` and `__import__` hand back is whatever the name
+            // says: a module or an object of ours.
+            Outcome::Unresolved(UnresolvedReason::Builtin)
+                if !matches!(callee.name.as_str(), "getattr" | "eval" | "__import__") =>
+            {
                 Some((Entity::Builtin, EvidenceKind::Constructed))
             }
             Outcome::Unresolved(UnresolvedReason::External)
