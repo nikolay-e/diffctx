@@ -1,0 +1,28 @@
+name: shell_function_called_after_a_source_on_a_dockerfile_run_line_is_named
+mode: impact
+source: synthetic
+tags: [shell, literal-name, same-line-source, false-absence]
+repo:
+  initial_files:
+    lib/strings.sh: |
+      #!/usr/bin/env bash
+      slugify() {
+        echo "${1,,}"
+      }
+    Dockerfile: |
+      FROM alpine
+      COPY lib/strings.sh /lib/strings.sh
+      RUN . /lib/strings.sh && slugify abc
+  changed_files:
+    lib/strings.sh: |
+      #!/usr/bin/env bash
+      slugify() {
+        printf '%s\n' "${1,,}"
+      }
+  commit_message: "strings: slugify prints through printf"
+expect:
+  exact: false
+  discloses: true
+  no_negative_claims: true
+  relations:
+    - {from: Dockerfile, to: lib/strings.sh::slugify, kind: calls, resolution: unresolved}
