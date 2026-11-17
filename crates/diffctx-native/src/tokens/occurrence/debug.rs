@@ -195,6 +195,7 @@ impl Shadow<'_> {
                 .map_or_else(Vec::new, |def| {
                     let known = Known {
                         consumed_outside: known.consumed_outside && consumed_by_reading,
+                        exported: self.view.exported(&definition.key),
                         ..known
                     };
                     let mut kinds = implicit_kinds(&home, def, known);

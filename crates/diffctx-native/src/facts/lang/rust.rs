@@ -163,6 +163,8 @@ struct Cx {
     generics: Rc<HashMap<String, Option<String>>>,
     /// Inside a function body.
     in_fn: bool,
+    /// The attribute of the `impl` around that exports its members to another language.
+    exported: Option<String>,
 }
 
 impl Cx {
@@ -176,6 +178,7 @@ impl Cx {
             in_trait: false,
             generics: Rc::new(HashMap::new()),
             in_fn: false,
+            exported: None,
         }
     }
 }
@@ -273,7 +276,7 @@ impl<'t> Walker<'t> {
             "function_item" | "function_signature_item" => {
                 self.function(node, cx, attrs, docs, depth)
             }
-            "impl_item" => self.implementation(node, cx, depth),
+            "impl_item" => self.implementation(node, cx, attrs, depth),
             "trait_item" => self.trait_item(node, cx, attrs, docs, depth),
             "struct_item" | "union_item" => self.structure(node, cx, attrs, docs, depth),
             "enum_item" => self.enumeration(node, cx, attrs, docs, depth),
@@ -325,6 +328,7 @@ impl<'t> Walker<'t> {
         Cx {
             container,
             scope: Scope::Def(key.clone()),
+            exported: None,
             ..cx.clone()
         }
     }
@@ -389,6 +393,7 @@ impl<'t> Walker<'t> {
         let decorators = attrs
             .iter()
             .filter_map(|a| attribute_name(a))
+            .chain(cx.exported.as_deref())
             .map(Name::new)
             .collect();
         let doc_hash = {
@@ -740,7 +745,7 @@ impl<'t> Walker<'t> {
 
     // ---- impls, traits, structs, enums, modules
 
-    fn implementation(&mut self, node: Node<'t>, cx: &Cx, depth: u16) {
+    fn implementation(&mut self, node: Node<'t>, cx: &Cx, attrs: &[String], depth: u16) {
         let Some(ty) = node.child_by_field_name("type") else {
             return;
         };
@@ -817,6 +822,11 @@ impl<'t> Walker<'t> {
             impl_trait,
             in_trait: false,
             generics,
+            exported: attrs
+                .iter()
+                .filter_map(|a| attribute_name(a))
+                .find(|head| EXPORTING_IMPL.contains(&last_segment(head)))
+                .map(str::to_string),
             ..cx.clone()
         };
         self.items(body, &inner, depth + 1);
@@ -1946,6 +1956,13 @@ fn attribute_name(attribute: &str) -> Option<&str> {
     let inner = attribute.trim().strip_prefix("#[")?.strip_suffix(']')?;
     let head = inner.split(['(', '=']).next()?.trim();
     (!head.is_empty()).then_some(head)
+}
+
+/// The attributes that make the methods of an `impl` callable from another language.
+const EXPORTING_IMPL: &[&str] = &["wasm_bindgen", "pymethods", "napi"];
+
+fn last_segment(path: &str) -> &str {
+    path.rsplit("::").next().unwrap_or(path)
 }
 
 /// `#[test]`, `#[tokio::test]`, `#[rstest]`, `#[test_case(..)]`.

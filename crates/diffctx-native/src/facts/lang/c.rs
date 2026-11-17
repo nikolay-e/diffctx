@@ -262,6 +262,8 @@ struct Cx {
     access: Option<Visibility>,
     /// The `template <...>` header the declaration sits under.
     template: Option<String>,
+    /// What makes a function defined here callable by name from another language.
+    export: Option<&'static str>,
 }
 
 /// The name a declarator declares, its parameter list when it declares a
@@ -426,6 +428,7 @@ impl<'t> Walker<'t> {
             within: Vec::new(),
             access: None,
             template: None,
+            export: None,
         };
         self.items(root, &cx, 0);
     }
@@ -502,6 +505,17 @@ impl<'t> Walker<'t> {
             "namespace_alias_definition" => self.namespace_alias(node, cx),
             "friend_declaration" | "static_assert_declaration" => {}
             "linkage_specification" => {
+                let c_linkage = node
+                    .child_by_field_name("value")
+                    .is_some_and(|v| self.text(v) == "\"C\"");
+                let cx = &Cx {
+                    export: if c_linkage {
+                        Some("extern_c")
+                    } else {
+                        cx.export
+                    },
+                    ..cx.clone()
+                };
                 if let Some(body) = node.child_by_field_name("body") {
                     if body.kind() == "declaration_list" {
                         self.items(body, cx, depth + 1);
@@ -925,7 +939,7 @@ impl<'t> Walker<'t> {
             span: span(node),
             name_span: span(name_node),
             signature: Some(signature),
-            decorators: Vec::new(),
+            decorators: cx.export.map(Name::new).into_iter().collect(),
             visibility,
             body_hash: body.map_or(0, |b| hash_tree(self.bytes, b, |n| is_member(members, n))),
             text_hash: hash_outside(self.bytes, node, members),
@@ -938,6 +952,7 @@ impl<'t> Walker<'t> {
     fn inside(cx: &Cx, key: &LocalKey) -> Cx {
         Cx {
             scope: Scope::Def(key.clone()),
+            export: None,
             ..cx.clone()
         }
     }
@@ -1209,6 +1224,14 @@ impl<'t> Walker<'t> {
                 {
                     local_cx.cond = Some("declaration".to_string());
                 }
+                let labelled = if declarators_len == 1 {
+                    node
+                } else {
+                    declarator
+                };
+                if self.has_asm_label(labelled) {
+                    local_cx.export = Some("asm_label");
+                }
                 let kind = self.member_kind(cx, &d);
                 let key = self.define(
                     node,
@@ -1270,6 +1293,21 @@ impl<'t> Walker<'t> {
                 self.locals.pop();
             }
         }
+    }
+
+    /// `__asm__("name")` after a declarator gives the function another name for the linker,
+    /// the one other code declares and calls.
+    fn has_asm_label(&self, node: Node<'t>) -> bool {
+        let mut pending = vec![(node, 0u8)];
+        while let Some((at, depth)) = pending.pop() {
+            if at.kind() == "gnu_asm_expression" {
+                return true;
+            }
+            if depth < ALIAS_SEARCH_DEPTH {
+                pending.extend(children(at).into_iter().map(|child| (child, depth + 1)));
+            }
+        }
+        false
     }
 
     /// `__attribute__((alias("target")))` makes the declared name another name of

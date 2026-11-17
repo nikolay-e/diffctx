@@ -19,8 +19,8 @@ use super::{
 };
 use crate::decide::Standing;
 use crate::facts::{
-    Def, DefKey, DefKind, Export, Fact, FileFacts, Import, Language, Local, LocalKind, Name, Scope,
-    Span, Star, UseKind,
+    Def, DefKey, DefKind, Export, Fact, FileFacts, Import, Language, Local, LocalKind, Name,
+    ProjectId, Scope, Span, Star, UseKind,
 };
 use crate::resolve::{
     Binding, CandidateReason, DYNAMIC, Definition, Relation, Resolution, UnresolvedReason,
@@ -42,6 +42,10 @@ pub struct Index {
     members: HashMap<String, usize>,
     /// The definitions that state a function without its body.
     prototypes: HashSet<DefKey>,
+    /// The names a prototype or definition of a paired family gives to another language
+    /// (`extern "C"`, an `__asm__` label), by project, container and name: the definition
+    /// that pairs with it is called from there.
+    exported: HashSet<(ProjectId, Vec<Name>, Name)>,
     bases: HashMap<DefKey, Vec<DefKey>>,
     overriders: HashMap<DefKey, Vec<DefKey>>,
     /// The bindings of a use that spells no name (`$o->$m()`).
@@ -76,6 +80,17 @@ impl Index {
                     file.defs()
                         .filter(|def| def.body_hash == 0)
                         .map(|def| file.key(&def.local))
+                })
+                .collect(),
+            exported: (files.iter())
+                .filter(|file| PAIRED_PROTOTYPES.iter().any(|f| f.has(file.language())))
+                .flat_map(|file| {
+                    file.defs()
+                        .filter(|def| !def.decorators.is_empty())
+                        .map(|def| {
+                            let key = file.key(&def.local);
+                            (key.project, key.local.container, key.local.name)
+                        })
                 })
                 .collect(),
             bases: HashMap::new(),
@@ -154,6 +169,17 @@ fn place(binding: &Binding) -> Place {
 }
 
 impl<'a> View<'a> {
+    /// Whether another language reaches `key` by name: its own declaration or the one it
+    /// pairs with says so.
+    pub fn exported(&self, key: &DefKey) -> bool {
+        let at = (
+            key.project.clone(),
+            key.local.container.clone(),
+            key.local.name.clone(),
+        );
+        self.index.exported.contains(&at)
+    }
+
     pub fn new(
         files: &'a [FileFacts],
         bindings: &'a [Binding],
