@@ -1037,6 +1037,12 @@ impl<'t> Walker<'t> {
                 }
             }
         }
+        leaving.extend(
+            outward
+                .iter()
+                .filter(|name| declared.contains(**name))
+                .map(|name| name.to_string()),
+        );
         loop {
             let known = leaving.len();
             for (name, into) in &stored {

@@ -655,7 +655,12 @@ fn spells_literally(text: &str, name: &str, reading: Reading, held: &[String]) -
                     .split_whitespace()
                     .next()
                     .is_some_and(|w| SQL_VERBS.contains(&w.to_lowercase().as_str()));
-            return reference || query;
+            // `"{.name}".format(user)` reads the attribute of its argument.
+            let formatted = head.contains('{')
+                && head.ends_with('.')
+                && tail.starts_with(['}', '!', ':', '.', '['])
+                && text[to + 1..].starts_with(".format(");
+            return reference || query || formatted;
         }
         if !reading.values {
             return false;
@@ -718,7 +723,7 @@ fn literal_pattern(names: &[&str]) -> String {
         .join("|");
     let mut forms = vec![
         format!(
-            r#"["'`]([^"'`[:space:]=]+[[:space:]]*=[[:space:]]*)?([^"'`[:space:]]*[.:#/\\@])?({all})["'`(=:\[]"#
+            r#"["'`]([^"'`[:space:]=]+[[:space:]]*=[[:space:]]*)?([^"'`[:space:]]*[.:#/\\@])?({all})["'`(=:\[}}]"#
         ),
         format!(r#"@dataProvider[[:space:]]+([^[:space:]]*::)?({all})([[:space:]*]|$)"#),
         format!(r#"[:=][[:space:]]*([^[:space:]"']*[.:#/\\])?({all})([[:space:],;'"]|$)"#),

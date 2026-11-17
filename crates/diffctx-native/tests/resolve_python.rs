@@ -850,28 +850,27 @@ const RED: &[(&str, &str)] = &[
     ),
     (
         "symbol/python/py_nested_decorator_shadowing_a_module_decorator_is_answered_too",
-        "the resolver holds the module-level `dec` only; the case also answers the nested \
-         decorator that shadows it",
+        "the symbol answer lists the locals that share a name with a definition \
+         (`sibling_locals`); the resolver holds the module-level `dec` only",
     ),
     (
         "symbol/python/py_nested_function_shadowing_a_module_function_is_answered_too",
-        "the resolver holds the module-level `helper` only; the case also answers the nested \
-         function that shadows it",
+        "the symbol answer lists the locals that share a name with a definition \
+         (`sibling_locals`); the resolver holds the module-level `helper` only",
     ),
     (
         "symbol/python/py_same_named_nested_functions_of_two_scopes_are_both_answered",
-        "the resolver holds one nested `helper`; the case answers the same-named nested functions \
-         of both scopes",
+        "the symbol answer lists the locals that share a name with a definition \
+         (`sibling_locals`); the resolver holds the returned `helper` only",
     ),
     (
         "symbol/python/py_super_init_call_in_a_subclass_constructor_is_a_caller_of_the_base_constructor",
-        "the resolver binds no `super().__init__()` call to the base class, which the case names \
-         as the constructor",
+        "the symbol answer reports a constructor as its class and its `super().__init__()` \
+         callers; the resolver binds no call to the class",
     ),
     (
         "symbol/python/py_with_target_is_typed_by_what_enter_returns",
-        "the resolver's definitions are bare names (`execute`) where the case names them by class \
-         (`Connection.execute`)",
+        "the symbol answer names the definitions (`Connection.execute`); the resolver's are bare",
     ),
 ];
 
