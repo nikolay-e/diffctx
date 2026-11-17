@@ -428,6 +428,7 @@ impl Account {
                         hedges.push(Hedge::Candidate {
                             file: at.file.clone(),
                             line: at.line,
+                            bytes: at.bytes.clone(),
                             reason: *reason,
                         });
                     }
@@ -478,7 +479,13 @@ pub enum Hedge {
     Candidate {
         file: RepoPath,
         line: u32,
+        bytes: Range<u32>,
         reason: Reason,
+    },
+    /// A candidate at a line a resolved use is listed on, in a span of its own:
+    /// counted, never listed, so that no line stands twice in the answer.
+    Unlisted {
+        occurrences: usize,
     },
     Leak {
         file: RepoPath,
@@ -502,6 +509,12 @@ impl fmt::Display for Hedge {
         match self {
             Self::Candidate { file, line, .. } => {
                 write!(f, "candidate at {}:{line}", file.as_str())
+            }
+            Self::Unlisted { occurrences } => {
+                write!(
+                    f,
+                    "{occurrences} candidate(s) beside a use the answer lists"
+                )
             }
             Self::Leak { file, line, .. } => write!(f, "leak at {}:{line}", file.as_str()),
             Self::Unread { file, .. } => write!(f, "{} was not read", file.as_str()),
