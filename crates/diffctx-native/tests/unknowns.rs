@@ -2003,6 +2003,29 @@ fn a_name_too_common_to_search_is_a_hedge_only_beside_an_unread_file() {
     );
 }
 
+/// A name the text search skips, handed as a string to a call of a file the engine
+/// parsed, may be a reflective use no tree resolves: the zero keeps the hedge. The
+/// same string inside a sentence reads as prose and leaves the zero complete.
+#[test]
+fn a_short_name_quoted_in_a_parsed_file_is_no_complete_zero() {
+    let tax = |rate: u32| format!("def tax(amount):\n    return amount * {rate}\n");
+    let hedged = |call: &str| {
+        let case = repo(
+            &[
+                ("shop/price.py", &tax(2)),
+                ("shop/hooks.py", &format!("def hook():\n    {call}\n")),
+            ],
+            &[("shop/price.py", &tax(3))],
+        );
+        let doc = impact_json(case.path());
+        doc["definitions"][0]["gaps"]
+            .to_string()
+            .contains("name_unsearched")
+    };
+    assert!(hedged("register(\"tax\")"));
+    assert!(!hedged("print(\"the tax is due\")"));
+}
+
 /// Whether a definition says no binding model reads its language.
 fn not_modelled(definition: &serde_json::Value) -> bool {
     definition["gaps"]
