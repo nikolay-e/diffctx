@@ -486,6 +486,9 @@ fn quoted_spans(text: &str) -> Vec<(usize, usize)> {
 struct Reading {
     /// A config or a command file: its values and flags name what they run.
     values: bool,
+    /// PHP: an array value, a constant or an assignment holds a callable string,
+    /// and `Class@method` is a route action.
+    php: bool,
 }
 
 impl Reading {
@@ -517,7 +520,8 @@ impl Reading {
                 | "slim"
         ) || !name.contains('.')
             || name.starts_with("dockerfile");
-        (code || values).then_some(Self { values })
+        let php = matches!(super::extension(path).as_str(), "php" | "phtml" | "inc");
+        (code || values).then_some(Self { values, php })
     }
 }
 
@@ -585,6 +589,32 @@ fn labeled(before: &str) -> bool {
     rest.ends_with(['(', ','])
 }
 
+/// Whether `before`, the text ahead of a string in PHP, puts it where a callable
+/// is held: an array value (`'callback' => 'fn'`), an element of an array literal
+/// (`['fn']`), the value of a constant or an assignment (`const H = 'fn'`,
+/// `$cb = 'fn'`). A comparison (`==`, `!=`) and an index (`$a['k']`) are not.
+fn php_callable_position(before: &str) -> bool {
+    let before = before.trim_end();
+    if before.ends_with("=>") {
+        return true;
+    }
+    if let Some(open) = before.strip_suffix('[') {
+        let open = open.trim_end();
+        return open.ends_with(['=', '(', ',']) || open.ends_with("return");
+    }
+    before
+        .strip_suffix('=')
+        .is_some_and(|rest| !rest.ends_with(['=', '!', '<', '>', '.', '+', '-', '*', '/', '?']))
+}
+
+/// Whether `text`, a docblock line, names `name` as a PHPUnit data provider:
+/// `@dataProvider provide`, `@dataProvider Calc::cases`.
+fn data_provider_named(text: &str, name: &str) -> bool {
+    text.split_once("@dataProvider")
+        .and_then(|(_, rest)| rest.split_whitespace().next())
+        .is_some_and(|provider| provider.rsplit("::").next() == Some(name))
+}
+
 /// Whether `text` spells `name` as a literal in a file read as `reading`.
 fn spells_literally(text: &str, name: &str, reading: Reading) -> bool {
     let spans = quoted_spans(text);
@@ -616,6 +646,7 @@ fn spells_literally(text: &str, name: &str, reading: Reading) -> bool {
             // a line of its own, a mapping's, an assignment's. `"a.f(x)"` is prose.
             let value =
                 qualified && tail.is_empty() && matches!(lead, None | Some('{' | ':' | '='));
+            let php_placed = reading.php && php_callable_position(&text[..from - 1]);
             let indexed = !qualified && indexed_call(text, from, to);
             let placed = (reading.values
                 || indexed
@@ -623,12 +654,15 @@ fn spells_literally(text: &str, name: &str, reading: Reading) -> bool {
                 || (matches!(lead, Some(':' | '=')) && labeled(&text[..from - 1]))
                 || (qualified && lead == Some('['))
                 || macro_value(&text[..from - 1])
-                || value)
+                || value
+                || php_placed)
                 && !printed(&text[..from - 1]);
             let reference = placed
                 && !head.contains(char::is_whitespace)
                 && !tail.contains(char::is_whitespace)
-                && (!qualified || head.ends_with(qualifier))
+                && (!qualified
+                    || head.ends_with(qualifier)
+                    || (reading.php && head.ends_with('@')))
                 && (tail.is_empty() || tail.starts_with(['(', '=', ':', '[']));
             let query = sql
                 && inside
@@ -698,8 +732,9 @@ fn literal_pattern(names: &[&str]) -> String {
         .join("|");
     let mut forms = vec![
         format!(
-            r#"["'`]([^"'`[:space:]=]+[[:space:]]*=[[:space:]]*)?([^"'`[:space:]]*[.:#/\\])?({all})["'`(=:\[]"#
+            r#"["'`]([^"'`[:space:]=]+[[:space:]]*=[[:space:]]*)?([^"'`[:space:]]*[.:#/\\@])?({all})["'`(=:\[]"#
         ),
+        format!(r#"@dataProvider[[:space:]]+([^[:space:]]*::)?({all})([[:space:]*]|$)"#),
         format!(r#"[:=][[:space:]]*([^[:space:]"']*[.:#/\\])?({all})([[:space:],;'"]|$)"#),
         format!(r#"(^|[[:space:]])--?[[:alnum:]-]+[ =]['"]?({all})(['"=[:space:]]|$)"#),
     ];
@@ -827,7 +862,9 @@ impl LiteralNames {
                 for (path, line, text) in state.run.bounded(&grepped.rows) {
                     if super::is_document(path)
                         || super::mentions::selects_paths(path)
-                        || super::mentions::commented_in(path, text)
+                        || (super::mentions::commented_in(path, text)
+                            && !Reading::of(path)
+                                .is_some_and(|r| r.php && text.contains("@dataProvider")))
                         || matches!(
                             super::extension(path).as_str(),
                             "diff" | "patch" | "lock" | "tex" | "bib" | "csv" | "tsv" | "log"
@@ -853,7 +890,9 @@ impl LiteralNames {
                     let hit = |name: &str| match (shape, reading, language) {
                         (Shape::Call, ..) => call_name(name) && called(text, name),
                         (Shape::Literal, Some(reading), _) => {
-                            literal_name(name) && spells_literally(text, name, reading)
+                            literal_name(name)
+                                && (spells_literally(text, name, reading)
+                                    || (reading.php && data_provider_named(text, name)))
                         }
                         (Shape::Argument, _, Some(language)) => {
                             !literal_name(name) && reflects(text, name, language)

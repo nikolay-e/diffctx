@@ -62,6 +62,7 @@ use super::{
     ERROR_RANGES_KEPT, children as named_children, lines_of, merge_ranges, read_tree, span,
     through_errors,
 };
+use crate::facts::framework;
 use crate::facts::{
     BlobFacts, Def, DefKind, Disambig, EntryKind, EntryPoint, Extractor, Fact, Hasher, Import,
     ImportKind, Language, Local, LocalKey, LocalKind, ModulePath, Name, Namespace, Receiver, Ref,
@@ -99,6 +100,7 @@ fn extract(text: &[u8], budget: &RunBudget) -> BlobFacts {
                 walker.halted,
                 walker.too_deep,
             );
+            framework::derive(blob);
         },
     )
 }
