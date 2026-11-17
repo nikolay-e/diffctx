@@ -312,6 +312,24 @@ fn a_local_initialised_by_a_call_types_its_chain_by_that_call() {
     assert_eq!(uses(&facts, "poke"), ["Call none [unknown] in run"]);
 }
 
+/// A call on a chain of names is the result of that chain; a name an elvis binds
+/// when its other side leaves the function has the type of the name it is bound from.
+#[test]
+fn a_call_on_a_chain_and_an_elvis_that_returns_type_the_receiver() {
+    let facts = kt(
+        "fun run(maybe: Vault?, other: Vault?) {\n    Vault.of(\"/srv\").discard()\n    this.make().keep()\n    val v = maybe ?: return\n    val w = other ?: fallback()\n    v.close()\n    w.close()\n}\n",
+    );
+    assert_eq!(
+        uses(&facts, "discard"),
+        ["Call call-result Vault.of [] in run"]
+    );
+    assert_eq!(uses(&facts, "keep"), ["Call unknown [] in run"]);
+    assert_eq!(
+        uses(&facts, "close"),
+        ["Call typed Vault [maybe] in run", "Call unknown [w] in run",]
+    );
+}
+
 #[test]
 fn a_binding_is_visible_from_its_end_to_the_end_of_its_scope() {
     let facts = kt("fun f(a: Int) {\n    val x = a\n    use(x)\n}\n");

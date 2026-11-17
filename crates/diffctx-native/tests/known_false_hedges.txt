@@ -14,7 +14,6 @@ impact/python/py_never_imported_script_method_has_no_sibling_hedge  # gh#666: `c
 impact/python/py_table_registered_tool_a_test_calls_by_name_has_a_test_link  # the tuple member `("get_x", get_x, ...)` is a resolved row and also unlanded, and the analysed Python test tests/test_tools.py:6 is cited as unaccounted (`other_language`)
 impact/typescript/ts_lazy_import_is_a_caller  # `m.MobileFullPlayer` is the site of the resolved dynamic-import row, and its receiver `m` is left unresolved
 impact/typescript/ts_lazy_import_through_a_tsconfig_alias_is_a_caller  # `m.Lazy` is the site of the resolved dynamic-import row, and its receiver `m` is left unresolved
-symbol/kotlin/gh490_companion_factory_and_elvis_return_receivers_resolve  # both unlanded sites are the resolved rows: the receivers of the companion factory and the elvis return are left unresolved
 symbol/web/web_symbol_astro_frontmatter_and_template_calls  # the template call `groups(items)` is the resolved row and also unexplained text
 symbol/python/py_local_function_read_where_no_use_is_stated_stays_open  # a local's spelling that states no use is answered complete where the case declares the calls and reads open
 impact/typescript/ts_object_literal_constant_with_comments_and_a_template_is_the_literal_itself  # an object literal constant with comments and a template is classified by its text, and its read is hedged as unlanded

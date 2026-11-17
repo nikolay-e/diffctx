@@ -740,11 +740,6 @@ fn cases_root() -> PathBuf {
 /// a red case that is not listed.
 const RED: &[(&str, &str)] = &[
     (
-        "symbol/kotlin/gh490_companion_factory_and_elvis_return_receivers_resolve",
-        "gh#490: the receiver of a call on a companion factory result or on an elvis-return \
-         binding is not typed, so the calls stay candidates instead of resolved",
-    ),
-    (
         "impact/kotlin/k6_kotlin_get_method_in_the_definitions_own_file",
         "a method named by the string of `getMethod(\"hidden\")` is no syntactic reference, so \
          the resolver binds nothing there; the answer's literal-name scan names it",
