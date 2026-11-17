@@ -27,6 +27,8 @@
 
 #![deny(clippy::disallowed_methods)]
 
+mod open_world;
+
 use std::cell::{OnceCell, RefCell};
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::ops::Range;
@@ -797,8 +799,9 @@ impl Verdict {
         self.found.quoted > 0
     }
 
-    /// The type a removed override was reached through, when it was one: what
-    /// called the member it overrode reached it, and no model traces that.
+    /// The type calls reach the definition through, which no model traces: what
+    /// called the member a removed override overrode, or the interface a class
+    /// outside the repository may implement with a method nothing calls.
     pub(crate) fn overridden_via(&self) -> Option<&str> {
         self.overridden.as_deref()
     }
@@ -2822,7 +2825,9 @@ impl Cell {
             .then_some(Gap::Unpaired)
             .into_iter()
             .collect();
-        let overridden = self.overridden_via(changed);
+        let overridden = self
+            .overridden_via(changed)
+            .or_else(|| self.open_world_via(changed, &uses));
         let tail: Vec<Gap> = overridden.iter().map(|_| Gap::NotTraced).collect();
         let (by_relation, found, hedges) = self.coverage(changed, lead, tail, &uses);
         uses.extend(found.callers.iter().cloned());

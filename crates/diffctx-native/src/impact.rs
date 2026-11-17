@@ -4274,7 +4274,14 @@ pub fn build_impact(
             )
         });
         let route = (callers.is_empty() && !resolved_in_diff && dispatchable)
-            .then(|| dispatch_route(state, core, file_of(core)))
+            .then(|| {
+                dispatch_route(state, core, file_of(core)).or_else(|| {
+                    verdict
+                        .as_ref()
+                        .and_then(decide::Verdict::overridden_via)
+                        .map(str::to_string)
+                })
+            })
             .flatten();
         // The role that gives the definition an implicit caller (R3): where a
         // static test link exists it is shown, otherwise the role is named.
