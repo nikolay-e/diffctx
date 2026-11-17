@@ -1,0 +1,38 @@
+name: ts_then_callback_of_a_promise_that_is_no_import_has_no_namespace
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [typescript, react-lazy, dynamic-import, decoy]
+repo:
+  initial_files:
+    src/pages/Lazy.tsx: |
+      export function Lazy() {
+        return <div className="a">lazy</div>;
+      }
+    src/loader.ts: |
+      export function load(name: string): Promise<Record<string, unknown>> {
+        return fetch(name).then((r) => r.json());
+      }
+    src/App.tsx: |
+      import { lazy, Suspense } from 'react';
+      import { load } from './loader';
+
+      const Lazy = lazy(() => load('lazy').then((m) => ({ default: m.Lazy })));
+
+      export function App() {
+        return (
+          <Suspense>
+            <Lazy />
+          </Suspense>
+        );
+      }
+  changed_files:
+    src/pages/Lazy.tsx: |
+      export function Lazy() {
+        return <div className="b">lazy</div>;
+      }
+  commit_message: "pages: restyle"
+expect:
+  changed: [src/pages/Lazy.tsx::Lazy]
+  relations: []
+  partial: {src/pages/Lazy.tsx::Lazy: {reads: unlanded}}

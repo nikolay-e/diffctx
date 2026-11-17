@@ -1,0 +1,40 @@
+name: ts_lazy_import_reading_another_member_of_the_module_is_no_caller
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [typescript, react-lazy, dynamic-import, decoy]
+repo:
+  initial_files:
+    src/pages/Pages.tsx: |
+      export function Lazy() {
+        return <div className="a">lazy</div>;
+      }
+
+      export function Other() {
+        return <div className="a">other</div>;
+      }
+    src/App.tsx: |
+      import { lazy, Suspense } from 'react';
+
+      const Other = lazy(() => import('./pages/Pages').then((m) => ({ default: m.Other })));
+
+      export function App() {
+        return (
+          <Suspense>
+            <Other />
+          </Suspense>
+        );
+      }
+  changed_files:
+    src/pages/Pages.tsx: |
+      export function Lazy() {
+        return <div className="b">lazy</div>;
+      }
+
+      export function Other() {
+        return <div className="a">other</div>;
+      }
+  commit_message: "pages: restyle Lazy"
+expect:
+  changed: [src/pages/Pages.tsx::Lazy]
+  relations: []
