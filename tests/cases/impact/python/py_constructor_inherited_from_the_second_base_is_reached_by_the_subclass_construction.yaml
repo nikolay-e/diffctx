@@ -1,0 +1,40 @@
+name: py_constructor_inherited_from_the_second_base_is_reached_by_the_subclass_construction
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [python, oracle, init-reach, inheritance, multiple-bases, decoy]
+repo:
+  initial_files:
+    app/__init__.py: ""
+    app/named.py: |
+      class Named:
+          def label(self):
+              return "named"
+    app/registry.py: |
+      class Registered:
+          def __init__(self):
+              self.items = []
+    app/service.py: |
+      from app.named import Named
+      from app.registry import Registered
+
+
+      class Service(Named, Registered):
+          pass
+
+
+      def start():
+          return Service()
+  changed_files:
+    app/registry.py: |
+      class Registered:
+          def __init__(self):
+              self.items = {}
+  commit_message: "registry: items are a mapping"
+expect:
+  relations:
+    - from: "app/service.py::start"
+      to: "app/registry.py::Registered"
+      kind: instantiates
+      resolution: resolved
+      site: 10
