@@ -1652,7 +1652,7 @@ impl UntracedNamers {
             for word in text.split(|c: char| !(c.is_alphanumeric() || c == '_')) {
                 // A plain word in a JSON file is a label or a value, no reader of a name.
                 if wanted.contains(word)
-                    && !(extension(path) == "json" && !distinctive(word))
+                    && (extension(path) != "json" || distinctive(word))
                     && seen.insert(word)
                 {
                     rows.entry(word.to_string())
