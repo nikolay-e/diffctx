@@ -1,0 +1,40 @@
+name: config_renamed_compose_service_with_a_generic_name_is_named_where_a_script_spells_it
+mode: impact
+source: synthetic
+tags: [config, key-search, generic-name, false-absence]
+repo:
+  initial_files:
+    docker-compose.yml: |
+      services:
+        db:
+          image: postgres
+        api:
+          image: nginx
+        worker:
+          image: busybox
+    scripts/shell_db.sh: |
+      #!/usr/bin/env bash
+      docker compose exec db psql
+    scripts/shell_api.sh: |
+      #!/usr/bin/env bash
+      docker compose exec api sh
+    scripts/shell_worker.sh: |
+      #!/usr/bin/env bash
+      docker compose restart worker
+  changed_files:
+    docker-compose.yml: |
+      services:
+        database:
+          image: postgres
+        gateway:
+          image: nginx
+        processor:
+          image: busybox
+  commit_message: "compose: services get descriptive names"
+expect:
+  exact: false
+  no_negative_claims: true
+  named_by:
+    - scripts/shell_db.sh
+    - scripts/shell_api.sh
+    - scripts/shell_worker.sh
