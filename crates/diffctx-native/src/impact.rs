@@ -1247,15 +1247,35 @@ struct Nameless {
 /// The line above `line` that opens the block it sits in: the nearest one with a
 /// smaller indentation, where a definition states its name.
 fn header_above(text: &str, line: u32) -> Option<&str> {
-    let rows: Vec<&str> = text.lines().collect();
+    header_row(&text.lines().collect::<Vec<_>>(), line).map(|(_, header)| header)
+}
+
+/// The line above `line` that opens its block, and its 1-based number.
+fn header_row<'a>(rows: &[&'a str], line: u32) -> Option<(u32, &'a str)> {
     let at = line.checked_sub(1)? as usize;
     let indent = |l: &str| l.len() - l.trim_start().len();
     let own = indent(rows.get(at)?);
     rows[..at]
         .iter()
         .rev()
-        .find(|l| !l.trim().is_empty() && indent(l) < own)
-        .copied()
+        .find(|(_, l)| !l.trim().is_empty() && indent(l) < own)
+        .map(|(n, l)| (n as u32 + 1, *l))
+}
+
+/// The names a changed config line sits under: the value of each enclosing `key: value`
+/// header (`- alert: DemoDown`), outermost last. A reader spells the definition by
+/// that name, whichever line of it the change touched.
+fn enclosing_names(text: &str, line: u32) -> Vec<String> {
+    let rows: Vec<&str> = text.lines().collect();
+    let mut names = Vec::new();
+    let mut at = line;
+    while let Some((n, header)) = header_row(&rows, at) {
+        if let Some((_, value)) = header.split_once(": ") {
+            names.extend(keys::terms(value));
+        }
+        at = n;
+    }
+    names
 }
 
 /// The words a line spells that a reader may spell back. A bare keyword in capitals
@@ -5359,6 +5379,21 @@ fn changed_keys(state: &ScoredState, path: &str, nameless: &[Nameless]) -> Vec<S
     // it before: a file spelling it elsewhere is no reader of the change (#309).
     let untouched = keys::untouched_terms(state, path);
     keys.retain(|k| !untouched.contains(k));
+    // The names of the definitions the change sits in are untouched lines, and the
+    // names a reader spells.
+    if let Some(text) = state
+        .run
+        .source()
+        .read_to_string(&state.root_dir.join(path))
+    {
+        keys.extend(
+            state
+                .hunk_texts
+                .iter()
+                .filter(|h| h.path == path)
+                .flat_map(|h| enclosing_names(&text, h.new_range().0)),
+        );
+    }
     keys.sort();
     keys.dedup();
     keys
@@ -5527,7 +5562,11 @@ fn key_references(
     let phrases: Vec<&String> = needles.iter().filter(|n| keys::is_phrase(n)).collect();
     let mut by_key: FxHashMap<String, Vec<(String, u32)>> = FxHashMap::default();
     for (path, line, text) in state.run.bounded(&spelled.rows) {
-        if changed.contains(path) || !class_of(&state.root_dir, &source, path, text, None).reads() {
+        let class = class_of(&state.root_dir, &source, path, text, None);
+        let unknown = class == MentionClass::Data
+            && mentions::unclassified(&state.root_dir, &source, path)
+            && !mentions::commented_in(path, text);
+        if changed.contains(path) || !(class.reads() || unknown) {
             continue;
         }
         let spelled = keys::words(text)

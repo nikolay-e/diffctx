@@ -14,8 +14,6 @@
 #   awk -F'\t' '{print $1" | "$2" | "$3" | "$4" | "$5" | "$6" # "$7}' <file> | sort -u
 # The synthetic suite's rows are below. The corpus suite's rows ("corpus A/…"
 # and "corpus B/…") come from its own run on the release profile.
-A/config | A | config | synthetic | Use: unchanged without an extension (unread) | Impact # complete_empty=true
-A/config | A | config | synthetic | Use: unchanged .xyz (unread) | Impact # complete_empty=true
 A/sql | H | sql | synthetic | NoUse: changed, the family's suffix, in a comment | Symbol # complete_empty=false
 A/sql | H | sql | synthetic | NoUse: unchanged, the family's suffix, in a comment | Impact # complete_empty=false
 A/sql | H | sql | synthetic | NoUse: unchanged, the family's suffix, in a comment | Symbol # complete_empty=false
