@@ -177,7 +177,8 @@ impl<'a> TestsReach<'a> {
                         .run
                         .source()
                         .read_to_string(Path::new(spelled))
-                        .is_some_and(|text| crate::testfiles::spells_test_calls(&text)))
+                        .and_then(|text| crate::facts::local_facts(shown, &text))
+                        .is_some_and(|blob| crate::testfiles::holds_test_calls(&blob)))
             {
                 tests_at.entry(spelled).or_default().push((1, u32::MAX));
             }

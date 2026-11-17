@@ -383,12 +383,23 @@ pub(crate) fn doctest_calls(text: &str) -> Vec<(usize, Vec<&str>)> {
         .collect()
 }
 
-/// The names `>>>` examples call through an import of their own, as (0-based line,
-/// dotted module, name): a document or another module's docstring runs code that
-/// lives elsewhere. `from m import n [as a]` and `import m [as a]` bind in the
-/// examples; in a Python file an import at the top of a line binds too, being the
-/// namespace its doctests run in.
-pub(crate) fn imported_doctest_calls(text: &str, python: bool) -> Vec<(usize, String, String)> {
+/// A name a doctest's namespace binds: `local` is `name` of `module`, or the module
+/// itself when there is no `name`.
+pub(crate) struct Bound {
+    pub(crate) local: String,
+    pub(crate) module: String,
+    pub(crate) name: Option<String>,
+}
+
+/// The names `>>>` examples call through an import, as (0-based line, dotted
+/// module, name): a document or another module's docstring runs code that lives
+/// elsewhere. The examples' own `from m import n [as a]` and `import m [as a]` lines
+/// bind beside the `namespace` the examples run in (a module's own imports, read
+/// from its facts); the `>>>` lines are text, nothing parses them.
+pub(crate) fn imported_doctest_calls(
+    text: &str,
+    namespace: Vec<Bound>,
+) -> Vec<(usize, String, String)> {
     static FROM: once_cell::sync::Lazy<regex::Regex> = once_cell::sync::Lazy::new(|| {
         regex::Regex::new(r"^from\s+([A-Za-z_][\w.]*)\s+import\s+\(?([^)#]+)")
             .expect("from import regex")
@@ -400,62 +411,58 @@ pub(crate) fn imported_doctest_calls(text: &str, python: bool) -> Vec<(usize, St
         regex::Regex::new(r"([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)\.([A-Za-z_]\w*)\s*\(")
             .expect("qualified call regex")
     });
-    fn examples(line: &str) -> Option<&str> {
+    fn example(line: &str) -> Option<&str> {
         line.trim_start().strip_prefix(">>>").map(str::trim)
     }
-    let mut names: Vec<(String, (String, String))> = Vec::new();
-    let mut modules: Vec<(String, String)> = Vec::new();
-    for line in text.lines() {
-        let Some(code) =
-            examples(line).or_else(|| (python && !line.starts_with([' ', '\t'])).then_some(line))
-        else {
-            continue;
-        };
+    let mut bound = namespace;
+    for code in text.lines().filter_map(example) {
         if let Some(caps) = FROM.captures(code) {
             for item in caps[2].split(',') {
                 let mut words = item.split_whitespace();
                 if let (Some(name), alias) = (words.next(), words.nth(1)) {
-                    names.push((
-                        alias.unwrap_or(name).to_string(),
-                        (caps[1].to_string(), name.to_string()),
-                    ));
+                    bound.push(Bound {
+                        local: alias.unwrap_or(name).to_string(),
+                        module: caps[1].to_string(),
+                        name: Some(name.to_string()),
+                    });
                 }
             }
         } else if let Some(caps) = IMPORT.captures(code) {
             for item in caps[1].split(',') {
                 let mut words = item.split_whitespace();
                 if let Some(module) = words.next() {
-                    let local = words.nth(1).unwrap_or(module);
-                    modules.push((local.to_string(), module.to_string()));
+                    bound.push(Bound {
+                        local: words.nth(1).unwrap_or(module).to_string(),
+                        module: module.to_string(),
+                        name: None,
+                    });
                 }
             }
         }
     }
-    let module_of = |qualifier: &str| {
-        modules
-            .iter()
-            .find(|(local, _)| local == qualifier)
-            .map(|(_, module)| module.clone())
-            .or_else(|| {
-                names
-                    .iter()
-                    .find(|(local, _)| local == qualifier)
-                    .map(|(_, (module, name))| format!("{module}.{name}"))
-            })
-            .unwrap_or_else(|| qualifier.to_string())
-    };
     let mut found = Vec::new();
-    for (row, line) in text.lines().enumerate() {
-        let Some(example) = examples(line) else {
-            continue;
-        };
-        for name in called_names(example) {
-            if let Some((_, (module, original))) = names.iter().find(|(local, _)| local == name) {
-                found.push((row, module.clone(), original.clone()));
+    for (row, code) in text
+        .lines()
+        .enumerate()
+        .filter_map(|(row, line)| Some((row, example(line)?)))
+    {
+        for name in called_names(code) {
+            for imported in bound.iter().filter(|b| b.local == name) {
+                if let Some(original) = &imported.name {
+                    found.push((row, imported.module.clone(), original.clone()));
+                }
             }
         }
-        for caps in QUALIFIED.captures_iter(example) {
-            found.push((row, module_of(&caps[1]), caps[2].to_string()));
+        for caps in QUALIFIED.captures_iter(code) {
+            let module = bound
+                .iter()
+                .find(|b| b.local == caps[1])
+                .map(|b| match &b.name {
+                    Some(name) => format!("{}.{name}", b.module),
+                    None => b.module.clone(),
+                })
+                .unwrap_or_else(|| caps[1].to_string());
+            found.push((row, module, caps[2].to_string()));
         }
     }
     found
@@ -769,7 +776,7 @@ impl DeclaredTests {
     }
 
     /// Whether the runner loads `path` without saying it is a test: a test only
-    /// where its text holds test calls ([`spells_test_calls`]).
+    /// where its facts hold test calls ([`holds_test_calls`]).
     pub(crate) fn is_loaded(&self, path: &str) -> bool {
         self.declares(path, |declared| &declared.loaded)
     }
@@ -854,13 +861,20 @@ impl Declared {
     }
 }
 
-/// Whether a script's text calls `describe`, `it` or `test`: a file a runner
-/// loads beside the code it tests is a test only when it does.
-pub(crate) fn spells_test_calls(text: &str) -> bool {
-    static CALL: once_cell::sync::Lazy<regex::Regex> = once_cell::sync::Lazy::new(|| {
-        regex::Regex::new(r"\b(?:describe|it|test)(?:\.\w+)*\s*\(").expect("test call regex")
-    });
-    CALL.is_match(text)
+/// Whether a script's facts hold a call of a test registrar: `describe(`, `it(`,
+/// `test(` or a member call on one (`describe.each(..)`, `it.only(..)`). A file a
+/// runner loads beside the code it tests is a test only when it does; `re.test(s)`
+/// is a call of `test` on something else.
+pub(crate) fn holds_test_calls(blob: &crate::facts::BlobFacts) -> bool {
+    use crate::facts::{Fact, Receiver, UseKind};
+    const REGISTRARS: [&str; 3] = ["describe", "it", "test"];
+    blob.facts.iter().any(|fact| match fact {
+        Fact::Reference(r) if r.use_kind == UseKind::Call => match r.qualifier.first() {
+            None => r.receiver == Receiver::None && REGISTRARS.contains(&r.name.as_str()),
+            Some(root) => REGISTRARS.contains(&root.as_str()),
+        },
+        _ => false,
+    })
 }
 
 /// The values a runner's configuration gives `key`, each with whether a script

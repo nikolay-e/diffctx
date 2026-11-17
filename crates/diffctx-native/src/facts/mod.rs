@@ -50,3 +50,12 @@ pub use model::{
     Local, LocalKey, LocalKind, Namespace, PathMention, Receiver, Ref, Scope, Star, UseKind,
     Visibility,
 };
+
+/// The facts an extractor states about a file; `None` for a language none reads.
+pub(crate) fn local_facts(path: &str, text: &str) -> Option<BlobFacts> {
+    static REGISTRY: std::sync::OnceLock<Registry> = std::sync::OnceLock::new();
+    let name = std::path::Path::new(path).file_name()?.to_str()?;
+    let language = Language::detect(&crate::snapshot::RepoPath::new(name).ok()?, text.as_bytes())?;
+    let extractor = REGISTRY.get_or_init(lang::builtin).get(language)?;
+    Some(extractor.extract(text.as_bytes(), &crate::snapshot::RunBudget::default()))
+}

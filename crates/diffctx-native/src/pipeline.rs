@@ -801,20 +801,6 @@ fn unanalysed_namers_text(unread: &[crate::impact::UnanalysedFile]) -> String {
     )
 }
 
-/// The facts an extractor states about a file; `None` for a language none reads.
-fn local_facts(path: &str, text: &str) -> Option<crate::facts::BlobFacts> {
-    static REGISTRY: std::sync::OnceLock<crate::facts::Registry> = std::sync::OnceLock::new();
-    let name = Path::new(path).file_name()?.to_str()?;
-    let language = crate::facts::Language::detect(
-        &crate::snapshot::RepoPath::new(name).ok()?,
-        text.as_bytes(),
-    )?;
-    let extractor = REGISTRY
-        .get_or_init(crate::facts::lang::builtin)
-        .get(language)?;
-    Some(extractor.extract(text.as_bytes(), &crate::snapshot::RunBudget::default()))
-}
-
 /// A fragment spans whole lines, so a second declarator on them
 /// (`const S = 1, T = 2`) has none of its own: the fragment of the first
 /// stands for it, and the cell reads the definition from the facts.
@@ -838,7 +824,7 @@ fn shadowed_definitions<'f>(
         else {
             continue;
         };
-        let Some(blob) = local_facts(path, &text) else {
+        let Some(blob) = crate::facts::local_facts(path, &text) else {
             continue;
         };
         for fact in &blob.facts {
@@ -875,7 +861,7 @@ fn is_local_fragment(fragment: &Fragment, name: &str, run: &crate::resource::Run
     let Some(text) = run.source().read_to_string(Path::new(fragment.path())) else {
         return false;
     };
-    let Some(blob) = local_facts(fragment.path(), &text) else {
+    let Some(blob) = crate::facts::local_facts(fragment.path(), &text) else {
         return false;
     };
     let (from, to) = (fragment.start_line(), fragment.end_line());
@@ -992,7 +978,7 @@ fn local_uses(
             continue;
         };
         let display = crate::paths::display_rel_or_abs(root_dir, file);
-        let Some(blob) = local_facts(&display, &text) else {
+        let Some(blob) = crate::facts::local_facts(&display, &text) else {
             continue;
         };
         let lines: Vec<&str> = text.split('\n').collect();
