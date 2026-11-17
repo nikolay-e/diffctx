@@ -1,0 +1,43 @@
+name: go_cgo_call_of_a_changed_c_function_is_named
+mode: impact
+source: synthetic
+tags: [go, c, cgo, ffi, false-absence]
+repo:
+  initial_files:
+    go.mod: |
+      module example.com/app
+
+      go 1.22
+    lib/lib.h: |
+      int add_one(int x);
+    lib/lib.c: |
+      #include "lib.h"
+
+      int add_one(int x) {
+          return x + 1;
+      }
+    lib/use.go: |
+      package lib
+
+      /*
+      #include "lib.h"
+      */
+      import "C"
+
+      func Next(x int) int { return int(C.add_one(C.int(x))) }
+  changed_files:
+    lib/lib.c: |
+      #include "lib.h"
+
+      int add_one(int x) {
+          return x + 2;
+      }
+  commit_message: "lib: add_one adds two"
+expect:
+  exact: false
+  discloses: true
+  never_empty: true
+  no_negative_claims: true
+  coverage: {add_one: {calls: partial}}
+  relations:
+    - {from: lib/use.go, to: lib/lib.c::add_one, kind: calls, resolution: unresolved}

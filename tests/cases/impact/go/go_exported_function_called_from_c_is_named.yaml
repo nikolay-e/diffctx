@@ -1,0 +1,40 @@
+name: go_exported_function_called_from_c_is_named
+mode: impact
+source: synthetic
+tags: [go, c, cgo, ffi, false-absence]
+repo:
+  initial_files:
+    go.mod: |
+      module example.com/app
+
+      go 1.22
+    lib/exp.go: |
+      package lib
+
+      import "C"
+
+      //export tickHandler
+      func tickHandler() C.int { return 1 }
+    lib/lib.c: |
+      extern int tickHandler(void);
+
+      int run(void) {
+          return tickHandler();
+      }
+  changed_files:
+    lib/exp.go: |
+      package lib
+
+      import "C"
+
+      //export tickHandler
+      func tickHandler() C.int { return 2 }
+  commit_message: "lib: tickHandler returns two"
+expect:
+  exact: false
+  discloses: true
+  never_empty: true
+  no_negative_claims: true
+  coverage: {tickHandler: {calls: partial}}
+  relations:
+    - {from: lib/lib.c, to: lib/exp.go::tickHandler, kind: calls, resolution: unresolved}
