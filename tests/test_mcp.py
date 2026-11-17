@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import re
 import subprocess
 import threading
 
@@ -1237,7 +1238,9 @@ class TestPathsScopeAMonorepo:
         # the knob leaves alone: the engine is given its default, the guard its 0.
         monkeypatch.setattr(server_module, "deliver", lambda **kwargs: engine(**{**kwargs, "timeout": 300}))
         text = await self._ask(server, monorepo.path, mode="impact")
-        assert "(partial: deadline" in text
+        # The engine lists every reason it stopped for, the cut discovery beside the
+        # deadline: the answer is partial and names the deadline among them.
+        assert re.search(r"\(partial: [^)]*\bdeadline\b", text), text
 
 
 class TestProgressiveDisclosure:
