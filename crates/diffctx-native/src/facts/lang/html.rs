@@ -17,7 +17,8 @@
 //!
 //! Not read: attribute values (`onclick="…"`, `href={…}`) and every other part of
 //! the markup. A name spelled only there is not found by the cell, except in a
-//! comment or a text node without `{`, which are prose and recorded as comments.
+//! comment or a text node without `{` or a stray `<`, which are prose and
+//! recorded as comments.
 
 use std::ops::Range;
 
@@ -217,9 +218,15 @@ fn expression_end(text: &[u8], at: usize) -> Option<usize> {
 }
 
 /// Records `run`, the text between two tags, as prose unless it may hold an
-/// expression a template evaluates (`{{ f() }}`, `{f()}`).
+/// expression a template evaluates (`{{ f() }}`, `{f()}`) or a construct that is
+/// no markup (`<%= f() %>`, `<?= f() ?>`): a `<` that opens no tag.
 fn text_node(text: &[u8], run: Range<usize>, astro: bool, prose: &mut Vec<Range<usize>>) {
-    if run.is_empty() || astro || text[run.clone()].contains(&b'{') {
+    if run.is_empty()
+        || astro
+        || text[run.clone()]
+            .iter()
+            .any(|byte| matches!(byte, b'{' | b'<'))
+    {
         return;
     }
     prose.push(run);
