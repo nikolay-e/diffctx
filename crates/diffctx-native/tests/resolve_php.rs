@@ -940,8 +940,8 @@ fn dispatch_and_untyped_receivers_are_candidates() {
     assert_eq!(overrides, ["src/Handler.php::Handler.handle"]);
 }
 
-/// A name that is not written, a call a `__call` catches and `call_user_func`
-/// are unresolved unknowns: the dynamic ones are named `*`.
+/// A name that is not written and `call_user_func` are unresolved unknowns, named
+/// `*`; a call through a type that declares no such method lands in its `__call`.
 #[test]
 fn dynamic_names_and_magic_calls_are_unknowns_never_absences() {
     let fx = snapshot(&[
@@ -955,13 +955,34 @@ fn dynamic_names_and_magic_calls_are_unknowns_never_absences() {
         ),
     ]);
     let f = "src/R.php";
-    assert_eq!(fx.lands_at(f, "boo", 4), "unresolved(Opaque)");
+    assert_eq!(fx.lands_at(f, "boo", 4), "src/Ghost.php::Ghost.__call");
     assert_eq!(fx.lands_at(f, "*", 5), "unresolved(Opaque)");
     assert_eq!(fx.at(f, "*", 5).relation, Relation::Calls);
     assert_eq!(fx.lands_at(f, "*", 6), "unresolved(Opaque)");
     assert_eq!(fx.at(f, "*", 6).relation, Relation::Instantiates);
     assert_eq!(fx.lands_at(f, "*", 7), "unresolved(Opaque)");
     assert_eq!(fx.lands_at(f, "strlen", 8), "unresolved(Builtin)");
+}
+
+/// A type below the one the call is made through may declare the method: the call
+/// may run that one, so the `__call` is not the only place it can land.
+#[test]
+fn a_magic_call_stays_unknown_where_a_subtype_declares_the_method() {
+    let fx = snapshot(&[
+        (
+            "src/Ghost.php",
+            "<?php\nclass Ghost\n{\n    public function __call(string $n, array $a)\n    {\n        return null;\n    }\n}\n",
+        ),
+        (
+            "src/Real.php",
+            "<?php\nclass Real extends Ghost\n{\n    public function boo(): int\n    {\n        return 1;\n    }\n}\n",
+        ),
+        (
+            "src/R.php",
+            "<?php\nfunction run(Ghost $g)\n{\n    return $g->boo();\n}\n",
+        ),
+    ]);
+    assert_eq!(fx.lands_at("src/R.php", "boo", 4), "unresolved(Opaque)");
 }
 
 /// `use function` and `use const` bind in their own tables: a class of the same
