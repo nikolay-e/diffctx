@@ -4033,6 +4033,92 @@ fn a_stopped_tests_phase_is_a_partial_answer_that_claims_no_missing_test() {
     }
 }
 
+/// A test that asserts the text a changed definition renders may reach any page
+/// that renders it, so the search for tests of its callers walks up the uses from
+/// the asserted text. It polled nothing: a repository of thousands of pages ran it
+/// past the deadline. Counted in fragments the walk took, not timed: one more poll
+/// lets it take one more, and a run stopped anywhere never claims a caller has no
+/// test link, one stopped inside it included.
+#[test]
+fn a_stopped_walk_from_asserted_text_never_claims_a_caller_untested() {
+    const PAGES: usize = 8;
+    let tmp = TempDir::new().expect("tempdir");
+    let repo = tmp.path();
+    init_repo(repo);
+    for version in [1, 2] {
+        let body = if version == 1 {
+            "{pending} waiting".to_string()
+        } else {
+            "{MESSAGES[pending > 0 ? 'busy' : 'idle']} · {pending} waiting".to_string()
+        };
+        let messages = if version == 1 {
+            ""
+        } else {
+            "const MESSAGES: Record<string, string> = {\n  idle: 'Everything is up to date',\n  busy: 'Syncing your inbox in the background',\n};\n\n"
+        };
+        write(
+            repo,
+            "src/SyncBanner.tsx",
+            &format!(
+                "{messages}export function SyncBanner({{ pending }}: {{ pending: number }}) {{\n  return <p data-testid=\"sync-banner\">{body}</p>;\n}}\n"
+            ),
+        );
+        for i in 0..PAGES {
+            write(
+                repo,
+                &format!("src/Page{i}.tsx"),
+                &format!(
+                    "import {{ SyncBanner }} from './SyncBanner';\n\nexport function Page{i}() {{\n  return <SyncBanner pending={{{i}}} />;\n}}\n"
+                ),
+            );
+        }
+        write(
+            repo,
+            "tests/e2e/inbox.spec.ts",
+            "import { expect, test } from '@playwright/test';\n\ntest('shows the sync state', async ({ page }) => {\n  await page.goto('/inbox');\n  await expect(page.getByTestId('sync-banner')).toHaveText(/^Syncing your inbox in the background/);\n});\n",
+        );
+        commit_all(repo, "banner");
+    }
+    let sweep = support::sweep_polls(
+        |n| profiled(repo, "HEAD~1..HEAD", n, "impact.tests.asserted"),
+        |(doc, _)| !stopped_by_the_deadline(doc),
+    );
+    let whole = sweep.last().map_or(0, |(_, (_, taken))| *taken);
+    assert!(
+        whole >= PAGES as u64,
+        "the asserted-text walk took {whole} fragments of the whole run"
+    );
+    let inside = sweep
+        .iter()
+        .filter(|(_, (doc, taken))| stopped_by_the_deadline(doc) && 0 < *taken && *taken < whole)
+        .count() as u64;
+    assert!(
+        inside >= whole / 2,
+        "{inside} of {whole} stop points fell inside the walk"
+    );
+    let guards = |doc: &serde_json::Value| -> Vec<String> {
+        doc["definitions"]
+            .as_array()
+            .expect("definitions")
+            .iter()
+            .flat_map(|def| def["rows"].as_array().expect("rows"))
+            .map(|row| row["guard"]["state"].as_str().unwrap_or("").to_string())
+            .collect()
+    };
+    for (n, (doc, taken)) in &sweep {
+        assert!(
+            guards(doc).iter().all(|state| state != "none"),
+            "poll {n}, {taken} taken: a caller claimed without a test link: {doc:#}"
+        );
+    }
+    let (_, (complete, _)) = sweep.last().expect("a sweep");
+    assert_eq!(
+        guards(complete),
+        vec!["not_established"; PAGES],
+        "{complete:#}"
+    );
+}
+
 /// #460, #475: a call inside an f-string replacement field or a template
 /// literal substitution is code, and is a caller; the same name in a plain
 /// string or a comment is not. Strings and comments are read off the
