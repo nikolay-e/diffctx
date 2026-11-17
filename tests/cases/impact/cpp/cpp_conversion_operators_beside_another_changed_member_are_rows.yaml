@@ -1,0 +1,68 @@
+name: cpp_conversion_operators_beside_another_changed_member_are_rows
+mode: impact
+source: synthetic
+issue_state: closed
+tags:
+- cpp
+- operator
+- false-absence
+repo:
+  initial_files:
+    include/h.hpp: |
+      #pragma once
+      #include <string>
+      struct Handle {
+          int fd;
+          explicit operator bool() const { return fd >= 0; }
+          operator int() const { return fd; }
+          operator std::string() const { return std::to_string(fd); }
+          int plain() const { return fd; }
+      };
+    src/use.cpp: |
+      #include "../include/h.hpp"
+      int f(const Handle& h) {
+          if (h) return 1;
+          int n = h;
+          std::string s = h;
+          return n + (int)s.size() + h.plain();
+      }
+  changed_files:
+    include/h.hpp: |
+      #pragma once
+      #include <string>
+      struct Handle {
+          int fd;
+          explicit operator bool() const { return fd > 0; }
+          operator int() const { return fd + 0; }
+          operator std::string() const { return std::to_string(fd + 0); }
+          int plain() const { return fd + 1; }
+      };
+  commit_message: Change the handle conversions and plain
+expect:
+  changed:
+  - include/h.hpp::operator bool
+  - include/h.hpp::operator int
+  - include/h.hpp::operator std::string
+  - include/h.hpp::plain
+  relations:
+  - from: src/use.cpp::f
+    to: include/h.hpp::plain
+    kind: calls
+    resolution: resolved
+    site: 6
+  partial:
+    # A conversion operator runs wherever a value of the class is converted
+    # implicitly (`if (h)`, `int n = h`): no model traces those sites, so the
+    # row stands with its hedge.
+    include/h.hpp::operator bool:
+      calls: [not_traced, unlanded]
+      reads: unlanded
+    include/h.hpp::operator int:
+      calls: [not_traced, unlanded]
+      reads: unlanded
+    include/h.hpp::operator std::string:
+      calls: [not_traced, unlanded]
+      reads: unlanded
+  never_empty: true
+  discloses: true
+  no_negative_claims: true

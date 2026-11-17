@@ -1,0 +1,55 @@
+name: cpp_out_of_line_conversion_operator_beside_another_changed_member_is_a_row
+mode: impact
+source: synthetic
+issue_state: closed
+tags:
+- cpp
+- operator
+- false-absence
+repo:
+  initial_files:
+    include/h.hpp: |
+      #pragma once
+      struct Handle {
+          int fd;
+          operator int() const;
+          int plain() const;
+      };
+    src/h.cpp: |
+      #include "../include/h.hpp"
+      Handle::operator int() const {
+          return fd;
+      }
+      int Handle::plain() const {
+          return fd;
+      }
+    src/use.cpp: |
+      #include "../include/h.hpp"
+      int f(const Handle& h) {
+          int n = h;
+          return n + h.plain();
+      }
+  changed_files:
+    src/h.cpp: |
+      #include "../include/h.hpp"
+      Handle::operator int() const {
+          return fd + 0;
+      }
+      int Handle::plain() const {
+          return fd + 1;
+      }
+  commit_message: Change the out-of-line conversion and plain
+expect:
+  changed:
+  - src/h.cpp::operator int
+  - src/h.cpp::plain
+  partial:
+    # A conversion operator runs wherever a value of the class is converted
+    # implicitly (`if (h)`, `int n = h`): no model traces those sites, so the
+    # row stands with its hedge.
+    src/h.cpp::operator int:
+      calls: [not_traced, unlanded]
+      reads: unlanded
+  never_empty: true
+  discloses: true
+  no_negative_claims: true
