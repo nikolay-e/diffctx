@@ -2439,7 +2439,8 @@ pub(crate) fn base_symbol(symbol: &str) -> &str {
 
 /// What can call a member nothing calls directly, in a language whose model
 /// does not trace dispatch: the supertype it overrides or implements, the
-/// runtime for a Python operator, any interface a Go method set satisfies.
+/// runtime for a Python operator or a library's `_sunder_` hook, any interface a Go
+/// method set satisfies.
 /// Read as "nothing calls them", an override of `Runnable.run` or an
 /// `__eq__` a test exercises was reported as dead (#566). A private or
 /// static member is reached only directly, so its zero stands.
@@ -2459,10 +2460,13 @@ fn dispatch_route(state: &ScoredState, core: &Fragment, file: &[&Fragment]) -> O
                 .starts_with("func (")
                 .then(|| "any interface its type's method set satisfies".to_string());
         }
-        "py" | "pyi" if name.len() > 4 && name.starts_with("__") && name.ends_with("__") => {
+        "py" | "pyi" if name.len() > 2 && name.starts_with('_') && name.ends_with('_') => {
             return Some(format!(
                 "the operator or protocol the runtime maps to `{name}`"
             ));
+        }
+        "py" | "pyi" if name == "close" && is_member(core, file) => {
+            return Some("`contextlib.closing`, which calls `close` on what it wraps".to_string());
         }
         "py" | "pyi" if name.starts_with('_') => return None,
         _ => {}
@@ -3597,6 +3601,10 @@ pub fn build_impact(
     // A constructor is called by its class's name (`cp.ComponentModel(b, 1)`,
     // `new Store()`): its callers are the class's (#318). Mapped after the
     // bordering test, which a class header with no hunk of its own would fail.
+    // The span of the constructor a class stands for, so that a queried `A.__init__` is
+    // defined by the constructor (and the `super()` calls of subclasses reach it), not by
+    // the class header alone.
+    let mut constructor_spans: FxHashMap<&FragmentId, (u32, u32)> = FxHashMap::default();
     let cores: Vec<&Fragment> = {
         let mut seen: FxHashSet<&FragmentId> = FxHashSet::default();
         cores
@@ -3607,10 +3615,13 @@ pub fn build_impact(
                     .as_deref()
                     .map(base_symbol)
                     .is_some_and(|s| matches!(s, "__init__" | "constructor"));
-                constructor
+                let class = constructor
                     .then(|| enclosing_class(c, file_of(c)))
-                    .flatten()
-                    .unwrap_or(c)
+                    .flatten();
+                if let Some(class) = class {
+                    constructor_spans.insert(&class.id, (c.start_line(), c.end_line()));
+                }
+                class.unwrap_or(c)
             })
             .filter(|c| seen.insert(&c.id))
             .collect()
@@ -3649,7 +3660,10 @@ pub fn build_impact(
                 );
                 // A second declarator on the fragment's lines is the queried
                 // name, which the fragment is not named for.
-                let own = asked.map_or_else(Vec::new, |name| cell.define(&file, name, lines));
+                let own = asked.map_or_else(Vec::new, |name| {
+                    let span = constructor_spans.get(&core.id).copied().unwrap_or(lines);
+                    cell.define(&file, name, span)
+                });
                 if !own.is_empty() {
                     defined = own;
                 }
@@ -6870,7 +6884,14 @@ pub(crate) fn symbol_local_output(
     locals: Vec<LocalOf>,
 ) -> ImpactOutput {
     let mut output = symbol_blocks_output(root_dir, query);
-    output.changed = locals
+    output.changed = local_blocks(locals);
+    output
+}
+
+/// One block per local: the answer of a `--symbol` no definition has, and what a name
+/// with definitions still owes for the locals that share it.
+pub(crate) fn local_blocks(locals: Vec<LocalOf>) -> Vec<ChangedSymbol> {
+    locals
         .into_iter()
         .map(|local| {
             let coverage = local_coverage(&local);
@@ -6902,8 +6923,7 @@ pub(crate) fn symbol_local_output(
                 )
             }
         })
-        .collect();
-    output
+        .collect()
 }
 
 /// A local's uses all lie in its enclosing body: its calls and reads are complete unless the
