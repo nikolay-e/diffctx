@@ -1457,36 +1457,56 @@ pub(crate) fn distinctive(word: &str) -> bool {
         || (has(char::is_ascii_uppercase) && has(char::is_ascii_lowercase))
         || !has(char::is_ascii_lowercase);
     shaped
-        && word.chars().count() >= 4
+        && word.chars().count() >= keys::MIN_LITERAL_NAME
         && !word.chars().all(|c| c.is_ascii_digit() || c == '_')
-        && !crate::stopwords::CODE_STOPWORDS.contains(&word.to_lowercase())
+        && uncommon(word)
+}
+
+fn uncommon(word: &str) -> bool {
+    !crate::stopwords::CODE_STOPWORDS.contains(&word.to_lowercase())
         && !ROLE_STEMS.split(' ').any(|r| r == word)
+}
+
+/// A name whose spelling in text is searched: one only code would spell, or a plain
+/// lowercase word of at least the literal floor. A script, a Makefile or a template
+/// calls a definition by its bare name, plain or not; a name shorter than the floor or
+/// as common as `main` is not searched, and an answer that rests on its absence says so.
+fn searched_as_text(word: &str) -> bool {
+    distinctive(word)
+        || (word.len() >= keys::MIN_LITERAL_NAME
+            && word.bytes().all(|b| b.is_ascii_lowercase())
+            && uncommon(word))
+}
+
+/// Whether text outside the language can call `core` by its name: a stage of a
+/// Dockerfile is no function a script runs.
+fn callable_by_name(path: &str) -> bool {
+    crate::languages::get_language_for_file(path) != Some("dockerfile")
 }
 
 /// Code of a language no cell reads, or Swift, which no cell binds to C: a
 /// foreign-function binding there (`extern fn`, `ccall`, `ffi.cdef`, a bridging
-/// call) names a definition of another language by its bare name.
+/// call) names a definition of another language by its bare name. A shell script
+/// runs a program of any language by its bare name, and its cell binds none.
 fn unread_code(path: &str) -> bool {
     use crate::vocabulary::family::{Family, Group};
     is_code_file(path)
         && matches!(
             Group::of_path(path),
-            None | Some(Group::Language(_) | Group::Family(Family::Swift))
+            None | Some(Group::Language(_) | Group::Family(Family::Swift | Family::Shell))
         )
 }
 
-/// The name a literal spells: `var.region` is written `region`.
+/// The name a reader spells: `var.region` is written `region`, a C++ member
+/// `Engine::open` is written `open`.
 fn literal_base(symbol: &str) -> &str {
     let name = base_symbol(symbol);
-    name.rsplit('.').next().unwrap_or(name)
+    name.rsplit(['.', ':']).next().unwrap_or(name)
 }
 
-/// The word a reader spells for `core`: its name, but for a Terraform address the
-/// part after the last dot (`var.db_port` is written `db_port`).
+/// The word a reader spells for `core`.
 fn spelled_name(core: &Fragment) -> Option<&str> {
-    let name = base_symbol(core.symbol_name.as_deref()?);
-    let terraform = crate::languages::get_language_for_file(core.path()) == Some("terraform");
-    Some(if terraform { literal_base(name) } else { name })
+    core.symbol_name.as_deref().map(literal_base)
 }
 
 fn module_stem(path: &str) -> Option<&str> {
@@ -1514,13 +1534,14 @@ impl UntracedNamers {
         let mut needles: Vec<String> = cores
             .iter()
             .filter_map(|c| spelled_name(c))
+            .chain(removed.iter().copied().map(literal_base))
             .chain(
                 own.iter()
                     .filter(|o| extension(&o.0) == "tf")
                     .map(|o| o.1.as_str()),
             )
+            .filter(|w| searched_as_text(w))
             .chain(cores.iter().filter_map(|c| module_stem(c.path())))
-            .filter(|w| distinctive(w))
             .map(str::to_string)
             .collect();
         needles.sort();
@@ -1596,6 +1617,38 @@ impl UntracedNamers {
                 files: spelled.len(),
             }));
             sym.missed_in.extend(spelled);
+        }
+    }
+
+    /// `sym`, a definition nothing reaches, with the files outside its language that
+    /// spell its name, or the gap that says the name was not searched there.
+    fn name_text(&self, sym: &mut ChangedSymbol, name: &str) {
+        let nothing_known = sym.callers.is_empty()
+            && sym.also_changed.is_empty()
+            && sym.possibly_also_changed.is_empty()
+            && sym.unresolved.is_none()
+            && sym.missed_in.is_empty()
+            && callable_by_name(&sym.path);
+        if !nothing_known {
+            return;
+        }
+        let own = crate::vocabulary::family::Group::of_path(&sym.path);
+        let named: Vec<UnanalysedFile> = self
+            .naming(literal_base(name), |p| {
+                !is_code_file(p)
+                    || (unread_code(p) && crate::vocabulary::family::Group::of_path(p) != own)
+            })
+            .into_iter()
+            .map(|(path, line)| UnanalysedFile::new(path, "not_traced", vec![line]))
+            .collect();
+        if !named.is_empty() {
+            sym.coverage = sym.coverage.clone().with(Some(decide::Gap::Unaccounted {
+                reason: decide::Reason::OtherLanguage,
+                files: named.len(),
+            }));
+            sym.missed_in.extend(named);
+        } else if !searched_as_text(literal_base(name)) {
+            sym.coverage = sym.coverage.clone().with(Some(decide::Gap::NameUnsearched));
         }
     }
 
@@ -4179,7 +4232,16 @@ pub fn build_impact(
             }
         }
         let tests_coverage = search_coverage(verdict.as_ref(), unresolved.as_ref(), outside_tests);
-        let coverage = search_coverage(verdict.as_ref(), unresolved.as_ref(), outside);
+        // An absence claimed for a name never searched as text is no witness.
+        let unsearched = nothing_known
+            && outside == 0
+            && also_changed.is_empty()
+            && possibly_also_changed.is_empty()
+            && entry.is_none()
+            && callable_by_name(core.path())
+            && spelled_name(core).is_some_and(|n| !searched_as_text(n));
+        let coverage = search_coverage(verdict.as_ref(), unresolved.as_ref(), outside)
+            .with(unsearched.then_some(decide::Gap::NameUnsearched));
         // No test found is an absence only from a closed search: the callers
         // accounted for and every definition above them. An open search says the
         // tests are not established; incomplete callers say nothing here, their
@@ -4367,6 +4429,7 @@ pub fn build_impact(
         let verdict = cell.verdict(entry);
         let mut sym = cell_symbol(entry, &verdict, format!("{:?}", entry.kind).to_lowercase());
         untraced.name_literals(&mut sym, &entry.name);
+        untraced.name_text(&mut sym, &entry.name);
         let callerless = query.is_none()
             && sym.callers.is_empty()
             && sym.also_changed.is_empty()

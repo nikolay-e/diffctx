@@ -671,6 +671,23 @@
             "directories",
             "total"
           ]
+        },
+        {
+          "description": "The name is too short or too common to search as text: where a script, a\ntemplate or a string spells it was not looked for.",
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "name_unsearched"
+            },
+            "name": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "name"
+          ]
         }
       ]
     },
