@@ -139,7 +139,7 @@ pub(crate) fn parameter_owners<'f>(
         let blob = facts.entry(fragment.path()).or_insert_with(|| {
             let text = run.source().read_to_string(Path::new(fragment.path()))?;
             text.contains(name)
-                .then(|| super::local_facts(fragment.path(), &text))
+                .then(|| crate::facts::local_facts(fragment.path(), &text))
                 .flatten()
         });
         let takes = blob.as_ref().is_some_and(|blob| {
@@ -186,7 +186,7 @@ pub(crate) fn parameter_owners<'f>(
         };
         let mut calls = Vec::new();
         keyword_calls(tree.root_node(), &text, name, &mut calls);
-        let imports: Vec<Import> = super::local_facts(&display, &text)
+        let imports: Vec<Import> = crate::facts::local_facts(&display, &text)
             .map(|blob| {
                 blob.facts
                     .into_iter()
