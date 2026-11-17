@@ -201,7 +201,6 @@ fn expression_end(text: &[u8], at: usize) -> Option<usize> {
         match (quote, byte) {
             (Some(_), b'\\') => next += 1,
             (Some(open), byte) if byte == open => quote = None,
-            (Some(_), _) => {}
             (None, b'"' | b'\'' | b'`') => quote = Some(byte),
             (None, b'{') => depth += 1,
             (None, b'}') => {
@@ -210,7 +209,7 @@ fn expression_end(text: &[u8], at: usize) -> Option<usize> {
                     return Some(next + 1);
                 }
             }
-            (None, _) => {}
+            _ => {}
         }
         next += 1;
     }
