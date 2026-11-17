@@ -1,0 +1,69 @@
+name: java_enum_constant_in_a_case_label_is_a_possible_read
+mode: impact
+source: synthetic
+tags: [java, enum, switch, case-label]
+repo:
+  initial_files:
+    src/main/java/com/acme/lib/Color.java: |
+      package com.acme.lib;
+
+      public enum Color {
+          RED("f00"),
+          GREEN("0f0");
+
+          private final String hex;
+
+          Color(String hex) {
+              this.hex = hex;
+          }
+      }
+    src/main/java/com/acme/app/Use.java: |
+      package com.acme.app;
+
+      import com.acme.lib.Color;
+
+      public class Use {
+          int colon(Color c) {
+              switch (c) {
+                  case GREEN:
+                      return 1;
+                  default:
+                      return 0;
+              }
+          }
+
+          int arrow(Color c) {
+              return switch (c) {
+                  case RED -> 1;
+                  default -> 2;
+              };
+          }
+      }
+  changed_files:
+    src/main/java/com/acme/lib/Color.java: |
+      package com.acme.lib;
+
+      public enum Color {
+          RED("ff0000"),
+          GREEN("00ff00");
+
+          private final String hex;
+
+          Color(String hex) {
+              this.hex = hex;
+          }
+      }
+  commit_message: "color: six-digit hex"
+expect:
+  exact: false
+  never_empty: true
+  no_negative_claims: true
+  relations:
+    - from: src/main/java/com/acme/app/Use.java::colon
+      to: src/main/java/com/acme/lib/Color.java::GREEN
+      kind: reads
+      resolution: candidate
+    - from: src/main/java/com/acme/app/Use.java::arrow
+      to: src/main/java/com/acme/lib/Color.java::RED
+      kind: reads
+      resolution: candidate
