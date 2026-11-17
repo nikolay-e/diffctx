@@ -1,0 +1,100 @@
+name: kotlin_receiver_typed_any_that_no_walk_narrows_still_names_the_class
+mode: impact
+source: synthetic
+tags: [kotlin, smart-cast, receiver, any]
+repo:
+  initial_files:
+    src/main/kotlin/com/acme/lib/Repo.kt: |
+      package com.acme.lib
+
+      class Repo {
+          fun load(): Int {
+              return 1
+          }
+      }
+    src/main/kotlin/com/acme/app/Use.kt: |
+      package com.acme.app
+
+      import com.acme.lib.Repo
+
+      class Use(private val held: Any) {
+          fun viaOr(x: Any): Int {
+              if (x !is Repo || x.load() > 0) return 1
+              return 0
+          }
+
+          fun viaNegated(x: Any): Int {
+              if (!(x is Repo)) {
+                  return 0
+              } else {
+                  return x.load()
+              }
+          }
+
+          fun viaThisProperty(): Int {
+              if (this.held is Repo) return this.held.load()
+              return 0
+          }
+
+          fun viaIt(items: List<Any>) {
+              items.forEach { if (it is Repo) it.load() }
+          }
+
+          fun viaPlainAny(x: Any): Int = (x as Repo).load()
+
+          fun <T> viaTypeParameter(x: T): Int = (x as Repo).load()
+      }
+    src/test/kotlin/com/acme/app/UseTest.kt: |
+      package com.acme.app
+
+      import kotlin.test.Test
+
+      class UseTest {
+          @Test
+          fun t() {
+              Use(Any()).viaOr(Any())
+          }
+      }
+  changed_files:
+    src/main/kotlin/com/acme/lib/Repo.kt: |
+      package com.acme.lib
+
+      class Repo {
+          fun load(): Int {
+              return 2
+          }
+      }
+  commit_message: "Repo.load returns 2"
+expect:
+  changed: [src/main/kotlin/com/acme/lib/Repo.kt::Repo.load]
+  relations:
+    - from: "src/main/kotlin/com/acme/app/Use.kt::Use.viaOr"
+      to: "src/main/kotlin/com/acme/lib/Repo.kt::Repo.load"
+      kind: calls
+      resolution: candidate
+      site: 7
+    - from: "src/main/kotlin/com/acme/app/Use.kt::Use.viaNegated"
+      to: "src/main/kotlin/com/acme/lib/Repo.kt::Repo.load"
+      kind: calls
+      resolution: candidate
+      site: 15
+    - from: "src/main/kotlin/com/acme/app/Use.kt::Use.viaThisProperty"
+      to: "src/main/kotlin/com/acme/lib/Repo.kt::Repo.load"
+      kind: calls
+      resolution: candidate
+      site: 20
+    - from: "src/main/kotlin/com/acme/app/Use.kt::Use.viaIt"
+      to: "src/main/kotlin/com/acme/lib/Repo.kt::Repo.load"
+      kind: calls
+      resolution: candidate
+      site: 25
+    - from: "src/main/kotlin/com/acme/app/Use.kt::Use.viaPlainAny"
+      to: "src/main/kotlin/com/acme/lib/Repo.kt::Repo.load"
+      kind: calls
+      resolution: candidate
+      site: 28
+    - from: "src/main/kotlin/com/acme/app/Use.kt::Use.viaTypeParameter"
+      to: "src/main/kotlin/com/acme/lib/Repo.kt::Repo.load"
+      kind: calls
+      resolution: candidate
+      site: 30

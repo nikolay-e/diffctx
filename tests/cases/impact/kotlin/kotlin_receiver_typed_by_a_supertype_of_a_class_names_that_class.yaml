@@ -1,0 +1,60 @@
+name: kotlin_receiver_typed_by_a_supertype_of_a_class_names_that_class
+mode: impact
+source: synthetic
+tags: [kotlin, receiver, supertype, decoy]
+repo:
+  initial_files:
+    src/main/kotlin/com/acme/lib/Shout.kt: |
+      package com.acme.lib
+
+      class Shout(private val text: String) : CharSequence {
+          override val length: Int get() = text.length
+
+          override fun get(index: Int): Char = text[index]
+
+          override fun subSequence(startIndex: Int, endIndex: Int): CharSequence {
+              return text.subSequence(startIndex, endIndex)
+          }
+      }
+    src/main/kotlin/com/acme/app/Use.kt: |
+      package com.acme.app
+
+      import com.acme.lib.Shout
+
+      class Use {
+          fun viaSupertype(s: CharSequence): CharSequence = s.subSequence(0, 1)
+
+          fun viaLibraryClass(b: StringBuilder): CharSequence = b.subSequence(0, 1)
+
+          fun viaOwnClass(s: Shout): CharSequence = s.subSequence(0, 1)
+      }
+  changed_files:
+    src/main/kotlin/com/acme/lib/Shout.kt: |
+      package com.acme.lib
+
+      class Shout(private val text: String) : CharSequence {
+          override val length: Int get() = text.length
+
+          override fun get(index: Int): Char = text[index]
+
+          override fun subSequence(startIndex: Int, endIndex: Int): CharSequence {
+              return text.subSequence(startIndex, endIndex).trim()
+          }
+      }
+  commit_message: "Shout.subSequence trims"
+expect:
+  changed: [src/main/kotlin/com/acme/lib/Shout.kt::Shout.subSequence]
+  relations:
+    - from: "src/main/kotlin/com/acme/app/Use.kt::Use.viaSupertype"
+      to: "src/main/kotlin/com/acme/lib/Shout.kt::Shout.subSequence"
+      kind: calls
+      resolution: candidate
+      site: 6
+    - from: "src/main/kotlin/com/acme/app/Use.kt::Use.viaOwnClass"
+      to: "src/main/kotlin/com/acme/lib/Shout.kt::Shout.subSequence"
+      kind: calls
+      resolution: resolved
+      site: 10
+  partial:
+    src/main/kotlin/com/acme/lib/Shout.kt::Shout.subSequence:
+      calls: not_traced
