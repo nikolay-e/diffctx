@@ -635,14 +635,6 @@ fn data_provider_named(text: &str, name: &str) -> bool {
         .is_some_and(|provider| provider.rsplit("::").next() == Some(name))
 }
 
-/// Whether `name` says it holds a relation: `TABLE`, `view_name`.
-fn relation_name(name: &str) -> bool {
-    let name = name.to_lowercase();
-    ["table", "view", "relation"]
-        .iter()
-        .any(|w| name.contains(w))
-}
-
 /// Whether the file is a Makefile or a justfile, whose recipe lines are shell
 /// commands no tree reads.
 fn recipe_file(path: &str) -> bool {
@@ -781,8 +773,8 @@ fn spells_literally(text: &str, name: &str, reading: Reading, held: &[(HeldAs, S
                 held == inside
                     && match how {
                         HeldAs::Callable => reading.php || reading.go || !qualified,
-                        HeldAs::Assigned(target) => relation_name(target),
-                        HeldAs::Command | HeldAs::Relation => false,
+                        HeldAs::Relation => true,
+                        HeldAs::Command => false,
                     }
             });
             let indexed = !qualified && indexed_call(text, from, to);

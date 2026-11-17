@@ -50,11 +50,10 @@ use tree_sitter::Node;
 
 use super::walker::{hash_outside, hash_tree, is_member};
 use super::{ERROR_RANGES_KEPT, children, lines_of, merge_ranges, read_tree, span};
-use crate::facts::model::{HeldAs, HeldString};
 use crate::facts::{
-    BlobFacts, Def, DefKind, EntryKind, EntryPoint, Export, Extractor, Fact, Hasher, Import,
-    ImportKind, Language, Local, LocalKey, LocalKind, ModulePath, Name, Namespace, Receiver, Ref,
-    Scope, Star, TypeName, UseKind, Visibility, expired,
+    BlobFacts, Def, DefKind, EntryKind, EntryPoint, Export, Extractor, Fact, Hasher, HeldAs,
+    HeldString, Import, ImportKind, Language, Local, LocalKey, LocalKind, ModulePath, Name,
+    Namespace, Receiver, Ref, Scope, Star, TypeName, UseKind, Visibility, expired,
 };
 use crate::snapshot::RunBudget;
 
@@ -1044,6 +1043,38 @@ impl<'t> Walker<'t> {
         }
     }
 
+    /// `exec.Command("bash", "-c", "f x")`: the literal words are a command.
+    fn shell_command(&mut self, function: Node<'t>, arguments: &[Node<'t>], cx: &Cx) {
+        let is_exec = function.kind() == "selector_expression"
+            && function
+                .child_by_field_name("operand")
+                .is_some_and(|o| self.text(o) == "exec")
+            && function
+                .child_by_field_name("field")
+                .is_some_and(|f| matches!(self.text(f), "Command" | "CommandContext"));
+        if !is_exec {
+            return;
+        }
+        let words: Vec<String> = arguments
+            .iter()
+            .filter(|a| {
+                matches!(
+                    a.kind(),
+                    "interpreted_string_literal" | "raw_string_literal"
+                )
+            })
+            .map(|a| self.text(*a).trim_matches(['"', '`']).to_string())
+            .collect();
+        if !words.is_empty() {
+            self.facts.push(Fact::HeldString(HeldString {
+                site: span(function),
+                enclosing: cx.scope.clone(),
+                text: super::runner::command_text(&words),
+                held: HeldAs::Command,
+            }));
+        }
+    }
+
     fn selector(&mut self, node: Node<'t>, cx: &Cx, kind: UseKind, depth: u16) {
         let (Some(operand), Some(field)) = (
             node.child_by_field_name("operand"),
@@ -1337,6 +1368,7 @@ impl<'t> Walker<'t> {
                 self.callable_strings(*argument, cx);
             }
         }
+        self.shell_command(function, arguments.as_deref().unwrap_or_default(), cx);
         // `new(T)` and `make(T, …)` name their first argument as a type, said once.
         let mut typed_first = false;
         match function.kind() {

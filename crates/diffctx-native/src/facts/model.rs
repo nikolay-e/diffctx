@@ -340,9 +340,8 @@ pub enum HeldAs {
     Callable,
     /// The argument a call hands to a shell: `os.system`, `subprocess.run`.
     Command,
-    /// The value of an assignment to this name: `TABLE = "orders"`.
-    Assigned(String),
-    /// The argument of a table flag: `pg_dump -t orders`.
+    /// The name of a relation: the value of `TABLE = "orders"`, the argument of
+    /// a table flag (`pg_dump -t orders`).
     Relation,
 }
 

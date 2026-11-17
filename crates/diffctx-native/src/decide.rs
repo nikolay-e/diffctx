@@ -1965,20 +1965,17 @@ impl Cell {
     }
 
     /// The strings of `file` at the head that span `line`, with what their
-    /// position in the file's tree holds them as. A Go package's strings count
-    /// only where the package itself resolves a name by string (`Lookup`,
+    /// position in the file's tree holds them as. A Go package's callable strings
+    /// count only where the package itself resolves a name by string (`Lookup`,
     /// `MethodByName`, `FieldByName`).
     pub(crate) fn held_strings_at(&self, file: &str, line: u32) -> Vec<(HeldAs, String)> {
         let Ok(path) = RepoPath::new(file) else {
             return Vec::new();
         };
-        if self.family == Family::Go && self.owns(file) && !self.package_looks_up_by_name(file) {
-            return Vec::new();
-        }
         let Ok(Some(facts)) = facts_of(&self.ctx, SideTag::Head, &self.cache, &path) else {
             return Vec::new();
         };
-        facts
+        let mut held: Vec<(HeldAs, String)> = facts
             .blob
             .facts
             .iter()
@@ -1990,7 +1987,15 @@ impl Cell {
                 }
                 _ => None,
             })
-            .collect()
+            .collect();
+        if self.family == Family::Go
+            && held.iter().any(|(how, _)| *how == HeldAs::Callable)
+            && self.owns(file)
+            && !self.package_looks_up_by_name(file)
+        {
+            held.retain(|(how, _)| *how != HeldAs::Callable);
+        }
+        held
     }
 
     /// Whether a file of `file`'s directory, the Go package, references one of the calls
