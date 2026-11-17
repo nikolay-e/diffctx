@@ -55,7 +55,6 @@ pub(super) fn all(
     runs.extend(console_runs(state, diff_range, spelled, declared));
     runs.extend(script_runs(state, diff_range, spelled, declared));
     runs.extend(framework_runs(state, cells, diff_range, spelled, declared));
-    runs.extend(doctest_runs(state));
     runs
 }
 
@@ -69,8 +68,10 @@ fn ordered(mut sites: Vec<(String, u32)>) -> Vec<(String, u32)> {
 /// A doctest runs, in the file it documents, each function of that file its
 /// examples call (`python -m doctest` and pytest's `--doctest-modules` read the
 /// `>>>` examples, `cargo test --doc` the fenced ones): the test is the example's
-/// line.
-fn doctest_runs(state: &ScoredState) -> Vec<Run> {
+/// line. A doctest is a reach of the function it calls and no more: the tests that
+/// reach the function by their own calls are searched for as well ([`all`] holds the
+/// runs that settle it).
+pub(super) fn doctest_runs(state: &ScoredState) -> Vec<Run> {
     let defined: FxHashSet<(&str, &str)> = state
         .all_fragments
         .iter()
