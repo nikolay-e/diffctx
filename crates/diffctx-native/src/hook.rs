@@ -1091,33 +1091,36 @@ fn first_push_since(
     if others.is_empty() {
         return Ok(None);
     }
-    let mut args = vec!["rev-list", "--reverse", pushed.as_str(), "--not"];
+    let mut args = vec!["rev-list", "--boundary", pushed.as_str(), "--not"];
     args.extend(others);
-    // The oldest commit the remote did not have: its parent is the base.
-    let Some(oldest) = git_checked(root, &args)?.and_then(|l| l.lines().next().map(str::to_string))
-    else {
+    let Some(listing) = git_checked(root, &args)? else {
         return Ok(None);
     };
-    let parent = git_checked(
-        root,
-        &["rev-parse", "--verify", "--quiet", &format!("{oldest}^")],
-    )?;
-    let base = match parent.clone() {
-        Some(parent) => parent,
-        None => snap::empty_tree_id(root).map_err(|_| "error:git")?,
-    };
-    let (Ok(old), Ok(new)) = (snap::Oid::parse(&base), snap::Oid::parse(&pushed)) else {
+    // The remote's commits the new commits grow from, and the base among them
+    // is the one nearest the tip: a branch that merges another line has more
+    // than one, and the oldest of what it sends can sit far below its own.
+    let mut nearest: Option<(usize, &str)> = None;
+    for held in listing.lines().filter_map(|l| l.strip_prefix('-')) {
+        let between = git_checked(root, &["rev-list", "--count", &format!("{held}..{pushed}")])?
+            .ok_or("error:git")?
+            .parse::<usize>()
+            .map_err(|_| "error:git")?;
+        if nearest.is_none_or(|(least, _)| between < least) {
+            nearest = Some((between, held));
+        }
+    }
+    let Ok(new) = snap::Oid::parse(&pushed) else {
         return Err("error:git");
     };
-    // A branch whose first commit is a root starts from the empty tree,
-    // which is no commit to descend from.
-    let spec = if parent.is_some() {
-        snap::RangeSpec::Pushed { old, new }
+    // A branch with no commit of the remote below it starts from the empty
+    // tree, which is no commit to descend from.
+    let (base, spec) = if let Some((_, held)) = nearest {
+        let old = snap::Oid::parse(held).map_err(|_| "error:git")?;
+        (held.to_string(), snap::RangeSpec::Pushed { old, new })
     } else {
-        snap::RangeSpec::Review {
-            base: old,
-            head: new,
-        }
+        let tree = snap::empty_tree_id(root).map_err(|_| "error:git")?;
+        let base = snap::Oid::parse(&tree).map_err(|_| "error:git")?;
+        (tree, snap::RangeSpec::Review { base, head: new })
     };
     Ok(Some((format!("{base}..{pushed}"), spec)))
 }
