@@ -1093,7 +1093,8 @@ fn relative(dir: &str, spec: &str) -> Option<String> {
     Some(parts.join("/"))
 }
 
-/// The most strings of changed definitions one answer looks for in the tests.
+/// The most strings of changed definitions one answer looks for in the tests;
+/// past it the run says it was limited.
 const MAX_LITERAL_NEEDLES: usize = 64;
 /// A string held by more files than this names no one of them: it is a word the
 /// project says everywhere.
@@ -1167,7 +1168,10 @@ pub(super) fn literal_runs(
         .collect();
     needles.sort();
     needles.dedup();
-    needles.truncate(MAX_LITERAL_NEEDLES);
+    if needles.len() > MAX_LITERAL_NEEDLES {
+        state.run.note(crate::resource::LimitReason::CandidateLimit);
+        needles.truncate(MAX_LITERAL_NEEDLES);
+    }
     if needles.is_empty() {
         return Vec::new();
     }
