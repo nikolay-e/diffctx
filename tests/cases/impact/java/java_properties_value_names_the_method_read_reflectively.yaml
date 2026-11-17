@@ -1,0 +1,48 @@
+name: java_properties_value_names_the_method_read_reflectively
+mode: impact
+source: synthetic
+tags: [java, literal-name, reflection, properties]
+repo:
+  initial_files:
+    src/main/java/com/acme/lib/Handler.java: |
+      package com.acme.lib;
+
+      public class Handler {
+          public int target() {
+              return 1;
+          }
+      }
+    src/main/java/com/acme/app/Boot.java: |
+      package com.acme.app;
+
+      import java.util.Properties;
+
+      public class Boot {
+          Object run(Properties p) throws Exception {
+              Class<?> type = Class.forName(p.getProperty("handler.class"));
+              Object handler = type.getDeclaredConstructor().newInstance();
+              return type.getMethod(p.getProperty("handler.method")).invoke(handler);
+          }
+      }
+    src/main/resources/app.properties: |
+      handler.class=com.acme.lib.Handler
+      handler.method=target
+  changed_files:
+    src/main/java/com/acme/lib/Handler.java: |
+      package com.acme.lib;
+
+      public class Handler {
+          public int target() {
+              return 2;
+          }
+      }
+  commit_message: "handler: target returns two"
+expect:
+  exact: false
+  discloses: true
+  no_negative_claims: true
+  relations:
+    - from: src/main/resources/app.properties
+      to: src/main/java/com/acme/lib/Handler.java::target
+      kind: calls
+      resolution: unresolved

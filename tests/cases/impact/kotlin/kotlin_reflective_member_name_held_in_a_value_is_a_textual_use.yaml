@@ -1,0 +1,56 @@
+name: kotlin_reflective_member_name_held_in_a_value_is_a_textual_use
+mode: impact
+source: synthetic
+tags: [kotlin, literal-name, reflection, constant]
+repo:
+  initial_files:
+    src/main/kotlin/com/acme/lib/Lib.kt: |
+      package com.acme.lib
+
+      class Lib {
+          fun viaConstant(): Int {
+              return 1
+          }
+
+          fun viaComparison(): Int {
+              return 1
+          }
+      }
+    src/main/kotlin/com/acme/app/Boot.kt: |
+      package com.acme.app
+
+      import com.acme.lib.Lib
+      import kotlin.reflect.full.memberFunctions
+
+      const val METHOD = "viaConstant"
+
+      fun constant(lib: Lib): Any? = Lib::class.java.getMethod(METHOD).invoke(lib)
+
+      fun comparison(): Any? = Lib::class.memberFunctions.first { it.name == "viaComparison" }
+  changed_files:
+    src/main/kotlin/com/acme/lib/Lib.kt: |
+      package com.acme.lib
+
+      class Lib {
+          fun viaConstant(): Int {
+              return 2
+          }
+
+          fun viaComparison(): Int {
+              return 2
+          }
+      }
+  commit_message: "lib: every member returns two"
+expect:
+  exact: false
+  discloses: true
+  no_negative_claims: true
+  relations:
+    - from: src/main/kotlin/com/acme/app/Boot.kt
+      to: src/main/kotlin/com/acme/lib/Lib.kt::viaConstant
+      kind: calls
+      resolution: unresolved
+    - from: src/main/kotlin/com/acme/app/Boot.kt
+      to: src/main/kotlin/com/acme/lib/Lib.kt::viaComparison
+      kind: calls
+      resolution: unresolved

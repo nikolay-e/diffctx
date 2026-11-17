@@ -1,0 +1,70 @@
+name: java_enum_constant_named_by_a_short_string_is_a_textual_use
+mode: impact
+source: synthetic
+tags: [java, enum, literal-name, value-of]
+repo:
+  initial_files:
+    src/main/java/com/acme/lib/Color.java: |
+      package com.acme.lib;
+
+      public enum Color {
+          RED("f00"),
+          TAN("d2b");
+
+          private final String hex;
+
+          Color(String hex) {
+              this.hex = hex;
+          }
+      }
+    src/main/java/com/acme/app/Parse.java: |
+      package com.acme.app;
+
+      import com.acme.lib.Color;
+
+      public class Parse {
+          Color fromName() {
+              return Color.valueOf("RED");
+          }
+      }
+    src/test/java/com/acme/app/ColorTest.java: |
+      package com.acme.app;
+
+      import org.junit.jupiter.params.ParameterizedTest;
+      import org.junit.jupiter.params.provider.EnumSource;
+
+      class ColorTest {
+          @ParameterizedTest
+          @EnumSource(names = "TAN")
+          void knows(com.acme.lib.Color c) {
+              assert c != null;
+          }
+      }
+  changed_files:
+    src/main/java/com/acme/lib/Color.java: |
+      package com.acme.lib;
+
+      public enum Color {
+          RED("ff0000"),
+          TAN("ddbb22");
+
+          private final String hex;
+
+          Color(String hex) {
+              this.hex = hex;
+          }
+      }
+  commit_message: "color: six-digit hex"
+expect:
+  exact: false
+  discloses: true
+  no_negative_claims: true
+  relations:
+    - from: src/main/java/com/acme/app/Parse.java
+      to: src/main/java/com/acme/lib/Color.java::RED
+      kind: calls
+      resolution: unresolved
+    - from: src/test/java/com/acme/app/ColorTest.java
+      to: src/main/java/com/acme/lib/Color.java::TAN
+      kind: calls
+      resolution: unresolved
