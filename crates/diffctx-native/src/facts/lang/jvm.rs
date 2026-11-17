@@ -138,6 +138,23 @@ macro_rules! shared_reader_methods {
             }
         }
 
+        /// The strings that name something, each a fact of the scope holding it.
+        fn held_strings(&mut self) {
+            let starts: Vec<usize> = self.read.held.iter().map(|h| h.range.start).collect();
+            let owners = self.owners(&starts);
+            for (index, owner) in owners.into_iter().enumerate() {
+                if self.tick() {
+                    return;
+                }
+                let held = &self.read.held[index];
+                self.facts.push(Fact::CallableString(CallableString {
+                    site: self.span(held.range.clone()),
+                    enclosing: self.scope_of(owner),
+                    text: held.text.clone(),
+                }));
+            }
+        }
+
         fn locals(&mut self) {
             let mut order: Vec<usize> = (0..self.read.bindings.len()).collect();
             order.sort_by_key(|i| self.read.bindings[*i].start);
