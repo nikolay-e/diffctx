@@ -1,0 +1,31 @@
+name: js_super_call_in_a_subclass_constructor_is_a_caller_of_the_base_constructor
+mode: symbol
+source: synthetic
+issue_state: open
+tags: [javascript, symbol, constructor, super]
+# `super(x)` runs `Foo`'s constructor from `Bar`'s: the symbol answer names that call
+# as impact mode does for an edit of the constructor.
+repo:
+  initial_files:
+    classes/C6.js: |
+      class Foo {
+        constructor(x) {
+          this.x = x;
+        }
+      }
+
+      class Bar extends Foo {
+        constructor(x, y) {
+          super(x);
+          this.y = y;
+        }
+      }
+
+      const f = new Bar(1, 2);
+  commit_message: init
+query:
+  symbol: Foo.constructor
+expect:
+  exact: false
+  relations:
+    - {from: "classes/C6.js::Bar.constructor", to: "classes/C6.js::Foo", kind: calls, resolution: resolved, site: 9}

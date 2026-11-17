@@ -1,0 +1,33 @@
+name: py_super_init_call_in_a_subclass_constructor_is_a_caller_of_the_base_constructor
+mode: symbol
+source: synthetic
+issue_state: open
+tags: [python, symbol, constructor, super]
+# `super().__init__()` runs `A.__init__` from `B.__init__`: the symbol answer names that
+# call, as impact mode does for an edit of `A.__init__`.
+repo:
+  initial_files:
+    main.py: |
+      class A:
+          def __init__(self):
+              pass
+
+
+      class B(A):
+          def __init__(self):
+              super().__init__()
+
+
+      class C(B):
+          def __init__(self):
+              super().__init__()
+
+
+      c = C()
+  commit_message: init
+query:
+  symbol: A.__init__
+expect:
+  exact: false
+  relations:
+    - {from: "main.py::B.__init__", to: "main.py::A", kind: calls, resolution: resolved, site: 8}

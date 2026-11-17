@@ -1,0 +1,33 @@
+name: py_same_named_nested_functions_of_two_scopes_are_both_answered
+mode: symbol
+source: synthetic
+issue_state: open
+tags: [python, symbol, nested-function, local-of-definition, shadowing]
+# Two functions each define a nested `helper`. `first` calls its own and the answer for the
+# name must say so, beside `second`'s helper, which leaves its function (returned: open).
+repo:
+  initial_files:
+    main.py: |
+      def first():
+          def helper():
+              pass
+          helper()
+
+
+      def second():
+          def helper():
+              pass
+          return helper
+
+
+      first()
+      second()
+  commit_message: init
+query:
+  symbol: helper
+expect:
+  exact: false
+  definitions: [main.py::helper]
+  relations:
+    - {from: main.py::first, to: main.py::helper, kind: calls, resolution: resolved, site: 4}
+    - {from: main.py::second, to: main.py::helper, kind: reads, resolution: resolved, site: 10}
