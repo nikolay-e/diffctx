@@ -352,7 +352,14 @@ fn qualifier(c: char) -> bool {
 }
 
 fn literal_name(name: &str) -> bool {
-    name.chars().count() >= MIN_LITERAL_NAME && name.chars().all(|c| word_char(c) || c == '-')
+    (name.chars().count() >= MIN_LITERAL_NAME || short_constant(name))
+        && name.chars().all(|c| word_char(c) || c == '-')
+}
+
+/// A constant spelled in capitals (`RED`) is written in strings and configs as
+/// often as a longer name, so its three letters leave it searched.
+fn short_constant(name: &str) -> bool {
+    name.chars().count() == MIN_LITERAL_NAME - 1 && name.chars().all(|c| c.is_ascii_uppercase())
 }
 
 /// What a search reads a name as.
@@ -496,6 +503,9 @@ struct Reading {
     php: bool,
     /// Go: a `const`, a `var` or a `:=` holds a callable string, and a lookup's argument is one.
     go: bool,
+    /// Java or Kotlin: a string held in a value, a comparison, a `case` label or
+    /// an array is a name the program may look up by reflection.
+    jvm: bool,
 }
 
 impl Reading {
@@ -529,7 +539,13 @@ impl Reading {
             || name.starts_with("dockerfile");
         let php = matches!(super::extension(path).as_str(), "php" | "phtml" | "inc");
         let go = super::extension(path) == "go";
-        (code || values).then_some(Self { values, php, go })
+        let jvm = matches!(super::extension(path).as_str(), "java" | "kt" | "kts");
+        (code || values).then_some(Self {
+            values,
+            php,
+            go,
+            jvm,
+        })
     }
 }
 
@@ -605,6 +621,38 @@ fn data_provider_named(text: &str, name: &str) -> bool {
         .is_some_and(|provider| provider.rsplit("::").next() == Some(name))
 }
 
+/// Whether `before`, the text ahead of a string, ends where a JVM file holds
+/// a bare name as a value: the right side of `=` or `==` (a constant, a
+/// local, a comparison), a `case` label, an element of an array or of an
+/// annotation's.
+fn held_name(before: &str) -> bool {
+    let before = before.trim_end();
+    before.ends_with(['=', '{', '['])
+        || before
+            .strip_suffix("case")
+            .is_some_and(|rest| !rest.chars().next_back().is_some_and(word_char))
+}
+
+/// Whether `before`, the text ahead of a string, is inside an annotation's
+/// parentheses: the string may be an expression the framework evaluates.
+fn in_annotation(before: &str) -> bool {
+    let mut closed = 0usize;
+    for (at, c) in before.char_indices().rev() {
+        match c {
+            ')' => closed += 1,
+            '(' if closed > 0 => closed -= 1,
+            '(' => {
+                return before[..at]
+                    .trim_end()
+                    .trim_end_matches(|c: char| word_char(c) || c == '.')
+                    .ends_with('@');
+            }
+            _ => {}
+        }
+    }
+    false
+}
+
 /// Whether `text` spells `name` as a literal in a file read as `reading`.
 fn spells_literally(text: &str, name: &str, reading: Reading, held: &[String]) -> bool {
     let spans = quoted_spans(text);
@@ -644,6 +692,7 @@ fn spells_literally(text: &str, name: &str, reading: Reading, held: &[String]) -
                 || (matches!(lead, Some(':' | '=')) && labeled(&text[..from - 1]))
                 || (qualified && lead == Some('['))
                 || macro_value(&text[..from - 1])
+                || (reading.jvm && !qualified && held_name(&text[..from - 1]))
                 || value
                 || php_placed)
                 && !printed(&text[..from - 1]);
@@ -668,7 +717,13 @@ fn spells_literally(text: &str, name: &str, reading: Reading, held: &[String]) -
                 && head.ends_with('.')
                 && tail.starts_with(['}', '!', ':', '.', '['])
                 && text[to + 1..].starts_with(".format(");
-            return reference || query || formatted;
+            // `@PreAuthorize("hasRole('A') and @authz.canView(#id)")`: the name
+            // is called inside an expression, whatever else the string says.
+            let expression = reading.jvm
+                && before == Some('.')
+                && after == Some('(')
+                && in_annotation(&text[..from - 1]);
+            return reference || query || formatted || expression;
         }
         if !reading.values {
             return false;
@@ -681,7 +736,8 @@ fn spells_literally(text: &str, name: &str, reading: Reading, held: &[String]) -
         let token_start = text[..at].rfind(char::is_whitespace).map_or(0, |i| i + 1);
         let token_head = &text[token_start..at];
         let before_token = text[..token_start].trim_end();
-        let qualified = token_head.is_empty() || token_head.ends_with(qualifier);
+        let key_value = token_head.rsplit_once('=').map_or(token_head, |(_, v)| v);
+        let qualified = key_value.is_empty() || key_value.ends_with(qualifier);
         let value = before_token.ends_with([':', '='])
             || before_token
                 .rsplit(char::is_whitespace)
@@ -737,6 +793,8 @@ fn literal_pattern(names: &[&str]) -> String {
         format!(r#"[:=][[:space:]]*([^[:space:]"']*[.:#/\\])?({all})([[:space:],;'"]|$)"#),
         format!(r#"(^|[[:space:]])--?[[:alnum:]-]+[ =]['"]?({all})(['"=[:space:]]|$)"#),
     ];
+    // An expression an annotation evaluates calls the name inside a longer string.
+    forms.push(format!(r"@[[:alnum:]_.]+[(].*[.]({all})[(]"));
     if !query.is_empty() {
         forms.push(format!(
             r#"["'`][[:space:]]*({verbs})[[:space:]]([^"'`]*[^[:alnum:]_])?({query})[^[:alnum:]_]"#

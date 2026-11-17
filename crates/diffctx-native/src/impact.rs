@@ -2799,6 +2799,27 @@ const JVM_ENTRY_POINTS: &[&str] = &[
     "Put",
     "Delete",
     "Patch",
+    "Autowired",
+    "Inject",
+    "Resource",
+    "Value",
+    "InitBinder",
+    "ModelAttribute",
+    "Around",
+    "Before",
+    "After",
+    "AfterReturning",
+    "AfterThrowing",
+    "Provides",
+    "Subscribe",
+    "PrePersist",
+    "PostPersist",
+    "PreUpdate",
+    "PostUpdate",
+    "PreRemove",
+    "PostRemove",
+    "PostLoad",
+    "JsonCreator",
 ];
 
 /// Packages whose annotations are trusted as entry points when imported.
@@ -2809,6 +2830,12 @@ const JVM_FRAMEWORK_PACKAGES: &[&str] = &[
     "io.micronaut.",
     "io.quarkus.",
     "org.eclipse.microprofile.",
+    "org.aspectj.",
+    "dagger.",
+    "com.google.inject.",
+    "com.google.common.eventbus.",
+    "org.greenrobot.eventbus.",
+    "com.fasterxml.jackson.annotation.",
 ];
 
 fn is_jvm_path(path: &str) -> bool {
