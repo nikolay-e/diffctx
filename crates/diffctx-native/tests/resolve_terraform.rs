@@ -864,7 +864,13 @@ fn a_variable_file_writes_the_variable_of_its_directory() {
 #[test]
 fn the_sources_outside_the_repository_are_counted() {
     let fx = snapshot(&[("main.tf", CALLER), ("modules/net/main.tf", NET)]);
-    // The registry address only: a local path that is missing, a computed one
-    // and a local one are not outside.
-    assert_eq!(fx.head.external_sources(), 1);
+    // The registry address, a local path that is missing, a computed one and a
+    // local one are not outside: a registry module is no directory of this
+    // repository.
+    assert_eq!(fx.head.external_sources(), 0);
+    let remote = snapshot(&[(
+        "main.tf",
+        "module \"a\" {\n  source = \"git::https://example.org/net.git\"\n}\n\nmodule \"b\" {\n  source = \"hashicorp/consul/aws\"\n}\n",
+    )]);
+    assert_eq!(remote.head.external_sources(), 1);
 }

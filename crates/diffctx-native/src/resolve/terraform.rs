@@ -285,7 +285,7 @@ impl Engine<'_> {
         match self.source_of(at) {
             Source::Local(path) if self.ix.dirs.contains(&path) => Ok(path),
             Source::Local(_) => Err(UnresolvedReason::MissingModule),
-            Source::Outside => Err(UnresolvedReason::External),
+            Source::Outside | Source::Registry => Err(UnresolvedReason::External),
             Source::Computed => Err(UnresolvedReason::Opaque),
             Source::Escapes => Err(UnresolvedReason::OutsideProject),
         }
@@ -316,6 +316,7 @@ impl Engine<'_> {
         let base = dir_of(self.ix.files[rec.file].path.as_str());
         match pointer.resolve(base) {
             Resolved::Local(path) => Source::Local(path),
+            Resolved::External if is_registry(text) => Source::Registry,
             Resolved::External => Source::Outside,
             Resolved::Escapes | Resolved::Rooted(_) => Source::Escapes,
             Resolved::Computed => Source::Computed,
@@ -323,11 +324,28 @@ impl Engine<'_> {
     }
 }
 
+/// Whether a source is a registry address: a namespace, a name and a provider, and
+/// perhaps a subdirectory, with no scheme and no host.
+fn is_registry(source: &str) -> bool {
+    let address = source
+        .split_once("//")
+        .map_or(source, |(address, _)| address);
+    let parts: Vec<&str> = address.split('/').collect();
+    parts.len() == 3
+        && !source.contains("::")
+        && !parts[0].contains(['.', ':', '@'])
+        && parts.iter().all(|part| !part.is_empty())
+}
+
 #[derive(PartialEq, Eq)]
 enum Source {
     Local(String),
-    /// A registry, a repository, an archive: not held.
+    /// A repository or an archive: not held, and what it holds may be this repository's own
+    /// directory.
     Outside,
+    /// A registry module (`namespace/name/provider`): not held, and no directory of the
+    /// repository.
+    Registry,
     Computed,
     Escapes,
 }
