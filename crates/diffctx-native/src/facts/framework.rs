@@ -20,6 +20,7 @@ use crate::facts::model::{BlobFacts, Def, DefKind, EntryKind, EntryPoint, Fact, 
 const PYTHON: &[Language] = &[Language::Python];
 const JVM: &[Language] = &[Language::Java, Language::Kotlin];
 const TS: &[Language] = &[Language::TypeScript, Language::JavaScript];
+const PHP: &[Language] = &[Language::Php];
 
 /// Where a route's HTTP method comes from.
 enum Verb {
@@ -284,6 +285,14 @@ static RULES: &[Rule] = &[
         Verb::Callee(""),
         Label::Unstated,
     ),
+    route(
+        "symfony",
+        PHP,
+        &["Symfony\\Component\\Routing"],
+        &["Route"],
+        Verb::Unstated,
+        Label::First,
+    ),
     job(
         "nestjs",
         TS,
@@ -382,7 +391,7 @@ pub fn describe(kind: EntryKind, framework: &Framework) -> String {
 fn imports(modules: &[String], wanted: &str) -> bool {
     modules.iter().any(|m| {
         m.strip_prefix(wanted)
-            .is_some_and(|rest| rest.is_empty() || rest.starts_with(['.', '/']))
+            .is_some_and(|rest| rest.is_empty() || rest.starts_with(['.', '/', '\\']))
     })
 }
 
