@@ -35,8 +35,8 @@ use tree_sitter::Node;
 use super::walker::hash_tree_into;
 use super::{ERROR_RANGES_KEPT, children, lines_of, merge_ranges, read_tree, span, through_errors};
 use crate::facts::{
-    BlobFacts, Def, DefKind, Disambig, Extractor, Fact, Hasher, Language, LocalKey, Name,
-    Namespace, Receiver, Ref, Scope, UseKind, Visibility, expired, hash_text,
+    BlobFacts, Def, DefKind, Disambig, Extractor, Fact, Hasher, Language, Local, LocalKey,
+    LocalKind, Name, Namespace, Receiver, Ref, Scope, UseKind, Visibility, expired, hash_text,
 };
 use crate::snapshot::RunBudget;
 
@@ -585,6 +585,12 @@ impl<'t> Walker<'t> {
                         .filter(|n| n.kind() == "identifier")
                     {
                         inner.bound.push(self.text(name).to_string());
+                        self.facts.push(Fact::LocalBinding(Local {
+                            name: Name::new(self.text(name)),
+                            site: span(name),
+                            enclosing: cx.scope.clone(),
+                            kind: LocalKind::Variable,
+                        }));
                     }
                 }
                 self.sequence(node, &inner, depth);

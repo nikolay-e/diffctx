@@ -38,7 +38,7 @@ const TABLE: &[Row] = &[
     Row { languages: &[Language::C, Language::Cpp], comments: "comment", strings: "string_literal raw_string_literal system_lib_string char_literal", text: "string_content raw_string_content raw_string_delimiter character escape_sequence", code_in: "" },
     Row { languages: &[Language::Swift], comments: "comment multiline_comment", strings: "line_string_literal multi_line_string_literal raw_string_literal", text: "line_str_text multi_line_str_text str_escaped_char raw_str_part raw_str_end_part raw_str_continuing_indicator", code_in: "" },
     Row { languages: &[Language::Shell], comments: "comment", strings: "heredoc_body", text: "heredoc_content", code_in: "" },
-    Row { languages: &[Language::Terraform], comments: "comment", strings: "", text: "", code_in: "" },
+    Row { languages: &[Language::Terraform], comments: "comment", strings: "quoted_template", text: "template_literal quoted_template_start quoted_template_end", code_in: "" },
 ];
 
 fn listed(kinds: &str, kind: &str) -> bool {
