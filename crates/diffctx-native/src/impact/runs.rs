@@ -23,7 +23,9 @@ use super::{
 
 /// How a test runs code that no use of its own reaches: `file` as the fragments
 /// spell it, `symbol` the one function of the file that runs (none: the whole
-/// file runs), `tests` the lines of the tests that run it, as (file, line).
+/// file runs), `tests` the lines of the tests that run it, as (file, line). No
+/// `tests`: a test may run it, and nothing says which (a string it asserts is
+/// spelled in too many files to name the definition).
 pub(super) struct Run {
     pub(super) file: String,
     pub(super) symbol: Option<String>,
@@ -1190,28 +1192,33 @@ pub(super) fn literal_runs(
     held.into_iter()
         .filter_map(|(file, shown, symbol, literals)| {
             let shown = shown.as_str();
-            let tests = literals
-                .iter()
-                .filter(|literal| {
-                    files_of
-                        .get(literal.as_str())
-                        .is_some_and(|files| files.len() <= MAX_LITERAL_FILES)
-                })
-                .flat_map(|literal| {
-                    grepped
-                        .rows
-                        .iter()
-                        .filter(move |(path, _, text)| {
-                            path != shown
-                                && declared.runs(path)
-                                && !commented(text)
-                                && text.contains(literal.as_str())
-                        })
-                        .map(|(path, line, _)| (path.clone(), *line))
-                })
-                .collect::<Vec<_>>();
-            let tests = ordered(tests);
-            (!tests.is_empty()).then(|| Run {
+            let spells = |literal: &str, path: &str, text: &str| {
+                path != shown && declared.runs(path) && !commented(text) && text.contains(literal)
+            };
+            let (clear, shared): (Vec<&String>, Vec<&String>) = literals.iter().partition(|l| {
+                files_of
+                    .get(l.as_str())
+                    .is_some_and(|files| files.len() <= MAX_LITERAL_FILES)
+            });
+            let tests = ordered(
+                clear
+                    .into_iter()
+                    .flat_map(|literal| {
+                        grepped
+                            .rows
+                            .iter()
+                            .filter(move |(path, _, text)| spells(literal, path, text))
+                            .map(|(path, line, _)| (path.clone(), *line))
+                    })
+                    .collect(),
+            );
+            // A test that spells a string too many files spell may assert this
+            // definition's: no run is made of it, and none is ruled out.
+            (!tests.is_empty()
+                || shared
+                    .into_iter()
+                    .any(|l| grepped.rows.iter().any(|(p, _, t)| spells(l, p, t))))
+            .then(|| Run {
                 file,
                 symbol: Some(symbol),
                 tests,
