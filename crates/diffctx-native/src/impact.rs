@@ -3020,12 +3020,16 @@ fn owned_by_a_nested_definition(frag: &Fragment, u: &decide::Use) -> bool {
 
 /// The definition a fragment that owns a line of use is a piece of: the function
 /// around a local variable, an anonymous arrow, a chunk of a long function, the
-/// class holding a field. Any other fragment stands for itself.
+/// class holding a field, the test function around a def or class declared inside
+/// its body (a test's own fixture, never a test). Any other fragment stands for
+/// itself.
 fn lifted_caller<'a>(frags: &[&'a Fragment], source: &'a Fragment) -> &'a Fragment {
     let anonymous = source.kind == FragmentKind::Function && source.symbol_name.is_none();
     let field = source.kind == FragmentKind::Property;
     let chunk = source.kind == FragmentKind::Chunk;
-    if source.kind != FragmentKind::Variable && !anonymous && !field && !chunk {
+    let in_a_test = matches!(source.kind, FragmentKind::Function | FragmentKind::Class)
+        && crate::testfiles::is_test_path(Path::new(source.path()));
+    if source.kind != FragmentKind::Variable && !anonymous && !field && !chunk && !in_a_test {
         return source;
     }
     let parent = source.symbol_name.as_deref().map(base_symbol);
