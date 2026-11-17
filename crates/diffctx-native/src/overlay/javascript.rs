@@ -210,6 +210,18 @@ fn declared_member<'t>(
         let left = node
             .child_by_field_name("left")
             .filter(|l| l.kind() == "member_expression")?;
+        let statement = node
+            .parent()
+            .filter(|p| p.kind() == "expression_statement")
+            .unwrap_or(node);
+        // `module.exports = function foo() {…}` defines `foo`, which the module is.
+        if left.utf8_text(bytes).ok()? == "module.exports" {
+            let name = node
+                .child_by_field_name("right")
+                .filter(|r| matches!(r.kind(), "function_expression" | "function" | "class"))?
+                .child_by_field_name("name")?;
+            return Some((name, None, statement));
+        }
         let name = left
             .child_by_field_name("property")
             .filter(|p| p.kind() == "property_identifier")?;
@@ -218,10 +230,6 @@ fn declared_member<'t>(
             "exports" | "module.exports" => None,
             _ => return None,
         };
-        let statement = node
-            .parent()
-            .filter(|p| p.kind() == "expression_statement")
-            .unwrap_or(node);
         return Some((name, class, statement));
     }
     let name = node

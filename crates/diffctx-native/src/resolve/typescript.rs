@@ -2139,10 +2139,39 @@ impl<'a> Engine<'a> {
             return None;
         }
         let open = call_open(&text, callee.site.bytes.end as usize)?;
-        if !expression_ends(&text, group_end(&text, open)?) {
+        let end = group_end(&text, open)?;
+        if !expression_ends(&text, end) {
             return None;
         }
+        if callee.name.as_str() == "create"
+            && matches!(callee.qualifier.as_slice(), [object] if object.as_str() == "Object")
+        {
+            return self.prototype_object(f, fact, text.get(open + 1..end - 1)?);
+        }
         self.callee_result(f, callee, awaited, depth)
+    }
+
+    /// `Object.create(proto)` makes an object with the members of `proto`, when its
+    /// one argument is a name bound to an object of the repository.
+    fn prototype_object(
+        &self,
+        f: usize,
+        fact: usize,
+        argument: &[u8],
+    ) -> Option<(Entity, EvidenceKind)> {
+        let Fact::Reference(proto) = self.ix.files[f].facts.blob.facts.get(fact + 2)? else {
+            return None;
+        };
+        if !proto.qualifier.is_empty() || argument.trim_ascii() != proto.name.as_str().as_bytes() {
+            return None;
+        }
+        match self.lookup_name(f, &proto.enclosing, &proto.name, false)? {
+            Named::Hit(Hit {
+                entity: entity @ Entity::Def(_),
+                ..
+            }) => Some((entity, EvidenceKind::Aliased)),
+            _ => None,
+        }
     }
 
     /// What calling or constructing `callee` makes: the language's own object, an
@@ -2921,6 +2950,22 @@ impl<'a> Engine<'a> {
             && (member || text.get(at).is_some_and(u8::is_ascii_uppercase))
     }
 
+    /// `const foo = require('./m')` binds the module, and `module.exports = function foo`
+    /// makes the module that function: calling the binding runs it.
+    fn called_module(&self, entity: Entity, use_kind: UseKind) -> Entity {
+        let Entity::Module(g) = entity else {
+            return entity;
+        };
+        if !matches!(use_kind, UseKind::Call | UseKind::Instantiate) {
+            return entity;
+        }
+        let default = Name::new("default");
+        match self.exported_member(g, &default, 0, &mut Vec::new(), &mut Seen::new()) {
+            Some(held @ (Entity::Def(_) | Entity::Class(_))) => held,
+            _ => entity,
+        }
+    }
+
     fn outcome(&self, f: usize, r: &Ref, depth: usize) -> Outcome {
         let want_type = r.use_kind == UseKind::TypeUse;
         if r.qualifier.is_empty() && matches!(r.receiver, Receiver::None) {
@@ -2943,7 +2988,7 @@ impl<'a> Engine<'a> {
                             ),
                         },
                         None => Outcome::Found {
-                            entity: hit.entity,
+                            entity: self.called_module(hit.entity, r.use_kind),
                             evidence: Evidence::through(hit.kind, self.paths(&hit.through)),
                         },
                     }
