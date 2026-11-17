@@ -7,6 +7,7 @@ use std::path::Path;
 
 use super::ScoredState;
 use crate::decide::Cells;
+use crate::facts::HeldAs;
 
 /// The terms of one line of a config: its key-shaped words and its value phrases.
 pub(super) fn terms(line: &str) -> Vec<String> {
@@ -315,11 +316,8 @@ const SQL_VERBS: &[&str] = &[
     "grant", "revoke", "drop", "alter", "create", "copy", "vacuum", "analyze", "reindex",
     "comment", "lock", "explain",
 ];
-/// The calls that hand their string argument to a shell.
-const SHELL_CALLEES: &str = "system popen run call check_call check_output getoutput exec execsync spawn command shell sh bash exec_command";
-/// The words after which a shell, a Dockerfile or a CI step reads a command.
-const COMMAND_LEADS: &str =
-    "&& || ; | then do else run cmd entrypoint run: command: script: entrypoint: - @ -@ @-";
+/// The words after which a shell reads a command, besides a separator.
+const COMMAND_WORDS: &[&str] = &["then", "do", "else", "-c"];
 /// The files whose markup an inline handler (`onclick="fn(this)"`) sits in
 /// although the language of the file is read without its markup.
 const HANDLER_EXTENSIONS: &str = "php phtml jinja j2 jinja2 md mdx markdown";
@@ -521,12 +519,6 @@ struct Reading {
     /// A JSON file: its values name what a JVM program binds them to (a Jackson
     /// or Gson enum constant), and no other language's definition.
     json: bool,
-    /// Java or Kotlin: a string the tree holds as a name — a value, a comparison,
-    /// a `case` label, an array or an annotation element — may be looked up by
-    /// reflection.
-    jvm: bool,
-    /// A shell script: its commands name relations as arguments and statements.
-    shell: bool,
 }
 
 impl Reading {
@@ -561,16 +553,12 @@ impl Reading {
         let extension = super::extension(path);
         let php = matches!(extension.as_str(), "php" | "phtml" | "inc");
         let go = extension == "go";
-        let jvm = matches!(extension.as_str(), "java" | "kt" | "kts");
         let json = crate::keytable::is_json(path);
-        let shell = crate::languages::get_language_for_file(path) == Some("bash");
         (code || values || json).then_some(Self {
             values,
             php,
             go,
             json,
-            jvm,
-            shell,
         })
     }
 }
@@ -647,83 +635,90 @@ fn data_provider_named(text: &str, name: &str) -> bool {
         .is_some_and(|provider| provider.rsplit("::").next() == Some(name))
 }
 
-/// Whether `before`, the text ahead of a string, assigns it to a name that says
-/// it holds a relation: `TABLE = "orders"`, `self.view_name = "daily"`.
-fn names_a_relation(before: &str) -> bool {
-    let Some(target) = before.trim_end().strip_suffix('=') else {
-        return false;
-    };
-    if target.ends_with(['=', '!', '<', '>']) {
-        return false;
-    }
-    let target = target
-        .rsplit([',', '(', ';', '{'])
-        .next()
-        .unwrap_or(target)
-        .to_lowercase();
+/// Whether `name` says it holds a relation: `TABLE`, `view_name`.
+fn relation_name(name: &str) -> bool {
+    let name = name.to_lowercase();
     ["table", "view", "relation"]
         .iter()
-        .any(|w| target.contains(w))
+        .any(|w| name.contains(w))
 }
 
-/// Whether the name at `at` on a line of a shell script is a relation: the
-/// argument of a table flag (`pg_dump -t name`).
-fn shell_relation(text: &str, at: usize) -> bool {
-    let token_start = text[..at].rfind(char::is_whitespace).map_or(0, |i| i + 1);
-    let head = &text[token_start..at];
-    let flag = text[..token_start]
-        .trim_end()
-        .rsplit(char::is_whitespace)
-        .next()
-        .unwrap_or("");
-    (head.is_empty() && matches!(flag, "-t" | "-T" | "--table" | "--tables"))
-        || matches!(head, "--table=" | "--tables=")
+/// Whether the file is a Makefile or a justfile, whose recipe lines are shell
+/// commands no tree reads.
+fn recipe_file(path: &str) -> bool {
+    let name = path.rsplit('/').next().unwrap_or(path).to_lowercase();
+    matches!(name.as_str(), "makefile" | "gnumakefile" | "justfile")
+        || matches!(super::extension(path).as_str(), "mk" | "just")
 }
 
-/// Whether `before`, the text ahead of a word, leaves the word where a shell
-/// reads a command: after a separator, a Dockerfile instruction or a CI key,
-/// or at the head of a line.
-fn command_lead(before: &str, line_head: bool) -> bool {
-    let before = before.trim_end();
-    if before.is_empty() {
-        return line_head;
-    }
-    before.ends_with([';', '|', '&', '(', '{', '`'])
-        || before
-            .rsplit(char::is_whitespace)
-            .next()
-            .is_some_and(|w| COMMAND_LEADS.split(' ').any(|l| l == w.to_lowercase()))
+fn last_word(text: &str) -> &str {
+    text.rsplit(char::is_whitespace).next().unwrap_or("")
 }
 
-/// Whether `text` runs `name` as a command: a word of its own in command position
-/// on a line of a command file, or in a string a shell is handed.
-fn command_called(text: &str, name: &str) -> bool {
-    let spans = quoted_spans(text);
-    text.match_indices(name).any(|(at, _)| {
-        let end = at + name.len();
-        let before = text[..at].chars().next_back();
-        let after = text[end..].chars().next();
-        if before.is_some_and(|c| word_char(c) || matches!(c, '-' | '.' | '/' | '$' | ':'))
-            || after.is_some_and(|c| {
-                !(c.is_whitespace() || matches!(c, ';' | '|' | '&' | ')' | '`' | '"' | '\''))
-            })
-        {
-            return false;
-        }
-        if let Some(&(from, _)) = spans.iter().find(|(f, t)| *f <= at && end <= *t) {
-            let inside = &text[from..at];
-            return if inside.trim().is_empty() {
-                open_call(&text[..from - 1]).is_some_and(|callee| {
-                    let callee = callee.rsplit(['.', ':']).next().unwrap_or(callee);
-                    SHELL_CALLEES.split(' ').any(|c| c == callee.to_lowercase())
+/// Whether `command`, the text a shell is handed, runs `name`: a word of its
+/// own in command position, at the head of a line or after a separator.
+fn runs_command(command: &str, name: &str) -> bool {
+    command.lines().any(|line| {
+        line.match_indices(name).any(|(at, _)| {
+            let end = at + name.len();
+            let before = line[..at].chars().next_back();
+            let after = line[end..].chars().next();
+            if before.is_some_and(|c| word_char(c) || matches!(c, '-' | '.' | '/' | '$' | ':'))
+                || after.is_some_and(|c| {
+                    !(c.is_whitespace() || matches!(c, ';' | '|' | '&' | ')' | '`' | '"' | '\''))
                 })
-            } else {
-                command_lead(inside, false)
-            };
-        }
-        let head = text[..at].trim().is_empty();
-        command_lead(&text[..at], head) && (!head || !text[end..].trim().is_empty())
+            {
+                return false;
+            }
+            let lead = line[..at].trim_end();
+            let lead = lead
+                .strip_suffix(['"', '\''])
+                .filter(|code| last_word(code) == "-c")
+                .unwrap_or(lead);
+            lead.is_empty()
+                || lead.ends_with([';', '|', '&', '(', '{', '`'])
+                || COMMAND_WORDS.contains(&last_word(lead))
+        })
     })
+}
+
+/// The shell commands the file `path` holds on `line`, as its tree says: the
+/// strings a call hands to a shell, a config's command values, a Dockerfile's
+/// instructions. A Makefile or justfile recipe is the line itself.
+fn commands_at(
+    state: &ScoredState,
+    cells: &Cells,
+    path: &str,
+    line: u32,
+    text: &str,
+) -> Vec<String> {
+    if recipe_file(path) {
+        return vec![text.to_string()];
+    }
+    let held = || {
+        cells
+            .held_strings_at(path, line)
+            .into_iter()
+            .filter(|(how, _)| *how == HeldAs::Command)
+            .map(|(_, command)| command)
+            .collect()
+    };
+    let Some(source) = state
+        .run
+        .source()
+        .read_to_string(&state.root_dir.join(path))
+    else {
+        return held();
+    };
+    let found = crate::facts::config::commands::commands(path, &source, &read_budget(state));
+    if found.is_empty() {
+        return held();
+    }
+    found
+        .into_iter()
+        .filter(|command| (command.lines.0..=command.lines.1).contains(&line))
+        .map(|command| command.text)
+        .collect()
 }
 
 /// Whether `text` has an inline handler attribute that calls `name`:
@@ -751,7 +746,7 @@ fn handler_calls(text: &str, name: &str) -> bool {
 }
 
 /// Whether `text` spells `name` as a literal in a file read as `reading`.
-fn spells_literally(text: &str, name: &str, reading: Reading, held: &[String]) -> bool {
+fn spells_literally(text: &str, name: &str, reading: Reading, held: &[(HeldAs, String)]) -> bool {
     let spans = quoted_spans(text);
     let sql = name.chars().any(|c| c == '_' || c.is_ascii_digit());
     text.match_indices(name).any(|(at, _)| {
@@ -782,18 +777,23 @@ fn spells_literally(text: &str, name: &str, reading: Reading, held: &[String]) -
             let value =
                 qualified && tail.is_empty() && matches!(lead, None | Some('{' | ':' | '='));
             // A held JVM string is a bare name; `Pricing.total(items)` in one is prose.
-            let held_here =
-                (reading.php || reading.go || !qualified) && held.iter().any(|h| h == inside);
+            let held_placed = held.iter().any(|(how, held)| {
+                held == inside
+                    && match how {
+                        HeldAs::Callable => reading.php || reading.go || !qualified,
+                        HeldAs::Assigned(target) => relation_name(target),
+                        HeldAs::Command | HeldAs::Relation => false,
+                    }
+            });
             let indexed = !qualified && indexed_call(text, from, to);
             let placed = (reading.values
                 || indexed
-                || (lead == Some('=') && names_a_relation(&text[..from - 1]))
                 || matches!(lead, Some('(' | ','))
                 || (matches!(lead, Some(':' | '=')) && labeled(&text[..from - 1]))
                 || (qualified && lead == Some('['))
                 || macro_value(&text[..from - 1])
                 || value
-                || held_here)
+                || held_placed)
                 && !printed(&text[..from - 1]);
             // `pkg.cli.main:run` names the module `main`: what follows a dotted
             // path and a single colon is its member, never the path's last element.
@@ -818,12 +818,18 @@ fn spells_literally(text: &str, name: &str, reading: Reading, held: &[String]) -
                 && text[to + 1..].starts_with(".format(");
             // `@PreAuthorize("hasRole('A') and @authz.canView(#id)")`: the tree
             // holds the name the expression calls, whatever else the string says.
-            let expression =
-                before == Some('.') && after == Some('(') && held.iter().any(|h| h == name);
+            let expression = before == Some('.')
+                && after == Some('(')
+                && held
+                    .iter()
+                    .any(|(how, held)| *how == HeldAs::Callable && held == name);
             return reference || query || formatted || expression;
         }
         if !reading.values {
-            return reading.shell && sql && shell_relation(text, at);
+            return sql
+                && held
+                    .iter()
+                    .any(|(how, held)| *how == HeldAs::Relation && held == name);
         }
         if before == Some('.') && after == Some('(') {
             return true;
@@ -1068,7 +1074,7 @@ impl LiteralNames {
                         Shape::Argument => {
                             reading.is_some_and(|r| !r.values && !r.json) && language.is_some()
                         }
-                        Shape::Command => reading.is_some() && !runs_as_shell(state, path),
+                        Shape::Command => !runs_as_shell(state, path),
                         Shape::Handler => HANDLER_EXTENSIONS
                             .split(' ')
                             .any(|e| e == super::extension(path)),
@@ -1082,43 +1088,54 @@ impl LiteralNames {
                         })
                     };
                     let held = match reading {
-                        Some(r) if (r.php || r.go || r.jvm) && shape == Shape::Literal => cells
-                            .of(path)
-                            .map_or_else(Vec::new, |cell| cell.callable_strings_at(path, *line)),
+                        Some(r) if !r.values && shape == Shape::Literal => {
+                            cells.held_strings_at(path, *line)
+                        }
                         _ => Vec::new(),
                     };
-                    let hit = |name: &str, held: &[String]| match (shape, reading, language) {
-                        (Shape::Call, ..) => call_name(name) && called(text, name),
-                        (Shape::Literal, Some(reading), _) => {
-                            let Some(reading) = (if reading.json {
-                                defined_on_the_jvm(own, name).then_some(Reading {
-                                    values: true,
-                                    ..reading
-                                })
-                            } else {
-                                Some(reading)
-                            }) else {
-                                return false;
-                            };
-                            literal_name(name)
-                                && (spells_literally(text, name, reading, held)
-                                    || (reading.php && data_provider_named(text, name)))
-                        }
-                        (Shape::Argument, _, Some(language)) => {
-                            !literal_name(name) && reflects(text, name, language)
-                        }
-                        (Shape::Command, ..) => command_called(text, name),
-                        (Shape::Handler, ..) => handler_calls(text, name),
-                        _ => false,
+                    let commands = if shape == Shape::Command {
+                        commands_at(state, cells, path, *line, text)
+                    } else {
+                        Vec::new()
                     };
+                    let hit =
+                        |name: &str, held: &[(HeldAs, String)]| match (shape, reading, language) {
+                            (Shape::Call, ..) => call_name(name) && called(text, name),
+                            (Shape::Literal, Some(reading), _) => {
+                                let Some(reading) = (if reading.json {
+                                    defined_on_the_jvm(own, name).then_some(Reading {
+                                        values: true,
+                                        ..reading
+                                    })
+                                } else {
+                                    Some(reading)
+                                }) else {
+                                    return false;
+                                };
+                                literal_name(name)
+                                    && (spells_literally(text, name, reading, held)
+                                        || (reading.php && data_provider_named(text, name)))
+                            }
+                            (Shape::Argument, _, Some(language)) => {
+                                !literal_name(name) && reflects(text, name, language)
+                            }
+                            (Shape::Command, ..) => {
+                                commands.iter().any(|command| runs_command(command, name))
+                            }
+                            (Shape::Handler, ..) => handler_calls(text, name),
+                            _ => false,
+                        };
                     for name in chunk.iter().filter(|n| !inside(n) && hit(n, &held)) {
+                        let as_callable = |(how, held): &(HeldAs, String)| {
+                            *how == HeldAs::Callable && held == name
+                        };
                         let alone = reading.is_some_and(|r| r.php)
-                            && held.iter().any(|h| h == name)
+                            && held.iter().any(as_callable)
                             && !hit(
                                 name,
                                 &held
                                     .iter()
-                                    .filter(|h| h != name)
+                                    .filter(|&h| !as_callable(h))
                                     .cloned()
                                     .collect::<Vec<_>>(),
                             );

@@ -50,7 +50,7 @@ use super::kotlin::{Leaf, POLL_EVERY, error_ranges, has_word};
 use super::{LineStarts, parse_tree};
 use crate::facts::framework::{self, jvm::balanced};
 use crate::facts::kotlin as old;
-use crate::facts::model::CallableString;
+use crate::facts::model::{HeldAs, HeldString};
 use crate::facts::{
     BlobFacts, Def, DefKind, Disambig, EntryKind, EntryPoint, Extractor, Fact, Import, ImportKind,
     Language, Local, LocalKey, LocalKind, ModulePath, Name, Namespace, Receiver, Ref, Scope, Span,

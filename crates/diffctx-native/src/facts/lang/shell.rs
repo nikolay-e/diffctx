@@ -37,9 +37,9 @@ use tree_sitter::{Language as TsLanguage, Node as TsNode};
 use crate::facts::config::syntax;
 use crate::facts::shell::{PathHead, PathUse, ShellPath};
 use crate::facts::{
-    BlobFacts, Def, DefKind, Disambig, Extractor, Fact, Hasher, Language, Lexical, Local, LocalKey,
-    LocalKind, Name, Namespace, Receiver, Ref, Scope, Span, UseKind, Visibility, expired,
-    hash_text,
+    BlobFacts, Def, DefKind, Disambig, Extractor, Fact, Hasher, HeldAs, HeldString, Language,
+    Lexical, Local, LocalKey, LocalKind, Name, Namespace, Receiver, Ref, Scope, Span, UseKind,
+    Visibility, expired, hash_text,
 };
 use crate::snapshot::RunBudget;
 
@@ -50,6 +50,14 @@ pub const SCRIPT: &str = "<script>";
 /// The decorator of a script whose first line is a shebang: the file names itself a
 /// program, which whoever has it may run without a repository file saying so.
 pub const SHEBANG: &str = "shebang";
+/// The commands whose `-t` and `--table` flags name a relation.
+const TABLE_COMMANDS: &[&str] = &[
+    "pg_dump",
+    "pg_restore",
+    "vacuumdb",
+    "reindexdb",
+    "clusterdb",
+];
 /// Nesting deeper than this is not read.
 const MAX_DEPTH: usize = 120;
 /// Nodes between two looks at the run's deadline.
@@ -465,6 +473,9 @@ impl<'a> Walker<'a> {
         };
         let word = self.text_of(name_node);
         let site = syntax::span(name_node);
+        if TABLE_COMMANDS.contains(&word) {
+            self.table_flags(node, scope);
+        }
         if matches!(word, "sed" | "awk" | "gawk" | "mawk") {
             // A single-quoted argument is the program, in another language.
             let mut cursor = node.walk();
@@ -525,6 +536,32 @@ impl<'a> Walker<'a> {
                 self.path(first, scope, PathUse::Run);
             } else {
                 self.call(word.to_string(), site, scope);
+            }
+        }
+    }
+
+    /// The arguments of `-t name`, `--table name` and `--table=name`: relations.
+    fn table_flags(&mut self, node: TsNode<'a>, scope: &Scope) {
+        let mut cursor = node.walk();
+        let args: Vec<TsNode<'a>> = node
+            .children_by_field_name("argument", &mut cursor)
+            .collect();
+        for (at, arg) in args.iter().enumerate() {
+            let text = self.text_of(*arg);
+            let named = match text.split_once('=') {
+                Some(("--table", name)) => Some((*arg, name)),
+                _ if matches!(text, "-t" | "--table") => {
+                    args.get(at + 1).map(|next| (*next, self.text_of(*next)))
+                }
+                _ => None,
+            };
+            if let Some((node, name)) = named.filter(|(node, _)| node.kind() == "word") {
+                self.facts.push(Fact::HeldString(HeldString {
+                    site: syntax::span(node),
+                    enclosing: scope.clone(),
+                    text: name.to_string(),
+                    held: HeldAs::Relation,
+                }));
             }
         }
     }

@@ -147,10 +147,11 @@ macro_rules! shared_reader_methods {
                     return;
                 }
                 let held = &self.read.held[index];
-                self.facts.push(Fact::CallableString(CallableString {
+                self.facts.push(Fact::HeldString(HeldString {
                     site: self.span(held.range.clone()),
                     enclosing: self.scope_of(owner),
                     text: held.text.clone(),
+                    held: HeldAs::Callable,
                 }));
             }
         }

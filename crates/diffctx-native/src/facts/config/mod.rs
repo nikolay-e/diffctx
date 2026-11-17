@@ -22,6 +22,7 @@
 #![allow(clippy::cognitive_complexity)]
 
 mod candidates;
+pub mod commands;
 pub mod dockerfile;
 mod globs;
 mod helm;

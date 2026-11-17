@@ -38,8 +38,8 @@ use anyhow::Result;
 
 use crate::facts::{
     Def, DefChange, DefKey, DefKind, Delta, Disambig, EntryKind, Export, Fact, FactsCache,
-    FileFacts, Framework, Language, ModulePath, Name, Origin, ProjectId, Scope, SemanticDef,
-    Visibility, facts_of, holds_data, members_of, semantic_changes,
+    FileFacts, Framework, HeldAs, Language, ModulePath, Name, Origin, ProjectId, Scope,
+    SemanticDef, Visibility, facts_of, holds_data, members_of, semantic_changes,
 };
 use crate::fold::{self, Basis, Rule};
 use crate::resolve::{
@@ -1964,15 +1964,15 @@ impl Cell {
             .is_some_and(|def| self.head.serialized(&def.key))
     }
 
-    /// The strings of `file` at the head that sit where the language holds a callable
-    /// by name and span `line`: what the file's tree says, whatever the text around
-    /// the string is. A Go package's strings count only where the package itself
-    /// resolves a name by string (`Lookup`, `MethodByName`, `FieldByName`).
-    pub(crate) fn callable_strings_at(&self, file: &str, line: u32) -> Vec<String> {
+    /// The strings of `file` at the head that span `line`, with what their
+    /// position in the file's tree holds them as. A Go package's strings count
+    /// only where the package itself resolves a name by string (`Lookup`,
+    /// `MethodByName`, `FieldByName`).
+    pub(crate) fn held_strings_at(&self, file: &str, line: u32) -> Vec<(HeldAs, String)> {
         let Ok(path) = RepoPath::new(file) else {
             return Vec::new();
         };
-        if self.family == Family::Go && !self.package_looks_up_by_name(file) {
+        if self.family == Family::Go && self.owns(file) && !self.package_looks_up_by_name(file) {
             return Vec::new();
         }
         let Ok(Some(facts)) = facts_of(&self.ctx, SideTag::Head, &self.cache, &path) else {
@@ -1983,10 +1983,10 @@ impl Cell {
             .facts
             .iter()
             .filter_map(|fact| match fact {
-                Fact::CallableString(held)
+                Fact::HeldString(held)
                     if (held.site.lines.0..=held.site.lines.1).contains(&line) =>
                 {
-                    Some(held.text.clone())
+                    Some((held.held.clone(), held.text.clone()))
                 }
                 _ => None,
             })
@@ -4000,6 +4000,14 @@ impl Cells {
     /// The cell that answers for `rel`.
     pub(crate) fn of(&self, rel: &str) -> Option<&Cell> {
         self.cells.iter().find(|cell| cell.owns(rel))
+    }
+
+    /// What the tree of `rel` holds as a string on `line`, read by the cell that
+    /// answers for it, else by any: every cell reads the same head.
+    pub(crate) fn held_strings_at(&self, rel: &str, line: u32) -> Vec<(HeldAs, String)> {
+        self.of(rel)
+            .or_else(|| self.cells.first())
+            .map_or_else(Vec::new, |cell| cell.held_strings_at(rel, line))
     }
 
     /// Whether a head file of a cell language may import a module by a name it

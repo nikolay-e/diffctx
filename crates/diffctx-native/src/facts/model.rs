@@ -330,15 +330,30 @@ pub struct ComputedImport {
     pub kind: ImportKind,
 }
 
-/// A string literal in a position PHP hands a callable by name: the value of an
-/// array element or of a `const`, the right side of an assignment — never an
-/// operand of a comparison or a subscript. Whether the string names a function
-/// is for whoever reads the name.
+/// Where a string literal sits in its program: the position says what the string
+/// is held as, whatever the text around it is.
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
-pub struct CallableString {
+pub enum HeldAs {
+    /// PHP hands a callable by name here: the value of an array element or of a
+    /// `const`, the right side of an assignment — never an operand of a
+    /// comparison or a subscript.
+    Callable,
+    /// The argument a call hands to a shell: `os.system`, `subprocess.run`.
+    Command,
+    /// The value of an assignment to this name: `TABLE = "orders"`.
+    Assigned(String),
+    /// The argument of a table flag: `pg_dump -t orders`.
+    Relation,
+}
+
+/// A string literal in a position that holds it as a name or a command. Whether
+/// the text names anything is for whoever reads it.
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+pub struct HeldString {
     pub site: Span,
     pub enclosing: Scope,
     pub text: String,
+    pub held: HeldAs,
 }
 
 /// A repository path written in code (`sys.path.insert`, a `join` of literals).
@@ -405,8 +420,9 @@ pub enum Fact {
     ConfigRelease(Release),
     /// A file a shell script sources or a script it runs, by the path it spells.
     ShellPath(ShellPath),
-    /// A string literal where PHP holds a callable by name.
-    CallableString(CallableString),
+    /// A string literal held as a callable's name, a shell command or the value
+    /// of a named assignment.
+    HeldString(HeldString),
     /// A `terraform` block's `backend` or `cloud` block: the module keeps a state
     /// of its own, so it is applied as a root.
     StateBackend {
@@ -446,7 +462,7 @@ impl Fact {
             Self::ConfigUse(used) => &used.site,
             Self::ConfigRelease(release) => &release.site,
             Self::ShellPath(path) => &path.site,
-            Self::CallableString(held) => &held.site,
+            Self::HeldString(held) => &held.site,
             Self::StateBackend { site } | Self::ComputedName { site, .. } => site,
         }
     }
@@ -471,7 +487,7 @@ impl Fact {
             Self::ConfigRelease(_) => 14,
             Self::ShellPath(_) => 15,
             Self::StateBackend { .. } => 16,
-            Self::CallableString(_) => 17,
+            Self::HeldString(_) => 17,
             Self::ComputedName { .. } => 18,
         }
     }
