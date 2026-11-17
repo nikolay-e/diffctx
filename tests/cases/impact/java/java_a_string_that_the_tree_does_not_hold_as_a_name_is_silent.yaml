@@ -1,0 +1,40 @@
+name: java_a_string_that_the_tree_does_not_hold_as_a_name_is_silent
+mode: impact
+source: synthetic
+tags: [java, literal-name, decoy, text-block]
+repo:
+  initial_files:
+    src/main/java/com/acme/lib/Lib.java: |
+      package com.acme.lib;
+
+      public class Lib {
+          public int viaDecoy() {
+              return 1;
+          }
+      }
+    src/main/java/com/acme/app/Docs.java: |
+      package com.acme.app;
+
+      public class Docs {
+          String usage() {
+              return """
+                  config:
+                    method = "viaDecoy"
+                    names = {"viaDecoy"}
+                  """;
+          }
+      }
+  changed_files:
+    src/main/java/com/acme/lib/Lib.java: |
+      package com.acme.lib;
+
+      public class Lib {
+          public int viaDecoy() {
+              return 2;
+          }
+      }
+  commit_message: "lib: viaDecoy returns two"
+expect:
+  changed: [src/main/java/com/acme/lib/Lib.java::viaDecoy]
+  callers: {viaDecoy: []}
+  not_named_by: [src/main/java/com/acme/app/Docs.java]
