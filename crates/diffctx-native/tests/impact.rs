@@ -4710,9 +4710,10 @@ fn a_class_that_lost_its_constructor_lists_what_builds_and_overrides_it() {
     assert_eq!(paths, ["gzip_dec.py", "make.py"], "{doc}");
 }
 
-/// R11: an edited constructor reaches the class's instantiations, not the other
-/// uses of the class: a signature that names it, an `isinstance` check and the
-/// class handed on as a value stay with the class, which the edit leaves alone.
+/// R11: an edited constructor reaches the class's instantiations and the class
+/// handed on as a value, which whoever receives it builds; a signature that
+/// names it and an `isinstance` check stay with the class, which the edit
+/// leaves alone.
 #[test]
 fn an_edited_constructor_reaches_instantiations_not_other_uses_of_its_class() {
     let tmp = TempDir::new().expect("tempdir");
@@ -4760,7 +4761,7 @@ fn an_edited_constructor_reaches_instantiations_not_other_uses_of_its_class() {
         .map(|c| c["path"].as_str().unwrap())
         .collect();
     paths.sort_unstable();
-    assert_eq!(paths, ["make.py"], "{doc}");
+    assert_eq!(paths, ["make.py", "pass_on.py"], "{doc}");
 }
 
 /// #456: prose and comments the same change wrote about a deletion are its
