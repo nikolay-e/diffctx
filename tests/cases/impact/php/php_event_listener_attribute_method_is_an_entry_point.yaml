@@ -1,0 +1,43 @@
+name: php_event_listener_attribute_method_is_an_entry_point
+mode: impact
+source: synthetic
+tags: [php, symfony, framework-registration, attribute]
+repo:
+  initial_files:
+    composer.json: |
+      {"autoload": {"psr-4": {"App\\": "src/"}}}
+    src/Listener/OrderListener.php: |
+      <?php
+
+      namespace App\Listener;
+
+      use Symfony\Component\EventDispatcher\Attribute\AsEventListener;
+
+      class OrderListener
+      {
+          #[AsEventListener(event: 'order.placed')]
+          public function onPlaced(object $event): int
+          {
+              return 1;
+          }
+      }
+  changed_files:
+    src/Listener/OrderListener.php: |
+      <?php
+
+      namespace App\Listener;
+
+      use Symfony\Component\EventDispatcher\Attribute\AsEventListener;
+
+      class OrderListener
+      {
+          #[AsEventListener(event: 'order.placed')]
+          public function onPlaced(object $event): int
+          {
+              return 2;
+          }
+      }
+  commit_message: "orders: listener returns two"
+expect:
+  exact: false
+  entry_not_tested: [onPlaced]

@@ -1,0 +1,49 @@
+name: php_data_provider_docblock_names_the_provider
+mode: impact
+source: synthetic
+tags: [php, literal-name, docblock, phpunit]
+repo:
+  initial_files:
+    src/Calc.php: |
+      <?php
+
+      class Calc
+      {
+          public static function cases(): array
+          {
+              return [[1, 1, 2]];
+          }
+      }
+    tests/CalcTest.php: |
+      <?php
+
+      use PHPUnit\Framework\TestCase;
+
+      class CalcTest extends TestCase
+      {
+          /**
+           * @dataProvider Calc::cases
+           */
+          public function testAdd(int $a, int $b, int $e): void
+          {
+              $this->assertSame($e, $a + $b);
+          }
+      }
+  changed_files:
+    src/Calc.php: |
+      <?php
+
+      class Calc
+      {
+          public static function cases(): array
+          {
+              return [[2, 2, 4]];
+          }
+      }
+  commit_message: "calc: provider doubles"
+expect:
+  exact: false
+  discloses: true
+  no_negative_claims: true
+  relations:
+    - {from: tests/CalcTest.php, to: src/Calc.php::cases, kind: calls, resolution: unresolved}

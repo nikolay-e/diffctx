@@ -1,0 +1,51 @@
+name: php_dispatched_job_handle_is_reached_through_the_framework
+mode: impact
+source: synthetic
+tags: [php, laravel, framework-registration]
+repo:
+  initial_files:
+    composer.json: |
+      {"autoload": {"psr-4": {"App\\": "app/"}}}
+    app/Jobs/SendMail.php: |
+      <?php
+
+      namespace App\Jobs;
+
+      class SendMail
+      {
+          public function handle(): int
+          {
+              return 1;
+          }
+      }
+    app/Http/Controllers/SignupController.php: |
+      <?php
+
+      namespace App\Http\Controllers;
+
+      use App\Jobs\SendMail;
+
+      class SignupController
+      {
+          public function store(): void
+          {
+              dispatch(new SendMail());
+          }
+      }
+  changed_files:
+    app/Jobs/SendMail.php: |
+      <?php
+
+      namespace App\Jobs;
+
+      class SendMail
+      {
+          public function handle(): int
+          {
+              return 2;
+          }
+      }
+  commit_message: "mail: handle returns two"
+expect:
+  exact: false
+  entry_not_tested: [handle]
