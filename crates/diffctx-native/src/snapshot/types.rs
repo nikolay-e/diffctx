@@ -42,6 +42,9 @@ impl fmt::Display for Oid {
 
 /// A path inside the repository: relative, `/`-separated, without `.`, `..`
 /// or empty components. The name git stores, never a location on the disk.
+///
+/// A Windows drive (`C:/x`) or share (`\\host\x`) names a location, so it is
+/// no path here. A backslash elsewhere is an ordinary filename character on POSIX.
 #[derive(Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Debug)]
 pub struct RepoPath(String);
 
@@ -49,6 +52,8 @@ impl RepoPath {
     pub fn new(path: &str) -> Result<Self> {
         let ok = !path.is_empty()
             && !path.starts_with('/')
+            && !path.starts_with("\\\\")
+            && !names_a_drive(path)
             && !path.contains('\0')
             && path
                 .split('/')
@@ -84,6 +89,14 @@ impl RepoPath {
             .split('/')
             .fold(root.to_path_buf(), |acc, part| acc.join(part))
     }
+}
+
+fn names_a_drive(path: &str) -> bool {
+    let bytes = path.as_bytes();
+    bytes.len() >= 2
+        && bytes[0].is_ascii_alphabetic()
+        && bytes[1] == b':'
+        && bytes.get(2).is_none_or(|b| matches!(b, b'/' | b'\\'))
 }
 
 impl fmt::Display for RepoPath {
