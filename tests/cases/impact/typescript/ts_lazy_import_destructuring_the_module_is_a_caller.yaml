@@ -1,0 +1,33 @@
+name: ts_lazy_import_destructuring_the_module_is_a_caller
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [typescript, react-lazy, dynamic-import]
+repo:
+  initial_files:
+    src/pages/Lazy.tsx: |
+      export function Lazy() {
+        return <div className="a">lazy</div>;
+      }
+    src/App.tsx: |
+      import { lazy, Suspense } from 'react';
+
+      const Page = lazy(() => import('./pages/Lazy').then(({ Lazy }) => ({ default: Lazy })));
+
+      export function App() {
+        return (
+          <Suspense>
+            <Page />
+          </Suspense>
+        );
+      }
+  changed_files:
+    src/pages/Lazy.tsx: |
+      export function Lazy() {
+        return <div className="b">lazy</div>;
+      }
+  commit_message: "pages: restyle"
+expect:
+  changed: [src/pages/Lazy.tsx::Lazy]
+  relations:
+    - {from: "src/App.tsx", to: "src/pages/Lazy.tsx::Lazy", kind: imports, resolution: resolved, site: 3}
