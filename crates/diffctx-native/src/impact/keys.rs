@@ -302,7 +302,7 @@ pub(super) struct LiteralNames {
     rows: rustc_hash::FxHashMap<String, Vec<(String, u32)>>,
 }
 
-const MIN_LITERAL_NAME: usize = 4;
+pub(super) const MIN_LITERAL_NAME: usize = 4;
 const MIN_CALL_NAME: usize = 2;
 const NAMES_PER_SEARCH: usize = 40;
 const SQL_VERBS: &[&str] = &[

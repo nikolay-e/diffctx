@@ -43,6 +43,8 @@ repo:
       }
   commit_message: Change rust definition called only from inside the diff
 expect:
+  partial:
+    src/render.rs::render: {calls: name_unsearched, reads: name_unsearched}
   changed:
   - src/render.rs::escape
   - src/render.rs::render

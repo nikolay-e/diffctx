@@ -169,6 +169,9 @@ pub enum Gap {
         directories: Vec<String>,
         total: usize,
     },
+    /// The name is shorter than the literal floor or as common as `main`: where
+    /// a script, a template or a string spells it was not searched.
+    NameUnsearched,
 }
 
 impl Gap {
@@ -257,6 +260,9 @@ impl std::fmt::Display for Gap {
                     more => write!(f, " and {more} more"),
                 }
             }
+            Self::NameUnsearched => f.write_str(
+                "its name is too short or too common to search as text: a script, a template or a string that spells it was not looked for",
+            ),
         }
     }
 }
