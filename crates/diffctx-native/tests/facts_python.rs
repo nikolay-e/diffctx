@@ -581,6 +581,35 @@ fn an_import_the_code_computes_is_a_computed_import_and_a_literal_one_is_not() {
     assert_eq!(literal, ["pkg.mod", "y"]);
 }
 
+/// A name the code computes (`getattr` with a built name, `eval`, `exec`, an indexed
+/// `globals()`) is a fact of its own; a literal name, and a namespace handed on
+/// whole, are not.
+#[test]
+fn a_call_by_a_computed_name_is_a_computed_name_and_a_literal_one_is_not() {
+    let blob = extract(
+        "def run(obj, name, kind):\n    a = getattr(obj, name)\n    b = getattr(obj, \"fixed\")\n    c = getattr(obj, \"on_\" + kind)\n    eval(name)\n    exec(\"x = 1\")\n    d = globals()[kind]\n    e = locals().get(kind)\n    return render(**locals()), a, b, c, d, e\n",
+    );
+    let computed: Vec<(u32, bool)> = blob
+        .facts
+        .iter()
+        .filter_map(|f| match f {
+            Fact::ComputedName { site, member } => Some((site.lines.0, *member)),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        computed,
+        [
+            (2, true),
+            (4, true),
+            (5, false),
+            (6, false),
+            (7, false),
+            (8, false)
+        ]
+    );
+}
+
 #[test]
 fn a_guard_inside_a_function_is_no_entry() {
     let blob = extract("def f():\n    if __name__ == '__main__':\n        pass\n");
