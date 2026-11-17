@@ -194,3 +194,6 @@ impact/php/php_middleware_alias_handle_is_reached_through_the_framework  # a mid
 impact/php/php_event_listener_handle_listed_in_the_listen_map_is_reached_through_the_framework  # a `$listen` map entry runs the listener's `handle`: "nothing calls them", not a framework hedge
 impact/php/php_symfony_route_attribute_method_is_an_entry_point  # a `#[Route]` method is a route entry: "nothing calls them", not an entry point
 impact/php/php_event_listener_attribute_method_is_an_entry_point  # an `#[AsEventListener]` method is run by the dispatcher: "nothing calls them", not a framework hedge
+impact/php/php_callable_string_on_its_own_line_names_the_function  # a string on the line after `'callback' =>` is read by the text before it: "nothing calls them", not a hedge
+impact/php/php_callable_string_after_a_comment_in_an_array_names_the_function  # a comment between `=>` and the string hides the array position: "nothing calls them", not a hedge
+impact/php/php_callable_string_in_a_multi_line_array_names_the_function  # an element of a multi-line array literal is no argument of its line: "nothing calls them", not a hedge
