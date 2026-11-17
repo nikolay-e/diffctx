@@ -177,3 +177,4 @@ impact/python/py_nested_def_in_a_test_names_its_enclosing_test  # a def or class
 impact/python/py_inherited_self_call_in_another_file_leaves_the_test_list_open  # the nearest test is listed as the whole list although the subclass in another file calls `visit` too, so the test through it is missing without a word
 impact/python/py_operator_dunder_above_the_caller_leaves_the_test_list_open  # `x in span` reaches `index` through `__contains__`, which no call names: the list of tests claims no limit
 impact/python/py_test_at_the_nearest_hop_and_another_through_a_longer_path_is_open  # the walk stops at the nearest hop and the test one hop further is dropped without a word
+impact/typescript/ts_destructured_static_method_is_called_through_its_alias  # `const {normalizeArguments} = Request` reads the static method: the read is an unresolved row, not the resolved `reads` the case expects
