@@ -423,14 +423,21 @@ pub(super) fn reachable_from_tests(tests: &[TestLink]) -> String {
             .into_iter()
             .map(|t| (t.path.as_str(), t.name.as_deref(), t.via.as_deref())),
         more,
+        false,
     )
 }
 
 fn reachable<'a>(
     tests: impl Iterator<Item = (&'a str, Option<&'a str>, Option<&'a str>)>,
     more: usize,
+    nearest: bool,
 ) -> String {
-    let mut line = String::from("reachable from tests: ");
+    let mut line = String::from("reachable from tests");
+    line.push_str(if nearest {
+        " (nearest; further callers not searched): "
+    } else {
+        ": "
+    });
     for (n, (path, name, via)) in tests.enumerate() {
         if n > 0 {
             line.push_str(", ");
@@ -461,6 +468,7 @@ fn guard_text(row: &Row) -> String {
                     .map(|t| (t.test.as_str(), t.name.as_deref(), t.via.as_deref())),
             ),
             guard.more as usize,
+            guard.open,
         ),
         GuardState::Registered => format!(
             "registered by `@{}`; whatever reads that registry reaches it, which static test links do not follow",

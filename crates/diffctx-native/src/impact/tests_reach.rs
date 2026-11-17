@@ -82,7 +82,7 @@ pub(super) struct TestsReach<'a> {
     repo_tests: bool,
     /// `tested_by` per fragment: callers repeat across changed symbols, and
     /// each answer walks every test fragment.
-    memo: RefCell<FxHashMap<FragmentId, Vec<TestLink>>>,
+    memo: RefCell<FxHashMap<FragmentId, (Vec<TestLink>, bool)>>,
     /// Whether the fragment ends the search above it, per fragment.
     stops: RefCell<FxHashMap<FragmentId, bool>>,
     /// Whether the search above the fragment is open, per fragment.
@@ -361,10 +361,33 @@ impl<'a> TestsReach<'a> {
         by_id: &FxHashMap<&FragmentId, &'a Fragment>,
         link: &Link,
     ) -> Vec<TestLink> {
+        self.reach(caller, state, by_id, link).0
+    }
+
+    /// Whether the tests of `caller` are the nearest only: a user above the
+    /// level the walk stopped at was left unwalked, or a use on the walked path is
+    /// hedged (a dispatch, an operator or a protocol call no use names).
+    pub(super) fn nearest_only(
+        &self,
+        caller: &'a Fragment,
+        state: &ScoredState,
+        by_id: &FxHashMap<&FragmentId, &'a Fragment>,
+        link: &Link,
+    ) -> bool {
+        self.reach(caller, state, by_id, link).1
+    }
+
+    fn reach(
+        &self,
+        caller: &'a Fragment,
+        state: &ScoredState,
+        by_id: &FxHashMap<&FragmentId, &'a Fragment>,
+        link: &Link,
+    ) -> (Vec<TestLink>, bool) {
         if let Some(known) = self.memo.borrow().get(&caller.id) {
             return known.clone();
         }
-        let mut answer = self.walk_up(caller, state, by_id, link);
+        let (mut answer, nearest) = self.walk_up(caller, state, by_id, link);
         for test in &mut answer {
             test.path = rel(state, &test.path);
         }
@@ -373,10 +396,11 @@ impl<'a> TestsReach<'a> {
             untouched(a).cmp(&untouched(b)).then_with(|| a.cmp(b))
         });
         answer.dedup();
+        let known = (answer, nearest || state.run.tripped());
         self.memo
             .borrow_mut()
-            .insert(caller.id.clone(), answer.clone());
-        answer
+            .insert(caller.id.clone(), known.clone());
+        known
     }
 
     /// One hop up the uses of `f`: a cell's resolved uses where a cell reads the
@@ -540,7 +564,7 @@ impl<'a> TestsReach<'a> {
         state: &ScoredState,
         by_id: &FxHashMap<&FragmentId, &'a Fragment>,
         link: &Link,
-    ) -> Vec<TestLink> {
+    ) -> (Vec<TestLink>, bool) {
         let direct = |f: &Fragment, via: Option<&String>| -> Vec<TestLink> {
             self.direct(f, link)
                 .into_iter()
@@ -560,11 +584,32 @@ impl<'a> TestsReach<'a> {
                 })
                 .collect()
         };
+        // A user the walk leaves unwalked: one that is no test, or a test the list
+        // does not name.
+        let leaves = |f: &'a Fragment, found: &[TestLink]| -> bool {
+            let up = self.up(f, state, link);
+            let named = |path: &str, name: Option<&str>| {
+                found
+                    .iter()
+                    .any(|t| t.path == path && t.name.as_deref() == name)
+            };
+            up.fragments.iter().any(|u| {
+                !self.is_test(u) || !named(u.path(), u.symbol_name.as_deref().map(base_symbol))
+            }) || up
+                .test
+                .is_some_and(|(path, name)| !named(&path, name.as_deref()))
+        };
         let mut doctests = doctested(caller, None);
         let mut found = direct(caller, None);
         if !found.is_empty() {
+            // A caller that is itself the test it found has no tests above it to miss.
+            let itself = found.iter().any(|t| {
+                t.path == caller.path()
+                    && t.name.as_deref() == caller.symbol_name.as_deref().map(base_symbol)
+            });
+            let nearest = !itself && (self.hedged(caller) || leaves(caller, &found));
             found.extend(doctests);
-            return found;
+            return (found, nearest);
         }
         // A chunk of a long definition (`Output[35]`) is reached by what
         // reaches the definition: the graph's edges end at the whole.
@@ -611,12 +656,16 @@ impl<'a> TestsReach<'a> {
                 }
             }
             if !found.is_empty() {
+                let nearest = frontier.iter().any(|f| self.hedged(f))
+                    || next
+                        .iter()
+                        .any(|u| !self.is_test(u) && (self.hedged(u) || leaves(u, &found)));
                 found.extend(doctests);
-                return found;
+                return (found, nearest);
             }
             frontier = next;
         }
-        doctests
+        (doctests, !frontier.is_empty())
     }
 
     /// Whether the search for a test of `caller`, a caller of `core`, is open: the
@@ -658,20 +707,23 @@ impl<'a> TestsReach<'a> {
         if let Some(&known) = self.stops.borrow().get(&f.id) {
             return known;
         }
-        let name = f.symbol_name.as_deref().map(base_symbol);
-        let hedged = || {
-            (self.cell_of(f).zip(name)).is_some_and(|((cell, shown), name)| {
-                cell.define(shown, name, (f.start_line(), f.end_line()))
-                    .iter()
-                    .any(|changed| cell.hedged(changed))
-            })
-        };
         let stops = self.is_test(f)
             || !self.direct(f, link).is_empty()
             || self.entered_by(&self.doctests, f).next().is_some()
-            || hedged();
+            || self.hedged(f);
         self.stops.borrow_mut().insert(f.id.clone(), stops);
         stops
+    }
+
+    /// Whether the occurrence account of `f` holds a hedge: some use of it is
+    /// unresolved, a dispatch, or an operator or protocol call nothing names.
+    fn hedged(&self, f: &Fragment) -> bool {
+        let name = f.symbol_name.as_deref().map(base_symbol);
+        (self.cell_of(f).zip(name)).is_some_and(|((cell, shown), name)| {
+            cell.define(shown, name, (f.start_line(), f.end_line()))
+                .iter()
+                .any(|changed| cell.hedged(changed))
+        })
     }
 
     /// Whether a test could reach `f` unnamed: the uses above it hold a test past
