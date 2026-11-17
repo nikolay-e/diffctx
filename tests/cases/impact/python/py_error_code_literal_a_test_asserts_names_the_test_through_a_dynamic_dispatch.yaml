@@ -84,6 +84,10 @@ expect:
   - app/ledger.py::check_event
   not_untested:
   - check_event
+  partial:
+    app/ledger.py::check_event:
+      calls: unaccounted
+      reads: unaccounted
   decoys:
     app/ledger.py::check_event:
     - tests/test_fields.py
