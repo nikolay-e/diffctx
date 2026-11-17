@@ -28,4 +28,8 @@ repo:
   commit_message: "pets: a cat has seven lives"
 expect:
   relations:
-    - {from: "shop/build.py", to: "shop/pets.py::Cat", kind: passes_as_value, resolution: resolved, site: 9}
+    - from: "shop/build.py::default_kind"
+      to: "shop/pets.py::Cat"
+      kind: passes_as_value
+      resolution: resolved
+      site: 8
