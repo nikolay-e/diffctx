@@ -1759,8 +1759,8 @@ impl UntracedNamers {
     ) {
         let mut spelled = self.literal_spellings(sym, def, verdict);
         let word = literal_base(&def.name);
+        let own = crate::vocabulary::family::Group::of_name(&sym.path);
         if searched_as_text(word) {
-            let own = crate::vocabulary::family::Group::of_name(&sym.path);
             let named = |p: &str| spelled.iter().chain(&sym.missed_in).any(|f| f.path == p);
             let fresh: Vec<UnanalysedFile> = self
                 .named_in(word, |p| unaccounted_reader(p, own))
@@ -1769,7 +1769,7 @@ impl UntracedNamers {
                 .map(|(path, line)| UnanalysedFile::new(path, "not_traced", vec![line]))
                 .collect();
             spelled.extend(fresh);
-        } else {
+        } else if self.unread.could_spell(own) {
             sym.coverage = (sym.coverage.clone()).with(Some(decide::Gap::NameUnsearched));
         }
         Self::disclose(sym, spelled);
