@@ -1,0 +1,65 @@
+name: config_helm_values_file_no_release_names_is_no_chart_s_as_resolved
+mode: impact
+source: synthetic
+issue_state: closed
+tags:
+- config
+- helm
+- values
+- reads
+- release
+repo:
+  initial_files:
+    chart/Chart.yaml: |
+      apiVersion: v2
+      name: demo
+      version: 0.1.0
+    other/Chart.yaml: |
+      apiVersion: v2
+      name: demo
+      version: 0.1.0
+    envs/values-prod.yaml: |
+      image:
+        tag: "2"
+    chart/templates/deploy.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: demo
+      spec:
+        template:
+          spec:
+            containers:
+              - name: app
+                image: "app:{{ .Values.image.tag }}"
+    other/templates/deploy.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: demo
+      spec:
+        template:
+          spec:
+            containers:
+              - name: app
+                image: "app:{{ .Values.image.tag }}"
+  changed_files:
+    envs/values-prod.yaml: |
+      image:
+        tag: "3"
+  commit_message: Change config helm values file no release names is no chart s as resolved
+expect:
+  changed:
+  - envs/values-prod.yaml::image
+  - envs/values-prod.yaml::image.tag
+  exact: true
+  discloses: true
+  no_negative_claims: true
+  partial:
+    # No release in the repository gives the file to a chart: either chart may be given it.
+    envs/values-prod.yaml::image:
+      calls: context_unbound
+      reads: [context_unbound, unlanded]
+    envs/values-prod.yaml::image.tag:
+      calls: context_unbound
+      reads: [context_unbound, unlanded]
