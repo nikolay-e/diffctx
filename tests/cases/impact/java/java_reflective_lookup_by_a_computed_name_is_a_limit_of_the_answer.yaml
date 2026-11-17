@@ -1,0 +1,68 @@
+name: java_reflective_lookup_by_a_computed_name_is_a_limit_of_the_answer
+mode: impact
+source: synthetic
+tags: [java, reflection, dynamic-name, coverage]
+repo:
+  initial_files:
+    src/main/java/shop/Lib.java: |
+      package shop;
+
+      public class Lib {
+          public void viaThing() {
+              System.out.println(1);
+          }
+
+          public int viaField;
+      }
+    src/main/java/shop/Spare.java: |
+      package shop;
+
+      public class Spare {
+          public int keep() {
+              return 1;
+          }
+      }
+    src/main/java/shop/Boot.java: |
+      package shop;
+
+      import java.lang.reflect.Method;
+
+      public class Boot {
+          Object run(String suffix) throws Exception {
+              Method method = Lib.class.getMethod("via" + suffix);
+              return method;
+          }
+
+          Object field(String key) throws Exception {
+              return Lib.class.getDeclaredField(key);
+          }
+      }
+  changed_files:
+    src/main/java/shop/Lib.java: |
+      package shop;
+
+      public class Lib {
+          public void viaThing() {
+              System.out.println(2);
+          }
+
+          public int viaField;
+      }
+    src/main/java/shop/Spare.java: |
+      package shop;
+
+      public class Spare {
+          public int keep() {
+              return 2;
+          }
+      }
+  commit_message: "lib and spare: bump"
+expect:
+  exact: false
+  discloses: true
+  partial:
+    src/main/java/shop/Lib.java::viaThing:
+      calls: not_traced
+      reads: not_traced
+  untested:
+    - src/main/java/shop/Spare.java::keep

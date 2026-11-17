@@ -1,0 +1,193 @@
+name: java_jackson_getter_of_a_serialized_class_is_entered_by_jackson
+mode: impact
+source: synthetic
+tags: [java, jackson, entry-point, serialization]
+repo:
+  initial_files:
+    src/main/java/shop/UserController.java: |
+      package shop;
+
+      import java.util.List;
+      import org.springframework.http.ResponseEntity;
+      import org.springframework.web.bind.annotation.GetMapping;
+      import org.springframework.web.bind.annotation.RestController;
+
+      @RestController
+      public class UserController {
+          @GetMapping("/users")
+          public ResponseEntity<List<UserDto>> users() {
+              return null;
+          }
+      }
+    src/main/java/shop/PageController.java: |
+      package shop;
+
+      import java.util.Optional;
+      import org.springframework.stereotype.Controller;
+      import org.springframework.web.bind.annotation.RequestMapping;
+      import org.springframework.web.bind.annotation.ResponseBody;
+
+      @Controller
+      public class PageController {
+          @ResponseBody
+          @RequestMapping("/banner")
+          public Optional<Banner> banner() {
+              return Optional.empty();
+          }
+      }
+    src/main/java/shop/ViewController.java: |
+      package shop;
+
+      import org.springframework.stereotype.Controller;
+      import org.springframework.web.bind.annotation.GetMapping;
+
+      @Controller
+      public class ViewController {
+          @GetMapping("/view")
+          public ViewModel view() {
+              return null;
+          }
+      }
+    src/main/java/shop/UserDto.java: |
+      package shop;
+
+      public class UserDto {
+          private String name;
+          private boolean active;
+
+          public String getName() {
+              return name;
+          }
+
+          public boolean isActive() {
+              return active;
+          }
+
+          public String describe() {
+              return name;
+          }
+
+          public String getTag(String prefix) {
+              return prefix + name;
+          }
+
+          public void getNothing() {
+              name = null;
+          }
+      }
+    src/main/java/shop/Banner.java: |
+      package shop;
+
+      public class Banner {
+          public String getText() {
+              return "hello";
+          }
+      }
+    src/main/java/shop/ViewModel.java: |
+      package shop;
+
+      public class ViewModel {
+          public String getTitle() {
+              return "t";
+          }
+      }
+    src/main/java/shop/Plain.java: |
+      package shop;
+
+      public class Plain {
+          public String getName() {
+              return "p";
+          }
+      }
+    src/main/java/shop/AuditEntry.java: |
+      package shop;
+
+      import com.fasterxml.jackson.annotation.JsonProperty;
+
+      public class AuditEntry {
+          @JsonProperty("raw")
+          private String raw;
+
+          public String getLabel() {
+              return raw;
+          }
+      }
+  changed_files:
+    src/main/java/shop/UserDto.java: |
+      package shop;
+
+      public class UserDto {
+          private String name;
+          private boolean active;
+
+          public String getName() {
+              return name + "";
+          }
+
+          public boolean isActive() {
+              return !!active;
+          }
+
+          public String describe() {
+              return name + "";
+          }
+
+          public String getTag(String prefix) {
+              return prefix + name + "";
+          }
+
+          public void getNothing() {
+              name = "";
+          }
+      }
+    src/main/java/shop/Banner.java: |
+      package shop;
+
+      public class Banner {
+          public String getText() {
+              return "hello!";
+          }
+      }
+    src/main/java/shop/ViewModel.java: |
+      package shop;
+
+      public class ViewModel {
+          public String getTitle() {
+              return "t!";
+          }
+      }
+    src/main/java/shop/Plain.java: |
+      package shop;
+
+      public class Plain {
+          public String getName() {
+              return "p!";
+          }
+      }
+    src/main/java/shop/AuditEntry.java: |
+      package shop;
+
+      import com.fasterxml.jackson.annotation.JsonProperty;
+
+      public class AuditEntry {
+          @JsonProperty("raw")
+          private String raw;
+
+          public String getLabel() {
+              return raw + "";
+          }
+      }
+  commit_message: "dto: getters return a copy"
+expect:
+  exact: false
+  entry_not_tested:
+    - src/main/java/shop/UserDto.java::getName
+    - src/main/java/shop/UserDto.java::isActive
+    - src/main/java/shop/Banner.java::getText
+    - src/main/java/shop/AuditEntry.java::getLabel
+  untested:
+    - src/main/java/shop/UserDto.java::describe
+    - src/main/java/shop/UserDto.java::getTag
+    - src/main/java/shop/UserDto.java::getNothing
+    - src/main/java/shop/ViewModel.java::getTitle
+    - src/main/java/shop/Plain.java::getName
