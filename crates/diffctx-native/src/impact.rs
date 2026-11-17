@@ -1485,6 +1485,9 @@ struct UnreadFiles {
     text: FxHashSet<Option<crate::vocabulary::family::Group>>,
     /// The groups of the code no cell reads.
     code: FxHashSet<Option<crate::vocabulary::family::Group>>,
+    /// The files of the groups whose cell leaves a region of a file unread (a C macro
+    /// body, a PHP template, a shell command word), by group.
+    hiding: FxHashMap<crate::vocabulary::family::Group, Vec<String>>,
 }
 
 impl UnreadFiles {
@@ -1514,16 +1517,34 @@ impl UnreadFiles {
                     .code
                     .insert(crate::vocabulary::family::Group::of_name(path));
             }
+            if let Some(group) =
+                crate::vocabulary::family::Group::of_name(path).filter(hides_a_region)
+            {
+                unread.hiding.entry(group).or_default().push(path.clone());
+            }
         }
         unread
     }
 
     /// Whether a file this definition's cell did not read could spell its name: one of
-    /// its own group is read by its cell, so only a file of another group counts.
-    fn could_spell(&self, own: Option<crate::vocabulary::family::Group>) -> bool {
+    /// its own group is read by its cell, so only a file of another group counts, or a
+    /// sibling of `path` in a group whose cell leaves a region of a file unread.
+    fn could_spell(&self, own: Option<crate::vocabulary::family::Group>, path: &str) -> bool {
         self.text.iter().any(|group| own.is_none() || *group != own)
             || self.code.iter().any(|group| *group != own)
+            || own
+                .and_then(|group| self.hiding.get(&group))
+                .is_some_and(|files| files.iter().any(|f| f != path))
     }
+}
+
+/// A group whose cell reads a file's definitions and calls but not all of its text.
+fn hides_a_region(group: &crate::vocabulary::family::Group) -> bool {
+    use crate::vocabulary::family::{Family, Group};
+    matches!(
+        group,
+        Group::Native | Group::Family(Family::C | Family::Php | Family::Shell)
+    )
 }
 
 /// A manifest or a file of variables: a config reader parses its keys and pointers,
@@ -1773,7 +1794,7 @@ impl UntracedNamers {
                 .map(|(path, line)| UnanalysedFile::new(path, "not_traced", vec![line]))
                 .collect();
             spelled.extend(fresh);
-        } else if self.unread.could_spell(own) {
+        } else if self.unread.could_spell(own, &sym.path) {
             sym.coverage = (sym.coverage.clone()).with(Some(decide::Gap::NameUnsearched));
         }
         Self::disclose(sym, spelled);
@@ -1858,7 +1879,8 @@ impl UntracedNamers {
                 files: named.len(),
             }));
             sym.missed_in.extend(named);
-        } else if !searched_as_text(literal_base(name)) && (quoted || self.unread.could_spell(own))
+        } else if !searched_as_text(literal_base(name))
+            && (quoted || self.unread.could_spell(own, &sym.path))
         {
             sym.coverage = sym.coverage.clone().with(Some(decide::Gap::NameUnsearched));
         }
@@ -4648,12 +4670,10 @@ pub fn build_impact(
             && callable_by_name(core.path())
             && spelled_name(core).is_some_and(|n| !searched_as_text(n))
             && (verdict.as_ref().is_some_and(decide::Verdict::names_quoted)
-                || untraced
-                    .unread
-                    .could_spell(crate::vocabulary::family::Group::of_name(&rel(
-                        state,
-                        core.path(),
-                    ))));
+                || untraced.unread.could_spell(
+                    crate::vocabulary::family::Group::of_name(&rel(state, core.path())),
+                    &rel(state, core.path()),
+                ));
         let coverage = search_coverage(verdict.as_ref(), unresolved.as_ref(), outside)
             .with(unsearched.then_some(decide::Gap::NameUnsearched));
         // No test found is an absence only from a closed search: the callers
