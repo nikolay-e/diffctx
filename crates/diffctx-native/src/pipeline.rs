@@ -918,6 +918,62 @@ fn scope_chain(scope: &crate::facts::Scope) -> (Vec<&str>, Vec<&crate::facts::Sc
     }
 }
 
+/// The lines in the body a local sits in that spell its name in code where the
+/// extractor states no use of it, no declaration and no other binding of the
+/// name (`name.attr`, `nonlocal name`, a spelling no fact stands on): each may be
+/// a use the answer does not list.
+fn unplaced_spellings(
+    blob: &crate::facts::BlobFacts,
+    text: &str,
+    name: &str,
+    enclosing: &crate::facts::Scope,
+) -> Vec<u32> {
+    use crate::facts::{Fact, Scope};
+    let mut home = enclosing;
+    while let Scope::Callback { parent, .. } = home {
+        home = parent;
+    }
+    let body = match home {
+        Scope::Def(key) => blob
+            .defs()
+            .find(|d| d.local == *key)
+            .map(|d| d.span.bytes.clone()),
+        _ => Some(0..text.len() as u32),
+    };
+    let Some(body) = body else {
+        return Vec::new();
+    };
+    let stated: Vec<std::ops::Range<u32>> = blob
+        .facts
+        .iter()
+        .filter_map(|fact| match fact {
+            Fact::Reference(r) if r.name.as_str() == name => Some(r.site.bytes.clone()),
+            Fact::LocalBinding(l) if l.name.as_str() == name => Some(l.site.bytes.clone()),
+            Fact::Definition(d) if d.local.name.as_str() == name => Some(d.name_span.bytes.clone()),
+            _ => None,
+        })
+        .collect();
+    let bytes = text.as_bytes();
+    let joins =
+        |byte: u8| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'$') || byte >= 0x80;
+    let mut lines: Vec<u32> = Vec::new();
+    let mut from = body.start as usize;
+    let end = (body.end as usize).min(bytes.len());
+    while let Some(at) = text.get(from..end).and_then(|rest| rest.find(name)) {
+        let start = from + at;
+        let stop = start + name.len();
+        from = stop;
+        let alone = (start == 0 || !joins(bytes[start - 1]))
+            && bytes.get(stop).is_none_or(|byte| !joins(*byte));
+        let at = start as u32;
+        if alone && blob.lexical_at(at).is_none() && !stated.iter().any(|site| site.contains(&at)) {
+            lines.push(1 + text[..start].matches('\n').count() as u32);
+        }
+    }
+    lines.dedup();
+    lines
+}
+
 /// Every definition that `name` is a local of (a nested function, class or
 /// closure that never leaves it), with each use of the name inside that
 /// definition: the answer to a `--symbol` no definition has. A use is a plain
@@ -1019,12 +1075,14 @@ fn local_uses(
                 });
             }
             uses.sort_by_key(|u| u.line);
+            let unplaced = unplaced_spellings(&blob, &text, name, &local.enclosing);
             found.push(crate::impact::LocalOf {
                 path: display.clone(),
                 name: name.to_string(),
                 enclosing,
                 line: local.site.lines.0,
                 uses,
+                unplaced,
                 lossy: !blob.losses.is_empty(),
             });
         }
