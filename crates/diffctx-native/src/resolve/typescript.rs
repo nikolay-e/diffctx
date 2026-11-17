@@ -2146,25 +2146,37 @@ impl<'a> Engine<'a> {
         if callee.name.as_str() == "create"
             && matches!(callee.qualifier.as_slice(), [object] if object.as_str() == "Object")
         {
-            return self.prototype_object(f, fact, text.get(open + 1..end - 1)?);
+            return self.prototype_object(f, text.get(open + 1..end - 1)?, open + 1);
         }
         self.callee_result(f, callee, awaited, depth)
     }
 
     /// `Object.create(proto)` makes an object with the members of `proto`, when its
-    /// one argument is a name bound to an object of the repository.
+    /// one argument, written from byte `start`, is a name bound to an object of the
+    /// repository.
     fn prototype_object(
         &self,
         f: usize,
-        fact: usize,
         argument: &[u8],
+        start: usize,
     ) -> Option<(Entity, EvidenceKind)> {
-        let Fact::Reference(proto) = self.ix.files[f].facts.blob.facts.get(fact + 2)? else {
-            return None;
-        };
-        if !proto.qualifier.is_empty() || argument.trim_ascii() != proto.name.as_str().as_bytes() {
-            return None;
-        }
+        let written = argument.trim_ascii();
+        let proto = self.ix.files[f]
+            .facts
+            .blob
+            .facts
+            .iter()
+            .find_map(|fact| match fact {
+                Fact::Reference(r)
+                    if r.qualifier.is_empty()
+                        && r.name.as_str().as_bytes() == written
+                        && (start..start + argument.len())
+                            .contains(&(r.site.bytes.start as usize)) =>
+                {
+                    Some(r)
+                }
+                _ => None,
+            })?;
         match self.lookup_name(f, &proto.enclosing, &proto.name, false)? {
             Named::Hit(Hit {
                 entity: entity @ Entity::Def(_),
