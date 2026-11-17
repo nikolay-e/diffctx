@@ -138,8 +138,6 @@ impact/config/config_renamed_gitlab_job_is_named_by_the_needs_of_another_file  #
 impact/config/config_renamed_ini_section_is_named_by_the_command_that_selects_its_suffix  # an ini header `[prefix:suffix]` is searched whole, never by the suffix the command line names
 impact/config/config_renamed_package_export_is_named_by_the_importer_of_its_subpath  # an exports subpath `./legacy` is searched whole, never as the `lib/legacy` an importer spells
 impact/config/config_renamed_workflow_is_named_by_the_workflow_that_runs_after_it  # the old workflow name is dropped from the text search when it is a stopword
-impact/config/config_renamed_ini_section_of_a_tool_is_no_name_a_ci_key_could_spell  # the suffix of any ini header is searched as a name, so `[coverage:run]` names a CI `run:` key
-impact/config/config_renamed_nested_compose_key_is_no_service_name_a_script_could_spell  # any mapping key of a removed line is searched as a name, a nested `db:` environment key included
 impact/config/config_shared_gradle_block_says_its_reach_is_not_analysed  # gh#516 open
 impact/web/web_astro_component_import_is_a_consumer  # gh#597 open
 impact/web/web_removed_css_rule_is_still_used_by_markup  # gh#631 open
@@ -259,5 +257,25 @@ symbol/java/java_symbol_class_method_inherited_by_an_implementer_is_a_candidate_
 impact/java/java_public_class_method_an_outside_subclass_could_reach_through_an_interface_is_hedged  # a public extensible class method no one calls is answered complete although an outside subclass may implement the interface
 impact/java/java_package_private_class_method_a_same_package_subclass_could_reach_is_hedged  # same for a package-private class and interface of one package
 impact/java/java_method_a_public_subclass_inherits_is_hedged_against_an_outside_implementer  # same for a method a public subclass inherits from a package-private class
-symbol/java/java_symbol_method_of_a_final_class_is_complete_beside_its_extensible_twin  # the extensible twin is answered complete although an outside subclass may implement the interface
-symbol/java/java_symbol_package_private_method_of_another_package_is_complete_beside_its_colluding_twin  # the colluding twin is answered complete although a same-package subclass may implement the interface
+impact/c/go_cgo_call_of_a_changed_c_function_is_named  # a Go cgo call of a changed C function is no relation of the answer: it says nothing calls it
+impact/cpp/cpp_conversion_operators_beside_another_changed_member_are_rows  # a C++ conversion operator is no definition: the answer names only the member beside it
+impact/cpp/cpp_out_of_line_conversion_operator_beside_another_changed_member_is_a_row  # an out-of-line C++ conversion operator is no definition: the answer names only the member beside it
+impact/java/java_method_of_a_one_line_class_keeps_its_caller_and_test_link  # a method of a class written on one line loses its caller and its test link
+impact/java/java_receiver_typed_by_a_supertype_of_a_class_names_that_class  # a call on a receiver typed by a supertype of the class is no candidate of the class's method
+impact/kotlin/kotlin_method_of_a_one_line_class_keeps_its_caller_and_test_link  # a method of a class written on one line loses its caller and its test link
+impact/kotlin/kotlin_receiver_typed_any_that_no_walk_narrows_still_names_the_class  # a call on a receiver typed Any that no walk narrows is no candidate of the project class
+impact/kotlin/kotlin_receiver_typed_by_a_supertype_of_a_class_names_that_class  # a call on a receiver typed by a supertype of the class is no candidate of the class's method
+impact/kotlin/kotlin_smart_cast_receiver_declared_any_reaches_the_narrowed_class  # a smart cast narrows no receiver: the caller and its test link are lost
+impact/kotlin/kotlin_smart_cast_to_another_class_does_not_reach_the_changed_one  # a smart cast to another class is read as the changed class: a caller the case keeps out is named
+impact/python/py_doctest_in_a_readme_block_reaches_the_function_it_imports  # a doctest in a README block reaches no function: no static test link
+impact/python/py_doctest_in_a_rst_document_reaches_the_function_it_imports  # a doctest in an rst document reaches no function: no static test link
+impact/python/py_doctest_in_another_modules_docstring_reaches_the_function_it_imports  # a doctest in another module's docstring reaches no function: no static test link
+impact/python/py_doctest_prose_line_in_a_docstring_is_no_import  # a prose line in a docstring is read as a doctest import
+impact/python/py_doctest_relative_import_in_a_module_reaches_the_function  # a relative import in a doctest binds no function: no static test link
+impact/typescript/js_object_created_from_an_expression_is_no_literal_receiver  # an Object.create argument that is an expression is read as a literal receiver
+impact/typescript/ts_ava_files_names_the_check_file_as_a_test  # an ava test file outside the usual names is no test: no static test link
+impact/typescript/ts_jasmine_spec_files_names_the_check_file_as_a_test  # a jasmine spec file outside the usual names is no test: no static test link
+impact/typescript/ts_karma_files_names_only_the_file_that_holds_tests  # a karma-loaded test file is no test: no static test link
+impact/typescript/ts_workspace_member_import_without_a_declared_dependency_is_a_caller  # a workspace member imported without a declared dependency is no caller
+symbol/java/java_symbol_method_of_a_one_line_class_is_a_definition  # a method of a class written on one line is no definition
+symbol/kotlin/kotlin_symbol_method_of_a_one_line_class_is_a_definition  # a method of a class written on one line is no definition
