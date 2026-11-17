@@ -54,5 +54,10 @@ expect:
       kind: calls
       resolution: resolved
       site: 6
+    - from: "src/create.ts"
+      to: "src/request.ts::normalizeArguments"
+      kind: reads
+      resolution: resolved
+      site: 3
   decoys:
     src/request.ts::normalizeArguments: [src/legacy.ts::run]
