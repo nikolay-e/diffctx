@@ -12,6 +12,8 @@ repo:
               return 1
           }
       }
+    src/main/kotlin/com/acme/lib/Other.kt: |
+      package com.acme.lib
 
       class Other {
           fun load(): Int = 7
@@ -46,10 +48,6 @@ repo:
           fun load(): Int {
               return 2
           }
-      }
-
-      class Other {
-          fun load(): Int = 7
       }
   commit_message: "Repo.load returns 2"
 expect:
