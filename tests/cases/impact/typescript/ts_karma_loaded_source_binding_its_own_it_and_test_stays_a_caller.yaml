@@ -1,0 +1,55 @@
+name: ts_karma_loaded_source_binding_its_own_it_and_test_stays_a_caller
+mode: impact
+source: synthetic
+tags:
+- typescript
+- tests-reach
+- karma-config
+repo:
+  initial_files:
+    karma.conf.js: |
+      module.exports = (config) => config.set({ files: ["src/**/*.ts"] });
+    src/format.ts: |
+      export function shout(s: string): string {
+        return s.toUpperCase();
+      }
+    src/first.ts: |
+      import { shout } from "./format";
+
+      export function firstLoud(items: string[]): string {
+        const it = items[Symbol.iterator]();
+        return shout(it.next().value);
+      }
+    src/own.ts: |
+      import { shout } from "./format";
+
+      function test(value: string): string {
+        return shout(value);
+      }
+
+      export const run = (value: string) => test(value);
+    libs/core/test/other.test.ts: |
+      test("s", () => expect(1).toBe(1));
+  changed_files:
+    src/format.ts: |
+      export function shout(s: string): string {
+        return s.toLocaleUpperCase();
+      }
+  commit_message: change shout
+expect:
+  changed:
+  - src/format.ts::shout
+  exact: false
+  relations:
+  - from: src/first.ts::firstLoud
+    to: src/format.ts::shout
+    kind: calls
+    resolution: resolved
+    site: 5
+  - from: src/own.ts::test
+    to: src/format.ts::shout
+    kind: calls
+    resolution: resolved
+    site: 4
+  untested:
+  - shout
