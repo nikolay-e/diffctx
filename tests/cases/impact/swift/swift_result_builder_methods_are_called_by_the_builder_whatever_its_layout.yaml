@@ -44,3 +44,8 @@ expect:
     - Sources/Lib/Builders.swift::buildOptional
   discloses: true
   no_negative_claims: true
+  partial:
+    Sources/Lib/Builders.swift::buildBlock:
+      calls: not_traced
+    Sources/Lib/Builders.swift::buildOptional:
+      calls: not_traced
