@@ -1164,16 +1164,20 @@ impl<'w> Engine<'w> {
             return found;
         }
         let mut ids: Vec<usize> = Vec::new();
+        let mut unseen = false;
         for (class, _) in self.implicit(f, scope) {
             let rec = &self.ix.defs[class];
             let mut inside = rec.def.local.container.clone();
             inside.push(rec.def.local.name.clone());
             for written in &rec.sig.extensions {
-                if let Ent::Instance(extension) =
-                    self.type_ent(rec.file, &inside, &Name::new(written.as_str()))
-                {
-                    let statics = self.members_of(extension, &r.name, true, 0);
-                    ids.extend(statics.into_iter().flat_map(|(ids, _)| ids));
+                match self.type_ent(rec.file, &inside, &Name::new(written.as_str())) {
+                    Ent::Instance(extension) => {
+                        let statics = self.members_of(extension, &r.name, true, 0);
+                        ids.extend(statics.into_iter().flat_map(|(ids, _)| ids));
+                    }
+                    // The repository declares the class, but this file cannot see it.
+                    Ent::Unknown => unseen = true,
+                    _ => {}
                 }
             }
         }
@@ -1185,6 +1189,7 @@ impl<'w> Engine<'w> {
                 relation_for(r.use_kind, self.ix.defs[ids[0]].def.kind),
                 self.resolved_or_candidates(&ids, EvidenceKind::ImportedName),
             ),
+            _ if unseen => (found.0, unresolved(UnresolvedReason::NoBinding)),
             _ => found,
         }
     }
