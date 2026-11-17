@@ -7715,3 +7715,46 @@ fn a_deleted_file_named_through_a_symlinked_directory_is_stale() {
         .collect();
     assert_eq!(stale, ["d.md"], "{doc:#}");
 }
+
+fn limits_of(doc: &serde_json::Value) -> Vec<String> {
+    doc["coverage"]["limits"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|l| l.as_str().map(str::to_string))
+        .collect()
+}
+
+/// A search that keeps a bounded number of lines per file drops callers silently
+/// when one file calls many removed definitions: thirty removed functions of a
+/// language no model reads, one file naming all of them, twenty answered and ten
+/// gone with the coverage complete.
+#[test]
+fn a_file_naming_more_removed_definitions_than_the_cap_is_never_dropped_silently() {
+    const REMOVED: usize = 30;
+    let tmp = TempDir::new().expect("tempdir");
+    let repo = tmp.path();
+    init_repo(repo);
+    let defs: String = (0..REMOVED)
+        .map(|i| format!("def fn_{i:03}\n  {i}\nend\n\n"))
+        .collect();
+    let uses: String = (0..REMOVED)
+        .map(|i| format!("def user_{i:03}\n  fn_{i:03}\nend\n\n"))
+        .collect();
+    write(repo, "lib/old.rb", &defs);
+    write(repo, "app/use.rb", &uses);
+    commit_all(repo, "init");
+    git(repo, &["rm", "-q", "lib/old.rb"]);
+    commit_all(repo, "remove the library");
+    let doc = impact(repo, "HEAD~1..HEAD");
+    let named = doc["definitions"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|d| d.to_string().contains("app/use.rb"))
+        .count();
+    assert!(
+        named == REMOVED || limits_of(&doc).contains(&"candidate_limit".to_string()),
+        "{named} of {REMOVED} removed definitions answered with their consumer, no limit said: {doc:#}"
+    );
+}
