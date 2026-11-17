@@ -46,6 +46,8 @@ pub struct Index {
     overriders: HashMap<DefKey, Vec<DefKey>>,
     /// The bindings of a use that spells no name (`$o->$m()`).
     unnamed: Vec<usize>,
+    /// The values keys a release gives a chart, as far as a read of the chart lands on them.
+    released: HashSet<DefKey>,
     manifests_whole: bool,
 }
 
@@ -79,6 +81,7 @@ impl Index {
             bases: HashMap::new(),
             overriders: HashMap::new(),
             unnamed: Vec::new(),
+            released: HashSet::new(),
             manifests_whole,
         };
         for def in definitions.iter().filter(|def| {
@@ -101,6 +104,11 @@ impl Index {
                 .entry((file.clone(), bytes.start, bytes.end))
                 .or_default()
                 .push(at);
+            if let Resolution::Resolved { target, .. } = &binding.resolution {
+                if target.language == Language::HelmValues {
+                    index.released.insert(target.clone());
+                }
+            }
             let (Scope::Def(local), Resolution::Resolved { target, .. }) =
                 (&binding.from, &binding.resolution)
             else {
@@ -708,6 +716,13 @@ impl<'a> Reading<'a> {
             UnresolvedReason::NoBinding if self.unloaded() => {
                 Claim::not_ours(relation, Witness::Builtin(self.file.path.clone()))
             }
+            // A values file a release gives a chart is that chart's: another's read of it is none.
+            UnresolvedReason::NoMatch
+                if self.file.language() == Language::HelmTemplate
+                    && self.view.index.released.contains(&self.subject.key) =>
+            {
+                Claim::not_ours(relation, Witness::OtherProject(self.subject.file.clone()))
+            }
             UnresolvedReason::NoMember
             | UnresolvedReason::NoBinding
             | UnresolvedReason::UntypedRead
@@ -802,20 +817,29 @@ impl<'a> Reading<'a> {
             .or_else(|| self.command_argument(occurrence))
             .or_else(|| self.statement_name(occurrence))
             .or_else(|| self.foreign_text(occurrence))
+            .or_else(|| self.template_text(occurrence))
             .or_else(|| self.keyword_name(occurrence))
         {
             return Claim::not_ours(None, witness);
         }
-        let wide = self.view.in_file(&occurrence.file).find(|binding| {
+        let mut wides = self.view.in_file(&occurrence.file).filter(|binding| {
             let site = &binding.site.bytes;
             site.start <= bytes.start
                 && bytes.end <= site.end
                 && same(binding.name.as_str(), spelled, self.case)
         });
+        let wide = wides.next();
         self.renamed(occurrence, spelled, wide).unwrap_or_else(|| {
             wide.map_or_else(
                 || Claim::candidate(None, Reason::Unexplained),
-                |binding| self.held(binding, spelled),
+                |first| {
+                    // Bindings of one site and name are one use bound to several definitions.
+                    let held = std::iter::once(first)
+                        .chain(wides.filter(|binding| binding.site == first.site))
+                        .map(|binding| self.held(binding, spelled))
+                        .collect();
+                    settle(held)
+                },
             )
         })
     }
@@ -826,7 +850,8 @@ impl<'a> Reading<'a> {
     fn held(&self, binding: &Binding, spelled: &[u8]) -> Claim {
         let claim = self.claim(binding, spelled);
         match claim.outcome {
-            Outcome::Ours | Outcome::NotOurs(Witness::OtherDefinition(_))
+            Outcome::Ours
+            | Outcome::NotOurs(Witness::OtherDefinition(_) | Witness::OtherProject(_))
                 if !matches!(binding.relation, Relation::Imports | Relation::Reexports) =>
             {
                 claim
@@ -1335,6 +1360,16 @@ impl<'a> Reading<'a> {
             && !word.starts_with(b"-")
             && !word.contains(&b'$'))
         .then(|| Witness::Statement(Name::new(keyword)))
+    }
+
+    /// The text of a Helm template outside its actions is the manifest's: values are read inside.
+    fn template_text(&self, occurrence: &Occurrence) -> Option<Witness> {
+        let before = &self.text[..occurrence.bytes.start as usize];
+        let last = |delimiter: &[u8; 2]| before.windows(2).rposition(|pair| pair == delimiter);
+        (self.file.language() == Language::HelmTemplate
+            && self.subject.key.language == Language::HelmValues
+            && last(b"{{") <= last(b"}}"))
+        .then(|| Witness::Statement(Name::new("manifest")))
     }
 
     /// Whether the subject is a member of a class, and `at` is not in the class body. A
