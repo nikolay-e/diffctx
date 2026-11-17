@@ -330,6 +330,17 @@ pub struct ComputedImport {
     pub kind: ImportKind,
 }
 
+/// A string literal in a position PHP hands a callable by name: the value of an
+/// array element or of a `const`, the right side of an assignment — never an
+/// operand of a comparison or a subscript. Whether the string names a function
+/// is for whoever reads the name.
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+pub struct CallableString {
+    pub site: Span,
+    pub enclosing: Scope,
+    pub text: String,
+}
+
 /// A repository path written in code (`sys.path.insert`, a `join` of literals).
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub struct PathMention {
@@ -394,6 +405,8 @@ pub enum Fact {
     ConfigRelease(Release),
     /// A file a shell script sources or a script it runs, by the path it spells.
     ShellPath(ShellPath),
+    /// A string literal where PHP holds a callable by name.
+    CallableString(CallableString),
     /// A `terraform` block's `backend` or `cloud` block: the module keeps a state
     /// of its own, so it is applied as a root.
     StateBackend {
@@ -424,6 +437,7 @@ impl Fact {
             Self::ConfigUse(used) => &used.site,
             Self::ConfigRelease(release) => &release.site,
             Self::ShellPath(path) => &path.site,
+            Self::CallableString(held) => &held.site,
             Self::StateBackend { site } => site,
         }
     }
@@ -448,6 +462,7 @@ impl Fact {
             Self::ConfigRelease(_) => 14,
             Self::ShellPath(_) => 15,
             Self::StateBackend { .. } => 16,
+            Self::CallableString(_) => 17,
         }
     }
 }

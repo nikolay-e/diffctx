@@ -6,6 +6,7 @@
 use std::path::Path;
 
 use super::ScoredState;
+use crate::decide::Cells;
 
 /// The terms of one line of a config: its key-shaped words and its value phrases.
 pub(super) fn terms(line: &str) -> Vec<String> {
@@ -589,24 +590,6 @@ fn labeled(before: &str) -> bool {
     rest.ends_with(['(', ','])
 }
 
-/// Whether `before`, the text ahead of a string in PHP, puts it where a callable
-/// is held: an array value (`'callback' => 'fn'`), an element of an array literal
-/// (`['fn']`), the value of a constant or an assignment (`const H = 'fn'`,
-/// `$cb = 'fn'`). A comparison (`==`, `!=`) and an index (`$a['k']`) are not.
-fn php_callable_position(before: &str) -> bool {
-    let before = before.trim_end();
-    if before.ends_with("=>") {
-        return true;
-    }
-    if let Some(open) = before.strip_suffix('[') {
-        let open = open.trim_end();
-        return open.ends_with(['=', '(', ',']) || open.ends_with("return");
-    }
-    before
-        .strip_suffix('=')
-        .is_some_and(|rest| !rest.ends_with(['=', '!', '<', '>', '.', '+', '-', '*', '/', '?']))
-}
-
 /// Whether `text`, a docblock line, names `name` as a PHPUnit data provider:
 /// `@dataProvider provide`, `@dataProvider Calc::cases`.
 fn data_provider_named(text: &str, name: &str) -> bool {
@@ -616,7 +599,7 @@ fn data_provider_named(text: &str, name: &str) -> bool {
 }
 
 /// Whether `text` spells `name` as a literal in a file read as `reading`.
-fn spells_literally(text: &str, name: &str, reading: Reading) -> bool {
+fn spells_literally(text: &str, name: &str, reading: Reading, held: &[String]) -> bool {
     let spans = quoted_spans(text);
     let sql = name.chars().any(|c| c == '_' || c.is_ascii_digit());
     text.match_indices(name).any(|(at, _)| {
@@ -646,7 +629,7 @@ fn spells_literally(text: &str, name: &str, reading: Reading) -> bool {
             // a line of its own, a mapping's, an assignment's. `"a.f(x)"` is prose.
             let value =
                 qualified && tail.is_empty() && matches!(lead, None | Some('{' | ':' | '='));
-            let php_placed = reading.php && php_callable_position(&text[..from - 1]);
+            let php_placed = held.iter().any(|h| h == inside);
             let indexed = !qualified && indexed_call(text, from, to);
             let placed = (reading.values
                 || indexed
@@ -799,6 +782,7 @@ impl LiteralNames {
     /// no reader parses.
     pub(super) fn build(
         state: &ScoredState,
+        cells: &Cells,
         diff_range: Option<&str>,
         names: &[&str],
         own: &[OwnSpan],
@@ -887,11 +871,17 @@ impl LiteralNames {
                             file == path && own_name == name && (*from..=*to).contains(line)
                         })
                     };
+                    let held = match reading {
+                        Some(r) if r.php && shape == Shape::Literal => cells
+                            .of(path)
+                            .map_or_else(Vec::new, |cell| cell.callable_strings_at(path, *line)),
+                        _ => Vec::new(),
+                    };
                     let hit = |name: &str| match (shape, reading, language) {
                         (Shape::Call, ..) => call_name(name) && called(text, name),
                         (Shape::Literal, Some(reading), _) => {
                             literal_name(name)
-                                && (spells_literally(text, name, reading)
+                                && (spells_literally(text, name, reading, &held)
                                     || (reading.php && data_provider_named(text, name)))
                         }
                         (Shape::Argument, _, Some(language)) => {
