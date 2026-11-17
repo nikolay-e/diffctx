@@ -1041,7 +1041,7 @@
           ]
         },
         "also": {
-          "description": "The other tests that reach the caller at the same fewest hops: the first\nof each test file, then the rest, in path then name order, three tests in all.",
+          "description": "The other tests that reach the caller at the same fewest hops: the first\nof each test file, then the rest, a test the change touches first, three\ntests in all.",
           "type": "array",
           "items": {
             "$ref": "#/$defs/GuardTest"
