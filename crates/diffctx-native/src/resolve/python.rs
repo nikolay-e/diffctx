@@ -277,6 +277,13 @@ impl<'a> Engine<'a> {
     fn reference(&self, f: usize, r: &Ref, out: &mut Vec<Binding>) {
         let file = &self.ix.files[f];
         let outcome = self.outcome(f, r, 0);
+        let built = match &outcome {
+            Outcome::Found {
+                entity: Entity::Class(class),
+                ..
+            } => Some(*class),
+            _ => None,
+        };
         let (relation, resolution) = self.finish(f, r.use_kind, outcome);
         let guarded = file
             .guards
@@ -292,6 +299,43 @@ impl<'a> Engine<'a> {
             entry_guard: guarded,
         };
         out.push(binding(&r.name, relation, resolution));
+        // A class built or handed on that has no `__init__` of its own runs the
+        // one of the base that has it.
+        if matches!(relation, Relation::Instantiates | Relation::PassesAsValue) {
+            let owner = built
+                .and_then(|class| self.constructor_owner(class))
+                .filter(|owner| self.reachable(f, *owner));
+            if let Some(owner) = owner {
+                out.push(binding(
+                    &r.name,
+                    relation,
+                    Resolution::Resolved {
+                        target: self.ix.defs[owner].key.clone(),
+                        evidence: Evidence::new(EvidenceKind::Inherited),
+                    },
+                ));
+            }
+        }
+        // `cls(..)` of a classmethod and `self.__class__(..)` build the class
+        // or any subclass of it.
+        if let Some(class) = self.runtime_class(f, r) {
+            let subclasses: Vec<DefKey> = self
+                .subclasses_of(class)
+                .into_iter()
+                .filter(|sub| self.reachable(f, *sub))
+                .map(|sub| self.ix.defs[sub].key.clone())
+                .collect();
+            if !subclasses.is_empty() {
+                out.push(binding(
+                    &r.name,
+                    Relation::Instantiates,
+                    Resolution::Candidate {
+                        targets: subclasses,
+                        reason: CandidateReason::Dispatch,
+                    },
+                ));
+            }
+        }
         // A read or a call through `self` inside a class body is found on the
         // class or its bases, and may as well run in any subclass that replaces
         // the member: the subclass definition has a possible reader.
@@ -352,6 +396,47 @@ impl<'a> Engine<'a> {
         found.sort_unstable();
         found.dedup();
         found
+    }
+
+    /// The class whose constructor runs when `class` is built without one of its
+    /// own: the first base, in the order a member is looked up, that has an
+    /// `__init__`.
+    fn constructor_owner(&self, class: usize) -> Option<usize> {
+        let (found, _) = self.class_members(class, &Name::new("__init__"), false);
+        let init = &self.ix.defs[self.ix.primary(&found)?];
+        let holder = self
+            .ix
+            .owner(init.file, &init.path[..init.path.len() - 1])?;
+        (holder != class).then_some(holder)
+    }
+
+    /// The class a call of `cls` in a classmethod, or of `self.__class__`, builds
+    /// at run time: the enclosing class or a subclass of it.
+    fn runtime_class(&self, f: usize, r: &Ref) -> Option<usize> {
+        if r.use_kind != UseKind::Call {
+            return None;
+        }
+        let scope = scope_path(&r.enclosing);
+        let (receiver, class) = self.receiver_name(f, &scope)?;
+        let method = (1..=scope.len()).rev().find_map(|depth| {
+            self.ix
+                .owner(f, &scope[..depth])
+                .filter(|id| self.ix.defs[*id].def.kind != DefKind::Class)
+        })?;
+        let classmethod = self.ix.defs[method]
+            .def
+            .decorators
+            .iter()
+            .any(|d| d.as_str() == "classmethod");
+        let by_cls = classmethod
+            && r.qualifier.is_empty()
+            && matches!(r.receiver, Receiver::None)
+            && r.name == receiver;
+        let by_self = !classmethod
+            && r.name.as_str() == "__class__"
+            && r.qualifier.len() == 1
+            && r.qualifier[0] == receiver;
+        (by_cls || by_self).then_some(class)
     }
 
     /// Every class of the repository that has `class` among its ancestors.
@@ -499,6 +584,12 @@ impl<'a> Engine<'a> {
     }
 
     fn outcome(&self, f: usize, r: &Ref, depth: usize) -> Outcome {
+        if let Some(class) = self.runtime_class(f, r) {
+            return Outcome::Found {
+                entity: Entity::Class(class),
+                evidence: Evidence::new(EvidenceKind::SelfReceiver),
+            };
+        }
         let scope = scope_path(&r.enclosing);
         if r.qualifier.is_empty() && matches!(r.receiver, Receiver::None) {
             if self.is_local(f, &scope, &r.name) {
