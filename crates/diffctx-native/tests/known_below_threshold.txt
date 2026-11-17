@@ -207,3 +207,6 @@ impact/php/php_callable_string_in_a_multi_line_array_names_the_function  # an el
 impact/go/go_exported_function_called_from_c_is_named  # a `//export`ed Go function the C file calls by name is answered as called by nothing
 impact/go/go_function_called_only_from_assembly_is_named  # `CALL ·Helper(SB)` in a `.s` file is no caller and no named file: the answer says nothing calls the function
 impact/go/go_plugin_lookup_through_a_const_names_the_file  # a name held in a `const` and looked up in the package is not a literal the search reads
+impact/swift/swift_hash_into_of_a_hashable_type_is_called_by_a_set_of_it  # `hash(into:)` is not in the Swift protocol row: a Set or a dictionary key calls it and the answer says nothing calls it
+impact/swift/swift_pattern_match_operator_is_called_by_a_case_pattern  # `~=` is not in the Swift operator row: a case pattern calls it and the answer says nothing calls it
+impact/swift/swift_result_builder_methods_are_called_by_the_builder_whatever_its_layout  # a result builder method is "registered by" only when its struct is not written on one line; the table names no builder method
