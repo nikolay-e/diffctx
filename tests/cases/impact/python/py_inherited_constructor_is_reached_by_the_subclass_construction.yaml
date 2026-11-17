@@ -1,0 +1,56 @@
+name: py_inherited_constructor_is_reached_by_the_subclass_construction
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [python, oracle, init-reach, inheritance, decoy]
+repo:
+  initial_files:
+    zoo/__init__.py: ""
+    zoo/animal.py: |
+      class Animal:
+          def __init__(self, name):
+              self.name = name
+    zoo/dog.py: |
+      from zoo.animal import Animal
+
+
+      class Dog(Animal):
+          def bark(self):
+              return "woof"
+
+
+      def adopt():
+          return Dog("rex")
+    zoo/fish.py: |
+      from zoo.animal import Animal
+
+
+      class Fish(Animal):
+          def __init__(self):
+              super().__init__("fish")
+
+
+      def breed():
+          return Fish()
+    zoo/notes.py: |
+      from zoo.animal import Animal
+
+
+      def describe(animal: Animal):
+          return animal.name
+  changed_files:
+    zoo/animal.py: |
+      class Animal:
+          def __init__(self, name):
+              self.name = name.title()
+  commit_message: "animal: names are titled"
+expect:
+  relations:
+    - from: "zoo/dog.py::adopt"
+      to: "zoo/animal.py::Animal"
+      kind: instantiates
+      resolution: resolved
+      site: 10
+    - {from: "zoo/fish.py::__init__", to: "zoo/animal.py::Animal", kind: calls, resolution: resolved, site: 6}
+  decoys:
+    zoo/animal.py::Animal: [zoo/notes.py]

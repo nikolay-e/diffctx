@@ -1,0 +1,58 @@
+name: py_class_method_building_cls_possibly_reaches_a_subclass_constructor
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [python, oracle, init-reach, classmethod, runtime-class]
+repo:
+  initial_files:
+    shapes/__init__.py: ""
+    shapes/shape.py: |
+      class Shape:
+          def __init__(self, size):
+              self.size = size
+
+          @classmethod
+          def unit(cls):
+              return cls(1)
+
+          def clone(self):
+              return self.__class__(self.size)
+
+
+      class Square(Shape):
+          def __init__(self, size):
+              self.side = size
+    shapes/use.py: |
+      from shapes.shape import Square
+
+      square = Square.unit()
+  changed_files:
+    shapes/shape.py: |
+      class Shape:
+          def __init__(self, size):
+              self.size = size
+
+          @classmethod
+          def unit(cls):
+              return cls(1)
+
+          def clone(self):
+              return self.__class__(self.size)
+
+
+      class Square(Shape):
+          def __init__(self, size):
+              self.side = int(size)
+  commit_message: "square: sides are ints"
+expect:
+  relations:
+    - from: "shapes/shape.py::unit"
+      to: "shapes/shape.py::Square"
+      kind: instantiates
+      resolution: candidate
+      site: 7
+    - from: "shapes/shape.py::clone"
+      to: "shapes/shape.py::Square"
+      kind: instantiates
+      resolution: candidate
+      site: 10

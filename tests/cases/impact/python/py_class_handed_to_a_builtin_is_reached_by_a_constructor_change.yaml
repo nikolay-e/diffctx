@@ -1,0 +1,31 @@
+name: py_class_handed_to_a_builtin_is_reached_by_a_constructor_change
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [python, oracle, init-reach, passes-as-value, builtin-callback]
+repo:
+  initial_files:
+    geometry/__init__.py: ""
+    geometry/point.py: |
+      class Point:
+          def __init__(self, x):
+              self.x = x
+    geometry/load.py: |
+      from geometry.point import Point
+
+
+      def load(raw):
+          return list(map(Point, raw))
+  changed_files:
+    geometry/point.py: |
+      class Point:
+          def __init__(self, x):
+              self.x = float(x)
+  commit_message: "point: coordinates are floats"
+expect:
+  relations:
+    - from: "geometry/load.py::load"
+      to: "geometry/point.py::Point"
+      kind: passes_as_value
+      resolution: resolved
+      site: 5

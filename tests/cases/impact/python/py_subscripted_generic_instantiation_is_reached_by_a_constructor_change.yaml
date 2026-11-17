@@ -1,0 +1,41 @@
+name: py_subscripted_generic_instantiation_is_reached_by_a_constructor_change
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [python, oracle, init-reach, generic-alias]
+repo:
+  initial_files:
+    containers/__init__.py: ""
+    containers/box.py: |
+      from typing import Generic, TypeVar
+
+      T = TypeVar("T")
+
+
+      class Box(Generic[T]):
+          def __init__(self):
+              self.items = []
+    containers/make.py: |
+      from containers.box import Box
+
+
+      def make():
+          return Box[int]()
+  changed_files:
+    containers/box.py: |
+      from typing import Generic, TypeVar
+
+      T = TypeVar("T")
+
+
+      class Box(Generic[T]):
+          def __init__(self):
+              self.items = {}
+  commit_message: "box: items are a mapping"
+expect:
+  relations:
+    - from: "containers/make.py::make"
+      to: "containers/box.py::Box"
+      kind: instantiates
+      resolution: resolved
+      site: 5
