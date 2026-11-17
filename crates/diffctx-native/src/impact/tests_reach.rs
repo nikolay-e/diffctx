@@ -730,7 +730,12 @@ impl<'a> TestsReach<'a> {
     /// the hop bound or a use that stops the search (`f` too when `own`: a caller
     /// no test names), or the run stopped. An absence needs a closed search.
     pub(super) fn open_above(&self, f: &'a Fragment, link: &Link, own: bool) -> bool {
-        (own && self.stops(f, link)) || self.reaches_open(f, link)
+        (own && self.stops(f, link))
+            || self
+                .runs
+                .iter()
+                .any(|run| run.enters(f) && run.tests.is_empty())
+            || self.reaches_open(f, link)
     }
 
     /// The search above `f`, once per fragment: a closed search closes everything it
