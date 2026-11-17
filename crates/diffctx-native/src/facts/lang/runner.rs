@@ -1,6 +1,9 @@
 //! The calls that hand a string to a shell, read from what a file imports.
 
-use crate::facts::{Fact, Name, Star};
+use tree_sitter::Node;
+
+use super::span;
+use crate::facts::{Fact, HeldAs, HeldString, Name, Scope, Star};
 
 const NODE_RUNNERS: &[&str] = &[
     "exec",
@@ -16,6 +19,41 @@ const NODE_RUNNERS: &[&str] = &[
 pub(super) fn command_text(words: &[String]) -> String {
     let code = words.iter().position(|w| w == "-c").map_or(0, |at| at + 1);
     words[code..].join(" ")
+}
+
+/// `exec.Command("bash", "-c", "f x")` in Go: the literal words are a command.
+pub(super) fn go_command(
+    bytes: &[u8],
+    function: Node<'_>,
+    arguments: &[Node<'_>],
+    scope: &Scope,
+) -> Option<Fact> {
+    let text = |node: Node<'_>| node.utf8_text(bytes).unwrap_or("");
+    let runner = function.kind() == "selector_expression"
+        && function
+            .child_by_field_name("operand")
+            .is_some_and(|operand| text(operand) == "exec")
+        && function
+            .child_by_field_name("field")
+            .is_some_and(|field| matches!(text(field), "Command" | "CommandContext"));
+    let words: Vec<String> = arguments
+        .iter()
+        .filter(|a| {
+            matches!(
+                a.kind(),
+                "interpreted_string_literal" | "raw_string_literal"
+            )
+        })
+        .map(|a| text(*a).trim_matches(['"', '`']).to_string())
+        .collect();
+    (runner && !words.is_empty()).then(|| {
+        Fact::HeldString(HeldString {
+            site: span(function),
+            enclosing: scope.clone(),
+            text: command_text(&words),
+            held: HeldAs::Command,
+        })
+    })
 }
 
 fn child_process(module: &str) -> bool {
