@@ -1702,6 +1702,7 @@ fn unaccounted_rows(verdict: &decide::Verdict, own: &str) -> Vec<UnanalysedFile>
                     file,
                     line,
                     reason: Reason::Embedded,
+                    ..
                 } => (file, "embedded_code", vec![*line]),
                 Hedge::Unread { file, loss } => match decide::effect_of(loss) {
                     // A file a use stands in is listed as that use, and its loss stays

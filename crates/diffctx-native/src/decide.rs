@@ -29,6 +29,7 @@
 
 use std::cell::{OnceCell, RefCell};
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use std::ops::Range;
 use std::path::Path;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -445,7 +446,9 @@ fn hedge_gaps(relation: Relation, hedges: &[Hedge], dispatched: bool) -> Vec<Gap
     );
     for hedge in hedges {
         let gap = match hedge {
-            Hedge::Candidate { file, line, reason } => {
+            Hedge::Candidate {
+                file, line, reason, ..
+            } => {
                 let via = match (*reason, reads) {
                     (OccurrenceReason::Embedded, _) => Via::Embedded,
                     (OccurrenceReason::Unresolved(UnresolvedReason::NoBinding), true) => {
@@ -462,7 +465,7 @@ fn hedge_gaps(relation: Relation, hedges: &[Hedge], dispatched: bool) -> Vec<Gap
                 });
                 continue;
             }
-            Hedge::TooCommon { occurrences } => {
+            Hedge::TooCommon { occurrences } | Hedge::Unlisted { occurrences } => {
                 common += occurrences;
                 continue;
             }
@@ -716,6 +719,8 @@ pub enum Standing {
 pub struct Use {
     pub file: String,
     pub line: u32,
+    /// The bytes of the name at the line, in the file as the resolver read it.
+    pub site: Range<u32>,
     pub relation: Relation,
     pub standing: Standing,
     pub scope: Scope,
@@ -2618,6 +2623,7 @@ impl Cell {
             also_changed: self.in_diff(&file, line, &b.from),
             file,
             line,
+            site: b.site.bytes.clone(),
             relation: b.relation,
             standing,
             scope: b.from.clone(),
@@ -2966,6 +2972,7 @@ impl Cell {
                 also_changed: false,
                 file: b.file.as_str().to_string(),
                 line: b.site.lines.0,
+                site: b.site.bytes.clone(),
                 relation: b.relation,
                 standing,
                 scope: b.from.clone(),
@@ -3196,22 +3203,45 @@ impl Cell {
             gaps.push(gap);
         }
         let found = self.occurrences(changed, &gaps);
-        // A relation a resolved use stands on at a line is settled there: another
-        // occurrence of the name on it (a keyword argument's name, the second
-        // spelling of a shorthand) is no second standing of the same site. A value
-        // the use hands on (returned, collected) still hedges the calls it leaves.
-        let settled: HashSet<(&str, u32, Relation)> = uses
+        // A resolved use settles the occurrences of its own site: the name inside its
+        // span, or one no binding names beside it (a keyword argument's name, the
+        // second spelling of a shorthand). A candidate in a span of its own is
+        // another use that no binding settles, on a line already listed: counted,
+        // never listed again. A value the use hands on (returned, collected) still
+        // hedges the calls it leaves.
+        let resolved: Vec<&Use> = uses
             .iter()
             .chain(&found.callers)
             .filter(|u| u.standing == Standing::Resolved)
-            .map(|u| (u.file.as_str(), u.line, u.relation))
             .collect();
         let hedges: Vec<(Relation, Hedge)> = (found.hedges.iter())
-            .filter(|(relation, hedge)| {
-                !matches!(hedge, Hedge::Candidate { file, line, .. }
-                    if settled.contains(&(file.as_str(), *line, *relation)))
+            .filter_map(|(relation, hedge)| {
+                let Hedge::Candidate {
+                    file,
+                    line,
+                    bytes,
+                    reason,
+                } = hedge
+                else {
+                    return Some((*relation, hedge.clone()));
+                };
+                let beside: Vec<&&Use> = (resolved.iter())
+                    .filter(|u| {
+                        u.file == file.as_str() && u.line == *line && u.relation == *relation
+                    })
+                    .collect();
+                let own_site = matches!(
+                    reason,
+                    OccurrenceReason::Unexplained | OccurrenceReason::WideBinding
+                ) || beside
+                    .iter()
+                    .any(|u| u.site.start < bytes.end && bytes.start < u.site.end);
+                if beside.is_empty() {
+                    Some((*relation, hedge.clone()))
+                } else {
+                    (!own_site).then_some((*relation, Hedge::Unlisted { occurrences: 1 }))
+                }
             })
-            .cloned()
             .collect();
         let by_relation = USES.map(|relation| {
             let own: Vec<Hedge> = (hedges.iter())
