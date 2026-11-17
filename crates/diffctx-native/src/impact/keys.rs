@@ -662,7 +662,10 @@ fn spells_literally(text: &str, name: &str, reading: Reading) -> bool {
         text.match_indices(head).any(|(at, _)| {
             let rest = &text[at + head.len()..];
             !text[..at].chars().next_back().is_some_and(word_char)
-                && ["$", "%s", "#{", "{"].iter().any(|m| rest.starts_with(m))
+                && (["$", "%s", "#{", "{"].iter().any(|m| rest.starts_with(m))
+                    || rest
+                        .strip_prefix(['"', '\'', '`'])
+                        .is_some_and(|after| after.trim_start().starts_with('+')))
         })
     })
 }
@@ -709,7 +712,7 @@ fn literal_pattern(names: &[&str]) -> String {
         }
     }
     if !heads.is_empty() {
-        forms.push(format!(r#"({heads})(\$|%s|#\{{|\{{)"#));
+        forms.push(format!(r#"({heads})(\$|%s|#\{{|\{{|["'`][[:space:]]*\+)"#));
     }
     forms.join("|")
 }
