@@ -437,6 +437,7 @@ struct Engine<'w> {
     side: SideTag,
     texts: RefCell<HashMap<usize, Option<Bytes>>>,
     supers: RefCell<HashMap<usize, Rc<Vec<Super>>>>,
+    direct_subtypes: RefCell<Option<Rc<HashMap<usize, Vec<usize>>>>>,
     losses: RefCell<Vec<Loss>>,
 }
 
@@ -454,6 +455,7 @@ impl<'w> Engine<'w> {
             side,
             texts: RefCell::default(),
             supers: RefCell::default(),
+            direct_subtypes: RefCell::default(),
             losses: RefCell::default(),
         }
     }
@@ -1315,9 +1317,11 @@ impl<'w> Engine<'w> {
         (relation, self.candidates(&all, CandidateReason::Dispatch))
     }
 
-    /// The methods of the member's name and arity in a type below the one the
-    /// call is made through: each may run in place of it. A `private`, `static`
-    /// or `final` member is never replaced.
+    /// The methods of the member's name and arity that may run in place of it when
+    /// the call goes through `class`: those of a type below it, and those a type
+    /// below it inherits from a class that is no subtype of it (a class method wins
+    /// over an interface default). A `private`, `static` or `final` member is never
+    /// replaced.
     fn implementations(&self, class: usize, member: usize) -> Vec<usize> {
         let rec = &self.ix.defs[member];
         if rec.def.kind != DefKind::Method
@@ -1331,23 +1335,74 @@ impl<'w> Engine<'w> {
         let Some(named) = self.ix.members.get(&rec.def.local.name) else {
             return Vec::new();
         };
-        named
+        let arity = rec.sig.params.map(|p| p.0);
+        let fits = |id: usize| {
+            let other = &self.ix.defs[id];
+            other.def.kind == DefKind::Method
+                && !other.sig.has("static")
+                && other.sig.params.map(|p| p.0) == arity
+        };
+        let mut found: Vec<usize> = named
             .iter()
             .copied()
             .filter(|id| *id != member)
             .filter(|id| {
-                let other = &self.ix.defs[*id];
                 let Some(owner) = self.holder_of(*id) else {
                     return false;
                 };
-                other.def.kind == DefKind::Method
-                    && !other.sig.has("static")
-                    && other.sig.params.map(|p| p.0) == rec.sig.params.map(|p| p.0)
+                fits(*id)
                     && owner != class
                     && self.is_subtype(owner, class, 0)
                     && holder.is_none_or(|h| h != owner)
             })
-            .collect()
+            .collect();
+        for sub in self.descendants(class) {
+            let Some((inherited, true)) = self.members_of(sub, &rec.def.local.name, false, 0)
+            else {
+                continue;
+            };
+            for id in inherited {
+                let from_outside = self
+                    .holder_of(id)
+                    .is_some_and(|owner| !self.is_subtype(owner, class, 0));
+                if fits(id) && from_outside && !found.contains(&id) {
+                    found.push(id);
+                }
+            }
+        }
+        found
+    }
+
+    /// The types that inherit from `class`, directly or not.
+    fn descendants(&self, class: usize) -> Vec<usize> {
+        let known = self.direct_subtypes.borrow().clone();
+        let direct = known.unwrap_or_else(|| {
+            let mut subs: HashMap<usize, Vec<usize>> = HashMap::new();
+            for (id, rec) in self.ix.defs.iter().enumerate() {
+                if !is_type(rec.def.kind) {
+                    continue;
+                }
+                for sup in self.supers_of(id).iter() {
+                    if let Super::Repo(held) = sup {
+                        subs.entry(*held).or_default().push(id);
+                    }
+                }
+            }
+            let built = Rc::new(subs);
+            *self.direct_subtypes.borrow_mut() = Some(Rc::clone(&built));
+            built
+        });
+        let mut found: Vec<usize> = Vec::new();
+        let mut pending = vec![class];
+        while let Some(next) = pending.pop() {
+            for sub in direct.get(&next).into_iter().flatten() {
+                if *sub != class && !found.contains(sub) {
+                    found.push(*sub);
+                    pending.push(*sub);
+                }
+            }
+        }
+        found
     }
 
     /// A call or read through a receiver nothing types: the methods of that name
