@@ -1,0 +1,21 @@
+name: js_module_exports_named_function_is_a_definition_its_require_calls
+mode: symbol
+source: synthetic
+issue_state: open
+tags: [javascript, commonjs, module-exports]
+repo:
+  initial_files:
+    modules/M7.js: |
+      module.exports = function foo(x) {
+          return x + 1;
+      };
+    modules/Main.js: |
+      const foo = require('./M7.js');
+
+      foo(1);
+query:
+  symbol: foo
+expect:
+  definitions: [modules/M7.js::foo]
+  relations:
+    - {from: modules/Main.js, to: modules/M7.js::foo, kind: calls, resolution: resolved, site: 3}

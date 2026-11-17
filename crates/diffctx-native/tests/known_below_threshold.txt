@@ -245,3 +245,15 @@ impact/python/py_method_a_library_wrapper_closes_by_name_is_not_called_dead  # `
 impact/python/py_property_a_format_field_reads_is_not_called_dead  # a property read by a `{.name}` format field is reported as changed with nothing calling it
 symbol/python/py_super_init_call_in_a_subclass_constructor_is_a_caller_of_the_base_constructor  # symbol of a constructor lists the class header only: the super().__init__() call is missing
 symbol/typescript/js_super_call_in_a_subclass_constructor_is_a_caller_of_the_base_constructor  # symbol of a constructor lists the class header only: the super(x) call is missing
+impact/typescript/js_module_exports_named_function_is_called_by_its_require  # a `require` of `module.exports = function foo` is a module reference, not a call of `foo`: the answer says nothing calls it
+impact/typescript/js_module_exports_named_function_is_called_by_a_require_without_extension  # same through a require without the extension: no row names the importer
+symbol/typescript/js_module_exports_named_function_is_a_definition_its_require_calls  # `module.exports = function foo` is no definition of `foo` for the symbol query
+impact/typescript/js_object_created_from_a_literal_calls_the_literal_method  # `Object.create(obj)` types no receiver: the literal's method is answered with no caller
+symbol/typescript/js_object_created_from_a_literal_calls_the_literal_method  # same, symbol mode
+impact/java/java_class_method_inherited_by_an_implementer_is_called_through_the_interface  # a class method an implementer inherits is no implementation of the interface method the call goes through
+symbol/java/java_symbol_class_method_inherited_by_an_implementer_is_a_candidate_of_the_interface_call  # the interface default is a resolved callee of the call; the inherited class method has no caller
+impact/java/java_public_class_method_an_outside_subclass_could_reach_through_an_interface_is_hedged  # a public extensible class method no one calls is answered complete although an outside subclass may implement the interface
+impact/java/java_package_private_class_method_a_same_package_subclass_could_reach_is_hedged  # same for a package-private class and interface of one package
+impact/java/java_method_a_public_subclass_inherits_is_hedged_against_an_outside_implementer  # same for a method a public subclass inherits from a package-private class
+symbol/java/java_symbol_method_of_a_final_class_is_complete_beside_its_extensible_twin  # the extensible twin is answered complete although an outside subclass may implement the interface
+symbol/java/java_symbol_package_private_method_of_another_package_is_complete_beside_its_colluding_twin  # the colluding twin is answered complete although a same-package subclass may implement the interface
