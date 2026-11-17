@@ -1600,6 +1600,13 @@ fn spelled_name(core: &Fragment) -> Option<&str> {
         .filter(|name| !name.is_empty())
 }
 
+/// Whether `text` names `word` the way Go assembly names a Go function: `·word(SB)`. A plain
+/// word (`Helper`) is a name there and prose anywhere else.
+fn assembly_symbol(text: &str, word: &str) -> bool {
+    text.match_indices(word)
+        .any(|(at, _)| text[..at].ends_with('·') && text[at + word.len()..].starts_with(['(', '<']))
+}
+
 fn module_stem(path: &str) -> Option<&str> {
     Path::new(path)
         .file_stem()
@@ -1639,6 +1646,13 @@ impl UntracedNamers {
             .filter(|w| searched_as_text(w))
             .chain(cores.iter().filter_map(|c| module_stem(c.path())))
             .map(str::to_string)
+            .chain(
+                cores
+                    .iter()
+                    .filter(|c| extension(c.path()) == "go")
+                    .filter_map(|c| spelled_name(c))
+                    .map(str::to_string),
+            )
             .collect();
         needles.sort();
         needles.dedup();
@@ -1664,9 +1678,11 @@ impl UntracedNamers {
             }
             let mut seen: FxHashSet<&str> = FxHashSet::default();
             for word in text.split(|c: char| !(c.is_alphanumeric() || c == '_')) {
-                // A plain word in a JSON file is a label or a value, no reader of a name.
+                // A plain word in a JSON file is a label or a value, no reader of a name;
+                // a plain Go name is a name only in assembly (`·Helper(SB)`).
                 if wanted.contains(word)
                     && (extension(path) != "json" || distinctive(word))
+                    && (searched_as_text(word) || assembly_symbol(text, word))
                     && seen.insert(word)
                 {
                     rows.entry(word.to_string())
@@ -4407,12 +4423,12 @@ pub fn build_impact(
             .chain(left())
             .flat_map(|n| untraced.literal_files(n))
             .map(|file| (file, true));
-        // The linker exports a non-static C function: another language that
-        // loads the library names it by its bare name.
+        // The linker exports a non-static C function, and cgo a `//export`ed Go one:
+        // another language that loads the library names it by its bare name.
         let linked = py.is_some_and(|def| {
             cells
                 .of(&def.file)
-                .is_some_and(|cell| cell.exported_c_function_at(&def.file, &def.name, def.lines))
+                .is_some_and(|cell| cell.linked_by_name_at(&def.file, &def.name, def.lines))
         });
         let named = untraced
             .of(state, core, left(), linked)

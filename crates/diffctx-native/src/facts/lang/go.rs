@@ -31,6 +31,7 @@
 //!   struct literal is a `Write` of that field on `T`. A name handed to a call
 //!   as an argument is a `PassAsValue`; a name elsewhere a `Read`; the target of
 //!   an assignment, `++` or `--` a `Write`; a name in a type position a `TypeUse`.
+//! - A function the comment `//export name` above it gives to C carries the decorator `export`.
 //! - A `//go:linkname local path/pkg.name` directive is a `Call` of `name` with
 //!   `Receiver::Module` of the import path, sited at the directive.
 //! - A function literal that is an argument of a call is a `Scope::Callback`
@@ -129,6 +130,17 @@ fn is_read(kind: &str) -> bool {
             | "const_declaration"
             | "var_declaration"
     )
+}
+
+/// The `export` decorator of a function a `//export name` comment above it hands to C by
+/// that name (cgo).
+fn exported_by(docs: &[&str], kind: DefKind, name: &str) -> Vec<Name> {
+    let exported = kind == DefKind::Function
+        && docs.iter().any(|d| {
+            d.strip_prefix("//export ")
+                .is_some_and(|n| n.trim() == name)
+        });
+    exported.then(|| Name::new("export")).into_iter().collect()
 }
 
 /// The line ranges the parse could not read, merged. An error node among a
@@ -446,7 +458,7 @@ impl<'t> Walker<'t> {
             span: span(span_node),
             name_span: span(name_node),
             signature: Some(signature),
-            decorators: Vec::new(),
+            decorators: exported_by(docs, kind, name),
             visibility: Self::visibility(name),
             body_hash,
             text_hash: hash_outside(self.bytes, span_node, members),
