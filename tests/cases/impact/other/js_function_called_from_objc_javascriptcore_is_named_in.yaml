@@ -1,0 +1,28 @@
+name: js_function_called_from_objc_javascriptcore_is_named_in
+mode: impact
+source: synthetic
+tags: [other, objc, javascriptcore, ffi, word-scan, false-absence]
+repo:
+  initial_files:
+    web/u.js: |
+      function formatCents(c) {
+        return String(c);
+      }
+    app/Bridge.m: |
+      #import <JavaScriptCore/JavaScriptCore.h>
+
+      void format(JSContext *c) {
+        [c[@"formatCents"] callWithArguments:@[@1]];
+      }
+  changed_files:
+    web/u.js: |
+      function formatCents(c) {
+        return String(c) + "$";
+      }
+  commit_message: "web: formatCents appends the currency sign"
+expect:
+  exact: false
+  discloses: true
+  no_negative_claims: true
+  relations:
+    - {from: app/Bridge.m, to: web/u.js::formatCents, kind: calls, resolution: unresolved}
