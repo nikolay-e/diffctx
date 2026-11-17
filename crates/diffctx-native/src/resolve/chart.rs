@@ -177,13 +177,13 @@ pub(super) fn bind(files: &[FileFacts], paths: &HashSet<&str>) -> Bound {
             let Fact::ConfigUse(used) = fact else {
                 continue;
             };
-            let mut push = |relation: Relation, resolution: Resolution| {
+            let mut push = |name: &str, relation: Relation, resolution: Resolution| {
                 bindings.push(Binding {
                     file: file.path.clone(),
                     site: used.site.clone(),
                     from: used.enclosing.clone(),
                     relation,
-                    name: Name::new(used.name.clone()),
+                    name: Name::new(name),
                     resolution,
                     entry_guard: false,
                 });
@@ -193,38 +193,46 @@ pub(super) fn bind(files: &[FileFacts], paths: &HashSet<&str>) -> Bound {
                     let Some(chart) = chart_of(path, &chart_dirs) else {
                         continue;
                     };
-                    let mut landed = false;
-                    for source in released.get(chart).into_iter().flatten() {
-                        if let Some(key) = by_file_path.get(&(*source, used.name.clone())) {
-                            landed = true;
-                            push(
-                                Relation::Reads,
-                                Resolution::Resolved {
-                                    target: (*key).clone(),
-                                    evidence: Evidence::new(EvidenceKind::SameScope),
-                                },
-                            );
-                        }
-                    }
-                    let nearest = ancestry(&used.name)
-                        .find_map(|prefix| defaults.get(&(chart, prefix.to_string())));
-                    if let Some(key) = nearest {
-                        landed = true;
-                        push(
-                            Relation::Reads,
-                            Resolution::Candidate {
+                    let given = released.get(chart).map_or(&[][..], Vec::as_slice);
+                    let reach = |name: &str| {
+                        let mut found: Vec<Resolution> = given
+                            .iter()
+                            .filter_map(|source| by_file_path.get(&(*source, name.to_string())))
+                            .map(|key| Resolution::Resolved {
+                                target: (*key).clone(),
+                                evidence: Evidence::new(EvidenceKind::SameScope),
+                            })
+                            .collect();
+                        let nearest = ancestry(name)
+                            .find_map(|prefix| defaults.get(&(chart, prefix.to_string())));
+                        if let Some(key) = nearest {
+                            found.push(Resolution::Candidate {
                                 targets: vec![(*key).clone()],
                                 reason: CandidateReason::NoRelease,
-                            },
-                        );
-                    }
-                    if !landed {
-                        push(
-                            Relation::Reads,
-                            Resolution::Unresolved {
+                            });
+                        }
+                        if found.is_empty() {
+                            found.push(Resolution::Unresolved {
                                 reason: UnresolvedReason::NoMatch,
-                            },
-                        );
+                            });
+                        }
+                        found
+                    };
+                    for resolution in reach(&used.name) {
+                        push(&used.name, Relation::Reads, resolution);
+                    }
+                    // Each key of the path is spelled by itself in the action: `image` and `tag`
+                    // of `.Values.image.tag` read the key and the keys above it.
+                    let mut end = 0;
+                    for segment in used.name.split('.') {
+                        end += segment.len();
+                        let prefix = &used.name[..end];
+                        end += 1;
+                        if prefix != used.name || used.name.contains('.') {
+                            for resolution in reach(prefix) {
+                                push(segment, Relation::Reads, resolution);
+                            }
+                        }
                     }
                 }
                 UseOf::Include => {
@@ -246,7 +254,7 @@ pub(super) fn bind(files: &[FileFacts], paths: &HashSet<&str>) -> Bound {
                             reason: CandidateReason::Overloaded,
                         },
                     };
-                    push(Relation::Calls, resolution);
+                    push(&used.name, Relation::Calls, resolution);
                 }
             }
         }

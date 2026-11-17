@@ -226,7 +226,8 @@ pub enum Witness {
     OtherProject(RepoPath),
     /// `statement`: the name follows a keyword that declares it or names an object of another
     /// namespace (`DROP FUNCTION f`, `INSERT INTO f` for a routine `f`), or is a word of an
-    /// instruction that holds another language's text (`RUN go build`): the keyword.
+    /// instruction that holds another language's text (`RUN go build`): the keyword; the manifest
+    /// text of a Helm template outside its actions, which no values key is read in: `manifest`.
     Statement(Name),
     /// `argument_name`: the name of a keyword argument (`f(name=value)`), a parameter or a field
     /// of the callee.
