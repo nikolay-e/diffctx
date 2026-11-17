@@ -181,3 +181,16 @@ impact/web/web_server_template_code_in_page_text_is_a_possible_caller  # server 
 impact/typescript/ts_unparsed_file_outside_the_pathspec_is_a_scope_gap  # an unparsed file outside the pathspec that spells the name is not named as a scope gap
 impact/terraform/tf_renamed_variable_leaves_the_input_that_set_it_named  # the old name of a renamed definition is not searched outside code, so the terragrunt input that set it is not named
 symbol/python/py_local_function_read_where_no_use_is_stated_stays_open  # a local's spelling that states no use is answered complete where the case declares the calls and reads open
+impact/php/php_array_value_callable_string_names_the_function  # a function named as an array value (`'callback' => 'fn'`) is a candidate use, not "nothing calls them"
+impact/php/php_callable_string_in_a_config_array_names_the_method  # a `Class::method` string in a config array value names the method: "nothing calls them", not a hedge
+impact/php/php_callable_string_in_a_constant_names_the_function  # a function named by a class constant's string is a candidate use: "nothing calls them", not a hedge
+impact/php/php_laravel_route_action_string_names_the_method  # a `Controller@method` route string names the method: "nothing calls them", not a hedge
+impact/php/php_data_provider_attribute_on_its_own_line_names_the_provider  # a `#[DataProvider('Calc::cases')]` line is read as a comment: "nothing calls them", not a hedge
+impact/php/php_data_provider_docblock_names_the_provider  # an `@dataProvider Calc::cases` docblock line is read as a comment: "nothing calls them", not a hedge
+impact/php/php_resource_route_controller_methods_are_reached_through_the_framework  # `Route::resource` registers the controller: its actions are "nothing calls them", not a framework-route hedge
+impact/php/php_observed_model_observer_methods_are_reached_through_the_framework  # `observe(Observer::class)` registers the observer: its events are "nothing calls them", not a framework hedge
+impact/php/php_dispatched_job_handle_is_reached_through_the_framework  # `dispatch(new Job)` runs `handle`: "nothing calls them", not a framework hedge
+impact/php/php_middleware_alias_handle_is_reached_through_the_framework  # a middleware alias `X::class` runs `handle`: "nothing calls them", not a framework hedge
+impact/php/php_event_listener_handle_listed_in_the_listen_map_is_reached_through_the_framework  # a `$listen` map entry runs the listener's `handle`: "nothing calls them", not a framework hedge
+impact/php/php_symfony_route_attribute_method_is_an_entry_point  # a `#[Route]` method is a route entry: "nothing calls them", not an entry point
+impact/php/php_event_listener_attribute_method_is_an_entry_point  # an `#[AsEventListener]` method is run by the dispatcher: "nothing calls them", not a framework hedge

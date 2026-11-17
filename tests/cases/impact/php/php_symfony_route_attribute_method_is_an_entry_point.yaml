@@ -1,0 +1,43 @@
+name: php_symfony_route_attribute_method_is_an_entry_point
+mode: impact
+source: synthetic
+tags: [php, symfony, framework-registration, attribute]
+repo:
+  initial_files:
+    composer.json: |
+      {"autoload": {"psr-4": {"App\\": "src/"}}}
+    src/Controller/UserController.php: |
+      <?php
+
+      namespace App\Controller;
+
+      use Symfony\Component\Routing\Attribute\Route;
+
+      class UserController
+      {
+          #[Route('/users', name: 'user_list')]
+          public function list(): array
+          {
+              return [];
+          }
+      }
+  changed_files:
+    src/Controller/UserController.php: |
+      <?php
+
+      namespace App\Controller;
+
+      use Symfony\Component\Routing\Attribute\Route;
+
+      class UserController
+      {
+          #[Route('/users', name: 'user_list')]
+          public function list(): array
+          {
+              return ['all'];
+          }
+      }
+  commit_message: "users: list returns all"
+expect:
+  exact: false
+  entry_not_tested: [list]
