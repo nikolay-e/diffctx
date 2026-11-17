@@ -1,0 +1,30 @@
+name: shell_function_run_by_a_python_system_call_is_named
+mode: impact
+source: synthetic
+tags: [shell, literal-name, shell-string, false-absence]
+repo:
+  initial_files:
+    lib/strings.sh: |
+      #!/usr/bin/env bash
+      slugify() {
+        echo "${1,,}"
+      }
+    app.py: |
+      import os
+
+
+      def slug():
+          os.system("slugify abc")
+  changed_files:
+    lib/strings.sh: |
+      #!/usr/bin/env bash
+      slugify() {
+        printf '%s\n' "${1,,}"
+      }
+  commit_message: "strings: slugify prints through printf"
+expect:
+  exact: false
+  discloses: true
+  no_negative_claims: true
+  relations:
+    - {from: app.py, to: lib/strings.sh::slugify, kind: calls, resolution: unresolved}
