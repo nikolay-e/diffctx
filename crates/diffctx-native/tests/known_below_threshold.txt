@@ -190,10 +190,6 @@ impact/shell/sh_function_run_through_an_echo_function_of_the_script_is_a_caller 
 impact/shell/sh_function_run_through_an_xargs_function_of_the_script_is_a_caller  # the script defines `xargs`: the word after it is a possible call, said so (partial), but no resolved caller is named
 impact/typescript/ts_global_augmentation_of_a_builtin_type_is_called_through_it  # the call on a `string` receiver is a candidate of the member the global augmentation declares (possibly called), not a resolved caller: a builtin receiver carries no type to pick `String` by
 impact/typescript/ts_namespace_merged_into_a_class_in_another_file_reads_its_member_bare  # `defaults` read bare in another file's body of a namespace merged into the class `Foo` is a hedged read, not a resolved caller: the file's scope does not hold the other file's member
-impact/web/web_server_template_code_in_page_text_is_a_possible_caller  # server template code in a page's text is read as prose, so the call in it is neither a caller nor an unresolved row
-impact/typescript/ts_unparsed_file_outside_the_pathspec_is_a_scope_gap  # an unparsed file outside the pathspec that spells the name is not named as a scope gap
-impact/terraform/tf_renamed_variable_leaves_the_input_that_set_it_named  # the old name of a renamed definition is not searched outside code, so the terragrunt input that set it is not named
-symbol/python/py_local_function_read_where_no_use_is_stated_stays_open  # a local's spelling that states no use is answered complete where the case declares the calls and reads open
 impact/php/php_array_value_callable_string_names_the_function  # a function named as an array value (`'callback' => 'fn'`) is a candidate use, not "nothing calls them"
 impact/php/php_callable_string_in_a_config_array_names_the_method  # a `Class::method` string in a config array value names the method: "nothing calls them", not a hedge
 impact/php/php_callable_string_in_a_constant_names_the_function  # a function named by a class constant's string is a candidate use: "nothing calls them", not a hedge
