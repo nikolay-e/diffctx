@@ -44,6 +44,7 @@ pub use changes::{Change, ChangeKind, ChangeSet, NamedChanges};
 pub use context::{AnalysisContext, ToolchainId};
 pub use diff::{diff_text, validate_pathspec};
 pub use error::{Result, SnapshotError};
+pub(crate) use git::SCAN_STRIDE;
 pub use git::{
     DEFAULT_TIMEOUT_SECONDS, REPO_LOCATING_ENV, ReadFault, RunBudget, RunScope, enter_run,
     git_command, set_git_timeout,

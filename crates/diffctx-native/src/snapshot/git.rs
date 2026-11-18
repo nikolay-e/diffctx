@@ -13,7 +13,6 @@ use std::time::{Duration, Instant};
 
 use wait_timeout::ChildExt;
 
-use crate::resource::SCAN_STRIDE;
 use crate::snapshot::error::{Result, SnapshotError};
 use crate::snapshot::loss::SideTag;
 
@@ -146,6 +145,10 @@ fn test_git_stall_file() -> Option<PathBuf> {
 /// The slice a blocked wait sleeps before it looks at the cancellation flag
 /// again; a finished child is noticed at once whatever the slice.
 const POLL_SLICE: Duration = Duration::from_millis(100);
+
+/// Items of a bounded or scanned loop between two polls of the run's limits:
+/// microseconds of work between two.
+pub(crate) const SCAN_STRIDE: usize = 64;
 
 const MAX_STDERR_BYTES: usize = 64 * 1024;
 const MAX_BATCH_HEADER_BYTES: u64 = 4096;
