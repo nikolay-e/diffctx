@@ -1566,7 +1566,8 @@ fn callable_by_name(path: &str) -> bool {
     crate::languages::get_language_for_file(path) != Some("dockerfile")
 }
 
-/// Code no cell reads, or Swift, which no cell binds to C: a foreign-function
+/// Code no cell reads (Objective-C, Scala and Groovy too, in the groups of the
+/// languages they call), or Swift, which no cell binds to C: a foreign-function
 /// binding there (`extern fn`, `ccall`, `ffi.cdef`, a bridging call, a
 /// JavaScriptCore string) names a definition of another language by its bare name.
 /// A shell script runs a program of any language by its bare name, and its cell
@@ -1574,10 +1575,13 @@ fn callable_by_name(path: &str) -> bool {
 fn unread_code(path: &str) -> bool {
     use crate::vocabulary::family::{Family, Group};
     is_code_file(path)
-        && matches!(
-            Group::of_name(path),
-            None | Some(Group::Language(_) | Group::Family(Family::Swift | Family::Shell))
-        )
+        && match Group::of_name(path) {
+            None | Some(Group::Language(_) | Group::Family(Family::Swift | Family::Shell)) => true,
+            Some(Group::Native | Group::Jvm) => {
+                !Family::ALL.into_iter().any(|family| family.has_path(path))
+            }
+            Some(Group::Family(_) | Group::Web) => false,
+        }
 }
 
 /// The name a reader spells: `var.region` is written `region`, a C++ member
