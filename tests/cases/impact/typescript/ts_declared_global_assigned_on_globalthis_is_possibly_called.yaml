@@ -1,0 +1,43 @@
+name: ts_declared_global_assigned_on_globalthis_is_possibly_called
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [typescript, builtin, global, gap]
+repo:
+  initial_files:
+    package.json: |
+      {"name":"app","version":"1.0.0"}
+    tsconfig.json: |
+      {"compilerOptions":{"strict":true}}
+    src/boot.ts: |
+      declare global {
+        function track(event: string): void;
+      }
+
+      globalThis.track = function track(event: string): void {
+        console.log(event);
+      };
+
+      export {};
+    src/app.ts: |
+      export function run(): void {
+        track('a');
+      }
+  changed_files:
+    src/boot.ts: |
+      declare global {
+        function track(event: string): void;
+      }
+
+      globalThis.track = function track(event: string): void {
+        console.log(event, 1);
+      };
+
+      export {};
+  commit_message: change
+expect:
+  changed: ['src/boot.ts::track']
+  relations:
+  - {from: 'src/app.ts::run', to: 'src/boot.ts::track', kind: calls, resolution: candidate}
+  partial:
+    src/boot.ts::track: {calls: unlanded, reads: unlanded}

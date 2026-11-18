@@ -1,0 +1,27 @@
+name: dockerfile_stage_named_through_an_arg_is_a_gap
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [dockerfile, stage, gap]
+repo:
+  initial_files:
+    Dockerfile: |
+      FROM golang:1.22 AS builder
+      RUN echo build
+
+      ARG STAGE=builder
+      FROM ${STAGE} AS final
+      RUN echo final
+  changed_files:
+    Dockerfile: |
+      FROM golang:1.22 AS builder
+      RUN echo build2
+
+      ARG STAGE=builder
+      FROM ${STAGE} AS final
+      RUN echo final
+  commit_message: change
+expect:
+  changed: ['Dockerfile::builder']
+  partial:
+    Dockerfile::builder: {reads: unlanded}

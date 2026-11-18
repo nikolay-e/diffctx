@@ -1,0 +1,45 @@
+name: ts_mixin_function_over_an_external_base_is_a_caller
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [typescript, external-base, mixin]
+repo:
+  initial_files:
+    package.json: |
+      {"name":"app","version":"1.0.0","dependencies":{"events":"^3.0.0"}}
+    tsconfig.json: |
+      {"compilerOptions":{"strict":true}}
+    src/mixin.ts: |
+      export function Audited<T extends new (...a: any[]) => object>(Base: T) {
+        return class extends Base {
+          audit(x: number): number {
+            return x;
+          }
+        };
+      }
+    src/client.ts: |
+      import { EventEmitter } from 'events';
+      import { Audited } from './mixin';
+
+      export class Client extends Audited(EventEmitter) {}
+    src/use.ts: |
+      import { Client } from './client';
+
+      export function go(): number {
+        const c = new Client();
+        return c.audit(1);
+      }
+  changed_files:
+    src/mixin.ts: |
+      export function Audited<T extends new (...a: any[]) => object>(Base: T) {
+        return class extends Base {
+          audit(x: number): number {
+            return x + 0;
+          }
+        };
+      }
+  commit_message: change
+expect:
+  changed: ['src/mixin.ts::Audited']
+  relations:
+  - {from: 'src/client.ts::Client', to: 'src/mixin.ts::Audited', kind: calls, resolution: resolved}

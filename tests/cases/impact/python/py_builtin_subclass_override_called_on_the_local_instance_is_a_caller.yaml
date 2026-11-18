@@ -1,0 +1,30 @@
+name: py_builtin_subclass_override_called_on_the_local_instance_is_a_caller
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [python, builtin, inheritance]
+repo:
+  initial_files:
+    pkg/__init__.py: |2+
+
+    pkg/bag.py: |
+      class Bag(list):
+          def append(self, x):
+              self.extend([x])
+    pkg/run.py: |
+      from pkg.bag import Bag
+
+
+      def run():
+          b = Bag()
+          b.append(1)
+  changed_files:
+    pkg/bag.py: |
+      class Bag(list):
+          def append(self, x):
+              self.extend([x, x])
+  commit_message: change
+expect:
+  changed: ['pkg/bag.py::append']
+  relations:
+  - {from: 'pkg/run.py::run', to: 'pkg/bag.py::append', kind: calls, resolution: resolved}

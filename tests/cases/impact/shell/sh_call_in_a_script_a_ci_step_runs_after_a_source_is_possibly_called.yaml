@@ -1,0 +1,35 @@
+name: sh_call_in_a_script_a_ci_step_runs_after_a_source_is_possibly_called
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [shell, source, ci, gap]
+repo:
+  initial_files:
+    lib.sh: |
+      check() {
+        return 0
+      }
+    run.sh: |
+      #!/bin/sh
+      check
+    .github/workflows/ci.yml: |
+      name: ci
+      on: push
+      jobs:
+        t:
+          runs-on: ubuntu-latest
+          steps:
+            - run: |
+                . ./lib.sh
+                ./run.sh
+  changed_files:
+    lib.sh: |
+      check() {
+        return 1
+      }
+  commit_message: change
+expect:
+  changed: ['lib.sh::check']
+  partial:
+    lib.sh::check: {calls: unlanded}
+  named_by: [.github/workflows/ci.yml]

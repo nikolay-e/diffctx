@@ -1,0 +1,39 @@
+name: js_prototype_extension_of_a_builtin_type_is_possibly_called
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [javascript, builtin, prototype, gap]
+repo:
+  initial_files:
+    package.json: |
+      {"name":"app","version":"1.0.0"}
+    tsconfig.json: |
+      {"compilerOptions":{"strict":true}}
+    src/ext.js: |
+      function shout() {
+        return this.toUpperCase();
+      }
+
+      String.prototype.shout = shout;
+    src/use.js: |
+      import './ext';
+
+      export function go(s) {
+        return s.shout();
+      }
+  changed_files:
+    src/ext.js: |
+      function shout() {
+        return this.toUpperCase() + '!';
+      }
+
+      String.prototype.shout = shout;
+  commit_message: change
+expect:
+  changed: ['src/ext.js::shout']
+  relations:
+  - {from: src/ext.js, to: 'src/ext.js::shout', kind: writes, resolution: resolved}
+  partial:
+    src/ext.js::shout:
+      calls: [unlanded, not_traced]
+      reads: unlanded

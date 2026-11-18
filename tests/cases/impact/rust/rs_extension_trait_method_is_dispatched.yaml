@@ -1,0 +1,46 @@
+name: rs_extension_trait_method_is_dispatched
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [rust, external-base, trait, gap]
+repo:
+  initial_files:
+    Cargo.toml: |
+      [package]
+      name = "app"
+      version = "0.1.0"
+      edition = "2021"
+    src/lib.rs: |
+      pub mod ext;
+      pub mod run;
+    src/ext.rs: |
+      pub trait Shout {
+          fn shout(&self) -> String;
+      }
+      impl Shout for String {
+          fn shout(&self) -> String {
+              self.to_uppercase()
+          }
+      }
+    src/run.rs: |
+      use crate::ext::Shout;
+      pub fn go(s: &String) -> String {
+          s.shout()
+      }
+  changed_files:
+    src/ext.rs: |
+      pub trait Shout {
+          fn shout(&self) -> String;
+      }
+      impl Shout for String {
+          fn shout(&self) -> String {
+              format!("{}!", self.to_uppercase())
+          }
+      }
+  commit_message: shout bang
+expect:
+  changed: ['src/ext.rs::shout']
+  relations:
+  - {from: 'src/run.rs::go', to: 'src/ext.rs::shout', kind: calls, resolution: resolved}
+  partial:
+    src/ext.rs::shout: {calls: dispatched, reads: dispatched}
