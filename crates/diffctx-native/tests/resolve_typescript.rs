@@ -828,6 +828,50 @@ const RED: &[(&str, &str)] = &[
         "the index-key call `obj[\"total\"](items)` on an `any` receiver binds to nothing, so `go` \
          has no candidate relation to `total` or `run`; the engine fix is pending",
     ),
+    (
+        "impact/typescript/js_module_exports_named_function_is_called_by_a_require_without_extension",
+        "a call through the `require` without an extension of a module that assigns a function to \
+         `module.exports` binds nothing",
+    ),
+    (
+        "impact/typescript/js_module_exports_named_function_is_called_by_its_require",
+        "a call through the `require` of a module that assigns a named function to \
+         `module.exports` binds nothing",
+    ),
+    (
+        "impact/typescript/js_object_created_from_a_literal_calls_the_literal_method",
+        "an object `Object.create` builds from an object literal is no receiver the literal types",
+    ),
+    (
+        "impact/typescript/js_object_created_from_an_expression_is_no_literal_receiver",
+        "a call on an object `Object.create` builds from an expression binds no candidate",
+    ),
+    (
+        "impact/typescript/ts_caller_of_a_definition_whose_text_a_test_asserts_has_an_open_test_search",
+        "the resolver binds no call from the JSX element `<SyncBanner />` to the component",
+    ),
+    (
+        "impact/typescript/ts_destructured_static_method_is_called_through_its_alias",
+        "a static method taken from its class by destructuring is no read the resolver binds",
+    ),
+    (
+        "impact/typescript/ts_workspace_member_import_without_a_declared_dependency_is_a_caller",
+        "an import of a workspace member by its package name lands nowhere unless the importer's \
+         manifest declares the dependency",
+    ),
+    (
+        "symbol/typescript/js_module_exports_named_function_is_a_definition_its_require_calls",
+        "the resolver holds the binding `const foo = require(...)` as a second definition of \
+         `foo`",
+    ),
+    (
+        "symbol/typescript/js_object_created_from_a_literal_calls_the_literal_method",
+        "an object `Object.create` builds from an object literal is no receiver the literal types",
+    ),
+    (
+        "symbol/typescript/js_super_call_in_a_subclass_constructor_is_a_caller_of_the_base_constructor",
+        "the resolver binds no `super(...)` call in a subclass constructor to the base class",
+    ),
 ];
 
 #[test]
