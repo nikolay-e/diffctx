@@ -229,13 +229,22 @@ fn subject(case: &Case) -> Option<Subject> {
             })
             .cloned()
     });
+    // The kind is read from the text that declares the subject: a removed one is
+    // declared only before the change.
+    let removed = expect
+        .removed
+        .iter()
+        .flatten()
+        .any(|text| Node::parse(text).symbol.as_deref().and_then(bare) == Some(name.clone()));
     let kind = home
         .as_deref()
         .and_then(|path| {
-            let text = repo
-                .changed_files
-                .get(path)
-                .or_else(|| repo.initial_files.get(path))?;
+            let (after, before) = (repo.changed_files.get(path), repo.initial_files.get(path));
+            let text = if removed {
+                before.or(after)
+            } else {
+                after.or(before)
+            }?;
             Some(subject_kind(path, text, &name))
         })
         .unwrap_or(SubjectKind::Reachable);

@@ -678,6 +678,8 @@ pub(crate) fn subject_kind(path: &str, text: &str, name: &str) -> SubjectKind {
         SubjectKind::Field
     } else if lang(path) == Some(Lang::Php) && php_method(text, name) {
         SubjectKind::Method
+    } else if lang(path) == Some(Lang::Php) && php_field(text, name) {
+        SubjectKind::Field
     } else {
         SubjectKind::Reachable
     }
@@ -758,11 +760,32 @@ fn scope_of(before: &[&str], indent: usize) -> Scope {
     Scope::Module
 }
 
+fn php_function(name: &str) -> Regex {
+    rx(&format!(r"\bfunction\s+&?\s*{}\s*\(", regex::escape(name)))
+}
+
 // Every declaration of `name` by `function` sits in the body of a class, trait,
 // interface or enum.
 fn php_method(text: &str, name: &str) -> bool {
+    php_member(text, &php_function(name))
+}
+
+// Every declaration of `name` as a property sits in the body of a class or
+// trait, a promoted constructor parameter included, and no function has the
+// name: a property is read through an instance, never called by a bare name.
+fn php_field(text: &str, name: &str) -> bool {
+    let name = name.trim_start_matches('$');
+    let property = rx(&format!(
+        r"\b(?:(?:public|protected|private|var|static|readonly)\s+)+(?:[?\\\w|&]+\s+)?\${}\b",
+        regex::escape(name)
+    ));
+    !php_function(name).is_match(&blanked(text)) && php_member(text, &property)
+}
+
+// Every match of `declares` sits in the body of a class, trait, interface or
+// enum, and there is one.
+fn php_member(text: &str, declares: &Regex) -> bool {
     let code = blanked(text);
-    let declares = rx(&format!(r"\bfunction\s+&?\s*{}\s*\(", regex::escape(name)));
     let mut found = false;
     for held in declares.find_iter(&code) {
         let before = &code[..held.start()];
