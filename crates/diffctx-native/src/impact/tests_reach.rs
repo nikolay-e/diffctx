@@ -97,7 +97,7 @@ impl<'a> TestsReach<'a> {
     ) -> Self {
         let mut by_rel: FxHashMap<String, Vec<&Fragment>> = FxHashMap::default();
         let mut rel_of: FxHashMap<&str, String> = FxHashMap::default();
-        for f in state.run.bounded(&state.all_fragments) {
+        for f in state.run.scan(&state.all_fragments) {
             let shown = rel_of
                 .entry(f.path())
                 .or_insert_with(|| rel(state, f.path()))
@@ -126,20 +126,22 @@ impl<'a> TestsReach<'a> {
             .map(|(_, source)| source.to_string())
             .collect();
         let mut tests_at: FxHashMap<&str, Vec<(u32, u32)>> = FxHashMap::default();
-        for f in state.run.bounded(&state.all_fragments) {
-            if f.kind == FragmentKind::Function && rust::is_rust(f.path()) {
-                tests_at.entry(f.path()).or_insert_with(|| {
-                    let text = state.run.source().read_to_string(Path::new(f.path()));
-                    // A read that failed is noted on the run by the source itself.
-                    text.map_or_else(Vec::new, |t| {
-                        rust::test_functions(&t).unwrap_or_else(|e| {
-                            tracing::warn!("impact: {} is not read as UTF-8 ({e})", f.path());
-                            state.run.note(crate::resource::LimitReason::ReadFailed);
-                            Vec::new()
-                        })
+        let rust_functions = state
+            .all_fragments
+            .iter()
+            .filter(|f| f.kind == FragmentKind::Function && rust::is_rust(f.path()));
+        for f in state.run.bounded(rust_functions) {
+            tests_at.entry(f.path()).or_insert_with(|| {
+                let text = state.run.source().read_to_string(Path::new(f.path()));
+                // A read that failed is noted on the run by the source itself.
+                text.map_or_else(Vec::new, |t| {
+                    rust::test_functions(&t).unwrap_or_else(|e| {
+                        tracing::warn!("impact: {} is not read as UTF-8 ({e})", f.path());
+                        state.run.note(crate::resource::LimitReason::ReadFailed);
+                        Vec::new()
                     })
-                });
-            }
+                })
+            });
         }
         for (&spelled, shown) in state.run.bounded(&rel_of) {
             if !tests_at.contains_key(spelled) {
