@@ -12,28 +12,5 @@ impact/python/py_never_imported_script_method_has_no_sibling_hedge  # gh#666: `c
 impact/python/py_table_registered_tool_a_test_calls_by_name_has_a_test_link  # the tuple member `("get_x", get_x, ...)` is a resolved row and also unlanded, and the analysed Python test tests/test_tools.py:6 is cited as unaccounted (`other_language`)
 impact/typescript/ts_lazy_import_is_a_caller  # `m.MobileFullPlayer` is the site of the resolved dynamic-import row, and its receiver `m` is left unresolved
 impact/typescript/ts_lazy_import_through_a_tsconfig_alias_is_a_caller  # `m.Lazy` is the site of the resolved dynamic-import row, and its receiver `m` is left unresolved
-impact/cpp/cpp_conversion_operators_beside_another_changed_member_are_rows  # a conversion operator beside another changed member is not reported as a definition: the declared partial finds no definition
-impact/cpp/cpp_out_of_line_conversion_operator_beside_another_changed_member_is_a_row  # a conversion operator beside another changed member is not reported as a definition: the declared partial finds no definition
-impact/java/java_class_method_inherited_by_an_implementer_is_called_through_the_interface  # the answer's name_unsearched gap does not match the declared partial for an extensible class method
-impact/java/java_method_a_public_subclass_inherits_is_hedged_against_an_outside_implementer  # the answer's name_unsearched gap does not match the declared partial for an extensible class method
-impact/java/java_public_class_method_an_outside_subclass_could_reach_through_an_interface_is_hedged  # the answer's name_unsearched gap does not match the declared partial for an extensible class method
-impact/java/java_package_private_class_method_a_same_package_subclass_could_reach_is_hedged  # the answer's name_unsearched gap does not match the declared partial for an extensible class method
-impact/kotlin/kotlin_smart_cast_to_another_class_does_not_reach_the_changed_one  # a smart-cast receiver's candidate is answered as an unlanded gap the case does not declare
-impact/python/py_attribute_call_on_a_dunder_import_of_a_dotted_module_names_its_site  # a computed-name dispatch is not reported as a hedge on the definition the case declares partial
-impact/python/py_attribute_call_on_a_dunder_import_result_names_its_site  # a computed-name dispatch is not reported as a hedge on the definition the case declares partial
-impact/python/py_eval_of_a_built_string_hedges_the_names_of_its_file  # a computed-name dispatch is not reported as a hedge on the definition the case declares partial
-impact/python/py_exec_of_a_string_that_calls_a_function_hedges_it  # a computed-name dispatch is not reported as a hedge on the definition the case declares partial
-impact/python/py_globals_lookup_with_a_built_key_hedges_the_functions_of_its_file  # a computed-name dispatch is not reported as a hedge on the definition the case declares partial
-impact/python/py_getattr_with_a_computed_name_hedges_the_methods_it_can_reach  # a computed-name dispatch is not reported as a hedge on the definition the case declares partial
-impact/swift/swift_hash_into_of_a_hashable_type_is_called_by_a_set_of_it  # a compiler-called member is not reported as a hedged definition: the declared partial finds no definition
-impact/swift/swift_pattern_match_operator_is_called_by_a_case_pattern  # a compiler-called member is not reported as a hedged definition: the declared partial finds no definition
-impact/swift/swift_result_builder_methods_are_called_by_the_builder_whatever_its_layout  # a compiler-called member is not reported as a hedged definition: the declared partial finds no definition
-symbol/python/py_locals_lookup_of_a_nested_function_is_not_a_complete_local  # a computed-name lookup is answered complete where the case declares the group partial
-symbol/python/py_getattr_with_a_concatenated_name_hedges_the_handlers_of_its_class  # a computed-name lookup is answered complete where the case declares the group partial
 symbol/java/java_symbol_method_of_a_final_class_is_complete_beside_its_extensible_twin  # the answer's name_unsearched gap hedges the final class's method the case declares complete
 symbol/java/java_symbol_package_private_method_of_another_package_is_complete_beside_its_colluding_twin  # the answer's name_unsearched gap does not match the declared partial for the package-private twin
-symbol/python/py_def_under_a_global_declaration_is_a_definition_its_callers_a_gap  # a def under `global` has its callers answered complete where the case declares them a gap
-symbol/python/py_nested_decorator_shadowing_a_module_decorator_is_answered_too  # the module-level decorator is answered complete where the case declares its hedge
-impact/c/c_asm_label_function_is_reached_by_its_label_from_outside  # the declared partial finds no definition for an asm-label function
-impact/cpp/cpp_extern_c_function_is_reached_from_another_language  # the declared partial finds no definition for an extern "C" function
-impact/rust/rust_cross_language_export_attribute_hedges_the_function  # the declared partial finds no definition for an exported Rust function
