@@ -549,17 +549,18 @@ impl<'a> Walker<'a> {
         for (at, arg) in args.iter().enumerate() {
             let text = self.text_of(*arg);
             let named = match text.split_once('=') {
-                Some(("--table", name)) => Some((*arg, name)),
-                _ if matches!(text, "-t" | "--table") => {
-                    args.get(at + 1).map(|next| (*next, self.text_of(*next)))
-                }
+                Some(("--table", name)) if arg.kind() == "word" => Some((*arg, name.to_string())),
+                _ if matches!(text, "-t" | "--table") => args
+                    .get(at + 1)
+                    .filter(|next| self.is_literal(**next))
+                    .map(|next| (*next, self.spelled(*next, 0).tail)),
                 _ => None,
             };
-            if let Some((node, name)) = named.filter(|(node, _)| node.kind() == "word") {
+            if let Some((node, name)) = named {
                 self.facts.push(Fact::HeldString(HeldString {
                     site: syntax::span(node),
                     enclosing: scope.clone(),
-                    text: name.to_string(),
+                    text: name,
                     held: HeldAs::Relation,
                 }));
             }

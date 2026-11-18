@@ -665,6 +665,7 @@ fn runs_command(command: &str, name: &str) -> bool {
             let lead = line[..at].trim_end();
             let lead = lead
                 .strip_suffix(['"', '\''])
+                .map(|code| code.trim_end_matches('\\').trim_end())
                 .filter(|code| last_word(code) == "-c")
                 .unwrap_or(lead);
             lead.is_empty()
@@ -674,39 +675,29 @@ fn runs_command(command: &str, name: &str) -> bool {
     })
 }
 
-/// The shell commands the file `path` holds on `line`, as its tree says: the
-/// strings a call hands to a shell, a config's command values, a Dockerfile's
-/// instructions. A Makefile or justfile recipe is the line itself.
-fn commands_at(
-    state: &ScoredState,
-    cells: &Cells,
-    path: &str,
-    line: u32,
-    text: &str,
-) -> Vec<String> {
+/// The shell commands the file `path` holds on `line`: a quoted string of code
+/// in any language may be handed to a shell, so each one is read as a command
+/// and only ever disclosed; a config's command values and a Dockerfile's
+/// instructions come from their tree; a Makefile or justfile recipe is the line
+/// itself.
+fn commands_at(state: &ScoredState, path: &str, line: u32, text: &str) -> Vec<String> {
     if recipe_file(path) {
         return vec![text.to_string()];
     }
-    let held = || {
-        cells
-            .held_strings_at(path, line)
+    if super::is_code_file(path) {
+        return quoted_spans(text)
             .into_iter()
-            .filter(|(how, _)| *how == HeldAs::Command)
-            .map(|(_, command)| command)
-            .collect()
-    };
+            .map(|(from, to)| text[from..to].to_string())
+            .collect();
+    }
     let Some(source) = state
         .run
         .source()
         .read_to_string(&state.root_dir.join(path))
     else {
-        return held();
+        return Vec::new();
     };
-    let found = crate::facts::config::commands::commands(path, &source, &read_budget(state));
-    if found.is_empty() {
-        return held();
-    }
-    found
+    crate::facts::config::commands::commands(path, &source, &read_budget(state))
         .into_iter()
         .filter(|command| (command.lines.0..=command.lines.1).contains(&line))
         .map(|command| command.text)
@@ -1086,7 +1077,7 @@ impl LiteralNames {
                         _ => Vec::new(),
                     };
                     let commands = if shape == Shape::Command {
-                        commands_at(state, cells, path, *line, text)
+                        commands_at(state, path, *line, text)
                     } else {
                         Vec::new()
                     };
