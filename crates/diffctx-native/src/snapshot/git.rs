@@ -13,6 +13,7 @@ use std::time::{Duration, Instant};
 
 use wait_timeout::ChildExt;
 
+use crate::resource::SCAN_STRIDE;
 use crate::snapshot::error::{Result, SnapshotError};
 use crate::snapshot::loss::SideTag;
 
@@ -146,9 +147,6 @@ fn test_git_stall_file() -> Option<PathBuf> {
 /// again; a finished child is noticed at once whatever the slice.
 const POLL_SLICE: Duration = Duration::from_millis(100);
 
-/// Items of a `bounded` loop between two polls of the run's limits.
-const BOUNDED_STRIDE: usize = 64;
-
 const MAX_STDERR_BYTES: usize = 64 * 1024;
 const MAX_BATCH_HEADER_BYTES: u64 = 4096;
 
@@ -241,7 +239,7 @@ impl Exec {
     /// `items`, each as `Ok`, ending with one `Err` at the first poll that finds
     /// the run over: a loop over a repository-sized listing that does its own
     /// work per item (a stat, a read) is bounded by being one, not by
-    /// remembering to poll. The poll is one per `BOUNDED_STRIDE` items, which
+    /// remembering to poll. The poll is one per `SCAN_STRIDE` items, which
     /// is microseconds of work between two.
     pub(crate) fn bounded<'a, I>(&'a self, items: I) -> impl Iterator<Item = Result<I::Item>> + 'a
     where
@@ -254,7 +252,7 @@ impl Exec {
             if over {
                 return None;
             }
-            let poll = seen % BOUNDED_STRIDE == 0;
+            let poll = seen % SCAN_STRIDE == 0;
             seen += 1;
             match poll.then(|| self.check()) {
                 Some(Err(error)) => {

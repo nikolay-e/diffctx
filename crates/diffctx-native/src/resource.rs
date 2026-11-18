@@ -99,6 +99,8 @@ pub struct ResourceBudget {
     pub max_needs: usize,
 }
 
+/// Items of a [`Run::scan`] loop between two polls of the run's limits.
+pub(crate) const SCAN_STRIDE: usize = 64;
 pub const DEFAULT_MAX_NEEDS: usize = 4_000;
 pub const DEFAULT_MAX_SOURCE_BYTES: u64 = 256 * 1024 * 1024;
 pub const DEFAULT_MAX_CANDIDATE_FILES: usize = 200_000;
@@ -577,6 +579,27 @@ impl RunContext {
         I::IntoIter: 'a,
     {
         items.into_iter().take_while(move |_| self.check())
+    }
+
+    /// `bounded` for a loop whose item costs microseconds (a kind test, a map
+    /// insert): one poll per `SCAN_STRIDE` items, so a logical-clock sweep, which
+    /// reruns the whole engine once per poll, is not made as long as the input.
+    pub(crate) fn scan<'a, I>(&'a self, items: I) -> impl Iterator<Item = I::Item> + 'a
+    where
+        I: IntoIterator,
+        I::IntoIter: 'a,
+    {
+        items
+            .into_iter()
+            .enumerate()
+            .take_while(move |(seen, _)| {
+                if seen % SCAN_STRIDE == 0 {
+                    self.check()
+                } else {
+                    !self.tripped()
+                }
+            })
+            .map(|(_, item)| item)
     }
 
     /// `bounded` for a rayon loop: each item is taken after one poll, from
