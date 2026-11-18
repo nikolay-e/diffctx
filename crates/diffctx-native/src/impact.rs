@@ -1741,8 +1741,10 @@ impl UntracedNamers {
         let own = crate::vocabulary::family::Group::of_name(&sym.path);
         let named: Vec<UnanalysedFile> = self
             .naming(literal_base(name), |p| {
-                !is_code_file(p)
-                    || (unread_code(p) && crate::vocabulary::family::Group::of_name(p) != own)
+                // A file the definition's own cell reads has its spelling accounted.
+                let group = crate::vocabulary::family::Group::of_name(p);
+                let read_by_own = own.is_some() && group == own;
+                (!is_code_file(p) && !read_by_own) || (unread_code(p) && group != own)
             })
             .into_iter()
             .map(|(path, line)| UnanalysedFile::new(path, "not_traced", vec![line]))
