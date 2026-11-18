@@ -53,7 +53,9 @@ pub(super) fn read(text: &str, options: Options, budget: &RunBudget, out: &mut R
         out.errors = syntax::error_lines(root);
     }
     if masked.is_none() {
-        out.lexical = lexical::of(Language::Config, root).unwrap_or_default();
+        if let Some(found) = lexical::of(Language::Config, root) {
+            out.lexical = found;
+        }
     }
     let flaws;
     {
