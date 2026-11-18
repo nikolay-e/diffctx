@@ -13,7 +13,8 @@ use tree_sitter::Node;
 
 use super::kotlin::{
     Binding, Declaration, Holds, Import, InitCall, KotlinFacts, Receiver, Use, UseKind, Visibility,
-    child, hold, line_of, push_use, squash, text, walk,
+    child, class_literal_in, computed, hold, line_of, lookup_position, push_use, settle_computed,
+    squash, text, walk,
 };
 
 /// The types around a node: each name, its visibility, and whether it is an
@@ -21,9 +22,11 @@ use super::kotlin::{
 type Owners = Vec<(String, Option<Visibility>, bool)>;
 
 pub(super) fn extract(root: Node, bytes: &[u8]) -> KotlinFacts {
-    walk(root, Owners::new(), |node, owners, facts| {
+    let mut facts = walk(root, Owners::new(), |node, owners, facts| {
         let mut inner = owners.clone();
         match node.kind() {
+            "method_invocation" => lookup_call(&node, bytes, facts),
+            "variable_declarator" => string_const(&node, bytes, facts),
             "package_declaration" => {
                 facts.package = node.named_child(0).map(|n| dotted(n, bytes));
                 return None;
@@ -79,7 +82,52 @@ pub(super) fn extract(root: Node, bytes: &[u8]) -> KotlinFacts {
         bindings_at(&node, bytes, &mut facts.bindings);
         uses_at(&node, bytes, &mut facts.uses);
         Some(inner)
-    })
+    });
+    settle_computed(&mut facts);
+    facts
+}
+
+/// A reflective lookup by name: `Lib.class.getMethod(name)`.
+fn lookup_call(call: &Node, bytes: &[u8], facts: &mut KotlinFacts) {
+    let Some(at) = call
+        .child_by_field_name("name")
+        .and_then(|n| text(n, bytes))
+        .and_then(lookup_position)
+    else {
+        return;
+    };
+    let Some(arguments) = call.child_by_field_name("arguments") else {
+        return;
+    };
+    let mut cursor = arguments.walk();
+    let given: Vec<Node> = arguments.named_children(&mut cursor).collect();
+    let Some(name) = given.get(at) else {
+        return;
+    };
+    let class = if at == 0 {
+        call.child_by_field_name("object")
+            .and_then(|o| class_literal_in(o, bytes))
+    } else {
+        given
+            .first()
+            .and_then(|first| class_literal_in(*first, bytes))
+    };
+    computed(*call, *name, class, bytes, &mut facts.computed);
+}
+
+/// `String NAME = "text"`: a name whose value is a string literal.
+fn string_const(node: &Node, bytes: &[u8], facts: &mut KotlinFacts) {
+    if node
+        .child_by_field_name("value")
+        .is_some_and(|v| v.kind() == "string_literal")
+    {
+        if let Some(name) = node
+            .child_by_field_name("name")
+            .and_then(|n| text(n, bytes))
+        {
+            facts.consts.push(name.to_string());
+        }
+    }
 }
 
 /// Where a Java string literal names something: a variable's value, an

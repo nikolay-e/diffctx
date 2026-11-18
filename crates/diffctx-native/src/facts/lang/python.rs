@@ -2359,6 +2359,7 @@ impl<'t> Walker<'t> {
         self.facts.push(Fact::ComputedName {
             site: span(call),
             member,
+            class: None,
         });
     }
 

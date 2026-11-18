@@ -255,6 +255,7 @@ impl<'a> Reader<'a> {
         }
         self.locals();
         self.held_strings();
+        self.computed_names();
     }
 
     // ---- package and imports

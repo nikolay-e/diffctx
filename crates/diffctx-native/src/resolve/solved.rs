@@ -2,7 +2,7 @@
 //! bindings and what the answer is partial for.
 
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use super::{Binding, CandidateReason, Definition, Relation, Resolution};
 use std::sync::Arc;
@@ -22,6 +22,45 @@ pub struct Solved {
     losses: Vec<Loss>,
     read: Vec<RepoPath>,
     open_routes: HashMap<DefKey, String>,
+    computers: Vec<Computer>,
+    serialized: HashSet<DefKey>,
+}
+
+/// A file that reaches a definition by a name it computes (`getattr(obj, name)`,
+/// `Lib.class.getMethod(name)`), and what it may reach.
+pub(super) struct Computer {
+    file: RepoPath,
+    /// Every such call reaches members only.
+    members_only: bool,
+    /// The classes the calls are written on, when every one of them says.
+    classes: Option<Vec<Name>>,
+}
+
+/// The files of `files` that compute a name where the facts say so.
+pub(super) fn computers_of(files: &[FileFacts]) -> Vec<Computer> {
+    files
+        .iter()
+        .filter_map(|file| {
+            let calls: Vec<(bool, Option<&Name>)> = file
+                .blob
+                .facts
+                .iter()
+                .filter_map(|fact| match fact {
+                    Fact::ComputedName { member, class, .. } => Some((*member, class.as_ref())),
+                    _ => None,
+                })
+                .collect();
+            calls.first()?;
+            Some(Computer {
+                file: file.path.clone(),
+                members_only: calls.iter().all(|(member, _)| *member),
+                classes: calls
+                    .iter()
+                    .map(|(_, class)| class.cloned())
+                    .collect::<Option<Vec<Name>>>(),
+            })
+        })
+        .collect()
 }
 
 impl Solved {
@@ -45,6 +84,8 @@ impl Solved {
             losses,
             read,
             open_routes: HashMap::new(),
+            computers: Vec::new(),
+            serialized: HashSet::new(),
         }
     }
 
@@ -59,6 +100,40 @@ impl Solved {
     /// Java method nothing in the repository calls through it.
     pub fn open_route(&self, key: &DefKey) -> Option<&str> {
         self.open_routes.get(key).map(String::as_str)
+    }
+
+    pub(super) fn with_computers(mut self, computers: Vec<Computer>) -> Self {
+        self.computers = computers;
+        self
+    }
+
+    pub(super) fn with_serialized(mut self, serialized: HashSet<DefKey>) -> Self {
+        self.serialized = serialized;
+        self
+    }
+
+    /// Whether Jackson calls the getter: it is a member of a class it serializes.
+    pub fn serialized(&self, key: &DefKey) -> bool {
+        self.serialized.contains(key)
+    }
+
+    /// How many files that `may_reach` compute a name that could be a definition's:
+    /// any of them for a function, the ones that reach members for a member of one
+    /// of `classes` (a call written on another class leaves it out).
+    pub fn name_computers(
+        &self,
+        member: bool,
+        classes: &[Name],
+        may_reach: impl Fn(&str) -> bool,
+    ) -> usize {
+        (self.computers.iter())
+            .filter(|c| (member || !c.members_only) && may_reach(c.file.as_str()))
+            .filter(|c| {
+                c.classes
+                    .as_ref()
+                    .is_none_or(|on| classes.iter().any(|class| on.contains(class)))
+            })
+            .count()
     }
 
     pub fn bindings(&self) -> &[Binding] {

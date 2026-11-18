@@ -32,7 +32,7 @@ use super::{
     UnresolvedReason, is_callable, is_value, plain_relation, unresolved,
 };
 use crate::facts::{
-    Def, DefKey, DefKind, Fact, FactsCache, FileFacts, Language, Name, Receiver, Ref, Scope,
+    Def, DefKey, DefKind, Fact, FactsCache, FileFacts, Language, Name, Receiver, Ref, Scope, Star,
     UseKind, Visibility, expired,
 };
 use crate::snapshot::{
@@ -83,6 +83,7 @@ pub(super) fn solve(
         stopped,
         losses: engine.losses.take(),
         open_routes: engine.open_routes(),
+        serialized: engine.serialized_getters(),
     }
 }
 
@@ -95,6 +96,8 @@ pub(super) struct Solution {
     pub stopped: bool,
     pub losses: Vec<Loss>,
     pub open_routes: HashMap<DefKey, String>,
+    /// The getters Jackson calls: members of a class it serializes.
+    pub serialized: HashSet<DefKey>,
 }
 
 // ---- the header of a definition
@@ -118,6 +121,9 @@ struct Sig {
     type_params: Vec<(String, Vec<String>)>,
     /// The classes `@ExtensionMethod(A.class, b.B.class)` names, as written.
     extensions: Vec<String>,
+    /// The outer names of the types a method returns, `ResponseEntity`, `List`,
+    /// `Optional`, `Mono` and `Flux` unwrapped to what they carry.
+    returns: Vec<String>,
 }
 
 impl Sig {
@@ -247,6 +253,76 @@ fn extension_classes(header: &str) -> Vec<String> {
         .collect()
 }
 
+const MAPPINGS: [&str; 6] = [
+    "GetMapping",
+    "PostMapping",
+    "PutMapping",
+    "PatchMapping",
+    "DeleteMapping",
+    "RequestMapping",
+];
+
+/// A public instance method `getX()` or `isX()` that returns a value.
+fn is_getter(rec: &DefRec<Sig>) -> bool {
+    let name = rec.def.local.name.as_str();
+    let property = name
+        .strip_prefix("get")
+        .or_else(|| name.strip_prefix("is"))
+        .and_then(|rest| rest.chars().next());
+    property.is_some_and(char::is_uppercase)
+        && rec.def.visibility == Visibility::Public
+        && !rec.sig.has("static")
+        && rec.sig.params == Some((0, false))
+        && rec.sig.declared.as_deref().is_some_and(|t| t != "void")
+}
+
+/// The types a response body of the written type carries.
+const BODY_WRAPPERS: [&str; 5] = ["ResponseEntity", "List", "Optional", "Mono", "Flux"];
+
+/// The outer names of the types written as `written` carries, unwrapping the
+/// wrappers a response body travels in: `ResponseEntity<List<User>>` is `User`.
+fn payload_types(written: &str, out: &mut Vec<String>) {
+    let mut written = written.trim();
+    if written.starts_with('<') {
+        let mut level = 0usize;
+        let end = written.char_indices().find(|(_, c)| {
+            level = match c {
+                '<' => level + 1,
+                '>' => level.saturating_sub(1),
+                _ => level,
+            };
+            level == 0
+        });
+        written = end.map_or("", |(at, _)| written[at + 1..].trim());
+    }
+    let (head, arguments) = match written.split_once('<') {
+        Some((head, rest)) => (head, rest.rsplit_once('>').map(|(inside, _)| inside)),
+        None => (written, None),
+    };
+    let Some(name) = outer_name(head) else {
+        return;
+    };
+    match arguments {
+        Some(inside) if BODY_WRAPPERS.contains(&name.as_str()) => {
+            let mut level = 0usize;
+            let mut start = 0;
+            for (at, c) in inside.char_indices() {
+                match c {
+                    '<' => level += 1,
+                    '>' => level = level.saturating_sub(1),
+                    ',' if level == 0 => {
+                        payload_types(&inside[start..at], out);
+                        start = at + 1;
+                    }
+                    _ => {}
+                }
+            }
+            payload_types(&inside[start..], out);
+        }
+        _ => out.push(name),
+    }
+}
+
 fn parse_sig(kind: DefKind, text: &str) -> Sig {
     let flat = Flat::new(text, jvm::JAVA);
     let tokens: Vec<(usize, usize, String)> = flat
@@ -304,6 +380,10 @@ fn parse_sig(kind: DefKind, text: &str) -> Sig {
                     }),
                 );
                 if kind != DefKind::Constructor && named > 0 {
+                    let written: String = flat.chars[tokens[first].0..tokens[named].0]
+                        .iter()
+                        .collect();
+                    payload_types(&written, &mut sig.returns);
                     let (_, end, written) = &tokens[named - 1];
                     if !MODIFIERS.contains(&written.as_str()) && flat.next_char(*end) != Some('[') {
                         sig.declared = written_path(written);
@@ -481,6 +561,81 @@ impl<'w> Engine<'w> {
     jvm_engine_methods!();
 
     file_text!();
+
+    // ---- serialization
+
+    /// Whether the annotation `name` of file `f` is Jackson's: imported from
+    /// `com.fasterxml.jackson.annotation`, by name or on demand.
+    fn jackson_annotation(&self, f: usize, name: &Name) -> bool {
+        self.ix.files[f].facts.blob.facts.iter().any(|fact| {
+            let Fact::Import(import) = fact else {
+                return false;
+            };
+            import.module.as_str() == "com.fasterxml.jackson.annotation"
+                && (import.names.iter().any(|(n, _)| n == name)
+                    || (import.star == Star::Glob
+                        && (name.as_str().starts_with("Json")
+                            || name.as_str().starts_with("Jackson"))))
+        })
+    }
+
+    /// The getters Jackson calls: the public, parameterless, non-void `getX` and
+    /// `isX` of a class it serializes. A class is serialized when it or a member
+    /// states a Jackson annotation, or a mapped method of a `@RestController` (or
+    /// one stating `@ResponseBody`) returns it.
+    fn serialized_getters(&self) -> HashSet<DefKey> {
+        let defs = &self.ix.defs;
+        let states = |rec: &DefRec<Sig>, names: &[&str]| {
+            rec.def
+                .decorators
+                .iter()
+                .any(|d| names.contains(&d.as_str()))
+        };
+        let mut classes: HashSet<usize> = HashSet::new();
+        for (id, rec) in defs.iter().enumerate() {
+            if is_type(rec.def.kind) {
+                let members = self.ix.files[rec.file].children.get(&rec.path);
+                let touched = std::iter::once(rec)
+                    .chain(members.into_iter().flatten().map(|m| &defs[*m]))
+                    .any(|r| {
+                        r.def
+                            .decorators
+                            .iter()
+                            .any(|d| self.jackson_annotation(rec.file, d))
+                    });
+                if touched {
+                    classes.insert(id);
+                }
+            }
+            if rec.def.kind != DefKind::Method || !states(rec, &MAPPINGS) {
+                continue;
+            }
+            let owner = self.ix.owner(rec.file, &rec.def.local.container);
+            let body = states(rec, &["ResponseBody"])
+                || owner.is_some_and(|o| states(&defs[o], &["RestController", "ResponseBody"]));
+            if !body {
+                continue;
+            }
+            for returned in &rec.sig.returns {
+                if let Found::Defs(ids, _) = self.resolve_type(
+                    rec.file,
+                    &rec.def.local.container,
+                    &Name::new(returned.as_str()),
+                ) {
+                    classes.extend(ids);
+                }
+            }
+        }
+        defs.iter()
+            .filter(|rec| rec.def.kind == DefKind::Method && is_getter(rec))
+            .filter(|rec| {
+                self.ix
+                    .owner(rec.file, &rec.def.local.container)
+                    .is_some_and(|o| classes.contains(&o))
+            })
+            .map(|rec| rec.key.clone())
+            .collect()
+    }
 
     // ---- reach
 

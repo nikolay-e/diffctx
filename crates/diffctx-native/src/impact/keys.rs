@@ -503,6 +503,9 @@ struct Reading {
     php: bool,
     /// Go: a `const`, a `var` or a `:=` holds a callable string, and a lookup's argument is one.
     go: bool,
+    /// A JSON file: its values name what a JVM program binds them to (a Jackson
+    /// or Gson enum constant), and no other language's definition.
+    json: bool,
     /// Java or Kotlin: a string the tree holds as a name — a value, a comparison,
     /// a `case` label, an array or an annotation element — may be looked up by
     /// reflection.
@@ -538,13 +541,16 @@ impl Reading {
                 | "slim"
         ) || !name.contains('.')
             || name.starts_with("dockerfile");
-        let php = matches!(super::extension(path).as_str(), "php" | "phtml" | "inc");
-        let go = super::extension(path) == "go";
-        let jvm = matches!(super::extension(path).as_str(), "java" | "kt" | "kts");
-        (code || values).then_some(Self {
+        let extension = super::extension(path);
+        let php = matches!(extension.as_str(), "php" | "phtml" | "inc");
+        let go = extension == "go";
+        let jvm = matches!(extension.as_str(), "java" | "kt" | "kts");
+        let json = crate::keytable::is_json(path);
+        (code || values || json).then_some(Self {
             values,
             php,
             go,
+            json,
             jvm,
         })
     }
@@ -817,6 +823,13 @@ fn unread_file(state: &ScoredState, path: &str) -> bool {
 /// own span is the definition's text, never a use of it.
 pub(super) type OwnSpan = (String, String, (u32, u32));
 
+/// Whether a changed definition named `name` is Java's or Kotlin's.
+fn defined_on_the_jvm(own: &[OwnSpan], name: &str) -> bool {
+    own.iter().any(|(file, own_name, _)| {
+        own_name == name && matches!(super::extension(file).as_str(), "java" | "kt" | "kts")
+    })
+}
+
 impl LiteralNames {
     /// The lines of the tree at the range's head that spell one of `names` as a
     /// literal, in any file — one the change edits and the definition's own
@@ -892,6 +905,7 @@ impl LiteralNames {
                         || (super::mentions::commented_in(path, text)
                             && !Reading::of(path)
                                 .is_some_and(|r| r.php && text.contains("@dataProvider")))
+                        || crate::paths::is_lockfile_path(std::path::Path::new(path))
                         || matches!(
                             super::extension(path).as_str(),
                             "diff" | "patch" | "lock" | "tex" | "bib" | "csv" | "tsv" | "log"
@@ -904,7 +918,9 @@ impl LiteralNames {
                     let eligible = match shape {
                         Shape::Call => unread_file(state, path),
                         Shape::Literal => reading.is_some(),
-                        Shape::Argument => reading.is_some_and(|r| !r.values) && language.is_some(),
+                        Shape::Argument => {
+                            reading.is_some_and(|r| !r.values && !r.json) && language.is_some()
+                        }
                     };
                     if !eligible {
                         continue;
@@ -923,6 +939,16 @@ impl LiteralNames {
                     let hit = |name: &str, held: &[String]| match (shape, reading, language) {
                         (Shape::Call, ..) => call_name(name) && called(text, name),
                         (Shape::Literal, Some(reading), _) => {
+                            let Some(reading) = (if reading.json {
+                                defined_on_the_jvm(own, name).then_some(Reading {
+                                    values: true,
+                                    ..reading
+                                })
+                            } else {
+                                Some(reading)
+                            }) else {
+                                return false;
+                            };
                             literal_name(name)
                                 && (spells_literally(text, name, reading, held)
                                     || (reading.php && data_provider_named(text, name)))
