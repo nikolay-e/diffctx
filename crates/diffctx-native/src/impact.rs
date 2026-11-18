@@ -1549,12 +1549,13 @@ fn hides_a_region(group: &crate::vocabulary::family::Group) -> bool {
 }
 
 /// A manifest or a file of variables: a config reader parses its keys and pointers,
-/// and no command or template of it calls a function by its name.
+/// and no command or template of it calls a function by its name. A Maven POM
+/// points at a class to run, never at a method.
 fn holds_no_command(path: &str) -> bool {
     matches!(extension(path).as_str(), "json" | "toml" | "env")
         || matches!(
             Path::new(path).file_name().and_then(|n| n.to_str()),
-            Some("go.mod" | "go.work" | "go.sum")
+            Some("go.mod" | "go.work" | "go.sum" | "pom.xml")
         )
 }
 
