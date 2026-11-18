@@ -115,6 +115,9 @@ pub struct Reading {
     /// them are still given.
     pub errors: Vec<(u32, u32)>,
     pub flaws: Vec<Flaw>,
+    /// The comments of a plain YAML file, which no reader of a value sees. A
+    /// template has none here: its actions run inside a comment too.
+    pub lexical: Vec<(std::ops::Range<u32>, crate::facts::Lexical)>,
 }
 
 impl Reading {
@@ -125,6 +128,7 @@ impl Reading {
             templates: Vec::new(),
             errors: Vec::new(),
             flaws: Vec::new(),
+            lexical: Vec::new(),
         }
     }
 
