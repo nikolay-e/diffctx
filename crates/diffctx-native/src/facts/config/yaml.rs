@@ -8,7 +8,7 @@
 use rustc_hash::FxHashMap;
 use tree_sitter::{Language as TsLanguage, Node as TsNode};
 
-use crate::facts::Span;
+use crate::facts::{Language, Span, lexical};
 use crate::snapshot::RunBudget;
 
 use super::syntax::{self, Guard};
@@ -51,6 +51,9 @@ pub(super) fn read(text: &str, options: Options, budget: &RunBudget, out: &mut R
     let root = tree.root_node();
     if root.has_error() {
         out.errors = syntax::error_lines(root);
+    }
+    if masked.is_none() {
+        out.lexical = lexical::of(Language::Config, root).unwrap_or_default();
     }
     let flaws;
     {

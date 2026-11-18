@@ -84,6 +84,7 @@ pub(super) fn blob_of(
     let source = std::str::from_utf8(text).unwrap_or("");
     let cut = Cell::new(false);
     blob.facts = facts(&reading, source, &cut);
+    blob.lexical = reading.lexical;
     let failed = |l: &Loss| matches!(l, Loss::ExtractorFailed { .. });
     if cut.get() && !blob.losses.iter().any(failed) {
         blob.extractor_failed();
