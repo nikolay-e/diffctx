@@ -118,7 +118,7 @@ fn each_value_position_the_python_facts_tell_is_named() {
         (6, leak(ValuePlace::Store)),
         (8, unplaced()),
         (9, alias("x", inside(&file, "m"), Basis::Assignment)),
-        (10, unplaced()),
+        (10, leak(ValuePlace::Element)),
         (11, None),
         (13, leak(ValuePlace::Store)),
         (15, leak(ValuePlace::Store)),
