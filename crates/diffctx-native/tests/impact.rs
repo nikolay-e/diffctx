@@ -7928,3 +7928,47 @@ fn a_string_too_widely_spelled_to_link_a_test_leaves_the_absence_open() {
         );
     }
 }
+
+/// fj#221: a file outside the run's pathspecs that imports the changed file by a
+/// relative path may call it, though it sits under another manifest that
+/// declares no dependency on the changed one. The definition's callers stay
+/// open; it is never one nothing calls.
+#[test]
+fn an_importer_under_another_manifest_outside_the_pathspec_leaves_the_callers_open() {
+    let lib = |k: u32| format!("export function f(x: number): number {{\n  return x + {k};\n}}\n");
+    let tmp = repo(
+        &[
+            ("app/package.json", r#"{"name":"app","private":true}"#),
+            (
+                "other-app/package.json",
+                r#"{"name":"other-app","private":true}"#,
+            ),
+            ("app/src/lib/a.ts", &lib(1)),
+            (
+                "other-app/src/feature/use.ts",
+                "import { f } from \"../../../app/src/lib/a\";\n\nexport function g(): number {\n  return f(2);\n}\n",
+            ),
+        ],
+        &[("app/src/lib/a.ts", &lib(2))],
+    );
+    let out = diffctx_unclocked()
+        .current_dir(tmp.path())
+        .args(["--diff", "HEAD~1..HEAD", "--mode", "impact", "-q", "app"])
+        .output()
+        .expect("run diffctx");
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let doc: serde_json::Value = serde_json::from_slice(&out.stdout).expect("impact JSON");
+    assert!(doc["unlisted"]["no_caller"].is_null(), "{doc:#}");
+    let f = &doc["definitions"][0];
+    assert_eq!(f["symbol"], "f", "{doc:#}");
+    assert_eq!(f["coverage"]["calls"]["complete"], false, "{doc:#}");
+    assert_eq!(
+        f["gaps"],
+        serde_json::json!([{"kind": "outside_scope", "files": 1}]),
+        "{doc:#}"
+    );
+}

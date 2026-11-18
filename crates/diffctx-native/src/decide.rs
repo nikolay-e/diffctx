@@ -1154,6 +1154,8 @@ pub(crate) struct Cell {
     files: HashSet<String>,
     /// Files outside the run's pathspecs that hold uses the cell left out.
     outside: HashSet<String>,
+    /// The (user file, used file) pairs a binding of those links.
+    reached_from_outside: HashSet<(String, String)>,
     /// Rust files that invoke `cfg_if!`.
     macro_files: HashSet<String>,
     /// Python files that import a library which executes annotations at run time.
@@ -1385,6 +1387,7 @@ impl Cell {
             bindings_by_file: HashMap::new(),
             files: HashSet::new(),
             outside: HashSet::new(),
+            reached_from_outside: HashSet::new(),
             macro_files: HashSet::new(),
             runtime_files: RefCell::new(HashMap::new()),
             landed: HashMap::new(),
@@ -1464,8 +1467,15 @@ impl Cell {
         }
         for (at, b) in self.head.bindings().iter().enumerate() {
             let file = b.file.as_str();
+            let used = match &b.resolution {
+                Resolution::Resolved { target, .. } => file_of.get(target).copied(),
+                Resolution::Module { file: used, .. } => Some(used.as_str()),
+                Resolution::Candidate { .. } | Resolution::Unresolved { .. } => None,
+            };
+            let reach = used.map(|used| (file.to_string(), used.to_string()));
             if !within_scope(&self.scope, file) {
                 self.outside.insert(file.to_string());
+                self.reached_from_outside.extend(reach);
                 continue;
             }
             // A configuration file that only names places (a Kustomize file) is
@@ -1496,28 +1506,19 @@ impl Cell {
                 .or_default()
                 .push(at);
             let line = b.site.lines.0;
-            match &b.resolution {
-                Resolution::Resolved { target, .. } => {
-                    // A Rust test reaches a type through the function that names it
-                    // in a signature or a type argument (`size_of::<T>()`).
-                    if b.relation.uses()
-                        || (self.family == Family::Rust && b.relation == Relation::TypeUses)
-                    {
-                        self.landed
-                            .entry(target.clone())
-                            .or_default()
-                            .push((file.to_string(), line));
-                    }
-                    if let Some(used) = file_of.get(target) {
-                        self.reaches.insert((file.to_string(), (*used).to_string()));
-                    }
+            // A Rust test reaches a type through the function that names it
+            // in a signature or a type argument (`size_of::<T>()`).
+            if let Resolution::Resolved { target, .. } = &b.resolution {
+                if b.relation.uses()
+                    || (self.family == Family::Rust && b.relation == Relation::TypeUses)
+                {
+                    self.landed
+                        .entry(target.clone())
+                        .or_default()
+                        .push((file.to_string(), line));
                 }
-                Resolution::Module { file: used, .. } => {
-                    self.reaches
-                        .insert((file.to_string(), used.as_str().to_string()));
-                }
-                Resolution::Candidate { .. } | Resolution::Unresolved { .. } => {}
             }
+            self.reaches.extend(reach);
         }
         self.losses = self.head.losses().to_vec();
     }
@@ -3270,7 +3271,9 @@ impl Cell {
     /// The files outside the run's pathspecs that could name the definition: those
     /// holding a binding the cell left out, and those of its group that spell one
     /// of its names or could not be tokenised, whether or not the resolver read a
-    /// binding in them.
+    /// binding in them. A file of a project that declares no dependency on the
+    /// definition's still counts when a binding of its reaches the definition's
+    /// file: a relative import crosses the manifests.
     fn outside_scope(&self, changed: &Changed) -> usize {
         if self.scope.is_empty() {
             return 0;
@@ -3289,7 +3292,11 @@ impl Cell {
             .chain(unbound)
             .collect();
         (files.into_iter())
-            .filter(|file| self.ctx.workspace.may_reference(file, &changed.file))
+            .filter(|file| {
+                self.ctx.workspace.may_reference(file, &changed.file)
+                    || (self.reached_from_outside)
+                        .contains(&(file.to_string(), changed.file.clone()))
+            })
             .count()
     }
 
