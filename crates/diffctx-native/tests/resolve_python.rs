@@ -799,6 +799,80 @@ const RED: &[(&str, &str)] = &[
         "gh#718: a loop variable over a `list[Frame]` attribute stays untyped, so its reads are \
          not resolved to the member",
     ),
+    (
+        "impact/python/py_base_handed_to_type_is_reached_by_a_constructor_change",
+        "the resolver reports the class handed to `type(...)` as a use of the file, not of the \
+         function that builds the new class",
+    ),
+    (
+        "impact/python/py_changed_init_is_not_reached_by_an_isinstance_check",
+        "the class an `isinstance` check names is read as a value passed to the call, a use of \
+         the class the case's decoy rules out",
+    ),
+    (
+        "impact/python/py_class_assigned_then_called_through_a_parameter_is_reached_by_a_constructor_change",
+        "the resolver reports the class a function assigns as a use of the file, not of the \
+         function that assigns it",
+    ),
+    (
+        "impact/python/py_class_method_building_cls_possibly_reaches_a_subclass_constructor",
+        "the resolver reads the subclass name beside the `cls(...)` call as a resolved use, which \
+         the case leaves to the answer's hedge",
+    ),
+    (
+        "impact/python/py_constructor_inherited_from_the_second_base_is_reached_by_the_subclass_construction",
+        "the resolver binds no construction of a subclass to the constructor it inherits from its \
+         second base",
+    ),
+    (
+        "impact/python/py_inherited_constructor_is_reached_by_the_subclass_construction",
+        "the resolver binds neither a subclass construction nor its `super().__init__()` call to \
+         the constructor the subclass inherits",
+    ),
+    (
+        "impact/python/py_nested_def_in_a_test_names_its_enclosing_test",
+        "the resolver gives a call made in a def nested in a test to the nested def, where the \
+         case names the enclosing test",
+    ),
+    (
+        "impact/python/py_subscripted_generic_instantiation_is_reached_by_a_constructor_change",
+        "the resolver reads `Box[int](...)` as the class passed as a value, not as an \
+         instantiation",
+    ),
+    (
+        "symbol/python/py_def_under_a_global_declaration_is_a_definition_its_callers_a_gap",
+        "a def under a `global` declaration inside a function is no definition the resolver holds",
+    ),
+    (
+        "symbol/python/py_local_function_read_where_no_use_is_stated_stays_open",
+        "a nested function is no definition the resolver holds, so its read where no use is \
+         stated binds nothing",
+    ),
+    (
+        "symbol/python/py_nested_decorator_shadowing_a_module_decorator_is_answered_too",
+        "the resolver holds the module-level `dec` only; the case also answers the nested \
+         decorator that shadows it",
+    ),
+    (
+        "symbol/python/py_nested_function_shadowing_a_module_function_is_answered_too",
+        "the resolver holds the module-level `helper` only; the case also answers the nested \
+         function that shadows it",
+    ),
+    (
+        "symbol/python/py_same_named_nested_functions_of_two_scopes_are_both_answered",
+        "the resolver holds one nested `helper`; the case answers the same-named nested functions \
+         of both scopes",
+    ),
+    (
+        "symbol/python/py_super_init_call_in_a_subclass_constructor_is_a_caller_of_the_base_constructor",
+        "the resolver binds no `super().__init__()` call to the base class, which the case names \
+         as the constructor",
+    ),
+    (
+        "symbol/python/py_with_target_is_typed_by_what_enter_returns",
+        "the resolver's definitions are bare names (`execute`) where the case names them by class \
+         (`Connection.execute`)",
+    ),
 ];
 
 #[test]
