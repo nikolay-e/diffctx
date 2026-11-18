@@ -412,24 +412,26 @@ jobs:
 
   # The Linux job above keeps its name because branch protection requires it;
   # this one gates the same suites on macOS and Windows, where paths, line
-  # endings and process spawning differ. Windows runs the corpus in two parts:
-  # a run of the binary costs it about twice what it costs macOS, and the two
-  # corpus suites together outgrew its 90 minutes when the class corpus grew.
+  # endings and process spawning differ. A run of the binary costs them two to
+  # five times what it costs Linux, so the corpus runs in three parts: the YAML
+  # corpus, and the class corpus (`corpus:1/2`, the heavier suite) split by case
+  # in two. On 2026-11-19 the class corpus ran past 75 minutes on Windows and the
+  # macOS corpus job took 85 of its 90.
   rust-diffctx-test-cross:
     name: Rust diffctx tests (${{ matrix.os }}, ${{ matrix.label }})
     strategy:
       fail-fast: false
       matrix:
         os: [macos-latest, windows-latest]
-        part: ["rest:1/2", "rest:2/2", corpus]
-        exclude:
-          - {os: windows-latest, part: corpus}
+        part: ["rest:1/2", "rest:2/2", "corpus:2/2"]
         include:
           - {part: "rest:1/2", label: "1/2"}
           - {part: "rest:2/2", label: "2/2"}
-          - {part: corpus, label: corpus}
-          - {os: windows-latest, part: "corpus:1/2", label: "corpus 1/2"}
-          - {os: windows-latest, part: "corpus:2/2", label: "corpus 2/2"}
+          - {part: "corpus:2/2", label: "YAML corpus"}
+          - {os: macos-latest, part: "corpus:1/2", class_shard: "1/2", label: "class corpus 1/2"}
+          - {os: macos-latest, part: "corpus:1/2", class_shard: "2/2", label: "class corpus 2/2"}
+          - {os: windows-latest, part: "corpus:1/2", class_shard: "1/2", label: "class corpus 1/2"}
+          - {os: windows-latest, part: "corpus:1/2", class_shard: "2/2", label: "class corpus 2/2"}
     # A stream check (a PR into relay/arch) runs Linux only and leaves the other
     # platforms to the head check (a push to relay/arch) and to main: the account runs 20
     # jobs at once (5 macOS), and six streams of ~27 jobs queued for hours.
@@ -461,6 +463,7 @@ jobs:
         shell: bash
         env:
           PART: ${{ matrix.part }}
+          DIFFCTX_CLASS_SHARD: ${{ matrix.class_shard }}
         run: scripts/cargo-test-suites.sh "$PART"
 
       # Release ships an Intel-Mac binary cross-built on this arm64 image; the

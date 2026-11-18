@@ -8,6 +8,7 @@ import yaml
 
 PROJECT_ROOT = Path(__file__).parent.parent
 SUITES_SCRIPT = "scripts/cargo-test-suites.sh"
+CLASS_CORPUS = "class_completeness_corpus"
 
 
 def _suites() -> set[str]:
@@ -27,8 +28,9 @@ def _rust_jobs() -> list[dict]:
 
 def _cells(job: dict) -> list[dict[str, str]]:
     """GitHub's expansion: the product of the vectors less every cell an exclude
-    entry agrees with, then each include entry extends every cell it agrees
-    with, or becomes a cell of its own."""
+    entry agrees with, then each include entry extends every product cell it
+    agrees with, or becomes a cell of its own. A cell an include made is no
+    product cell: two includes with the same vector values are two cells."""
     matrix = job.get("strategy", {}).get("matrix", {})
     vectors = {k: v for k, v in matrix.items() if k not in ("include", "exclude")}
     cells: list[dict[str, str]] = [{}]
@@ -38,8 +40,9 @@ def _cells(job: dict) -> list[dict[str, str]]:
     cells = [c for c in cells if not any(all(c.get(k) == v for k, v in out.items()) for out in excluded)]
     if not vectors:
         cells = []
+    product = list(cells)
     for extra in matrix.get("include", []):
-        matching = [c for c in cells if vectors and all(c[k] == v for k, v in extra.items() if k in vectors)]
+        matching = [c for c in product if vectors and all(c[k] == v for k, v in extra.items() if k in vectors)]
         for cell in matching:
             cell.update(extra)
         if not matching:
@@ -66,7 +69,8 @@ def _part_suites(part: str) -> set[str]:
 def _covered(job: dict, cell: dict[str, str]) -> set[str]:
     """The suites one cell of a Rust job runs: named with `--test`, or by the
     suites script, whose argument is the part (read from the step's env when
-    the command names a variable)."""
+    the command names a variable). A class corpus split by case is the piece
+    `class_completeness_corpus K/N`."""
     covered: set[str] = set()
     for step in job["steps"]:
         run = step.get("run", "")
@@ -75,8 +79,20 @@ def _covered(job: dict, cell: dict[str, str]) -> set[str]:
             argument = re.search(r'cargo-test-suites\.sh(?:\s+"?([^"\s]+)"?)?', run).group(1) or "all"
             if argument.startswith("$"):
                 argument = _expanded(step.get("env", {}).get(argument[1:], "all"), cell)
-            covered |= _part_suites(argument)
+            suites = _part_suites(argument)
+            shard = _expanded(step.get("env", {}).get("DIFFCTX_CLASS_SHARD", ""), cell)
+            if shard and CLASS_CORPUS in suites:
+                suites = suites - {CLASS_CORPUS} | {f"{CLASS_CORPUS} {shard}"}
+            covered |= suites
     return covered
+
+
+def _joined(suites: set[str]) -> set[str]:
+    """The pieces of the class corpus are the suite when they are every K of one N."""
+    pieces = {s for s in suites if s.startswith(f"{CLASS_CORPUS} ")}
+    parts = {p.partition(" ")[2] for p in pieces}
+    whole = {f"{k}/{n}" for n in {p.split("/")[1] for p in parts} for k in range(1, int(n) + 1)}
+    return suites - pieces | ({CLASS_CORPUS} if parts and parts == whole else set())
 
 
 def test_every_rust_suite_runs_on_each_ci_os():
@@ -91,6 +107,7 @@ def test_every_rust_suite_runs_on_each_ci_os():
         for cell in _cells(job):
             covered.setdefault(_expanded(job["runs-on"], cell), set()).update(_covered(job, cell))
     for os_name, suites in covered.items():
+        suites = _joined(suites)
         assert suites == _suites(), f"{os_name} never runs {sorted(_suites() - suites)}"
 
 
