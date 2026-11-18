@@ -6,36 +6,42 @@ tags: [python, getattr, dynamic-name, coverage]
 repo:
   initial_files:
     main.py: |
+      import sys
+
+
       class Service:
-          def start(self):
+          def start_workers(self):
               pass
 
-          def stop(self):
+          def drain_queue(self):
               pass
 
 
-      name = "stop"
+      name = sys.argv[1]
       service = Service()
       getattr(service, name)()
   changed_files:
     main.py: |
+      import sys
+
+
       class Service:
-          def start(self):
+          def start_workers(self):
               pass
 
-          def stop(self):
+          def drain_queue(self):
               return 1
 
 
-      name = "stop"
+      name = sys.argv[1]
       service = Service()
       getattr(service, name)()
-  commit_message: "service: stop returns one"
+  commit_message: "service: drain_queue returns one"
 expect:
-  changed: [main.py::stop]
+  changed: [main.py::drain_queue]
   discloses: true
   no_negative_claims: true
   partial:
-    main.py::stop:
+    main.py::drain_queue:
       calls: not_traced
       reads: not_traced
