@@ -1,0 +1,27 @@
+name: py_django_style_project_dir_import_is_a_caller
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [python, manifests, import-root]
+repo:
+  initial_files:
+    site/manage.py: |
+      from shop.pricing import total
+
+
+      def main():
+          return total(1)
+    site/shop/__init__.py: |2+
+
+    site/shop/pricing.py: |
+      def total(x):
+          return x
+  changed_files:
+    site/shop/pricing.py: |
+      def total(x):
+          return x + 0
+  commit_message: change
+expect:
+  changed: ['site/shop/pricing.py::total']
+  relations:
+  - {from: 'site/manage.py::main', to: 'site/shop/pricing.py::total', kind: calls, resolution: resolved}

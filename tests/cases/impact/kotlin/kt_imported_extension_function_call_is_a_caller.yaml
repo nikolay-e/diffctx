@@ -1,0 +1,38 @@
+name: kt_imported_extension_function_call_is_a_caller
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [kotlin, extension, import]
+repo:
+  initial_files:
+    build.gradle.kts: |
+      plugins { kotlin("jvm") version "2.0.0" }
+    src/main/kotlin/com/acme/ext/Ext.kt: |
+      package com.acme.ext
+
+      fun String.shout(): String {
+          return this.uppercase()
+      }
+    src/main/kotlin/com/acme/app/Use.kt: |
+      package com.acme.app
+
+      import com.acme.ext.shout
+
+      fun go(s: String): String {
+          return s.shout()
+      }
+  changed_files:
+    src/main/kotlin/com/acme/ext/Ext.kt: |
+      package com.acme.ext
+
+      fun String.shout(): String {
+          return this.uppercase() + "!"
+      }
+  commit_message: change
+expect:
+  changed: ['src/main/kotlin/com/acme/ext/Ext.kt::shout']
+  relations:
+  - from: src/main/kotlin/com/acme/app/Use.kt::go
+    to: src/main/kotlin/com/acme/ext/Ext.kt::shout
+    kind: calls
+    resolution: resolved

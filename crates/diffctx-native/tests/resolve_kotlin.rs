@@ -749,6 +749,10 @@ const RED: &[(&str, &str)] = &[
         "a member named by a constant or a compared string is no syntactic reference, so the \
          resolver binds nothing there; the answer's literal-name scan names it",
     ),
+    (
+        "impact/kotlin/kt_gradle_included_build_is_a_caller",
+        "an included Gradle build's projects may stand in for a coordinate the build names; the workspace links none of them, so the call reaches no definition",
+    ),
 ];
 
 #[test]

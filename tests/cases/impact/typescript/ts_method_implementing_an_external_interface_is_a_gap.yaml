@@ -1,0 +1,46 @@
+name: ts_method_implementing_an_external_interface_is_a_gap
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [typescript, external-base, gap]
+repo:
+  initial_files:
+    package.json: |
+      {"name":"app","version":"1.0.0"}
+    tsconfig.json: |
+      {"compilerOptions":{"strict":true}}
+    src/sink.ts: |
+      import type { Disposable } from 'vscode';
+
+      export class Sink implements Disposable {
+        dispose(): void {
+          console.log('a');
+        }
+      }
+    src/emit.ts: |
+      import type { Disposable } from 'vscode';
+
+      export function close(d: Disposable): void {
+        d.dispose();
+      }
+    src/run.ts: |
+      import { Sink } from './sink';
+      import { close } from './emit';
+
+      export function run(): void {
+        close(new Sink());
+      }
+  changed_files:
+    src/sink.ts: |
+      import type { Disposable } from 'vscode';
+
+      export class Sink implements Disposable {
+        dispose(): void {
+          console.log('b');
+        }
+      }
+  commit_message: change
+expect:
+  changed: ['src/sink.ts::dispose']
+  partial:
+    src/sink.ts::dispose: {calls: unlanded}

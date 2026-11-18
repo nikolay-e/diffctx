@@ -1,0 +1,39 @@
+name: ts_override_of_an_external_class_called_through_its_parameter_is_a_gap
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [typescript, external-base, gap]
+repo:
+  initial_files:
+    package.json: |
+      {"name":"app","version":"1.0.0"}
+    tsconfig.json: |
+      {"compilerOptions":{"strict":true}}
+    src/sink.ts: |
+      import { EventEmitter } from 'node:events';
+
+      export class Sink extends EventEmitter {
+        emit(name: string): boolean {
+          return true;
+        }
+      }
+    src/use.ts: |
+      import { EventEmitter } from 'node:events';
+
+      export function fire(e: EventEmitter): void {
+        e.emit('x');
+      }
+  changed_files:
+    src/sink.ts: |
+      import { EventEmitter } from 'node:events';
+
+      export class Sink extends EventEmitter {
+        emit(name: string): boolean {
+          return false;
+        }
+      }
+  commit_message: change
+expect:
+  changed: ['src/sink.ts::emit']
+  partial:
+    src/sink.ts::emit: {calls: unlanded}

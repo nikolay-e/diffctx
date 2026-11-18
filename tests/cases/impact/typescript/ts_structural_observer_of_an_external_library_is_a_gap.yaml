@@ -1,0 +1,42 @@
+name: ts_structural_observer_of_an_external_library_is_a_gap
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [typescript, external-name, structural, gap]
+repo:
+  initial_files:
+    package.json: |
+      {"name":"app","version":"1.0.0","devDependencies":{"@types/vscode":"^1.80.0"},"dependencies":{"rxjs":"^7.0.0"}}
+    tsconfig.json: |
+      {"compilerOptions":{"strict":true}}
+    src/obs.ts: |
+      export class Obs {
+        next(v: number): void {
+          console.log(v);
+        }
+      }
+    src/emit.ts: |
+      import type { Observer } from 'rxjs';
+
+      export function push(o: Observer<number>): void {
+        o.next(1);
+      }
+    src/run.ts: |
+      import { Obs } from './obs';
+      import { push } from './emit';
+
+      export function run(): void {
+        push(new Obs() as any);
+      }
+  changed_files:
+    src/obs.ts: |
+      export class Obs {
+        next(v: number): void {
+          console.log(v + 1);
+        }
+      }
+  commit_message: change
+expect:
+  changed: ['src/obs.ts::next']
+  partial:
+    src/obs.ts::next: {calls: unlanded}

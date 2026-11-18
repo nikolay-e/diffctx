@@ -672,10 +672,16 @@ fn cases_root() -> PathBuf {
 /// The Go cases the resolver cannot answer yet, each with the reason. The list
 /// is held both ways: a listed case that turns green fails the run, as does a
 /// red case that is not listed.
-const RED: &[(&str, &str)] = &[(
-    "impact/go/go_removed_field_read_in_the_middle_of_a_chain_is_not_absent",
-    "the candidate is the removal side's: a read through a receiver nothing types is `UntypedRead` for the resolver, and decide() names the surviving read of a removed member's name as a possible use; no binding states it",
-)];
+const RED: &[(&str, &str)] = &[
+    (
+        "impact/go/go_removed_field_read_in_the_middle_of_a_chain_is_not_absent",
+        "the candidate is the removal side's: a read through a receiver nothing types is `UntypedRead` for the resolver, and decide() names the surviving read of a removed member's name as a possible use; no binding states it",
+    ),
+    (
+        "impact/go/go_external_test_package_call_of_the_builtin_max_is_no_caller",
+        "fj#234: an external test package does not see the unexported `max` of `util`, so `max(1, 2)` there is the builtin; the resolver binds it to the package's function",
+    ),
+];
 
 #[test]
 fn the_go_corpus_is_answered_as_the_list_says() {

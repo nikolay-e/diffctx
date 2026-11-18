@@ -1,0 +1,51 @@
+name: kt_class_delegation_over_an_external_base_is_a_gap
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [kotlin, external-base, delegation, gap]
+repo:
+  initial_files:
+    build.gradle.kts: |
+      plugins { kotlin("jvm") version "2.0.0" }
+    src/main/kotlin/com/acme/Audited.kt: |
+      package com.acme
+
+      interface Audited {
+          fun audit(x: Int): Int
+      }
+
+      class AuditedImpl : Audited {
+          override fun audit(x: Int): Int {
+              return x
+          }
+      }
+    src/main/kotlin/com/acme/Client.kt: |
+      package com.acme
+
+      class Client(impl: Audited) : java.util.ArrayList<String>(), Audited by impl
+    src/main/kotlin/com/acme/Use.kt: |
+      package com.acme
+
+      fun go(): Int {
+          val c = Client(AuditedImpl())
+          return c.audit(1)
+      }
+  changed_files:
+    src/main/kotlin/com/acme/Audited.kt: |
+      package com.acme
+
+      interface Audited {
+          fun audit(x: Int): Int
+      }
+
+      class AuditedImpl : Audited {
+          override fun audit(x: Int): Int {
+              return x + 0
+          }
+      }
+  commit_message: change
+expect:
+  changed: ['src/main/kotlin/com/acme/Audited.kt::audit']
+  partial:
+    src/main/kotlin/com/acme/Audited.kt::audit:
+      calls: [unlanded, not_traced]

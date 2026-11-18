@@ -1,0 +1,36 @@
+name: ts_structural_dom_listener_object_is_possibly_called
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [typescript, builtin, structural, gap]
+repo:
+  initial_files:
+    package.json: |
+      {"name":"app","version":"1.0.0"}
+    tsconfig.json: |
+      {"compilerOptions":{"strict":true}}
+    src/panel.ts: |
+      export class Panel {
+        handleEvent(e: Event): void {
+          console.log(e.type);
+        }
+      }
+    src/wire.ts: |
+      import { Panel } from './panel';
+
+      export function wire(el: HTMLElement): void {
+        const p: EventListenerObject = new Panel();
+        p.handleEvent(new Event('x'));
+      }
+  changed_files:
+    src/panel.ts: |
+      export class Panel {
+        handleEvent(e: Event): void {
+          console.log(e.type, 1);
+        }
+      }
+  commit_message: change
+expect:
+  changed: ['src/panel.ts::handleEvent']
+  relations:
+  - {from: 'src/wire.ts::wire', to: 'src/panel.ts::handleEvent', kind: calls, resolution: candidate}

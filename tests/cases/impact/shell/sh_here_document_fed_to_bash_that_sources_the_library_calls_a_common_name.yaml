@@ -1,0 +1,27 @@
+name: sh_here_document_fed_to_bash_that_sources_the_library_calls_a_common_name
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [shell, here-document, child-shell, absence-claim]
+repo:
+  initial_files:
+    lib.sh: |
+      check() {
+        return 0
+      }
+    run.sh: |
+      #!/bin/sh
+      bash <<EOF
+      . ./lib.sh
+      check
+      EOF
+  changed_files:
+    lib.sh: |
+      check() {
+        return 1
+      }
+  commit_message: change
+expect:
+  changed: ['lib.sh::check']
+  exact: false
+  no_negative_claims: true

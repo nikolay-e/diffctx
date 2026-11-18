@@ -1,0 +1,44 @@
+name: py_cache_clear_then_call_of_an_imported_cached_function_is_a_caller
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [python, decorator, member]
+repo:
+  initial_files:
+    app/__init__.py: ""
+    app/config.py: |
+      import functools
+
+
+      @functools.lru_cache
+      def get_settings():
+          return {"debug": False}
+    tests/test_config.py: |
+      from app.config import get_settings
+
+
+      def test_reset():
+          get_settings.cache_clear()
+          assert get_settings() == {"debug": False}
+  changed_files:
+    app/config.py: |
+      import functools
+
+
+      @functools.lru_cache
+      def get_settings():
+          return {"debug": True}
+  commit_message: change
+expect:
+  changed: ['app/config.py::get_settings']
+  relations:
+  - from: tests/test_config.py::test_reset
+    to: app/config.py::get_settings
+    kind: reads
+    resolution: resolved
+    site: 5
+  - from: tests/test_config.py::test_reset
+    to: app/config.py::get_settings
+    kind: calls
+    resolution: resolved
+    site: 6
