@@ -85,6 +85,8 @@ pub struct Accounted {
     /// The lines, at the head, whose quoted spelling resolved to another definition: a
     /// literal on one of them is that use, not a mention the cell could not read.
     pub elsewhere: HashSet<(RepoPath, u32)>,
+    /// The whole strings that spell a name of the definition and no binding explains.
+    pub quoted: usize,
 }
 
 #[derive(Default)]
@@ -92,6 +94,7 @@ struct Found {
     entries: Vec<Entry>,
     unread: HashMap<RepoPath, Loss>,
     mentions: usize,
+    quoted: usize,
     files: HashSet<RepoPath>,
     elsewhere: HashSet<(RepoPath, u32)>,
 }
@@ -266,6 +269,7 @@ impl Shadow<'_> {
             whole,
             callers: Vec::new(),
             stranded: false,
+            quoted: found.quoted,
             elsewhere: if side == SideTag::Head {
                 found.elsewhere
             } else {
@@ -301,6 +305,7 @@ impl Shadow<'_> {
             let other_project = self.view.manifests_whole()
                 && !(self.ctx.workspace).may_reference(file.as_str(), definition.file.as_str());
             found.mentions += done.mentions;
+            found.quoted += done.quoted;
             if done.lost && done.entries.is_empty() {
                 let loss =
                     (facts.losses().into_iter().next()).unwrap_or_else(|| self.unread(&file));
