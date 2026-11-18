@@ -93,6 +93,8 @@ pub(super) struct Index {
     pub dirs: HashSet<String>,
     /// Methods and nested classes by name: what an untyped receiver may be.
     pub members: HashMap<Name, Vec<usize>>,
+    /// Classes by name: what a base nothing binds may be.
+    pub classes: HashMap<Name, Vec<usize>>,
     /// The import roots of each file, once found.
     pub roots_cache: RefCell<HashMap<usize, Vec<String>>>,
 }
@@ -240,6 +242,10 @@ impl Index {
             key,
             fact: fact_at,
         });
+        if def.kind == DefKind::Class {
+            let named = self.classes.entry(def.local.name.clone());
+            named.or_default().push(id);
+        }
         let file = &mut self.files[at];
         file.children
             .entry(def.local.container.clone())
