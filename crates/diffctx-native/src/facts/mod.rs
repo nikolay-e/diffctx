@@ -32,6 +32,7 @@ mod language;
 mod lexical;
 mod model;
 mod module;
+mod reflect;
 
 pub use blob::blob_oid;
 pub use cache::{
