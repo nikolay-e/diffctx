@@ -1710,6 +1710,10 @@ impl UntracedNamers {
         // module's variable by its name, in files the module's extractor never reads.
         let sets_variable = crate::languages::get_language_for_file(&sym.path) == Some("terraform");
         let mut spelled: Vec<UnanalysedFile> = Vec::new();
+        let member = matches!(
+            def.kind,
+            crate::facts::DefKind::Method | crate::facts::DefKind::Constructor
+        );
         for name in std::iter::once(def.name.as_str()).chain(left_words(def)) {
             let assigned = self
                 .naming(literal_base(name), |p| {
@@ -1717,7 +1721,7 @@ impl UntracedNamers {
                 })
                 .into_iter()
                 .map(|(path, line)| UnanalysedFile::new(path, "not_traced", vec![line]));
-            for file in self.literal_files(name).into_iter().chain(assigned) {
+            for file in self.literal_files(name, member).into_iter().chain(assigned) {
                 let named = file
                     .lines
                     .iter()
@@ -1780,10 +1784,10 @@ impl UntracedNamers {
         }
     }
 
-    /// The files that spell `name` as a literal.
-    fn literal_files(&self, name: &str) -> Vec<UnanalysedFile> {
+    /// The files that spell `name`, the name of a `member` or not, as a literal.
+    fn literal_files(&self, name: &str, member: bool) -> Vec<UnanalysedFile> {
         self.literal
-            .naming(literal_base(name))
+            .naming(literal_base(name), member)
             .into_iter()
             .map(|(path, line)| UnanalysedFile::new(path, "not_traced", vec![line]))
             .collect()
@@ -4455,7 +4459,7 @@ pub fn build_impact(
             .iter()
             .map(String::as_str)
             .chain(left())
-            .flat_map(|n| untraced.literal_files(n))
+            .flat_map(|n| untraced.literal_files(n, member))
             .map(|file| (file, true));
         // The linker exports a non-static C function, and cgo a `//export`ed Go one:
         // another language that loads the library names it by its bare name.
