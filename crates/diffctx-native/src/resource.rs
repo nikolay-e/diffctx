@@ -21,6 +21,8 @@ use std::time::{Duration, Instant};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+use crate::snapshot::SCAN_STRIDE;
+
 /// Why a run did not do everything it could have. One vocabulary for every
 /// phase; consumers read `coverage.limits` and never a per-subsystem
 /// boolean.
@@ -99,8 +101,6 @@ pub struct ResourceBudget {
     pub max_needs: usize,
 }
 
-/// Items of a [`Run::scan`] loop between two polls of the run's limits.
-pub(crate) const SCAN_STRIDE: usize = 64;
 pub const DEFAULT_MAX_NEEDS: usize = 4_000;
 pub const DEFAULT_MAX_SOURCE_BYTES: u64 = 256 * 1024 * 1024;
 pub const DEFAULT_MAX_CANDIDATE_FILES: usize = 200_000;
