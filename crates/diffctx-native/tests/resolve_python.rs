@@ -771,10 +771,6 @@ const RED: &[(&str, &str)] = &[
         "gh#710: open ticket; the case asserts what the engine does not yet answer",
     ),
     (
-        "impact/python/py_class_attribute_holding_a_changed_class_is_a_caller",
-        "fj#186: open ticket; the case asserts what the engine does not yet answer",
-    ),
-    (
         "impact/python/gh293_fetch_call_site_links_to_the_route_handler_it_hits",
         "gh#293: a client `fetch` of a route path is a cross-language link to the handler that no \
          Python binding states; no resolver nor channel links them yet",
