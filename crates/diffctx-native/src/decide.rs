@@ -791,6 +791,12 @@ impl Verdict {
         RepoPath::new(file).is_ok_and(|file| self.found.elsewhere.contains(&(file, line)))
     }
 
+    /// Whether a whole string in the group's code spells a name of the definition and
+    /// no binding explains it: a reflective use no tree reads.
+    pub(crate) fn names_quoted(&self) -> bool {
+        self.found.quoted > 0
+    }
+
     /// The type a removed override was reached through, when it was one: what
     /// called the member it overrode reached it, and no model traces that.
     pub(crate) fn overridden_via(&self) -> Option<&str> {
@@ -2917,6 +2923,7 @@ impl Cell {
             callers,
             stranded,
             elsewhere: HashSet::new(),
+            quoted: 0,
         };
         for (definition, side) in heads.chain(removed) {
             let known = Known {
@@ -2930,6 +2937,7 @@ impl Cell {
             all.unused &= done.unused;
             all.whole &= done.whole;
             all.elsewhere.extend(done.elsewhere);
+            all.quoted += done.quoted;
         }
         all
     }

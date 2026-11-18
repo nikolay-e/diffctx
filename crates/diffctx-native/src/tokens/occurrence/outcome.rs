@@ -288,6 +288,9 @@ pub struct FileOutcomes {
     pub entries: Vec<Entry>,
     /// Mentions nobody explained: counted, never listed.
     pub mentions: usize,
+    /// Of those, the ones that are a whole string (`"name"`): a name a program may
+    /// resolve at run time, which no tree reads.
+    pub quoted: usize,
     /// The scan could not read the file whole; with no entry to say so, the
     /// caller lists the file as unread.
     pub lost: bool,
@@ -1396,6 +1399,7 @@ pub fn outcomes(
     let mut done = FileOutcomes {
         entries: Vec::new(),
         mentions: 0,
+        quoted: 0,
         lost: found.lost,
     };
     if found.lost {
@@ -1413,9 +1417,13 @@ pub fn outcomes(
         .map(|occurrence| reading.entry(occurrence))
         .collect();
     for mention in found.mentions {
+        let whole = reading.quoted(&mention).is_some();
         match reading.explained(mention) {
             Some(entry) => done.entries.push(entry),
-            None => done.mentions += 1,
+            None => {
+                done.mentions += 1;
+                done.quoted += usize::from(whole);
+            }
         }
     }
     done.entries

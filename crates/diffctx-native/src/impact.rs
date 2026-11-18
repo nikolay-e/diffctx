@@ -1704,8 +1704,9 @@ impl UntracedNamers {
     }
 
     /// `sym`, a definition nothing reaches, with the files outside its language that
-    /// spell its name, or the gap that says the name was not searched there.
-    fn name_text(&self, sym: &mut ChangedSymbol, name: &str) {
+    /// spell its name, or the gap that says the name was not searched there: a file no
+    /// cell read could spell it, or a string of a parsed file does (`quoted`).
+    fn name_text(&self, sym: &mut ChangedSymbol, name: &str, quoted: bool) {
         // A file as a whole has no name to spell: it is reached by its path.
         let nothing_known = sym.symbol.is_some()
             && sym.callers.is_empty()
@@ -1732,7 +1733,8 @@ impl UntracedNamers {
                 files: named.len(),
             }));
             sym.missed_in.extend(named);
-        } else if !searched_as_text(literal_base(name)) && self.unread.could_spell(own) {
+        } else if !searched_as_text(literal_base(name)) && (quoted || self.unread.could_spell(own))
+        {
             sym.coverage = sym.coverage.clone().with(Some(decide::Gap::NameUnsearched));
         }
     }
@@ -4392,12 +4394,13 @@ pub fn build_impact(
             && entry.is_none()
             && callable_by_name(core.path())
             && spelled_name(core).is_some_and(|n| !searched_as_text(n))
-            && untraced
-                .unread
-                .could_spell(crate::vocabulary::family::Group::of_path(&rel(
-                    state,
-                    core.path(),
-                )));
+            && (verdict.as_ref().is_some_and(decide::Verdict::names_quoted)
+                || untraced
+                    .unread
+                    .could_spell(crate::vocabulary::family::Group::of_path(&rel(
+                        state,
+                        core.path(),
+                    ))));
         let coverage = search_coverage(verdict.as_ref(), unresolved.as_ref(), outside)
             .with(unsearched.then_some(decide::Gap::NameUnsearched));
         // No test found is an absence only from a closed search: the callers
@@ -4590,7 +4593,7 @@ pub fn build_impact(
         let verdict = cell.verdict(entry);
         let mut sym = cell_symbol(entry, &verdict, format!("{:?}", entry.kind).to_lowercase());
         untraced.name_literals(&mut sym, &entry.name, &verdict);
-        untraced.name_text(&mut sym, &entry.name);
+        untraced.name_text(&mut sym, &entry.name, verdict.names_quoted());
         let callerless = query.is_none()
             && sym.callers.is_empty()
             && sym.also_changed.is_empty()
