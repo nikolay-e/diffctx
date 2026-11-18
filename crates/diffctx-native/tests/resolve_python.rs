@@ -801,33 +801,23 @@ const RED: &[(&str, &str)] = &[
     ),
     (
         "impact/python/py_base_handed_to_type_is_reached_by_a_constructor_change",
-        "the resolver reports the class handed to `type(...)` as a use of the file, not of the \
-         function that builds the new class",
-    ),
-    (
-        "impact/python/py_changed_init_is_not_reached_by_an_isinstance_check",
-        "the class an `isinstance` check names is read as a value passed to the call, a use of \
-         the class the case's decoy rules out",
+        "the answer's use of the class handed to `type(...)` sits in the building function; the \
+         resolver reports it at the file",
     ),
     (
         "impact/python/py_class_assigned_then_called_through_a_parameter_is_reached_by_a_constructor_change",
-        "the resolver reports the class a function assigns as a use of the file, not of the \
-         function that assigns it",
+        "the answer's use of the assigned class sits in the building function; the resolver \
+         reports it at the file",
     ),
     (
         "impact/python/py_class_method_building_cls_possibly_reaches_a_subclass_constructor",
-        "the resolver reads the subclass name beside the `cls(...)` call as a resolved use, which \
-         the case leaves to the answer's hedge",
-    ),
-    (
-        "impact/python/py_constructor_inherited_from_the_second_base_is_reached_by_the_subclass_construction",
-        "the resolver binds no construction of a subclass to the constructor it inherits from its \
-         second base",
+        "the resolver reads the subclass name beside the `cls(...)` call as one more resolved use \
+         that the answer folds into its hedge",
     ),
     (
         "impact/python/py_inherited_constructor_is_reached_by_the_subclass_construction",
-        "the resolver binds neither a subclass construction nor its `super().__init__()` call to \
-         the constructor the subclass inherits",
+        "a subclass construction reaches the inherited constructor in the engine's answer; the \
+         resolver binds no call to it",
     ),
     (
         "impact/python/py_nested_def_in_a_test_names_its_enclosing_test",
@@ -836,8 +826,8 @@ const RED: &[(&str, &str)] = &[
     ),
     (
         "impact/python/py_subscripted_generic_instantiation_is_reached_by_a_constructor_change",
-        "the resolver reads `Box[int](...)` as the class passed as a value, not as an \
-         instantiation",
+        "a subscripted generic call is an instantiation in the engine's answer; the resolver \
+         reports a use passed as a value",
     ),
     (
         "symbol/python/py_def_under_a_global_declaration_is_a_definition_its_callers_a_gap",
