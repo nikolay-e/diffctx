@@ -736,11 +736,12 @@ impl<'a> TestsReach<'a> {
 
     /// Whether a test could reach `f` unnamed: the uses above it hold a test past
     /// the hop bound or a use that stops the search (`f` too when `own`: a caller
-    /// no test names), or the run stopped. An absence needs a closed search.
+    /// no test names), a test asserts a string of `f` too many files spell to name
+    /// it, or the run stopped. An absence needs a closed search.
     pub(super) fn open_above(&self, f: &'a Fragment, link: &Link, own: bool) -> bool {
         (own && self.stops(f, link))
             || self
-                .runs
+                .asserted
                 .iter()
                 .any(|run| run.enters(f) && run.tests.is_empty())
             || self.reaches_open(f, link)
