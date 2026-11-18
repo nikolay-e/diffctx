@@ -39,3 +39,6 @@ expect:
     header_labelled: []
   no_negative_claims: true
   never_empty: true
+  partial:
+    src/impl.c::asm_label_impl: {calls: not_traced}
+    src/hdr.c::header_labelled: {calls: not_traced}

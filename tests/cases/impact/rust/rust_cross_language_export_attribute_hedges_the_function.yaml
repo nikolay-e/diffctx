@@ -169,4 +169,11 @@ expect:
   no_negative_claims: true
   never_empty: true
   partial:
+    src/lib.rs::wasm_only: {calls: not_traced}
+    src/lib.rs::wasm_renamed: {calls: not_traced}
+    src/lib.rs::py_only: {calls: not_traced}
+    src/lib.rs::py_qualified: {calls: not_traced}
+    src/lib.rs::napi_sum: {calls: not_traced}
     src/lib.rs::c_only: {calls: not_traced}
+    src/lib.rs::add: {calls: not_traced}
+    src/lib.rs::bump: {calls: not_traced}
