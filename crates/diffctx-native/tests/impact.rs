@@ -3948,12 +3948,18 @@ fn a_stopped_run_traces_one_more_definition_per_poll() {
 /// fj#107: the phase that reads which tests reach the changed definitions
 /// polled nothing, so a deadline never fell inside it; on a repository of
 /// thousands of fragments it was most of a run, and the run ended with no
-/// answer at all. Counted in fragments the phase took, not timed: one more
-/// poll lets it take one more, and a stop inside it is the partial answer with
-/// no caller and no missing test link claimed.
+/// answer at all. Counted in fragments the phase took, not timed: its loop
+/// polls once per stride of fragments, so a stop falls inside it at each stride
+/// it crosses, and a stop inside it is the partial answer with no caller and no
+/// missing test link claimed.
 #[test]
 fn a_stopped_tests_phase_is_a_partial_answer_that_claims_no_missing_test() {
     const ROUTES: usize = 8;
+    /// The fragments the phase's loop takes between two polls.
+    const STRIDE: u64 = 64;
+    let helpers: String = (0..3 * STRIDE)
+        .map(|i| format!("def helper_{i}():\n    return {i}\n\n\n"))
+        .collect();
     let tmp = TempDir::new().expect("tempdir");
     let repo = tmp.path();
     init_repo(repo);
@@ -3980,6 +3986,7 @@ fn a_stopped_tests_phase_is_a_partial_answer_that_claims_no_missing_test() {
             "tests/test_views.py",
             &format!("from app.views import app\n\n\n{tests}"),
         );
+        write(repo, "app/helpers.py", &helpers);
         commit_all(repo, "views");
     }
     let sweep = support::sweep_polls(
@@ -3988,7 +3995,7 @@ fn a_stopped_tests_phase_is_a_partial_answer_that_claims_no_missing_test() {
     );
     let whole = sweep.last().map_or(0, |(_, (_, taken))| *taken);
     assert!(
-        whole >= 2 * ROUTES as u64,
+        whole >= 3 * STRIDE,
         "the tests phase took {whole} fragments of the whole run"
     );
     let inside: Vec<&(u64, (serde_json::Value, u64))> = sweep
@@ -3996,7 +4003,7 @@ fn a_stopped_tests_phase_is_a_partial_answer_that_claims_no_missing_test() {
         .filter(|(_, (doc, taken))| stopped_by_the_deadline(doc) && 0 < *taken && *taken < whole)
         .collect();
     assert!(
-        inside.len() as u64 >= whole / 2,
+        inside.len() as u64 >= whole / STRIDE - 1,
         "{} of {whole} stop points fell inside the tests phase",
         inside.len()
     );
