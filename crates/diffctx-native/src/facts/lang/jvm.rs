@@ -155,6 +155,17 @@ macro_rules! shared_reader_methods {
             }
         }
 
+        /// The reflective lookups by a name the code builds.
+        fn computed_names(&mut self) {
+            for call in &self.read.computed {
+                self.facts.push(Fact::ComputedName {
+                    site: self.span(call.range.clone()),
+                    member: true,
+                    class: call.class.as_deref().map(Name::new),
+                });
+            }
+        }
+
         fn locals(&mut self) {
             let mut order: Vec<usize> = (0..self.read.bindings.len()).collect();
             order.sort_by_key(|i| self.read.bindings[*i].start);

@@ -28,7 +28,7 @@ use std::ops::Range;
 use super::index::Path;
 use super::{
     EvidenceKind, Relation, Resolution, Solved, UnresolvedReason, is_callable, java, kotlin,
-    plain_relation,
+    plain_relation, solved::computers_of,
 };
 use crate::facts::{
     Def, DefKey, DefKind, Disambig, Export, Fact, FactsCache, FileFacts, ImportKind, Language,
@@ -100,7 +100,14 @@ impl Solved {
         } else {
             java.definitions
         };
-        Ok(Self::new(definitions, bindings, losses, read).with_open_routes(java.open_routes))
+        let computers = computers_of(&kotlin_files)
+            .into_iter()
+            .chain(computers_of(&java_files))
+            .collect();
+        Ok(Self::new(definitions, bindings, losses, read)
+            .with_open_routes(java.open_routes)
+            .with_computers(computers)
+            .with_serialized(java.serialized))
     }
 }
 

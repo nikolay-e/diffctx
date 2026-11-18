@@ -21,6 +21,7 @@ use crate::discovery::{
 };
 use crate::fragmentation::process_files_for_fragments;
 use crate::mode::{PipelineConfig, ScoringMode};
+use crate::paths::is_lockfile_path;
 use crate::postpass;
 use crate::render::{self, DiffContextOutput};
 use crate::run_provenance::state::{
@@ -2534,30 +2535,6 @@ pub fn select_with_params(
     output.coverage =
         crate::resource::CoverageReport::build(&state.run, &limits, &|p| about.contains(p));
     output
-}
-
-/// Lock files: every `*.lock` (mise, Podfile, a package manager's own) and the
-/// few that are named otherwise. Tree mode drops them outright; diff mode cannot,
-/// because a bumped dependency IS part of the change — but rendering the raw
-/// hunks costs thousands of tokens of checksums for a fact that fits on one
-/// line, so the paths are reported and the content is left out (#112).
-fn is_lockfile_path(path: &Path) -> bool {
-    let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
-        return false;
-    };
-    name.ends_with(".lock")
-        || matches!(
-            name,
-            "package-lock.json"
-                | "npm-shrinkwrap.json"
-                | "pnpm-lock.yaml"
-                | "bun.lockb"
-                | "go.sum"
-                | "packages.lock.json"
-                | "gradle.lockfile"
-                | "Package.resolved"
-                | "cabal.project.freeze"
-        )
 }
 
 pub(crate) fn rel_path_string(root_dir: &Path, path: &Path) -> Option<String> {
