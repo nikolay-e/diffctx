@@ -2838,6 +2838,9 @@ const JVM_FRAMEWORK_PACKAGES: &[&str] = &[
     "com.fasterxml.jackson.annotation.",
 ];
 
+/// Packages whose annotations share an entry point's name and enter nothing.
+const JVM_NEUTRAL_PACKAGES: &[&str] = &["lombok.", "java.", "kotlin."];
+
 fn is_jvm_path(path: &str) -> bool {
     let p = path.to_ascii_lowercase();
     [".kt", ".kts", ".java", ".scala"]
@@ -2845,8 +2848,10 @@ fn is_jvm_path(path: &str) -> bool {
         .any(|e| p.ends_with(e))
 }
 
-/// The framework entry point annotating the JVM definition itself, its
-/// import naming a framework package. Unknown annotations are neutral.
+/// What an annotation of the JVM definition says of who calls it: a framework
+/// entry point, its import naming a framework package, or an annotation of the
+/// name an entry point has whose import names none (`@Provides` of a library
+/// the table does not know), which may be one.
 fn jvm_entry_point(
     f: &Fragment,
     file: &[&Fragment],
@@ -2868,19 +2873,44 @@ fn jvm_entry_point(
             })
             .collect(),
     };
-    names.into_iter().find(|name| {
-        JVM_ENTRY_POINTS.contains(&name.as_str())
-            && file.iter().flat_map(|fr| fr.content.lines()).any(|line| {
-                let line = line.trim_start();
-                let Some(path) = line.strip_prefix("import ") else {
-                    return false;
-                };
-                let path = path.trim_end_matches(';').trim();
-                let path = path.split(" as ").next().unwrap_or(path);
-                JVM_FRAMEWORK_PACKAGES.iter().any(|p| path.starts_with(p))
-                    && (path.ends_with(&format!(".{name}")) || path.ends_with(".*"))
+    let imports: Vec<&str> = file
+        .iter()
+        .flat_map(|fr| fr.content.lines())
+        .filter_map(|line| {
+            let path = line.trim_start().strip_prefix("import ")?;
+            let path = path.trim_end_matches(';').trim();
+            Some(path.split(" as ").next().unwrap_or(path))
+        })
+        .collect();
+    let imported_from = |name: &str, trusted: bool| {
+        imports.iter().find(|path| {
+            JVM_FRAMEWORK_PACKAGES.iter().any(|p| path.starts_with(p)) == trusted
+                && path.ends_with(&format!(".{name}"))
+        })
+    };
+    let entries = names
+        .iter()
+        .filter(|name| JVM_ENTRY_POINTS.contains(&name.as_str()));
+    entries
+        .clone()
+        .find(|name| {
+            imports.iter().any(|path| {
+                path.ends_with(".*") && JVM_FRAMEWORK_PACKAGES.iter().any(|p| path.starts_with(p))
+            }) || imported_from(name, true).is_some()
+        })
+        .cloned()
+        .or_else(|| {
+            entries.into_iter().find_map(|name| {
+                let path = imported_from(name, false)?;
+                let package = path.rsplit_once('.')?.0;
+                (!JVM_NEUTRAL_PACKAGES.iter().any(|p| path.starts_with(p))).then(|| {
+                    format!(
+                        "{}may be entered by the framework (annotation `@{name}` from {package})",
+                        framework::ENTRY_PREFIX
+                    )
+                })
             })
-    })
+        })
 }
 
 /// A Python function decorated `@pytest.fixture` / `@fixture`, with or
@@ -3612,7 +3642,13 @@ pub fn build_impact(
                     (f.start_line(), f.end_line()),
                 )
             });
-            jvm_entry_point(f, file_of(f), stated.as_deref())
+            jvm_entry_point(f, file_of(f), stated.as_deref()).or_else(|| {
+                let name = f.symbol_name.as_deref().map(base_symbol)?;
+                cells
+                    .of(&path)?
+                    .serialized_at(&path, name, (f.start_line(), f.end_line()))
+                    .then(|| format!("{}serialized by Jackson", framework::ENTRY_PREFIX))
+            })
         } else {
             registering_decorator(f, file_of(f))
         }

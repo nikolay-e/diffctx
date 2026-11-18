@@ -122,6 +122,30 @@ pub(crate) fn index_key_of(path: &str, repo_root: Option<&Path>) -> String {
         .unwrap_or_else(|| to_posix_display(path.into()))
 }
 
+/// Lock files: every `*.lock` (mise, Podfile, a package manager's own) and the
+/// few that are named otherwise. Tree mode drops them outright; diff mode cannot,
+/// because a bumped dependency IS part of the change — but rendering the raw
+/// hunks costs thousands of tokens of checksums for a fact that fits on one
+/// line, so the paths are reported and the content is left out (#112).
+pub(crate) fn is_lockfile_path(path: &Path) -> bool {
+    let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
+        return false;
+    };
+    name.ends_with(".lock")
+        || matches!(
+            name,
+            "package-lock.json"
+                | "npm-shrinkwrap.json"
+                | "pnpm-lock.yaml"
+                | "bun.lockb"
+                | "go.sum"
+                | "packages.lock.json"
+                | "gradle.lockfile"
+                | "Package.resolved"
+                | "cabal.project.freeze"
+        )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -1957,6 +1957,13 @@ impl Cell {
         })
     }
 
+    /// Whether Jackson calls the Java definition at the head, by where it is: a
+    /// getter of a class it serializes.
+    pub(crate) fn serialized_at(&self, file: &str, name: &str, lines: (u32, u32)) -> bool {
+        self.first_definition_at(file, name, lines)
+            .is_some_and(|def| self.head.serialized(&def.key))
+    }
+
     /// The strings of `file` at the head that sit where the language holds a callable
     /// by name and span `line`: what the file's tree says, whatever the text around
     /// the string is. A Go package's strings count only where the package itself
@@ -3384,15 +3391,16 @@ impl Cell {
         }
         // A name the code computes (`getattr(obj, name)`, `eval`, `globals()[key]`) may
         // be the definition's, and nothing in the text says so.
-        if let Resolver::Python(python) = &self.head {
-            let member = changed
-                .subjects
-                .iter()
-                .any(|s| !s.key.local.container.is_empty());
-            let reach = |file: &str| self.ctx.workspace.may_reference(file, &changed.file);
-            if python.name_computers(member, reach) > 0 {
-                tail.push(Gap::NotTraced);
-            }
+        let member = changed
+            .subjects
+            .iter()
+            .any(|s| !s.key.local.container.is_empty());
+        let classes: Vec<Name> = (changed.subjects.iter())
+            .filter_map(|s| s.key.local.container.last().cloned())
+            .collect();
+        let reach = |file: &str| self.ctx.workspace.may_reference(file, &changed.file);
+        if self.head.name_computers(member, &classes, reach) > 0 {
+            tail.push(Gap::NotTraced);
         }
         let reasons = self.stops();
         if !reasons.is_empty() {
