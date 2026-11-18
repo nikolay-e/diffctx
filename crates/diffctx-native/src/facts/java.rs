@@ -13,9 +13,9 @@ use tree_sitter::Node;
 
 use super::kotlin::{
     Binding, Declaration, Holds, Import, InitCall, KotlinFacts, Receiver, Use, UseKind, Visibility,
-    child, class_literal_in, computed, hold, line_of, lookup_position, push_use, settle_computed,
-    squash, text, walk,
+    child, hold, line_of, push_use, squash, text, walk,
 };
+use super::reflect::{class_literal_in, computed, lookup_position, settle_computed};
 
 /// The types around a node: each name, its visibility, and whether it is an
 /// interface, whose members are public unless they say otherwise.
