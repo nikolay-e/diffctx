@@ -7972,3 +7972,27 @@ fn an_importer_under_another_manifest_outside_the_pathspec_leaves_the_callers_op
         "{doc:#}"
     );
 }
+
+/// `type(self)(..)` builds the class of the instance, as `self.__class__(..)`
+/// does: a subclass constructor is possibly called from the method that builds
+/// it, and is never one nothing calls.
+#[test]
+fn a_class_built_by_type_of_self_possibly_calls_a_subclass_constructor() {
+    let tree = |body: &str| {
+        format!(
+            "class Node:\n    def __init__(self):\n        pass\n\n    def clone(self):\n        return type(self)()\n\n\nclass Leaf(Node):\n    def __init__(self):\n        {body}\n"
+        )
+    };
+    let tmp = repo(
+        &[("tree.py", &tree("pass"))],
+        &[("tree.py", &tree("self.x = 1"))],
+    );
+    let doc = impact(tmp.path(), "HEAD~1..HEAD");
+    let leaf = &doc["definitions"][0];
+    assert_eq!(leaf["symbol"], "Leaf", "{doc:#}");
+    let mut rows = leaf["rows"].as_array().into_iter().flatten();
+    let clone = rows.find(|r| r["symbol"] == "clone");
+    let clone = clone.unwrap_or_else(|| panic!("no row of clone: {doc:#}"));
+    assert_eq!(clone["standing"], "candidate", "{doc:#}");
+    assert_eq!(clone["sites"], serde_json::json!([6]), "{doc:#}");
+}
