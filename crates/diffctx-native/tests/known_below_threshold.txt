@@ -172,25 +172,3 @@ impact/shell/sh_function_run_through_an_echo_function_of_the_script_is_a_caller 
 impact/shell/sh_function_run_through_an_xargs_function_of_the_script_is_a_caller  # the script defines `xargs`: the word after it is a possible call, said so (partial), but no resolved caller is named
 impact/typescript/ts_global_augmentation_of_a_builtin_type_is_called_through_it  # the call on a `string` receiver is a candidate of the member the global augmentation declares (possibly called), not a resolved caller: a builtin receiver carries no type to pick `String` by
 impact/typescript/ts_namespace_merged_into_a_class_in_another_file_reads_its_member_bare  # `defaults` read bare in another file's body of a namespace merged into the class `Foo` is a hedged read, not a resolved caller: the file's scope does not hold the other file's member
-impact/c/go_cgo_call_of_a_changed_c_function_is_named  # a Go cgo call of a changed C function is no relation of the answer: it says nothing calls it
-impact/cpp/cpp_conversion_operators_beside_another_changed_member_are_rows  # a C++ conversion operator is no definition: the answer names only the member beside it
-impact/cpp/cpp_out_of_line_conversion_operator_beside_another_changed_member_is_a_row  # an out-of-line C++ conversion operator is no definition: the answer names only the member beside it
-impact/java/java_method_of_a_one_line_class_keeps_its_caller_and_test_link  # a method of a class written on one line loses its caller and its test link
-impact/java/java_receiver_typed_by_a_supertype_of_a_class_names_that_class  # a call on a receiver typed by a supertype of the class is no candidate of the class's method
-impact/kotlin/kotlin_method_of_a_one_line_class_keeps_its_caller_and_test_link  # a method of a class written on one line loses its caller and its test link
-impact/kotlin/kotlin_receiver_typed_any_that_no_walk_narrows_still_names_the_class  # a call on a receiver typed Any that no walk narrows is no candidate of the project class
-impact/kotlin/kotlin_receiver_typed_by_a_supertype_of_a_class_names_that_class  # a call on a receiver typed by a supertype of the class is no candidate of the class's method
-impact/kotlin/kotlin_smart_cast_receiver_declared_any_reaches_the_narrowed_class  # a smart cast narrows no receiver: the caller and its test link are lost
-impact/kotlin/kotlin_smart_cast_to_another_class_does_not_reach_the_changed_one  # a smart cast to another class is read as the changed class: a caller the case keeps out is named
-impact/python/py_doctest_in_a_readme_block_reaches_the_function_it_imports  # a doctest in a README block reaches no function: no static test link
-impact/python/py_doctest_in_a_rst_document_reaches_the_function_it_imports  # a doctest in an rst document reaches no function: no static test link
-impact/python/py_doctest_in_another_modules_docstring_reaches_the_function_it_imports  # a doctest in another module's docstring reaches no function: no static test link
-impact/python/py_doctest_prose_line_in_a_docstring_is_no_import  # a prose line in a docstring is read as a doctest import
-impact/python/py_doctest_relative_import_in_a_module_reaches_the_function  # a relative import in a doctest binds no function: no static test link
-impact/typescript/js_object_created_from_an_expression_is_no_literal_receiver  # an Object.create argument that is an expression is read as a literal receiver
-impact/typescript/ts_ava_files_names_the_check_file_as_a_test  # an ava test file outside the usual names is no test: no static test link
-impact/typescript/ts_jasmine_spec_files_names_the_check_file_as_a_test  # a jasmine spec file outside the usual names is no test: no static test link
-impact/typescript/ts_karma_files_names_only_the_file_that_holds_tests  # a karma-loaded test file is no test: no static test link
-impact/typescript/ts_workspace_member_import_without_a_declared_dependency_is_a_caller  # a workspace member imported without a declared dependency is no caller
-symbol/java/java_symbol_method_of_a_one_line_class_is_a_definition  # a method of a class written on one line is no definition
-symbol/kotlin/kotlin_symbol_method_of_a_one_line_class_is_a_definition  # a method of a class written on one line is no definition
