@@ -613,14 +613,39 @@ fn a_member_spelled_like_a_local_is_no_bare_name() {
         ("lib.py", CONFIG),
         (
             "app.py",
-            "def g(a):\n    config = 2\n    return a.config.get(\"a\")\n",
+            "import lib\n\n\ndef g(a):\n    config = 2\n    return a.config.get(\"a\")\n",
         ),
     ]);
     let found = world.outcomes(world.def("lib.py", "config"), "app.py", &["config"]);
     assert_eq!(
-        on(&found, 3).outcome,
+        on(&found, 6).outcome,
         Outcome::Candidate(Reason::Unresolved(UnresolvedReason::UntypedRead)),
         "the middle of a chain is an attribute of another object: {found:#?}"
+    );
+}
+
+#[test]
+fn an_untyped_member_read_in_a_file_no_import_reaches_is_not_ours() {
+    let unreached = snapshot(&[
+        ("lib.py", CONFIG),
+        ("app.py", "def g(a):\n    return a.config\n"),
+    ]);
+    let found = unreached.outcomes(unreached.def("lib.py", "config"), "app.py", &["config"]);
+    assert_eq!(
+        shape(on(&found, 2)),
+        ("not_ours", "unreached", Some(Relation::Reads)),
+        "{found:#?}"
+    );
+    let imported = snapshot(&[
+        ("lib.py", CONFIG),
+        ("app.py", "def g(a):\n    return a.config\n"),
+        ("main.py", "import app\nimport lib\n"),
+    ]);
+    let found = imported.outcomes(imported.def("lib.py", "config"), "app.py", &["config"]);
+    assert_eq!(
+        on(&found, 2).outcome,
+        Outcome::Candidate(Reason::Unresolved(UnresolvedReason::UntypedRead)),
+        "an importer of the file may hand it an object: {found:#?}"
     );
 }
 

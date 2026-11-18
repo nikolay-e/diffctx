@@ -14,6 +14,7 @@
 # The synthetic suite's rows are below. The corpus suite's rows ("corpus A/…"
 # and "corpus B/…") come from its own run on the release profile.
 corpus A/config | H | config | impact/config/config_helm_values_file_no_release_names_is_no_chart_s_as_resolved | definition's file, after | impact # a spelling that is no use moves the hedge: `image` answers otherwise than with a neutral word in its place
+corpus B/python | B | python | impact/python/py_attribute_read_through_a_local_alias_is_a_read_of_the_member | strip_everything | impact # proof lost: with the caller's imports, types and package clause stripped, its untyped read of `dns_lookup` is no use once no import reaches it; the answer names only pkg/opts.py
 corpus B/python | B | python | impact/python/py_constructor_inherited_from_the_second_base_is_reached_by_the_subclass_construction | strip_everything | impact # proof lost: with the caller's imports, types and package clause stripped the answer is empty and complete
 corpus B/python | B | python | impact/python/py_constructor_inherited_from_the_second_base_is_reached_by_the_subclass_construction | strip_imports | impact # proof lost: with the caller's imports stripped the answer is empty and complete
 corpus B/python | B | python | impact/python/py_inherited_constructor_is_reached_by_the_subclass_construction | strip_everything | impact # proof lost: with the caller's imports, types and package clause stripped the answer lists only zoo/notes.py, calls complete; the caller is neither listed nor disclosed

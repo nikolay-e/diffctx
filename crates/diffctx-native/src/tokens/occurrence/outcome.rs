@@ -9,10 +9,10 @@ use std::rc::Rc;
 
 use super::implicit::C_EXPORTS;
 use super::rows::{
-    BARE_HEADS, CLASS_CANDIDATES, CLASSIC_PAGES, COMMAND_ARGUMENTS, DECLARING_KEYWORDS,
-    DECLARING_LOCALS, FOREIGN_TEXT, IMPL_HEADS, KEYWORD_ARGUMENTS, LOCAL_CALLS, MEMBER_OBJECTS,
-    MODULE_PATHS, NAMED_LOCALS, OFFERING_MODULES, PACKAGE_HEADS, PAIRED_PROTOTYPES,
-    PATH_SEPARATORS, SCHEMA_OBJECTS, SCOPED_LOCALS, STATEMENT_NAMES, STRUCTURAL_TYPES,
+    BARE_HEADS, CLASS_CANDIDATES, COMMAND_ARGUMENTS, DECLARING_KEYWORDS, DECLARING_LOCALS,
+    FOREIGN_TEXT, IMPL_HEADS, KEYWORD_ARGUMENTS, LOCAL_CALLS, MEMBER_OBJECTS, MODULE_PATHS,
+    NAMED_LOCALS, OFFERING_MODULES, PACKAGE_HEADS, PAIRED_PROTOTYPES, PATH_SEPARATORS,
+    SCHEMA_OBJECTS, SCOPED_LOCALS, STATEMENT_NAMES, STRUCTURAL_TYPES,
 };
 use super::scanner::dollar_joins;
 use super::{
@@ -27,6 +27,7 @@ use crate::resolve::{
     Binding, CandidateReason, DYNAMIC, Definition, Relation, Resolution, UnresolvedReason,
 };
 use crate::snapshot::RepoPath;
+mod routes;
 
 /// What one side's resolved snapshot is indexed by, as positions in its files and
 /// bindings: built once for a run, so that every definition's [`View`] borrows it.
@@ -53,6 +54,7 @@ pub struct Index {
     unnamed: Vec<usize>,
     /// The values keys a release gives a chart, as far as a read of the chart lands on them.
     released: HashSet<DefKey>,
+    routes: routes::Routes,
     manifests_whole: bool,
 }
 
@@ -102,6 +104,7 @@ impl Index {
             overriders: HashMap::new(),
             unnamed: Vec::new(),
             released: HashSet::new(),
+            routes: routes::Routes::new(files, bindings, definitions),
             manifests_whole,
         };
         for def in definitions.iter().filter(|def| {
@@ -756,23 +759,16 @@ impl<'a> Reading<'a> {
             {
                 Claim::not_ours(relation, Witness::OtherProject(self.subject.file.clone()))
             }
+            UnresolvedReason::UntypedRead | UnresolvedReason::NoCandidates => {
+                self.unreached(binding, reason)
+            }
             UnresolvedReason::NoMember
             | UnresolvedReason::NoBinding
-            | UnresolvedReason::UntypedRead
-            | UnresolvedReason::NoCandidates
             | UnresolvedReason::TooManyCandidates
             | UnresolvedReason::MissingModule
             | UnresolvedReason::Opaque
             | UnresolvedReason::NoMatch => Claim::candidate(relation, Reason::Unresolved(reason)),
         }
-    }
-
-    /// Whether the subject lives in a file a page of classic scripts does not load: the scripts it
-    /// names are all it can see, and none is the subject's, so its global is no name there.
-    fn unloaded(&self) -> bool {
-        CLASSIC_PAGES.contains(&self.file.language())
-            && self.subject.file != self.file.path
-            && !(self.file.blob.facts.iter()).any(|fact| matches!(fact, Fact::ComputedImport(_)))
     }
 
     /// Whether the import may bind the name; a glob may bind any.
