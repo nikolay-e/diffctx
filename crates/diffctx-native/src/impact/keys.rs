@@ -301,6 +301,10 @@ fn key_like(word: &str) -> bool {
 #[derive(Default)]
 pub(super) struct LiteralNames {
     rows: rustc_hash::FxHashMap<String, Vec<(String, u32)>>,
+    /// The (name, file) rows only a PHP string that is the bare name, held where a
+    /// callable is, makes: it names a function, never a member, which PHP names
+    /// `Class::method` or beside its object (`[$obj, 'method']`).
+    bare: rustc_hash::FxHashSet<(String, String)>,
 }
 
 pub(super) const MIN_LITERAL_NAME: usize = 4;
@@ -814,6 +818,7 @@ impl LiteralNames {
         let unmapped = mapped.iter().map(String::as_str).collect::<Vec<_>>();
         let mut rows: rustc_hash::FxHashMap<String, Vec<(String, u32)>> =
             rustc_hash::FxHashMap::default();
+        let mut bare: rustc_hash::FxHashSet<(String, String)> = rustc_hash::FxHashSet::default();
         for chunk in wanted.chunks(NAMES_PER_SEARCH) {
             if !state.run.check() {
                 break;
@@ -885,11 +890,11 @@ impl LiteralNames {
                             .map_or_else(Vec::new, |cell| cell.callable_strings_at(path, *line)),
                         _ => Vec::new(),
                     };
-                    let hit = |name: &str| match (shape, reading, language) {
+                    let hit = |name: &str, held: &[String]| match (shape, reading, language) {
                         (Shape::Call, ..) => call_name(name) && called(text, name),
                         (Shape::Literal, Some(reading), _) => {
                             literal_name(name)
-                                && (spells_literally(text, name, reading, &held)
+                                && (spells_literally(text, name, reading, held)
                                     || (reading.php && data_provider_named(text, name)))
                         }
                         (Shape::Argument, _, Some(language)) => {
@@ -897,21 +902,47 @@ impl LiteralNames {
                         }
                         _ => false,
                     };
-                    for name in chunk.iter().filter(|n| !inside(n) && hit(n)) {
+                    for name in chunk.iter().filter(|n| !inside(n) && hit(n, &held)) {
+                        let alone = reading.is_some_and(|r| r.php)
+                            && held.iter().any(|h| h == name)
+                            && !hit(
+                                name,
+                                &held
+                                    .iter()
+                                    .filter(|h| h != name)
+                                    .cloned()
+                                    .collect::<Vec<_>>(),
+                            );
+                        let key = ((*name).to_string(), path.clone());
                         let named = rows.entry((*name).to_string()).or_default();
-                        if !named.iter().any(|(p, _)| p == path) {
-                            named.push((path.clone(), *line));
+                        match named.iter_mut().find(|(p, _)| p == path) {
+                            None => {
+                                named.push((path.clone(), *line));
+                                if alone {
+                                    bare.insert(key);
+                                }
+                            }
+                            Some(row) if !alone && bare.remove(&key) => row.1 = *line,
+                            Some(_) => {}
                         }
                     }
                 }
             }
         }
-        Self { rows }
+        Self { rows, bare }
     }
 
-    /// The files that spell `name` as a literal, one line each.
-    pub(super) fn naming(&self, name: &str) -> Vec<(String, u32)> {
-        let mut named = self.rows.get(name).map_or_else(Vec::new, Clone::clone);
+    /// The files that spell `name` as a literal, one line each; for a `member`,
+    /// not those only a bare PHP callable string names.
+    pub(super) fn naming(&self, name: &str, member: bool) -> Vec<(String, u32)> {
+        let mut named: Vec<(String, u32)> = self
+            .rows
+            .get(name)
+            .into_iter()
+            .flatten()
+            .filter(|(path, _)| !member || !self.bare.contains(&(name.to_string(), path.clone())))
+            .cloned()
+            .collect();
         named.sort();
         named
     }
