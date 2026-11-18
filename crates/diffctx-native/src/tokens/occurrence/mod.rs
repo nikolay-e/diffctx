@@ -223,6 +223,10 @@ pub enum Witness {
     /// `bare_name`, an absence: a bare name is no member of the class it is written outside
     /// of (the class's path).
     BareName(Vec<Name>),
+    /// `unreached`, an absence: no analysed file imports the file, nothing it imports leads to the
+    /// definition's module or shares a module with one that does, and it runs no code it loads
+    /// or enters: no object of the definition's class can be the receiver of its member reads.
+    Unreached(RepoPath),
     /// `other_project`: the file's project cannot reference the definition's file, the
     /// manifests read whole.
     OtherProject(RepoPath),
@@ -247,6 +251,7 @@ impl Witness {
             Self::ExternalName(_) => "external_name",
             Self::Manifests(..) => "manifests",
             Self::BareName(_) => "bare_name",
+            Self::Unreached(_) => "unreached",
             Self::OtherProject(_) => "other_project",
             Self::Statement(_) => "statement",
             Self::Keyword(_) => "argument_name",

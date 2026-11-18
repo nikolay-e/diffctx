@@ -24,6 +24,25 @@ pub(super) const DECLARING_KEYWORDS: &[(Family, LocalKind, &str)] =
 /// binds `exec`): the object is that read, not a use of its own.
 pub(super) const MEMBER_OBJECTS: &[Family] = &[Family::TypeScript];
 
+/// Families whose modules meet only through the imports their files state: no file reached by no
+/// import, entry or run-time load holds an object of a class the importer chain never touches.
+pub(super) const ISOLATED_MODULES: &[Family] = &[Family::Python];
+
+/// Calls that run or load code no import states, by the name called.
+pub(super) const RUNS_CODE: &[&str] = &["eval", "exec", "__import__", "import_module"];
+
+/// The modules whose calls build any object a stream names, by the last qualifier.
+pub(super) const DESERIALIZERS: &[&str] = &[
+    "pickle",
+    "cPickle",
+    "dill",
+    "cloudpickle",
+    "marshal",
+    "shelve",
+    "jsonpickle",
+    "yaml",
+];
+
 /// Families where a call of a bare name is the call of a local of that name (a closure held in
 /// a `let`) once the local's statement is over and its block still open.
 pub(super) const LOCAL_CALLS: &[Family] = &[Family::Rust];

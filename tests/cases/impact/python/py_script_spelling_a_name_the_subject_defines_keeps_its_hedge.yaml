@@ -1,0 +1,26 @@
+name: py_script_spelling_a_name_the_subject_defines_keeps_its_hedge
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [python, script, hedge, untyped-receiver, unbound-name, decoy]
+repo:
+  initial_files:
+    tools/device.py: |
+      class Device:
+          def call(self, method, path):
+              return {"method": method, "path": path}
+    tools/migrate.py: |
+      def fixture(client, path):
+          spare = Device()
+          return client.call("GET", path)
+  changed_files:
+    tools/device.py: |
+      class Device:
+          def call(self, method, path):
+              return {"method": method, "path": path, "ok": True}
+  commit_message: "device: say it worked"
+expect:
+  changed: [tools/device.py::Device.call]
+  partial:
+    tools/device.py::Device.call:
+      calls: unlanded
