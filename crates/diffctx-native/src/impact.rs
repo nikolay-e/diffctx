@@ -4547,7 +4547,8 @@ pub fn build_impact(
                 && untested.is_none()
                 && (class_tested() || !tests.tested_by(core, state, &by_id, &link).is_empty())
         };
-        // Nothing said of a definition needs every relation of it known.
+        // Nothing said of a definition needs every relation of it known; a test link
+        // nobody found and nobody ruled out is not known, and the lists here claim none.
         if let Some(complete) = coverage.all().witness().filter(|_| {
             callers.is_empty()
                 && compatible_callers == 0
@@ -4556,6 +4557,7 @@ pub fn build_impact(
                 && also_changed.is_empty()
                 && possibly_also_changed.is_empty()
                 && !tested_without_caller()
+                && (absent || !tests_absent)
         }) {
             if entry.is_none()
                 && py.is_some_and(|def| {
