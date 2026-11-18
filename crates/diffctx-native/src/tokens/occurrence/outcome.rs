@@ -27,6 +27,7 @@ use crate::resolve::{
     Binding, CandidateReason, DYNAMIC, Definition, Relation, Resolution, UnresolvedReason,
 };
 use crate::snapshot::{Loss, RepoPath, WorkspaceModel};
+use crate::vocabulary::family::Family;
 mod routes;
 
 /// What one side's resolved snapshot is indexed by, as positions in its files and
@@ -740,7 +741,13 @@ impl<'a> Reading<'a> {
                 );
                 let others =
                     (self.view.index.members.get(&lower)).map_or(0, |n| n.saturating_sub(own));
-                let bare = named.is_empty() && others == 0;
+                // Where names are global, one nothing at the head defines is no witness
+                // against a definition the range removed: the use may be the base's.
+                let removed = Family::ALL
+                    .iter()
+                    .any(|f| f.names_are_global() && f.has(self.file.language()))
+                    && !self.view.index.definitions.contains(&self.subject.key);
+                let bare = named.is_empty() && others == 0 && !removed;
                 // An override names its base by its declaration, whatever else shares the name.
                 let nameless = bare || binding.relation == Relation::Overrides;
                 verified(

@@ -5803,7 +5803,9 @@ const MAX_NAMED_BY_PER_TARGET: usize = 3;
 /// importers are the head files the base bound to it (the cell's facts) and the
 /// files that still name its path. A definition keeps its row when something that
 /// can reach it uses it: a resolved caller, or a candidate in an importer. A name
-/// that other files merely spell is no way to reach a module nothing imports.
+/// that other files merely spell is no way to reach a module nothing imports,
+/// unless the family's names are global: a shell function runs from wherever its
+/// file was loaded, so any candidate keeps it.
 /// Only a module of a cell language is read this way: its imports are the facts'.
 /// A computed import may reach a module nothing imports, so that claim says "none
 /// found" whenever the facts cannot rule one out (`Cells::computed_imports_possible`).
@@ -5848,15 +5850,16 @@ fn dead_modules(
         importers.dedup();
         // A definition whose name a file outside what reads it spells, or that was
         // never searched as text, keeps its row: the module's line has no room for it.
+        let global = cell.names_are_global();
         let keeps_row = |c: &ChangedSymbol| {
             c.callers
                 .iter()
-                .any(|k| k.evidence != "candidate" || importers.contains(&k.path))
+                .any(|k| k.evidence != "candidate" || global || importers.contains(&k.path))
                 || !c.missed_in.is_empty()
-                || c.coverage
-                    .all()
-                    .gaps()
-                    .contains(&decide::Gap::NameUnsearched)
+                || c.coverage.all().gaps().iter().any(|gap| {
+                    *gap == decide::Gap::NameUnsearched
+                        || (global && matches!(gap, decide::Gap::Candidates { .. }))
+                })
         };
         let folding: Vec<usize> = held
             .iter()
