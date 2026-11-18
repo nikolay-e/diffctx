@@ -1219,6 +1219,53 @@ fn self_super_and_overrides_follow_the_bases() {
     assert_eq!(fx.lands(overrides[0]), "shapes.py::Base.run");
 }
 
+/// A base nothing in the file binds may be any class of the repository with
+/// its name (fj#250): the class whose constructor runs and the member found
+/// there are candidates whose import was not resolved, never a resolved
+/// target, and a class of another name that has the member is none. A base an import binds still
+/// resolves to the one class it names.
+#[test]
+fn a_base_nothing_binds_offers_the_classes_of_its_name_as_candidates() {
+    let animal = "class Animal:\n    def __init__(self, name):\n        self.name = name\n\n    def speak(self):\n        return self.name\n";
+    let fx = snapshot(&[
+        ("zoo/__init__.py", ""),
+        ("zoo/animal.py", animal),
+        ("farm/__init__.py", ""),
+        ("farm/animal.py", animal),
+        (
+            "zoo/robot.py",
+            "class Robot:\n    def __init__(self, name):\n        self.name = name\n\n    def speak(self):\n        return 0\n",
+        ),
+        (
+            "zoo/dog.py",
+            "class Dog(Animal):\n    pass\n\n\ndef adopt():\n    rex = Dog(\"rex\")\n    return rex.speak()\n",
+        ),
+        (
+            "zoo/cat.py",
+            "from zoo.animal import Animal\n\n\nclass Cat(Animal):\n    pass\n\n\ndef adopt():\n    tom = Cat(\"tom\")\n    return tom.speak()\n",
+        ),
+    ]);
+    assert_eq!(
+        all_at(&fx, "zoo/dog.py", "Dog", 6),
+        [
+            "candidate(ImportUnresolved) farm/animal.py::Animal, zoo/animal.py::Animal",
+            "zoo/dog.py::Dog",
+        ]
+    );
+    assert_eq!(
+        fx.lands_at("zoo/dog.py", "speak", 7),
+        "candidate(ImportUnresolved) farm/animal.py::Animal.speak, zoo/animal.py::Animal.speak"
+    );
+    assert_eq!(
+        all_at(&fx, "zoo/cat.py", "Cat", 9),
+        ["zoo/animal.py::Animal", "zoo/cat.py::Cat"]
+    );
+    assert_eq!(
+        fx.lands_at("zoo/cat.py", "speak", 10),
+        "zoo/animal.py::Animal.speak"
+    );
+}
+
 /// Every binding of `name` on `line` of `file`, imports apart, as the lines
 /// `lands` writes, sorted.
 fn all_at(fx: &Fixture, file: &str, name: &str, line: u32) -> Vec<String> {
