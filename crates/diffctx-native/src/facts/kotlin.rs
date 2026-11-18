@@ -200,6 +200,10 @@ pub struct KotlinFacts {
     pub text: Vec<Range<usize>>,
     /// Strings the program may look up by name, in source order.
     pub held: Vec<HeldString>,
+    /// Reflective lookups by a name the code builds, in source order.
+    pub computed: Vec<ComputedCall>,
+    /// Variables and properties whose value is a string literal.
+    pub consts: Vec<String>,
     /// Lines with an ERROR or MISSING node: what was read elsewhere is right,
     /// what sits there may be missing.
     pub error_lines: Vec<u32>,
@@ -213,6 +217,83 @@ pub struct KotlinFacts {
 pub struct HeldString {
     pub range: Range<usize>,
     pub text: String,
+}
+
+/// A reflective lookup (`Lib.class.getMethod("via" + x)`) whose name is not a
+/// literal. `arg` is the name when it is a bare identifier, `class` the class
+/// literal the lookup is written on.
+#[derive(Debug, Clone)]
+pub struct ComputedCall {
+    pub range: Range<usize>,
+    pub class: Option<String>,
+    pub arg: Option<String>,
+}
+
+/// The reflective lookups by name, with the position of the name among the
+/// arguments: `Class.getMethod(name)`, `lookup.findVirtual(Class, name, type)`.
+const LOOKUPS: [(&str, usize); 7] = [
+    ("getMethod", 0),
+    ("getDeclaredMethod", 0),
+    ("getField", 0),
+    ("getDeclaredField", 0),
+    ("findVirtual", 1),
+    ("findStatic", 1),
+    ("findGetter", 1),
+];
+
+pub(super) fn lookup_position(name: &str) -> Option<usize> {
+    LOOKUPS.iter().find(|(n, _)| *n == name).map(|(_, at)| *at)
+}
+
+/// The class a class literal (`Lib.class`, `Lib::class`) names, searched in
+/// `node` and below.
+pub(super) fn class_literal_in(node: Node, bytes: &[u8]) -> Option<String> {
+    if matches!(node.kind(), "class_literal" | "callable_reference") {
+        let written = text(node, bytes)?;
+        let class = written
+            .strip_suffix(".class")
+            .or_else(|| written.strip_suffix("::class"))?;
+        return class.rsplit('.').next().map(str::to_string);
+    }
+    let mut cursor = node.walk();
+    let found = node
+        .named_children(&mut cursor)
+        .find_map(|child| class_literal_in(child, bytes));
+    found
+}
+
+/// Records a lookup whose `name` argument is no literal.
+pub(super) fn computed(
+    call: Node,
+    name: Node,
+    class: Option<String>,
+    bytes: &[u8],
+    out: &mut Vec<ComputedCall>,
+) {
+    let mut cursor = name.walk();
+    let templated = name
+        .named_children(&mut cursor)
+        .any(|c| c.kind().starts_with("interpolated"));
+    if matches!(name.kind(), "string_literal" | "text_block") && !templated {
+        return;
+    }
+    let arg = matches!(name.kind(), "identifier" | "simple_identifier")
+        .then(|| text(name, bytes).map(str::to_string))
+        .flatten();
+    out.push(ComputedCall {
+        range: call.byte_range(),
+        class,
+        arg,
+    });
+}
+
+/// Drops the lookups by a variable the file gives a string literal: a held
+/// name the literal channel already reads.
+pub(super) fn settle_computed(facts: &mut KotlinFacts) {
+    let consts = std::mem::take(&mut facts.consts);
+    facts
+        .computed
+        .retain(|c| !c.arg.as_ref().is_some_and(|a| consts.contains(a)));
 }
 
 /// The names `expression` calls as `.name(`.
@@ -344,6 +425,8 @@ pub(super) fn extract(root: Node, bytes: &[u8]) -> KotlinFacts {
     let mut facts = walk(root, Owners::new(), |node, owners, facts| {
         let mut inner = owners.clone();
         match node.kind() {
+            "call_expression" => lookup_call(&node, bytes, facts),
+            "property_declaration" => string_const(&node, bytes, facts),
             "package_header" => {
                 facts.package = child(node, "identifier").map(|i| dotted(i, bytes));
                 return None;
@@ -411,7 +494,61 @@ pub(super) fn extract(root: Node, bytes: &[u8]) -> KotlinFacts {
     facts.error_lines.extend(unread_type_lines(bytes, &facts));
     facts.error_lines.sort_unstable();
     facts.error_lines.dedup();
+    settle_computed(&mut facts);
     facts
+}
+
+/// A reflective lookup by name: `Lib::class.java.getDeclaredMethod(name)`.
+fn lookup_call(call: &Node, bytes: &[u8], facts: &mut KotlinFacts) {
+    let Some(callee) = call
+        .named_child(0)
+        .filter(|c| c.kind() == "navigation_expression")
+    else {
+        return;
+    };
+    let Some(at) = child(callee, "navigation_suffix")
+        .and_then(|s| child(s, "simple_identifier"))
+        .and_then(|n| text(n, bytes))
+        .and_then(lookup_position)
+    else {
+        return;
+    };
+    let Some(arguments) = child(*call, "call_suffix").and_then(|s| child(s, "value_arguments"))
+    else {
+        return;
+    };
+    let mut cursor = arguments.walk();
+    let given: Vec<Node> = arguments
+        .named_children(&mut cursor)
+        .filter(|a| a.kind() == "value_argument")
+        .collect();
+    let Some(name) = given
+        .get(at)
+        .and_then(|a| a.named_child(a.named_child_count().saturating_sub(1)))
+    else {
+        return;
+    };
+    let class = if at == 0 {
+        class_literal_in(callee, bytes)
+    } else {
+        given
+            .first()
+            .and_then(|first| class_literal_in(*first, bytes))
+    };
+    computed(*call, name, class, bytes, &mut facts.computed);
+}
+
+/// `val NAME = "text"`: a name whose value is a string literal.
+fn string_const(node: &Node, bytes: &[u8], facts: &mut KotlinFacts) {
+    let value = node.named_children(&mut node.walk()).last();
+    if value.is_some_and(|v| v.kind() == "string_literal") {
+        if let Some(name) = child(*node, "variable_declaration")
+            .and_then(|v| child(v, "simple_identifier"))
+            .and_then(|n| text(n, bytes))
+        {
+            facts.consts.push(name.to_string());
+        }
+    }
 }
 
 static TYPE_LINE: Lazy<regex::Regex> = Lazy::new(|| {

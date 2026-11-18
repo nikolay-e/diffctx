@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use anyhow::Result;
 
-use crate::facts::{DefKey, FactsCache, Language};
+use crate::facts::{DefKey, FactsCache, Language, Name};
 use crate::resolve::{
     Binding, CResolver, ConfigResolver, Definition, DockerfileResolver, GoResolver, JavaResolver,
     KotlinResolver, PhpResolver, PythonResolver, RustResolver, ShellResolver, SqlResolver,
@@ -268,6 +268,28 @@ impl Resolver {
             Self::Python(r) => r.modules_named(dotted),
             _ => Vec::new(),
         }
+    }
+
+    /// How many files that `may_reach` compute a name that could be a definition's
+    /// (`getattr(obj, name)`, `Lib.class.getMethod(name)`), for the families whose
+    /// facts say so.
+    pub(crate) fn name_computers(
+        &self,
+        member: bool,
+        classes: &[Name],
+        may_reach: impl Fn(&str) -> bool,
+    ) -> usize {
+        match self {
+            Self::Python(r) => r.name_computers(member, classes, may_reach),
+            Self::Kotlin(r) => r.name_computers(member, classes, may_reach),
+            Self::Java(r) => r.name_computers(member, classes, may_reach),
+            _ => 0,
+        }
+    }
+
+    /// Whether Jackson calls the Java getter the key names.
+    pub(crate) fn serialized(&self, key: &DefKey) -> bool {
+        matches!(self, Self::Java(r) if r.serialized(key))
     }
 
     pub(crate) fn definitions(&self) -> &[Definition] {

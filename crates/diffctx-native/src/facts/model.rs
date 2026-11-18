@@ -413,11 +413,13 @@ pub enum Fact {
         site: Span,
     },
     /// A call that reaches a definition by a name the code computes: `getattr(obj,
-    /// name)`, `eval`, `exec`, `globals()[key]`. `member` is set when only a
-    /// member of a class can be what it reaches (`getattr`).
+    /// name)`, `eval`, `exec`, `globals()[key]`, `Lib.class.getMethod(name)`.
+    /// `member` is set when only a member of a class can be what it reaches;
+    /// `class` names the one the call is written on, when it says (`Lib.class`).
     ComputedName {
         site: Span,
         member: bool,
+        class: Option<Name>,
     },
 }
 

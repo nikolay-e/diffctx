@@ -48,6 +48,11 @@ use self::extract::{
 };
 use self::routes::{join as join_path, module_stem};
 
+/// Whether the keytable reads `rel` as JSON.
+pub(crate) fn is_json(rel: &str) -> bool {
+    matches!(classify(rel), Some(FileClass::Json))
+}
+
 /// Same ambiguity bar as `CFamilySemanticWeights::max_files_per_name`,
 /// applied to config keys: document frequency above this is vocabulary.
 pub(crate) const MAX_FILES_PER_KEY: usize = 8;

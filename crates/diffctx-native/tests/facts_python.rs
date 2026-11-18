@@ -593,7 +593,7 @@ fn a_call_by_a_computed_name_is_a_computed_name_and_a_literal_one_is_not() {
         .facts
         .iter()
         .filter_map(|f| match f {
-            Fact::ComputedName { site, member } => Some((site.lines.0, *member)),
+            Fact::ComputedName { site, member, .. } => Some((site.lines.0, *member)),
             _ => None,
         })
         .collect();
