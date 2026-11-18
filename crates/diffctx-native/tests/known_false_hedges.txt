@@ -6,17 +6,12 @@
 # hedging falsely also fails. The comment on a row is the mechanism that hedges it.
 # An honest hedge is declared under `partial:` in the case, with the reader or the gap
 # it stands for written beside it, and never listed here.
-impact/config/config_helm_release_values_file_is_read_by_the_template_of_its_chart_as_resolved  # a `.Values` read inside a template scalar is unexplained text in the real and the decoy chart, and a chart that does not take the values file has no witness that the read is not its own
 impact/python/py_attribute_read_through_a_local_alias_is_a_read_of_the_member  # an attribute of an unrelated object with the same name (decoy other.py) is an unresolved receiver the file's imports exclude
 impact/python/py_console_script_run_by_a_sys_executable_sibling_has_a_test_link_an_unrun_one_has_none  # `pkg.interfaces.cli.main:run_from_cli` (pyproject.toml:6) names the module main.py, but its `main` is read as a literal spelling of graph.main and counted as unaccounted
 impact/python/py_never_imported_script_method_has_no_sibling_hedge  # gh#666: `client.call` in a sibling script that never imports the module is an untyped receiver; no import route reaches the method, and the issue asks for no possible caller at all
 impact/python/py_table_registered_tool_a_test_calls_by_name_has_a_test_link  # the tuple member `("get_x", get_x, ...)` is a resolved row and also unlanded, and the analysed Python test tests/test_tools.py:6 is cited as unaccounted (`other_language`)
 impact/typescript/ts_lazy_import_is_a_caller  # `m.MobileFullPlayer` is the site of the resolved dynamic-import row, and its receiver `m` is left unresolved
 impact/typescript/ts_lazy_import_through_a_tsconfig_alias_is_a_caller  # `m.Lazy` is the site of the resolved dynamic-import row, and its receiver `m` is left unresolved
-symbol/python/py_local_function_read_where_no_use_is_stated_stays_open  # a local's spelling that states no use is answered complete where the case declares the calls and reads open
-impact/typescript/ts_object_literal_constant_with_comments_and_a_template_is_the_literal_itself  # an object literal constant with comments and a template is classified by its text, and its read is hedged as unlanded
-impact/web/web_server_template_code_in_page_text_is_a_possible_caller  # the call in server template code is named unaccounted where the case declares it an unlanded candidate
-impact/typescript/ts_unparsed_file_outside_the_pathspec_is_a_scope_gap  # the answer reports no definition for the partial the case declares on the subject
 impact/cpp/cpp_conversion_operators_beside_another_changed_member_are_rows  # a conversion operator beside another changed member is not reported as a definition: the declared partial finds no definition
 impact/cpp/cpp_out_of_line_conversion_operator_beside_another_changed_member_is_a_row  # a conversion operator beside another changed member is not reported as a definition: the declared partial finds no definition
 impact/java/java_class_method_inherited_by_an_implementer_is_called_through_the_interface  # the answer's name_unsearched gap does not match the declared partial for an extensible class method
