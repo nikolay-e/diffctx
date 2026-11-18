@@ -142,6 +142,21 @@ enum Lookup {
     /// The receiver says nothing about what it is.
     Untyped,
     Any,
+    /// Not found on the classes the lookup read, but held by the repository's
+    /// classes named like a base nothing in its file binds: it may be one of them.
+    Maybe(Vec<usize>),
+}
+
+/// What a lookup up a class and its bases met.
+#[derive(Default)]
+struct Members {
+    /// The members of the first class, in breadth-first order, that has any.
+    found: Vec<usize>,
+    /// Whether a base the repository does not hold, or that nothing binds,
+    /// stood in the way.
+    opaque: bool,
+    /// The last names of the bases on the way that nothing in their file binds.
+    unbound: Vec<Name>,
 }
 
 type Outcome = twins::EntityOutcome<Entity>;
@@ -277,20 +292,29 @@ impl<'a> Engine<'a> {
         };
         out.push(binding(&r.name, relation, resolution));
         // A class built or handed on that has no `__init__` of its own runs the
-        // one of the base that has it.
-        if matches!(relation, Relation::Instantiates | Relation::PassesAsValue) {
-            let owner = built
-                .and_then(|class| self.constructor_owner(class))
-                .filter(|owner| self.reachable(f, *owner));
-            if let Some(owner) = owner {
-                out.push(binding(
-                    &r.name,
-                    relation,
-                    Resolution::Resolved {
-                        target: self.ix.defs[owner].key.clone(),
-                        evidence: Evidence::new(EvidenceKind::Inherited),
-                    },
-                ));
+        // one of the base that has it, or of a class a base nothing binds may be.
+        if matches!(relation, Relation::Instantiates | Relation::PassesAsValue)
+            && let Some(class) = built
+        {
+            let (owners, possible) = self.constructor_owners(class);
+            let mut targets: Vec<DefKey> = owners
+                .into_iter()
+                .filter(|owner| self.reachable(f, *owner))
+                .map(|owner| self.ix.defs[owner].key.clone())
+                .collect();
+            let inherited = if possible {
+                (!targets.is_empty()).then_some(Resolution::Candidate {
+                    targets,
+                    reason: CandidateReason::ImportUnresolved,
+                })
+            } else {
+                targets.pop().map(|target| Resolution::Resolved {
+                    target,
+                    evidence: Evidence::new(EvidenceKind::Inherited),
+                })
+            };
+            if let Some(resolution) = inherited {
+                out.push(binding(&r.name, relation, resolution));
             }
         }
         // `cls(..)` of a classmethod and `self.__class__(..)` build the class
@@ -375,16 +399,28 @@ impl<'a> Engine<'a> {
         found
     }
 
-    /// The class whose constructor runs when `class` is built without one of its
-    /// own: the first base, in the order a member is looked up, that has an
-    /// `__init__`.
-    fn constructor_owner(&self, class: usize) -> Option<usize> {
-        let (found, _) = self.class_members(class, &Name::new("__init__"), false);
-        let init = &self.ix.defs[self.ix.primary(&found)?];
-        let holder = self
-            .ix
-            .owner(init.file, &init.path[..init.path.len() - 1])?;
-        (holder != class).then_some(holder)
+    /// The classes whose constructor runs when `class` is built without one of
+    /// its own: the first base, in the order a member is looked up, that has an
+    /// `__init__`; where the lookup found none past a base nothing binds, each
+    /// class so named that has one, and then only possibly.
+    fn constructor_owners(&self, class: usize) -> (Vec<usize>, bool) {
+        let init = Name::new("__init__");
+        let members = self.class_members(class, &init, false);
+        let possible = members.found.is_empty();
+        let found = if possible {
+            self.possible_members(class, &members.unbound, &init)
+        } else {
+            self.ix.primary(&members.found).into_iter().collect()
+        };
+        let owners = found
+            .iter()
+            .filter_map(|id| {
+                let init = &self.ix.defs[*id];
+                self.ix.owner(init.file, &init.path[..init.path.len() - 1])
+            })
+            .filter(|holder| *holder != class)
+            .collect();
+        (owners, possible)
     }
 
     /// The class a call of `cls` in a classmethod, or of `self.__class__`, builds
@@ -463,7 +499,7 @@ impl<'a> Engine<'a> {
                     through,
                     inherited,
                 } => (entity, through, inherited),
-                Lookup::Untyped | Lookup::Any => {
+                Lookup::Untyped | Lookup::Any | Lookup::Maybe(_) => {
                     reads.extend(std::iter::once((index, member)).chain(members).map(
                         |(index, name)| {
                             (
@@ -599,6 +635,10 @@ impl<'a> Engine<'a> {
             Lookup::Absent(reason) => Outcome::Unresolved(reason),
             Lookup::Untyped => self.untyped(f, r, false),
             Lookup::Any => self.untyped(f, r, true),
+            Lookup::Maybe(ids) => Outcome::Candidates {
+                ids,
+                reason: CandidateReason::ImportUnresolved,
+            },
         }
     }
 
@@ -1055,7 +1095,7 @@ impl<'a> Engine<'a> {
             Lookup::Absent(UnresolvedReason::Builtin) => Entity::Builtin,
             Lookup::Absent(UnresolvedReason::OutsideProject) => Entity::Outside,
             Lookup::Any => Entity::Dynamic,
-            Lookup::Absent(_) | Lookup::Untyped => Entity::Unknown,
+            Lookup::Absent(_) | Lookup::Untyped | Lookup::Maybe(_) => Entity::Unknown,
         }
     }
 
@@ -1713,8 +1753,8 @@ impl<'a> Engine<'a> {
     }
 
     fn class_member(&self, class: usize, name: &Name, bases_only: bool) -> Lookup {
-        let (defs, opaque) = self.class_members(class, name, bases_only);
-        match self.ix.primary(&defs) {
+        let members = self.class_members(class, name, bases_only);
+        match self.ix.primary(&members.found) {
             Some(id) => {
                 let found = &self.ix.defs[id];
                 let owner = &self.ix.defs[class];
@@ -1727,18 +1767,25 @@ impl<'a> Engine<'a> {
                     inherited,
                 }
             }
-            None if opaque => Lookup::Absent(UnresolvedReason::ExternalBase),
-            None => Lookup::Absent(UnresolvedReason::NoMember),
+            None => {
+                let maybe = self.possible_members(class, &members.unbound, name);
+                if !maybe.is_empty() {
+                    Lookup::Maybe(maybe)
+                } else if members.opaque {
+                    Lookup::Absent(UnresolvedReason::ExternalBase)
+                } else {
+                    Lookup::Absent(UnresolvedReason::NoMember)
+                }
+            }
         }
     }
 
     /// The members called `name` of the first class, in breadth-first order of
-    /// its bases, that has any; and whether a base the repository does not hold
-    /// stood in the way.
-    fn class_members(&self, class: usize, name: &Name, bases_only: bool) -> (Vec<usize>, bool) {
+    /// its bases, that has any, and what stood in the way.
+    fn class_members(&self, class: usize, name: &Name, bases_only: bool) -> Members {
         let mut queue = VecDeque::from([class]);
         let mut seen = HashSet::new();
-        let mut opaque = false;
+        let mut members = Members::default();
         let mut first = true;
         while let Some(current) = queue.pop_front() {
             if !seen.insert(current) {
@@ -1747,19 +1794,47 @@ impl<'a> Engine<'a> {
             if !(first && bases_only) {
                 let own = self.own_members(current, name);
                 if !own.is_empty() {
-                    return (own, opaque);
+                    members.found = own;
+                    return members;
                 }
             }
             first = false;
-            for base in self.bases(current).iter() {
+            for (at, base) in self.bases(current).iter().enumerate() {
                 match base {
                     Entity::Class(b) => queue.push_back(*b),
                     Entity::Builtin => {}
-                    _ => opaque = true,
+                    Entity::Unknown => {
+                        members.opaque = true;
+                        members.unbound.extend(self.base_name(current, at));
+                    }
+                    _ => members.opaque = true,
                 }
             }
         }
-        (Vec::new(), opaque)
+        members
+    }
+
+    /// The members called `name` of the classes of the repository, other than
+    /// `class`, named like a base nothing in its file binds: what that base is
+    /// may be any of them, so what a lookup did not find may be theirs.
+    fn possible_members(&self, class: usize, unbound: &[Name], name: &Name) -> Vec<usize> {
+        let mut found: Vec<usize> = unbound
+            .iter()
+            .filter_map(|base| self.ix.classes.get(base))
+            .flatten()
+            .filter(|named| **named != class)
+            .flat_map(|named| self.class_members(*named, name, false).found)
+            .collect();
+        found.sort_unstable();
+        found.dedup();
+        found
+    }
+
+    /// The last name of the class's base at `at`, as its header writes it.
+    fn base_name(&self, class: usize, at: usize) -> Option<Name> {
+        let signature = self.ix.defs[class].def.signature.as_deref()?;
+        let text = base_names(signature).into_iter().nth(at)?;
+        text.rsplit('.').next().map(Name::new)
     }
 
     fn own_members(&self, class: usize, name: &Name) -> Vec<usize> {
@@ -1991,7 +2066,7 @@ impl<'a> Engine<'a> {
             if self.ix.defs[class].def.kind != DefKind::Class {
                 continue;
             }
-            let (found, _) = self.class_members(class, &rec.def.local.name, true);
+            let found = self.class_members(class, &rec.def.local.name, true).found;
             let Some(base) = self.ix.primary(&found) else {
                 continue;
             };
