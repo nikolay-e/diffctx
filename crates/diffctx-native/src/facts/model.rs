@@ -334,12 +334,11 @@ pub struct ComputedImport {
 /// is held as, whatever the text around it is.
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub enum HeldAs {
-    /// PHP hands a callable by name here: the value of an array element or of a
-    /// `const`, the right side of an assignment — never an operand of a
-    /// comparison or a subscript.
+    /// A callable held by name: in PHP the value of an array element or of a
+    /// `const`, the right side of an assignment (never an operand of a
+    /// comparison or a subscript); a Go string its package may look up by name;
+    /// a Java or Kotlin string the tree holds where reflection may read it.
     Callable,
-    /// The argument a call hands to a shell: `os.system`, `subprocess.run`.
-    Command,
     /// The name of a relation: the value of `TABLE = "orders"`, the argument of
     /// a table flag (`pg_dump -t orders`).
     Relation,

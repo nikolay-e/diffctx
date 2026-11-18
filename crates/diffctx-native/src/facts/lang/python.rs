@@ -2531,12 +2531,6 @@ impl<'t> Walker<'t> {
                 }
                 ["eval" | "exec"] => self.computed_name(node, false),
                 ["globals" | "locals"] if looked_up_by_key(node) => self.computed_name(node, false),
-                ["os", "system" | "popen"]
-                | [
-                    "subprocess",
-                    "run" | "call" | "check_call" | "check_output" | "Popen" | "getoutput"
-                    | "getstatusoutput",
-                ] => self.shell_command(arguments.first(), cx),
                 _ => {}
             }
         }
@@ -2711,30 +2705,6 @@ impl<'t> Walker<'t> {
     }
 
     // ---- paths
-
-    /// The string a call hands to a shell: the command, or the words of an
-    /// argument list joined as a shell reads them.
-    fn shell_command(&mut self, argument: Option<&Node<'t>>, cx: &Cx) {
-        let Some(&argument) = argument else {
-            return;
-        };
-        let text = match argument.kind() {
-            "string" => self.string_inner(argument),
-            "list" | "tuple" => {
-                let mut cursor = argument.walk();
-                let words: Vec<String> = argument
-                    .named_children(&mut cursor)
-                    .filter(|word| word.kind() == "string")
-                    .filter_map(|word| self.string_inner(word))
-                    .collect();
-                Some(super::runner::command_text(&words))
-            }
-            _ => None,
-        };
-        if let Some(text) = text {
-            self.held_string(argument, text, HeldAs::Command, cx);
-        }
-    }
 
     fn held_string(&mut self, node: Node<'t>, text: String, held: HeldAs, cx: &Cx) {
         self.facts.push(Fact::HeldString(HeldString {

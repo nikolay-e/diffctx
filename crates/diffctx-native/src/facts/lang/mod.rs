@@ -28,7 +28,6 @@ mod jvm;
 pub mod kotlin;
 pub mod php;
 pub mod python;
-mod runner;
 pub mod rust;
 pub mod shell;
 pub mod sql;

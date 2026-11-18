@@ -18,10 +18,10 @@ use tree_sitter::{Language as Grammar, Node, ParseOptions, ParseState, Parser, T
 use super::merge_ranges;
 use crate::facts::framework;
 use crate::facts::{
-    BlobFacts, ComputedImport, Def, DefKind, Disambig, Export, Extractor, Fact, HeldAs, HeldString,
-    Import, ImportKind, Initializer, Language, Local, LocalKey, LocalKind, ModulePath, Name,
-    Namespace, PathMention, Receiver, Ref, Scope, Span, Star, TypeName, UseKind, Visibility,
-    expired, hash_text, hash_tokens,
+    BlobFacts, ComputedImport, Def, DefKind, Disambig, Export, Extractor, Fact, Import, ImportKind,
+    Initializer, Language, Local, LocalKey, LocalKind, ModulePath, Name, Namespace, PathMention,
+    Receiver, Ref, Scope, Span, Star, TypeName, UseKind, Visibility, expired, hash_text,
+    hash_tokens,
 };
 use crate::snapshot::RunBudget;
 
@@ -3396,12 +3396,10 @@ impl<'t> Walker<'t> {
             }
             "identifier" => {
                 let name = self.t(function);
-                self.shell_command(node, function, arguments);
                 self.reference(function, name, Vec::new(), Receiver::None, UseKind::Call);
             }
             "member_expression" => {
                 self.module_globs(node, function, arguments);
-                self.shell_command(node, function, arguments);
                 if let (Some(object), Some(property)) =
                     (field(function, "object"), field(function, "property"))
                 {
@@ -3448,25 +3446,6 @@ impl<'t> Walker<'t> {
         }
         children.extend(field(node, "type_arguments").map(|t| (t, Ctx::default())));
         self.push_children(children);
-    }
-
-    /// `execSync("f x")` of `child_process`: the literal words are a command.
-    fn shell_command(&mut self, call: Node<'t>, function: Node<'t>, arguments: Node<'t>) {
-        if !super::runner::node_runs_shell(&path_of(self.src, function), &self.facts) {
-            return;
-        }
-        let words: Vec<String> = kids(arguments)
-            .into_iter()
-            .filter_map(|a| string_value(self.src, a))
-            .collect();
-        if !words.is_empty() {
-            self.facts.push(Fact::HeldString(HeldString {
-                site: span(call),
-                enclosing: self.current(),
-                text: super::runner::command_text(&words),
-                held: HeldAs::Command,
-            }));
-        }
     }
 
     /// `importScripts('/kit/sw-kit.js')` loads classic scripts into a worker:
