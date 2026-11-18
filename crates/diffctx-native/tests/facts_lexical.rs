@@ -6,8 +6,10 @@ mod facts_fixture;
 mod snapshot_fixture;
 
 use _diffctx::facts::lang::c::CExtractor;
+use _diffctx::facts::lang::config::ConfigExtractor;
 use _diffctx::facts::lang::dockerfile::DockerfileExtractor;
 use _diffctx::facts::lang::go::GoExtractor;
+use _diffctx::facts::lang::helm::{HelmTemplateExtractor, HelmValuesExtractor};
 use _diffctx::facts::lang::java::JavaExtractor;
 use _diffctx::facts::lang::kotlin::KotlinExtractor;
 use _diffctx::facts::lang::php::PhpExtractor;
@@ -209,6 +211,35 @@ fn dockerfile_comment_lines_and_quoted_label_and_env_values_are_not_code() {
             ("plain_value", CODE),
             ("env_var", CODE),
         ],
+    );
+}
+
+/// A YAML comment names nothing a reader of the file uses, while its values,
+/// quoted or not, are what other files read. In a Helm template the actions in
+/// a comment still run, so there the comment stays code.
+#[test]
+fn yaml_comments_are_not_code_and_a_template_s_stay_code() {
+    let values = "# yv_note\nimage:\n  tag: \"yv_value\" # yv_trailing\n  repo: yv_plain\n";
+    read(
+        &HelmValuesExtractor,
+        values,
+        &[
+            ("yv_note", COMMENT),
+            ("image", CODE),
+            ("yv_value", CODE),
+            ("yv_trailing", COMMENT),
+            ("yv_plain", CODE),
+        ],
+    );
+    read(
+        &ConfigExtractor,
+        "kind: ConfigMap # cf_note\nmetadata:\n  name: cf_name\n",
+        &[("cf_note", COMMENT), ("cf_name", CODE)],
+    );
+    read(
+        &HelmTemplateExtractor,
+        "# {{ required \"ht_msg\" .Values.ht_key }}\nkind: ConfigMap\n",
+        &[("ht_key", CODE)],
     );
 }
 

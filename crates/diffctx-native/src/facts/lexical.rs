@@ -14,7 +14,7 @@ type Ranges = Vec<(Range<u32>, Lexical)>;
 
 /// What one grammar calls the nodes of `lexical`, each a space-separated list of
 /// node kinds. A language with no row has every byte as code: no tree here, or
-/// strings that name things (Shell and HCL keep their comments out, Shell its heredoc bodies).
+/// strings that name things (Shell, HCL and YAML keep their comments out, Shell its heredoc bodies).
 struct Row {
     languages: &'static [Language],
     comments: &'static str,
@@ -39,6 +39,7 @@ const TABLE: &[Row] = &[
     Row { languages: &[Language::Swift], comments: "comment multiline_comment", strings: "line_string_literal multi_line_string_literal raw_string_literal", text: "line_str_text multi_line_str_text str_escaped_char raw_str_part raw_str_end_part raw_str_continuing_indicator", code_in: "" },
     Row { languages: &[Language::Shell], comments: "comment", strings: "heredoc_body", text: "heredoc_content", code_in: "" },
     Row { languages: &[Language::Terraform], comments: "comment", strings: "quoted_template", text: "template_literal quoted_template_start quoted_template_end", code_in: "" },
+    Row { languages: &[Language::Config], comments: "comment", strings: "", text: "", code_in: "" },
 ];
 
 fn listed(kinds: &str, kind: &str) -> bool {
@@ -49,13 +50,17 @@ impl BlobFacts {
     /// Records the comments and strings of `root`, the tree this blob's language
     /// was parsed into.
     pub(crate) fn record_lexical(&mut self, root: Node<'_>) {
-        if let Some(kinds) = TABLE
-            .iter()
-            .find(|row| row.languages.contains(&self.language))
-        {
-            self.lexical = scan(root, kinds);
+        if let Some(lexical) = of(self.language, root) {
+            self.lexical = lexical;
         }
     }
+}
+
+/// The comments and strings of `root`, a tree of `language`; none when every
+/// byte of the language is code.
+pub(crate) fn of(language: Language, root: Node<'_>) -> Option<Ranges> {
+    let kinds = TABLE.iter().find(|row| row.languages.contains(&language))?;
+    Some(scan(root, kinds))
 }
 
 fn scan(root: Node<'_>, kinds: &Row) -> Ranges {
