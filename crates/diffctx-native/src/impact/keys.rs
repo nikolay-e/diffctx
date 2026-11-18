@@ -765,7 +765,6 @@ fn spells_literally(text: &str, name: &str, reading: Reading, held: &[(HeldAs, S
                     && match how {
                         HeldAs::Callable => reading.php || reading.go || !qualified,
                         HeldAs::Relation => true,
-                        HeldAs::Command => false,
                     }
             });
             let indexed = !qualified && indexed_call(text, from, to);
