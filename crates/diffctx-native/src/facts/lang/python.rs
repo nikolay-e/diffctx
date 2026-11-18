@@ -615,6 +615,20 @@ impl<'t> Walker<'t> {
         }
     }
 
+    /// The plain name `x` of `type(x)`: the builtin's one-argument call, which
+    /// gives the class of the value.
+    fn class_of(&self, call: Node<'t>) -> Option<Node<'t>> {
+        let function = call.child_by_field_name("function")?;
+        let list = call.child_by_field_name("arguments")?;
+        let value = list.named_child(0)?;
+        (call.kind() == "call"
+            && self.text(function) == "type"
+            && list.kind() == "argument_list"
+            && list.named_child_count() == 1
+            && value.kind() == "identifier")
+            .then_some(value)
+    }
+
     fn simple_chain(&self, node: Node<'t>) -> Option<Vec<&'t str>> {
         let mut parts = Vec::new();
         let mut current = node;
@@ -1736,21 +1750,22 @@ impl<'t> Walker<'t> {
         }));
     }
 
+    /// A reference at `site` to `name`, which the site need not spell.
     fn emit_ref(
         &mut self,
         site: Node<'t>,
+        name: &str,
         cx: &Cx,
         receiver: Receiver,
         use_kind: UseKind,
         qualifier: &[&str],
     ) {
-        let name = Name::new(self.text(site));
         self.facts.push(Fact::Reference(Ref {
             site: span(site),
             enclosing: cx.scope.clone(),
             receiver,
             use_kind,
-            name,
+            name: Name::new(name),
             qualifier: qualifier.iter().map(|q| Name::new(*q)).collect(),
         }));
     }
@@ -2169,7 +2184,8 @@ impl<'t> Walker<'t> {
                 } else if cx.in_fn || cx.in_loop {
                     self.local(node, LocalKind::Variable, cx);
                 } else {
-                    self.emit_ref(node, cx, Receiver::None, UseKind::Write, &[]);
+                    let name = self.text(node);
+                    self.emit_ref(node, name, cx, Receiver::None, UseKind::Write, &[]);
                 }
             }
             "attribute" => {
@@ -2476,7 +2492,7 @@ impl<'t> Walker<'t> {
         } else {
             Receiver::Unknown
         };
-        self.emit_ref(last, cx, receiver, kind, &qualifier);
+        self.emit_ref(last, self.text(last), cx, receiver, kind, &qualifier);
     }
 
     fn call(&mut self, node: Node<'t>, cx: &Cx, callee_kind: UseKind, depth: u16) {
@@ -2487,7 +2503,16 @@ impl<'t> Walker<'t> {
                     callee = self.simple_chain(function);
                     self.chain(function, cx, callee_kind, depth);
                 }
-                _ => self.visit(function, cx, depth),
+                _ => {
+                    self.visit(function, cx, depth);
+                    // `type(x)(..)` builds the class of `x`, as `x.__class__(..)` does.
+                    if let Some(value) = self.class_of(function) {
+                        let qualifier = [self.text(value)];
+                        let receiver = self.receiver_of(cx, &qualifier);
+                        let class = "__class__";
+                        self.emit_ref(function, class, cx, receiver, callee_kind, &qualifier);
+                    }
+                }
             }
         }
         let mut arguments: Vec<Node<'t>> = Vec::new();
@@ -2669,14 +2694,7 @@ impl<'t> Walker<'t> {
                         } else {
                             Receiver::Unknown
                         };
-                        self.facts.push(Fact::Reference(Ref {
-                            site: span(node),
-                            enclosing: cx.scope.clone(),
-                            receiver,
-                            use_kind: UseKind::TypeUse,
-                            name: Name::new(*last),
-                            qualifier: before.iter().map(|q| Name::new(*q)).collect(),
-                        }));
+                        self.emit_ref(node, last, cx, receiver, UseKind::TypeUse, before);
                     }
                 }
             }
