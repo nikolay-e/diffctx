@@ -1,0 +1,25 @@
+name: sh_call_after_a_source_through_dirname_substitution_is_a_caller
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [shell, source]
+repo:
+  initial_files:
+    lib.sh: |
+      check() {
+        return 0
+      }
+    run.sh: |
+      #!/bin/sh
+      . "$(dirname "$0")/lib.sh"
+      check
+  changed_files:
+    lib.sh: |
+      check() {
+        return 1
+      }
+  commit_message: change
+expect:
+  changed: ['lib.sh::check']
+  relations:
+  - {from: run.sh, to: 'lib.sh::check', kind: calls, resolution: resolved}

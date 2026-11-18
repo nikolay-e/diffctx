@@ -678,6 +678,14 @@ const RED: &[(&str, &str)] = &[
      resolver binds the base as the base is, `classify` calls it there, and which of the base's \
      callers still reach a definition at the head is the cell's stale-use rule (decide.rs)",
     ),
+    (
+        "impact/rust/rs_extension_trait_method_is_dispatched",
+        "fj#257: `s.shout()` on a `String` is a call into outside code for the resolver, though the trait the file imports gives `String` that method",
+    ),
+    (
+        "impact/rust/rs_trait_impl_for_a_primitive_type_called_through_the_type_is_a_caller",
+        "fj#257: an impl for a primitive type gives `i32` its methods, but the resolver types no receiver of a primitive and offers the method as a candidate",
+    ),
 ];
 
 #[test]

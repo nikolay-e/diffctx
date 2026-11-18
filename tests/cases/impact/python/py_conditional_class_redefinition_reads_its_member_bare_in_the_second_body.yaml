@@ -1,0 +1,35 @@
+name: py_conditional_class_redefinition_reads_its_member_bare_in_the_second_body
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [python, bare-name, conditional-definition]
+repo:
+  initial_files:
+    pkg/__init__.py: |2+
+
+    pkg/conf.py: |
+      import sys
+
+      if sys.version_info >= (3, 9):
+          class Conf:
+              DEFAULTS = {'a': 1}
+      else:
+          class Conf:
+              DEFAULTS = {'a': 1}
+              KEYS = DEFAULTS.keys()
+  changed_files:
+    pkg/conf.py: |
+      import sys
+
+      if sys.version_info >= (3, 9):
+          class Conf:
+              DEFAULTS = {'a': 2}
+      else:
+          class Conf:
+              DEFAULTS = {'a': 2}
+              KEYS = DEFAULTS.keys()
+  commit_message: change
+expect:
+  changed: ['pkg/conf.py::DEFAULTS']
+  callers:
+    DEFAULTS: []

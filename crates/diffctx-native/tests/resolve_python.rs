@@ -858,6 +858,14 @@ const RED: &[(&str, &str)] = &[
         "symbol/python/py_with_target_is_typed_by_what_enter_returns",
         "the symbol answer names the definitions (`Connection.execute`); the resolver's are bare",
     ),
+    (
+        "impact/python/py_class_attribute_read_through_a_bound_module_alias_names_the_innermost_definition",
+        "a read in a module-level assignment belongs to the variable it binds in the answer (`pkg/use.py::DEFAULTS`); the resolver gives it to the module",
+    ),
+    (
+        "impact/python/py_module_alias_of_a_member_then_attribute_read",
+        "a read in a module-level assignment belongs to the variable it binds in the answer (`pkg/use.py::fetch`); the resolver gives it to the module",
+    ),
 ];
 
 #[test]

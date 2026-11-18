@@ -1,0 +1,48 @@
+name: ts_method_passed_as_a_pick_of_an_external_module_interface_is_a_gap
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [typescript, external-name, structural, gap]
+repo:
+  initial_files:
+    package.json: |
+      {"name":"app","version":"1.0.0"}
+    tsconfig.json: |
+      {"compilerOptions":{"strict":true}}
+    src/sink.ts: |
+      import type { Readable } from 'node:stream';
+
+      export class Sink {
+        read(n?: number): any {
+          return n;
+        }
+      }
+    src/use.ts: |
+      import type { Readable } from 'node:stream';
+
+      export function pull(r: Pick<Readable, 'read'>): void {
+        r.read(1);
+      }
+    src/run.ts: |
+      import { Sink } from './sink';
+      import { pull } from './use';
+
+      export function run(): void {
+        pull(new Sink());
+      }
+  changed_files:
+    src/sink.ts: |
+      import type { Readable } from 'node:stream';
+
+      export class Sink {
+        read(n?: number): any {
+          return n! + 1;
+        }
+      }
+  commit_message: change
+expect:
+  changed: ['src/sink.ts::read']
+  relations:
+  - {from: src/use.ts, to: 'src/sink.ts::read', kind: calls, resolution: unresolved}
+  partial:
+    src/sink.ts::read: {calls: unaccounted, reads: unaccounted}

@@ -1,0 +1,41 @@
+name: tf_module_sourced_from_the_repository_own_remote_is_an_external_source
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [terraform, module, gap]
+repo:
+  initial_files:
+    modules/net/main.tf: |
+      variable "cidr" {
+        type = string
+      }
+
+      output "id" {
+        value = var.cidr
+      }
+    main.tf: |
+      module "net" {
+        source = "git::https://example.invalid/infra.git//modules/net?ref=v1"
+        cidr   = "10.0.0.0/16"
+      }
+
+      output "net_id" {
+        value = module.net.id
+      }
+  changed_files:
+    modules/net/main.tf: |
+      variable "cidr" {
+        type    = string
+        default = "10.1.0.0/16"
+      }
+
+      output "id" {
+        value = var.cidr
+      }
+  commit_message: change
+expect:
+  changed: ['modules/net/main.tf::var.cidr']
+  relations:
+  - {from: 'modules/net/main.tf::id', to: 'modules/net/main.tf::var.cidr', kind: reads, resolution: resolved}
+  partial:
+    modules/net/main.tf::var.cidr: {calls: external_source, reads: external_source}

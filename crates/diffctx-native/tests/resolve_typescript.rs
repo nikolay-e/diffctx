@@ -841,6 +841,10 @@ const RED: &[(&str, &str)] = &[
         "symbol/typescript/js_super_call_in_a_subclass_constructor_is_a_caller_of_the_base_constructor",
         "the resolver binds no `super(...)` call in a subclass constructor to the base class",
     ),
+    (
+        "impact/typescript/js_prototype_extension_of_a_builtin_type_is_possibly_called",
+        "the answer counts the function stored into a member (`String.prototype.shout = shout`) as written to the place it leaks to; the resolver reads its name on the right side",
+    ),
 ];
 
 #[test]

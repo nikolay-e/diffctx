@@ -6,3 +6,13 @@
 # hedging falsely also fails. The comment on a row is the mechanism that hedges it.
 # An honest hedge is declared under `partial:` in the case, with the reader or the gap
 # it stands for written beside it, and never listed here.
+impact/shell/sh_exec_runs_a_program_not_the_sourced_function  # G: the name is not searched because a sibling shell file could spell it in a region its parser hides
+impact/shell/sh_command_builtin_skips_the_sourced_function  # G: the name is not searched because a sibling shell file could spell it in a region its parser hides
+impact/shell/sh_env_runs_a_program_not_the_sourced_function  # G: the name is not searched because a sibling shell file could spell it in a region its parser hides
+impact/shell/sh_here_document_piped_to_sh_does_not_call_the_parent_function  # G: the name is not searched because a sibling shell file could spell it in a region its parser hides
+impact/python/py_module_alias_of_a_member_then_attribute_read  # B: the attribute of the alias' own assignment is a resolved reference and also an unplaced candidate
+impact/kotlin/kt_imported_extension_function_call_is_a_caller  # F: a top-level extension function is counted as called implicitly through an override
+impact/kotlin/kt_gradle_included_build_is_a_caller  # H: a manifest edge the reader does not model reads as a manifest above the definition that could not be read
+impact/rust/rs_patch_section_path_into_another_crate_is_a_caller  # H: a manifest edge the reader does not model reads as a manifest above the definition that could not be read
+impact/python/py_cache_clear_of_an_imported_cached_function_is_a_reader  # B: a member read through the function's value is a resolved reference and also an unplaced candidate call
+impact/python/py_cache_clear_then_call_of_an_imported_cached_function_is_a_caller  # B: a member read through the function's value is a resolved reference and also an unplaced candidate call

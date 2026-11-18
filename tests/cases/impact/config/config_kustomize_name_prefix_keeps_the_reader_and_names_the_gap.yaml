@@ -1,0 +1,48 @@
+name: config_kustomize_name_prefix_keeps_the_reader_and_names_the_gap
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [config, kubernetes, kustomize, gap]
+repo:
+  initial_files:
+    base/kustomization.yaml: |
+      resources:
+        - cm.yaml
+        - dep.yaml
+      namePrefix: prod-
+    base/cm.yaml: |
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: app
+      data:
+        mode: a
+    base/dep.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: web
+      spec:
+        template:
+          spec:
+            containers:
+              - name: web
+                image: web
+                envFrom:
+                  - configMapRef:
+                      name: app
+  changed_files:
+    base/cm.yaml: |
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: app
+      data:
+        mode: b
+  commit_message: change
+expect:
+  changed: ['base/cm.yaml::ConfigMap/app']
+  relations:
+  - {from: 'base/dep.yaml::Deployment.apps/web', to: 'base/cm.yaml::ConfigMap/app', kind: reads, resolution: resolved}
+  partial:
+    base/cm.yaml::ConfigMap/app: {reads: not_traced}

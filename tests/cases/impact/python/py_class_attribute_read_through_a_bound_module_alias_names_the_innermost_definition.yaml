@@ -1,0 +1,31 @@
+name: py_class_attribute_read_through_a_bound_module_alias_names_the_innermost_definition
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [python, alias, member]
+repo:
+  initial_files:
+    pkg/__init__.py: |2+
+
+    pkg/conf.py: |
+      class Conf:
+          retries = 3
+          DEFAULTS = {'a': 1}
+    pkg/use.py: |
+      from pkg.conf import Conf
+
+      DEFAULTS = Conf.DEFAULTS
+
+
+      def keys():
+          return DEFAULTS.keys()
+  changed_files:
+    pkg/conf.py: |
+      class Conf:
+          retries = 3
+          DEFAULTS = {'a': 2}
+  commit_message: change
+expect:
+  changed: ['pkg/conf.py::DEFAULTS']
+  relations:
+  - {from: 'pkg/use.py::DEFAULTS', to: 'pkg/conf.py::DEFAULTS', kind: reads, resolution: resolved}

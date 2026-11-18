@@ -1,0 +1,41 @@
+name: ts_namespace_reopened_in_one_file_reads_its_member_bare
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [typescript, bare-name, declaration-merging]
+repo:
+  initial_files:
+    package.json: |
+      {"name":"app","version":"1.0.0"}
+    tsconfig.json: |
+      {"compilerOptions":{"strict":true}}
+    src/util.ts: |
+      namespace Util {
+        export function parse(s: string): number {
+          return Number(s);
+        }
+      }
+
+      namespace Util {
+        export function twice(s: string): number {
+          return parse(s) * 2;
+        }
+      }
+  changed_files:
+    src/util.ts: |
+      namespace Util {
+        export function parse(s: string): number {
+          return Number(s) + 0;
+        }
+      }
+
+      namespace Util {
+        export function twice(s: string): number {
+          return parse(s) * 2;
+        }
+      }
+  commit_message: change
+expect:
+  changed: ['src/util.ts::parse']
+  relations:
+  - {from: 'src/util.ts::twice', to: 'src/util.ts::parse', kind: calls, resolution: resolved}

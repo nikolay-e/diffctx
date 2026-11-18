@@ -1,0 +1,39 @@
+name: py_module_alias_of_a_member_then_attribute_read
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [python, alias, member]
+repo:
+  initial_files:
+    pkg/__init__.py: |2+
+
+    pkg/svc.py: |
+      import functools
+
+
+      class Svc:
+          @functools.lru_cache
+          def fetch(self, k):
+              return k
+    pkg/use.py: |
+      from pkg.svc import Svc
+
+      fetch = Svc.fetch
+
+
+      def reset():
+          fetch.cache_clear()
+  changed_files:
+    pkg/svc.py: |
+      import functools
+
+
+      class Svc:
+          @functools.lru_cache
+          def fetch(self, k):
+              return k + 0
+  commit_message: change
+expect:
+  changed: ['pkg/svc.py::fetch']
+  relations:
+  - {from: 'pkg/use.py::fetch', to: 'pkg/svc.py::fetch', kind: reads, resolution: resolved}
