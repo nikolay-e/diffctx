@@ -1336,10 +1336,6 @@ impl<'t> Walker<'t> {
                 self.callable_strings(*argument, cx);
             }
         }
-        let words = arguments.as_deref().unwrap_or_default();
-        self.facts.extend(super::runner::go_command(
-            self.bytes, function, words, &cx.scope,
-        ));
         // `new(T)` and `make(T, …)` name their first argument as a type, said once.
         let mut typed_first = false;
         match function.kind() {
