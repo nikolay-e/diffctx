@@ -27,6 +27,9 @@
 // Knobs:
 //   DIFFCTX_CLASS_FILTER  only the cases whose name contains the text
 //   DIFFCTX_CLASS_EVERY   every n-th case of a language, to sample
+//   DIFFCTX_CLASS_SHARD   K/N: part K of N, the cases whose name hashes there;
+//                         the parts together are the corpus, and each still
+//                         fails on a listed variant of its own cases that passes
 //   DIFFCTX_CLASS_REPORT  append every failing row to this file
 //   DIFFCTX_CLASS_SITE    A only: run only the regions a parsed file hides
 //                         (macro body, after a parse error, command position,
@@ -62,8 +65,8 @@ use oracle::case::{Case, Mode, Repo, parse};
 use oracle::model::{Kind, Node};
 use support::classes::{
     Finding, Shape, Stripped, SubjectKind, TRANSFORMS, comment_of, complete_empty,
-    complete_empty_for, conclude, excerpt, extension, lists, literal_call, mention, proof_missing,
-    regions, route_gone, strip_everything, subject_kind, unmoved_by_no_use,
+    complete_empty_for, conclude, excerpt, extension, in_shard, lists, literal_call, mention,
+    proof_missing, regions, route_gone, strip_everything, subject_kind, unmoved_by_no_use,
 };
 use support::{diffctx_unclocked, git, init_repo};
 
@@ -109,7 +112,7 @@ fn load(language: &str) -> Vec<Loaded> {
         for path in paths {
             let rel = path.strip_prefix(&dir).unwrap_or(&path).with_extension("");
             let name = format!("{}/{language}/{}", mode.name(), rel.display());
-            if filter.as_ref().is_some_and(|f| !name.contains(f.as_str())) {
+            if filter.as_ref().is_some_and(|f| !name.contains(f.as_str())) || !in_shard(&name) {
                 continue;
             }
             let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
