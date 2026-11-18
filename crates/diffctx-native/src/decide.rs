@@ -2628,6 +2628,10 @@ impl Cell {
         matches!(self.family, Family::Config | Family::Dockerfile)
     }
 
+    pub(crate) const fn names_are_global(&self) -> bool {
+        self.family.names_are_global()
+    }
+
     /// The files other than `gone` whose base bindings landed in the module `file`,
     /// an import of it or a resolved use of what it defined: who still depends on a module
     /// the range deletes. A Go package is one module, so a file of the directory

@@ -85,6 +85,14 @@ impl Family {
         }
     }
 
+    /// Whether the family runs a definition by its name wherever its file was
+    /// loaded, not through an import of that file: a shell function is global once
+    /// sourced, so a script that sources nothing may still call one a deleted file
+    /// defined, and a name the head no longer defines is no proof it is not that one.
+    pub(crate) const fn names_are_global(self) -> bool {
+        matches!(self, Self::Shell)
+    }
+
     pub(crate) fn name(self) -> &'static str {
         match self {
             Self::Python => "Python",
