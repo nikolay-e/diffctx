@@ -61,9 +61,9 @@ mod support;
 use oracle::case::{Case, Mode, Repo, parse};
 use oracle::model::{Kind, Node};
 use support::classes::{
-    Finding, Stripped, SubjectKind, TRANSFORMS, comment_of, complete_empty, conclude, excerpt,
-    extension, lists, literal_call, mention, proof_missing, regions, route_gone, strip_everything,
-    subject_kind, unmoved_by_no_use,
+    Finding, Shape, Stripped, SubjectKind, TRANSFORMS, comment_of, complete_empty,
+    complete_empty_for, conclude, excerpt, extension, lists, literal_call, mention, proof_missing,
+    regions, route_gone, strip_everything, subject_kind, unmoved_by_no_use,
 };
 use support::{diffctx_unclocked, git, init_repo};
 
@@ -134,6 +134,8 @@ fn load(language: &str) -> Vec<Loaded> {
 struct Subject {
     // The bare name of the changed definition.
     name: String,
+    // What owns it, where the case names it as `Owner.name`.
+    owner: Option<String>,
     // The file that defines it, where the case says so.
     definition: Option<String>,
     // The files that call it.
@@ -178,6 +180,16 @@ fn subject(case: &Case) -> Option<Subject> {
     }
     let target = targets.into_iter().find(|n| n.symbol.is_some())?;
     let name = bare(target.symbol.as_deref()?)?;
+    let owner = target
+        .symbol
+        .as_deref()
+        .and_then(|symbol| {
+            symbol
+                .rsplit(['.', ':'])
+                .filter(|part| !part.is_empty())
+                .nth(1)
+        })
+        .and_then(bare);
     let definition = if has_file(repo, &target.path) {
         Some(target.path)
     } else {
@@ -203,7 +215,18 @@ fn subject(case: &Case) -> Option<Subject> {
         .collect();
     callers.sort();
     callers.dedup();
-    let kind = definition
+    // A deleted module is the home of what it declared.
+    let home = definition.clone().or_else(|| {
+        repo.deleted_files
+            .iter()
+            .find(|path| {
+                repo.initial_files
+                    .get(*path)
+                    .is_some_and(|text| text.contains(&name))
+            })
+            .cloned()
+    });
+    let kind = home
         .as_deref()
         .and_then(|path| {
             let text = repo
@@ -215,6 +238,7 @@ fn subject(case: &Case) -> Option<Subject> {
         .unwrap_or(SubjectKind::Reachable);
     Some(Subject {
         name,
+        owner,
         definition,
         callers,
         kind,
@@ -385,6 +409,8 @@ fn error(class: char, loaded: &Loaded, variant: &str, why: &str) -> Finding {
 enum Spelling {
     // The name may be a use: the answer may not call it complete and empty.
     Use,
+    // The name as a string literal, which may read the subject by name.
+    Name,
     // The name is a comment or prose: the answer does not move.
     NoUse,
 }
@@ -438,7 +464,7 @@ fn spellings(loaded: &Loaded, subject: &Subject, name: &str) -> Vec<Variant> {
         if let Some(text) = literal_call(&literal, name) {
             elsewhere(
                 "unchanged, string literal in a call",
-                Spelling::Use,
+                Spelling::Name,
                 &literal,
                 text,
                 false,
@@ -466,7 +492,7 @@ fn spellings(loaded: &Loaded, subject: &Subject, name: &str) -> Vec<Variant> {
             }
         }
     }
-    for region in regions(subject.definition.as_deref(), name) {
+    for region in regions(subject.definition.as_deref(), name, subject.kind) {
         let mut repo = loaded.case.repo.clone();
         repo.initial_files.insert(region.path.clone(), region.text);
         variants.push((
@@ -573,10 +599,16 @@ fn enumeration(language: &str) {
                 }
                 Ok(Some(doc)) => doc,
             };
-            if spelling == Spelling::Use {
+            if spelling != Spelling::NoUse {
                 let named = lists(&doc, &path);
-                let absent = !named && complete_empty(&doc);
-                let excused = absent && subject.kind.excuses(site.is_some());
+                let absent =
+                    !named && complete_empty_for(&doc, &subject.name, subject.owner.as_deref());
+                let shape = match (site, spelling) {
+                    (Some(_), _) => Shape::Region,
+                    (None, Spelling::Name) => Shape::Name,
+                    (None, _) => Shape::Call,
+                };
+                let excused = absent && subject.kind.excuses(shape);
                 let tally = match (tally, excused) {
                     (Some(tally), _) => Some(tally),
                     (None, true) => Some(tallies.entry(("not a use, by kind", label)).or_default()),

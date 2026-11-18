@@ -112,22 +112,81 @@ pub(crate) fn unmoved_by_no_use(doc: &Value, baseline: &Value) -> bool {
     disclosure(doc) == disclosure(baseline)
 }
 
+fn filled(value: &Value) -> bool {
+    value.as_array().is_some_and(|rows| !rows.is_empty())
+}
+
+// A definition whose search was whole and found nothing: no caller, no gap, no
+// user the range changes too.
+fn empty_row(d: &Value) -> bool {
+    !filled(&d["rows"])
+        && d["coverage"]["calls"]["complete"] == true
+        && d["coverage"]["reads"]["complete"] == true
+        && !filled(&d["missed_in"])
+        && !filled(&d["gaps"])
+        && !filled(&d["folded"])
+        && !filled(&d["possibly_also_changed"])
+        && !filled(&d["also_changed"])
+}
+
 // The answer is a complete statement that nobody uses the subject.
 pub(crate) fn complete_empty(doc: &Value) -> bool {
-    let rows = |value: &Value| value.as_array().is_some_and(|rows| !rows.is_empty());
     let definitions = doc["definitions"].as_array().cloned().unwrap_or_default();
     says_empty(doc)
         || (definitions.is_empty() && !discloses(doc))
-        || definitions.iter().any(|d| {
-            !rows(&d["rows"])
-                && d["coverage"]["calls"]["complete"] == true
-                && d["coverage"]["reads"]["complete"] == true
-                && !rows(&d["missed_in"])
-                && !rows(&d["gaps"])
-                && !rows(&d["folded"])
-                && !rows(&d["possibly_also_changed"])
-                && !rows(&d["also_changed"])
-        })
+        || definitions.iter().any(empty_row)
+}
+
+// `Greeter.hello` and `src/Greeter.php::hello` name `hello`.
+fn last_segment(symbol: &str) -> &str {
+    symbol.rsplit(['.', ':']).next().unwrap_or(symbol)
+}
+
+// The answer names a reacher of the subject: a role that enters it (a runner,
+// JUnit, `__main__`, a framework) or users the range changes too. Such an
+// answer asserts no absence, whatever its text search left unsaid.
+fn names_reacher(doc: &Value, is_subject: &impl Fn(&Value) -> bool) -> bool {
+    let items = |key: &str| {
+        doc["unlisted"][key]["items"]
+            .as_array()
+            .into_iter()
+            .flatten()
+    };
+    items("entered_by").any(|item| is_subject(&item["def"]["symbol"]))
+        || items("called_in_diff").any(|item| is_subject(&item["symbol"]))
+}
+
+// A Use variant is judged on the subject's own definition: the answer's row
+// named like the subject, or like its owner where the answer folds the subject
+// into the owner's row. Another changed definition of the answer is outside the
+// property. With no row of its own (a deleted module) the whole answer counts.
+pub(crate) fn complete_empty_for(doc: &Value, name: &str, owner: Option<&str>) -> bool {
+    let definitions = doc["definitions"].as_array().map_or(&[][..], Vec::as_slice);
+    let rows_named = |wanted: &str| -> Vec<&Value> {
+        definitions
+            .iter()
+            .filter(|d| {
+                d["symbol"]
+                    .as_str()
+                    .is_some_and(|s| last_segment(s) == wanted)
+            })
+            .collect()
+    };
+    let mut own = rows_named(name);
+    if own.is_empty()
+        && let Some(owner) = owner
+    {
+        own = rows_named(owner);
+    }
+    if !own.is_empty() {
+        return own.iter().any(|d| empty_row(d) && d["entry"].is_null());
+    }
+    let is_subject = |symbol: &Value| {
+        symbol
+            .as_str()
+            .is_some_and(|s| last_segment(s) == name || Some(last_segment(s)) == owner)
+    };
+    !names_reacher(doc, &is_subject) && complete_empty(doc)
 }
 
 // B: the caller is neither listed nor covered by a gap, or the answer says
@@ -426,7 +485,7 @@ fn after_error(path: &str, symbol: &str) -> Option<String> {
 // The regions of one subject, as new unchanged files. `own` is the file that
 // defines it, which the language-bound regions follow; the others exist in a
 // repository of any language.
-pub(crate) fn regions(own: Option<&str>, symbol: &str) -> Vec<Region> {
+pub(crate) fn regions(own: Option<&str>, symbol: &str, kind: SubjectKind) -> Vec<Region> {
     let mut all = Vec::new();
     let mut add = |site, label, path: String, text: String| {
         all.push(Region {
@@ -475,11 +534,18 @@ pub(crate) fn regions(own: Option<&str>, symbol: &str) -> Vec<Region> {
             );
         }
         if lang(own) == Some(Lang::Php) {
+            // A bare call reaches a function, never a method: a method is called
+            // through its receiver.
+            let call = if kind == SubjectKind::Method {
+                format!("$x->{symbol}()")
+            } else {
+                format!("{symbol}($x)")
+            };
             add(
                 "template text",
                 "unchanged, template text (php)",
                 "zz_class/template.php".into(),
-                format!("<p><?= {symbol}($x) ?></p>\n"),
+                format!("<p><?= {call} ?></p>\n"),
             );
         }
         if lang(own) == Some(Lang::Ruby) {
@@ -538,16 +604,32 @@ pub(crate) enum SubjectKind {
     // Declared as a plain value, a string, number or boolean, and not imported:
     // no call names it.
     Literal,
+    // An attribute of a class: it is read through an instance, never called.
+    Field,
+    // A function of a class body: called through its receiver, never by a bare
+    // name.
+    Method,
+}
+
+// How a spelling of the subject is written.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Shape {
+    // A call in a place a parsed file hides: command position, template text.
+    Region,
+    // A call in an unread file.
+    Call,
+    // The name as a string literal, which may read it by name.
+    Name,
 }
 
 impl SubjectKind {
-    // The call spelling of the subject, in a region or elsewhere, is provably no
-    // use. A string literal naming a value may still read it by name.
-    pub(crate) fn excuses(self, in_a_region: bool) -> bool {
+    // The spelling of the subject is provably no use of it.
+    pub(crate) fn excuses(self, shape: Shape) -> bool {
         match self {
-            Self::Reachable => false,
+            Self::Reachable | Self::Method => false,
             Self::Local => true,
-            Self::Literal => in_a_region,
+            Self::Literal => shape == Shape::Region,
+            Self::Field => shape != Shape::Name,
         }
     }
 }
@@ -564,6 +646,10 @@ pub(crate) fn subject_kind(path: &str, text: &str, name: &str) -> SubjectKind {
         SubjectKind::Local
     } else if literal_value(text, name) {
         SubjectKind::Literal
+    } else if lang(path) == Some(Lang::Python) && python_field(text, name) {
+        SubjectKind::Field
+    } else if lang(path) == Some(Lang::Php) && php_method(text, name) {
+        SubjectKind::Method
     } else {
         SubjectKind::Reachable
     }
@@ -582,7 +668,7 @@ fn python_local(text: &str, name: &str) -> bool {
             continue;
         };
         let indent = held[1].len();
-        if indent == 0 || !inside_def(&lines[..at], indent) {
+        if indent == 0 || scope_of(&lines[..at], indent) != Scope::Def {
             return false;
         }
         found = true;
@@ -590,9 +676,37 @@ fn python_local(text: &str, name: &str) -> bool {
     found
 }
 
-// Walking up by indentation from a line at `indent`, the nearest enclosing
-// `def` or `class` opens a `def` (an `if` or a `for` between is no scope).
-fn inside_def(before: &[&str], indent: usize) -> bool {
+// Every declaration of `name` is an attribute in the body of a class, and
+// nothing defines it by `def`.
+fn python_field(text: &str, name: &str) -> bool {
+    let name = regex::escape(name);
+    let declares = rx(&format!(
+        r"^(\s+)(?:(?P<def>(?:async\s+)?def\s+{name}\b)|{name}\b(?:(?:\s*:[^=\n]+)?\s*=[^=]|\s*:[^=\n]+$))"
+    ));
+    let lines: Vec<&str> = text.lines().collect();
+    let mut found = false;
+    for (at, line) in lines.iter().enumerate() {
+        let Some(held) = declares.captures(line) else {
+            continue;
+        };
+        if held.name("def").is_some() || scope_of(&lines[..at], held[1].len()) != Scope::Class {
+            return false;
+        }
+        found = true;
+    }
+    found
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Scope {
+    Def,
+    Class,
+    Module,
+}
+
+// The nearest enclosing `def` or `class` of a line at `indent` (an `if` or a
+// `for` between is no scope).
+fn scope_of(before: &[&str], indent: usize) -> Scope {
     let mut limit = indent;
     for line in before.iter().rev() {
         let t = line.trim_start();
@@ -602,15 +716,48 @@ fn inside_def(before: &[&str], indent: usize) -> bool {
         let at = line.len() - t.len();
         if at < limit {
             if t.starts_with("def ") || t.starts_with("async def ") {
-                return true;
+                return Scope::Def;
             }
-            if t.starts_with("class ") || at == 0 {
-                return false;
+            if t.starts_with("class ") {
+                return Scope::Class;
+            }
+            if at == 0 {
+                return Scope::Module;
             }
             limit = at;
         }
     }
-    false
+    Scope::Module
+}
+
+// Every declaration of `name` by `function` sits in the body of a class, trait,
+// interface or enum.
+fn php_method(text: &str, name: &str) -> bool {
+    let code = blanked(text);
+    let declares = rx(&format!(r"\bfunction\s+&?\s*{}\s*\(", regex::escape(name)));
+    let mut found = false;
+    for held in declares.find_iter(&code) {
+        let before = &code[..held.start()];
+        let mut open: Vec<usize> = Vec::new();
+        for (at, c) in before.char_indices() {
+            match c {
+                '{' => open.push(at),
+                '}' => {
+                    open.pop();
+                }
+                _ => {}
+            }
+        }
+        let header = open.last().map(|&brace| {
+            let head = &before[..brace];
+            &head[head.rfind([';', '{', '}']).map_or(0, |at| at + 1)..]
+        });
+        if !header.is_some_and(|h| rx(r"\b(?:class|trait|interface|enum)\b").is_match(h)) {
+            return false;
+        }
+        found = true;
+    }
+    found
 }
 
 // The text with strings and comments blanked, byte for byte, so that a brace
