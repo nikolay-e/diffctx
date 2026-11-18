@@ -947,6 +947,36 @@ fn across_projects(caller: &str, definition: &str, read: &impl Fn(&str) -> Optio
     user != used && package.is_none_or(|name| !user_text.contains(&format!("\"{name}\"")))
 }
 
+// The words an import statement is written with, not names it brings.
+const IMPORT_WORDS: [&str; 12] = [
+    "import", "from", "as", "use", "using", "require", "static", "type", "extern", "crate",
+    "super", "self",
+];
+
+// The caller reached the definition's module through its imports, and the
+// stripped text names nothing they brought: what is left reaches the subject
+// through a value nothing types, which no import leads to either.
+fn import_was_the_route(held: &Stripped, definition: &str) -> bool {
+    let Some(lang) = lang(held.path) else {
+        return false;
+    };
+    let named =
+        |text: &str, token: &str| rx(&format!(r"\b{}\b", regex::escape(token))).is_match(text);
+    let file = file_name(definition);
+    let stem = file.rsplit_once('.').map_or(file, |(stem, _)| stem);
+    let (statements, _) = split_imports(lang, held.original);
+    let token = rx(r"[A-Za-z_]\w*");
+    let reaching: Vec<&String> = statements.iter().filter(|s| named(s, stem)).collect();
+    !reaching.is_empty()
+        && reaching.iter().all(|statement| {
+            token
+                .find_iter(statement)
+                .map(|t| t.as_str())
+                .filter(|t| !IMPORT_WORDS.contains(t))
+                .all(|t| !named(held.stripped, t))
+        })
+}
+
 // Why the stripped caller is no caller, where its own text or its manifest
 // shows it.
 pub(crate) fn route_gone(
@@ -977,6 +1007,12 @@ pub(crate) fn route_gone(
         if head.is_match(held.stripped) {
             return Some("the alias that headed the call is declared nowhere");
         }
+    }
+    if held
+        .definition
+        .is_some_and(|definition| import_was_the_route(held, definition))
+    {
+        return Some("nothing the import of the definition's module brought is named any more");
     }
     let crosses = imported
         && held
@@ -1127,9 +1163,9 @@ fn joined(old: &str, lines: &[String]) -> String {
     text
 }
 
-// The file without its import statements.
-pub(crate) fn strip_imports(path: &str, text: &str) -> Option<String> {
-    let lang = lang(path)?;
+// The file's import statements, each whole, and the rest of its lines.
+fn split_imports(lang: Lang, text: &str) -> (Vec<String>, Vec<String>) {
+    let mut statements: Vec<String> = Vec::new();
     let mut kept: Vec<String> = Vec::new();
     let mut until: Option<char> = None;
     for line in text.lines() {
@@ -1137,20 +1173,32 @@ pub(crate) fn strip_imports(path: &str, text: &str) -> Option<String> {
             if line.contains(end) {
                 until = None;
             }
+            if let Some(open) = statements.last_mut() {
+                open.push('\n');
+                open.push_str(line);
+            }
             continue;
         }
         match import_start(lang, line) {
-            Some(Until::Line) => {}
-            Some(Until::Char(end)) => {
-                // The first line may close it already.
-                let tail = line.split_once(['(', '{']).map_or("", |(_, rest)| rest);
-                if !tail.contains(end) {
-                    until = Some(end);
+            Some(how) => {
+                if let Until::Char(end) = how {
+                    // The first line may close it already.
+                    let tail = line.split_once(['(', '{']).map_or("", |(_, rest)| rest);
+                    if !tail.contains(end) {
+                        until = Some(end);
+                    }
                 }
+                statements.push(line.to_string());
             }
             None => kept.push(line.to_string()),
         }
     }
+    (statements, kept)
+}
+
+// The file without its import statements.
+pub(crate) fn strip_imports(path: &str, text: &str) -> Option<String> {
+    let (_, kept) = split_imports(lang(path)?, text);
     changed(text, joined(text, &kept))
 }
 
