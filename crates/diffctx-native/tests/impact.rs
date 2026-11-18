@@ -1357,7 +1357,10 @@ fn a_python_absence_is_claimed_only_where_no_use_of_the_name_is_unplaced() {
                 "lib.py",
                 "def helper():\n    return 1\n\n\ndef lone():\n    return 1\n",
             ),
-            ("app.py", "def run(box):\n    return box.helper\n"),
+            (
+                "app.py",
+                "import lib\n\n\ndef run(box):\n    return box.helper\n",
+            ),
             (
                 "tests/test_other.py",
                 "def test_nothing():\n    assert True\n",
@@ -1749,7 +1752,9 @@ fn a_removed_name_too_common_to_trace_is_unresolved_not_listed() {
         .map(|i| {
             (
                 format!("app/m{i}.py"),
-                (0..20).map(|j| format!("x{j} = obj.call({j})\n")).collect(),
+                std::iter::once("from app import defs\n".to_string())
+                    .chain((0..20).map(|j| format!("x{j} = obj.call({j})\n")))
+                    .collect(),
             )
         })
         .collect();
@@ -3313,8 +3318,8 @@ fn local_functions_and_untyped_attribute_reads_are_not_callers() {
         "a script that never imports `log` is no possible caller (gh#666): {md}"
     );
     assert!(
-        md.contains("possibly called from client.py:5, stray.py:2"),
-        "the gap names the two reads its count holds: {md}"
+        md.contains("possibly called from client.py:5") && !md.contains("stray.py"),
+        "the gap names the one read of a module that imports `log`, not the script's: {md}"
     );
 }
 
