@@ -47,3 +47,8 @@ symbol/python/py_locals_lookup_of_a_nested_function_is_not_a_complete_local  # a
 symbol/python/py_getattr_with_a_concatenated_name_hedges_the_handlers_of_its_class  # a computed-name lookup is answered complete where the case declares the group partial
 symbol/java/java_symbol_method_of_a_final_class_is_complete_beside_its_extensible_twin  # the answer's name_unsearched gap hedges the final class's method the case declares complete
 symbol/java/java_symbol_package_private_method_of_another_package_is_complete_beside_its_colluding_twin  # the answer's name_unsearched gap does not match the declared partial for the package-private twin
+symbol/python/py_def_under_a_global_declaration_is_a_definition_its_callers_a_gap  # a def under `global` has its callers answered complete where the case declares them a gap
+symbol/python/py_nested_decorator_shadowing_a_module_decorator_is_answered_too  # the module-level decorator is answered complete where the case declares its hedge
+impact/c/c_asm_label_function_is_reached_by_its_label_from_outside  # the declared partial finds no definition for an asm-label function
+impact/cpp/cpp_extern_c_function_is_reached_from_another_language  # the declared partial finds no definition for an extern "C" function
+impact/rust/rust_cross_language_export_attribute_hedges_the_function  # the declared partial finds no definition for an exported Rust function

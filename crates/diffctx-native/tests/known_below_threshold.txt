@@ -237,7 +237,6 @@ symbol/python/py_nested_decorator_shadowing_a_module_decorator_is_answered_too  
 symbol/python/py_same_named_nested_functions_of_two_scopes_are_both_answered  # only the returned nested `helper` is answered; the local one and its call are dropped
 symbol/python/py_enum_hook_the_library_calls_by_name_is_a_gap_not_zero_callers  # a sunder hook (`_missing_`) the enum library calls is answered with zero callers and no hedge
 impact/python/py_enum_hook_the_library_calls_by_name_is_not_called_dead  # `_missing_` and `_generate_next_value_` are reported as changed with nothing calling them
-symbol/python/py_def_under_a_global_declaration_is_a_module_function_its_callers_are_listed  # a def under `global` is read as a local of its function: the module-level call is not listed
 symbol/python/py_with_target_is_typed_by_what_enter_returns  # the `as` target is typed as the manager: Connection.execute has no caller and Pool.execute is over-claimed
 impact/python/py_method_a_library_wrapper_closes_by_name_is_not_called_dead  # `close` run by contextlib.closing is reported as changed with nothing calling it
 impact/python/py_property_a_format_field_reads_is_not_called_dead  # a property read by a `{.name}` format field is reported as changed with nothing calling it
