@@ -4644,6 +4644,10 @@ pub fn build_impact(
                                 .any(|line| v.names_another(&file.path, *line))
                         })))
                 && !callers.iter().any(|c| c.path == file.path)
+                && !(literal
+                    && callers
+                        .iter()
+                        .any(|c| c.tests.iter().any(|t| t.path == file.path)))
                 && !verdict
                     .as_ref()
                     .is_some_and(|v| v.uses.iter().any(|u| u.file == file.path))
