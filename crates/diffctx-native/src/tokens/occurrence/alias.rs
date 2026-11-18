@@ -173,6 +173,17 @@ pub fn callee_of(text: &[u8], at: &Range<u32>) -> Option<Name> {
     (!path.is_empty() && !STATEMENT_KEYWORDS.contains(&path)).then(|| Name::new(path))
 }
 
+/// Whether the occurrence is an item of a collection literal written beside others or alone
+/// (`("name", fn, False)`, `[fn]`), no argument of a call: the value is held in the collection.
+fn element_of(text: &[u8], at: &Range<u32>) -> bool {
+    let after = text
+        .get(at.end as usize..)
+        .and_then(|rest| rest.iter().find(|byte| !byte.is_ascii_whitespace()));
+    byte_before(text, at.start).is_some_and(|byte| b"([{,".contains(&byte))
+        && after.is_some_and(|byte| b",)]}".contains(byte))
+        && callee_of(text, at).is_none()
+}
+
 /// What the `ours` occurrence at `at` (a byte range of `text`) of a definition of
 /// `kind` is where the definition is not called: an alias, a leak at a place the
 /// facts tell, or, for a callable, a candidate; `None` leaves it `ours`. The
@@ -192,11 +203,16 @@ pub fn value_use(
         return None;
     }
     let unplaced = || {
-        matches!(
+        let callable = matches!(
             kind,
             DefKind::Function | DefKind::Method | DefKind::Constructor
-        )
-        .then_some((Outcome::Candidate(Reason::Unexplained), Basis::Unproven))
+        );
+        let placed = if file.language() == Language::Python && element_of(text, at) {
+            (Outcome::Leak(ValuePlace::Element), Basis::ValuePosition)
+        } else {
+            (Outcome::Candidate(Reason::Unexplained), Basis::Unproven)
+        };
+        callable.then_some(placed)
     };
     // An action that includes a named template states a call, in no value position.
     let included = file.blob.facts.iter().any(|fact| {
