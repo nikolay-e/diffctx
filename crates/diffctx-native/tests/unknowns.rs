@@ -117,8 +117,8 @@ fn a_builtin_container_receiver_is_no_caller_of_a_same_named_method() {
         "a script no import reaches is no row: {md}"
     );
     assert!(
-        md.contains("possibly called from loose.py:5, stray.py:2"),
-        "the gap names the two reads its count holds: {md}"
+        md.contains("possibly called from loose.py:5") && !md.contains("stray.py"),
+        "the gap names the one read of a module that imports `report`, not the script's: {md}"
     );
 }
 
@@ -160,7 +160,10 @@ fn a_read_through_an_untyped_receiver_is_counted_not_dropped() {
     let tmp = repo(
         &[
             ("cart.py", &cart(1)),
-            ("app.py", "def checkout(cart):\n    return cart.total\n"),
+            (
+                "app.py",
+                "import cart\n\n\ndef checkout(cart):\n    return cart.total\n",
+            ),
         ],
         &[("cart.py", &cart(2))],
     );
