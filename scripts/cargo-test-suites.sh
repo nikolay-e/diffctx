@@ -70,27 +70,37 @@ report() {
 trap report EXIT
 
 # Seconds per suite, the slowest of the Linux, macOS and Windows runs of
-# 2026-11-18 (`lib` is the library's inline tests, an estimate).
+# 2026-11-19 (`lib` is the library's inline tests, an estimate). Windows was
+# stopped inside the class corpus at its time limit: that weight is a floor.
 default_weight=3
 weights="
-impact 1206
-loss_sweep 919
-git_faults 842
-metamorphic 809
-unknowns 653
-class_completeness 536
-hook_property 361
-occurrence_classes 224
-hook 180
-lane_f 178
-facts_cache 157
-budget_contract 150
-resolve_python 59
-untracked_budget 51
-deadline_answer 50
-native_cli 43
-resolve_typescript 39
-bindings 31
+class_completeness_corpus 4535
+impact 1729
+yaml_cases 1689
+metamorphic 1054
+loss_sweep 746
+class_completeness 703
+unknowns 669
+git_faults 612
+occurrence_classes 302
+hook_property 302
+hook 244
+budget_contract 183
+lane_f 157
+facts_cache 122
+resolve_python 100
+resolve_typescript 61
+native_cli 59
+deadline_answer 48
+untracked_budget 30
+resolve_kotlin 30
+resolve_rust 27
+tests_same_file 27
+staged 26
+lane_ts 25
+bindings 24
+lane_py 21
+lane_e1 20
 lib 10
 "
 

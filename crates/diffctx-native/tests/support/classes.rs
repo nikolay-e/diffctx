@@ -298,10 +298,33 @@ fn known_red() -> BTreeSet<String> {
         .collect()
 }
 
+// `DIFFCTX_CLASS_SHARD=K/N` runs part K of N of the corpus: the cases whose
+// name hashes there, the same part on every platform. The parts together are
+// the whole corpus, so unlike a sample each part still holds the listed
+// variants of its own cases in both directions.
+pub(crate) fn in_shard(case: &str) -> bool {
+    let Some(shard) = std::env::var("DIFFCTX_CLASS_SHARD")
+        .ok()
+        .filter(|v| !v.is_empty())
+    else {
+        return true;
+    };
+    let (part, parts) = shard
+        .split_once('/')
+        .and_then(|(k, n)| Some((k.parse::<u64>().ok()?, n.parse::<u64>().ok()?)))
+        .filter(|&(k, n)| (1..=n).contains(&k))
+        .unwrap_or_else(|| panic!("DIFFCTX_CLASS_SHARD is K/N with 1 <= K <= N, not {shard}"));
+    let fnv1a = case.bytes().fold(0xcbf2_9ce4_8422_2325_u64, |hash, byte| {
+        (hash ^ u64::from(byte)).wrapping_mul(0x0000_0100_0000_01b3)
+    });
+    fnv1a % parts == part - 1
+}
+
 // Appends every finding to `DIFFCTX_CLASS_REPORT` when set, and fails the test
 // when a finding is not on the known-red list or a listed variant passed. A
 // sampled corpus run (DIFFCTX_CLASS_FILTER, _EVERY, _SITE) cannot tell a
-// stale entry from a case it did not run.
+// stale entry from a case it did not run; a part (DIFFCTX_CLASS_SHARD) holds
+// the entries of the cases it ran.
 pub(crate) fn conclude(test: &str, checked: usize, findings: &[Finding]) {
     if let Some(path) = std::env::var_os("DIFFCTX_CLASS_REPORT") {
         let mut file = std::fs::OpenOptions::new()
@@ -330,7 +353,12 @@ pub(crate) fn conclude(test: &str, checked: usize, findings: &[Finding]) {
     let prefix = format!("{test} | ");
     let stale: Vec<&String> = red
         .iter()
-        .filter(|key| !sampled && key.starts_with(&prefix) && !found.contains(*key))
+        .filter(|key| {
+            !sampled
+                && key.starts_with(&prefix)
+                && !found.contains(*key)
+                && key.split(" | ").nth(3).is_none_or(in_shard)
+        })
         .collect();
     if unexpected.is_empty() && stale.is_empty() {
         return;
