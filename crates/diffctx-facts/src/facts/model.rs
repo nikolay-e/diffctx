@@ -425,10 +425,13 @@ pub enum Fact {
     /// name)`, `eval`, `exec`, `globals()[key]`, `Lib.class.getMethod(name)`.
     /// `member` is set when only a member of a class can be what it reaches;
     /// `class` names the one the call is written on, when it says (`Lib.class`).
+    /// `builds` is set when only a class or its constructor can be what it reaches:
+    /// `type(x)(..)` builds the class of a value no name in the text gives.
     ComputedName {
         site: Span,
         member: bool,
         class: Option<Name>,
+        builds: bool,
     },
 }
 
