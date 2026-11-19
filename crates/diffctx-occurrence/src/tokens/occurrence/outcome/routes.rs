@@ -6,11 +6,13 @@ use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
-use super::{Claim, Reading, encloses};
+use super::{Claim, Reading, encloses, path_of};
 use crate::tokens::occurrence::rows::{CLASSIC_PAGES, DESERIALIZERS, ISOLATED_MODULES, RUNS_CODE};
 use crate::tokens::occurrence::{Reason, Witness};
 use diffctx_base::testfiles::is_test_path;
-use diffctx_facts::facts::{DefKey, Fact, FileFacts, Name, Receiver, Scope, UseKind};
+use diffctx_facts::facts::{
+    DefKey, Fact, FileFacts, Local, LocalKind, Name, Receiver, Scope, UseKind,
+};
 use diffctx_resolve::resolve::{Binding, Definition, Relation, Resolution, UnresolvedReason};
 use diffctx_snapshot::snapshot::RepoPath;
 use diffctx_snapshot::snapshot::workspace::{Ecosystem, WorkspaceModel};
@@ -134,6 +136,11 @@ impl Routes {
         !unbound.is_disjoint(defined)
     }
 
+    /// Whether another file imports `file`: what it defines circulates beyond it.
+    fn imported(&self, file: &RepoPath) -> bool {
+        (self.importers.get(file)).is_some_and(|from| from.iter().any(|importer| importer != file))
+    }
+
     /// Whether an object defined in `subject` can come to `file` by an import: some file imports
     /// it (one of the repository, or whoever installs the project that publishes it), it
     /// imports `subject` (through others), or it imports a file that one reaching `subject`
@@ -206,11 +213,9 @@ impl Reading<'_> {
             && !(self.file.blob.facts.iter()).any(|fact| matches!(fact, Fact::ComputedImport(_)))
     }
 
-    /// Whether the read's chain starts at a name nothing in the file binds (`Svc.fetch` where no
-    /// import, definition or local is `Svc`): what binds it at run time is unseen, so no import
-    /// the file lacks proves that the subject's class cannot be there.
-    fn unbound_head(&self, binding: &Binding) -> bool {
-        let head = self.file.blob.facts.iter().find_map(|fact| match fact {
+    /// The name the read's chain starts at (`row` in `row.value`).
+    fn chain_head(&self, binding: &Binding) -> Option<&Name> {
+        self.file.blob.facts.iter().find_map(|fact| match fact {
             Fact::Reference(r)
                 if r.site.bytes == binding.site.bytes
                     && matches!(r.receiver, Receiver::Unknown) =>
@@ -218,8 +223,38 @@ impl Reading<'_> {
                 r.qualifier.first()
             }
             _ => None,
-        });
-        let Some(head) = head else {
+        })
+    }
+
+    /// Whether the read's chain starts at a parameter of a function nothing in the file calls: the
+    /// file is a root, so what calls the function from outside hands it any object.
+    fn entered_parameter(&self, binding: &Binding) -> bool {
+        let Some(head) = self.chain_head(binding) else {
+            return false;
+        };
+        let innermost = (self.locals.iter())
+            .filter(|local| local.name == *head && encloses(&local.enclosing, &binding.from))
+            .max_by_key(|local| path_of(&local.enclosing).len());
+        let Some(Local {
+            enclosing: Scope::Def(function),
+            kind: LocalKind::Parameter,
+            ..
+        }) = innermost
+        else {
+            return false;
+        };
+        !self.file.blob.facts.iter().any(|fact| {
+            matches!(fact, Fact::Reference(r)
+                if r.name == function.name
+                    && !encloses(&Scope::Def(function.clone()), &r.enclosing))
+        })
+    }
+
+    /// Whether the read's chain starts at a name nothing in the file binds (`Svc.fetch` where no
+    /// import, definition or local is `Svc`): what binds it at run time is unseen, so no import
+    /// the file lacks proves that the subject's class cannot be there.
+    fn unbound_head(&self, binding: &Binding) -> bool {
+        let Some(head) = self.chain_head(binding) else {
             return false;
         };
         !self
@@ -233,16 +268,17 @@ impl Reading<'_> {
     /// The claim of an untyped member read: not ours when nothing brings an object of the
     /// subject's class to the receiver (no import, entry or run-time load of the file can, and
     /// the receiver is no parameter of a function something outside the code enters: a test, a
-    /// route), else a candidate.
+    /// route, or a function nothing in its file calls when another file imports the subject's:
+    /// its instances circulate), else a candidate.
     pub(super) fn unreached(&self, binding: &Binding, reason: UnresolvedReason) -> Claim {
         let relation = Some(binding.relation);
+        let (file, subject) = (&self.file.path, &self.subject.file);
+        let routes = &self.view.index.routes;
         let entered = self.file.blob.facts.iter().any(|fact| {
             matches!(fact, Fact::EntryPoint(entry)
                 if matches!(entry.target, Scope::Def(_)) && encloses(&entry.target, &binding.from))
-        });
-        let (file, subject) = (&self.file.path, &self.subject.file);
+        }) || (routes.imported(subject) && self.entered_parameter(binding));
         let isolated = |language| ISOLATED_MODULES.iter().any(|f| f.has(language));
-        let routes = &self.view.index.routes;
         let cut = || {
             isolated(self.file.language())
                 && isolated(self.subject.key.language)

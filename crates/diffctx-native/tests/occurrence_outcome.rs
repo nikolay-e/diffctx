@@ -665,6 +665,38 @@ fn an_untyped_member_read_in_a_file_no_import_reaches_is_not_ours() {
 }
 
 #[test]
+fn a_parameter_of_an_uncalled_function_reads_a_class_another_file_imports() {
+    let shape_in = |app: &str, importer: &[(&'static str, &'static str)]| {
+        let mut files = vec![("lib.py", CONFIG), ("app.py", app)];
+        files.extend_from_slice(importer);
+        let world = snapshot(&files);
+        let found = world.outcomes(world.def("lib.py", "config"), "app.py", &["config"]);
+        (shape(on(&found, 2)), format!("{found:#?}"))
+    };
+    let uncalled = "def g(a):\n    return a.config\n";
+    let importer = [("use.py", "from lib import config\n")];
+    let (found, dump) = shape_in(uncalled, &importer);
+    assert_eq!(
+        found,
+        ("candidate", "unproven", Some(Relation::Reads)),
+        "lib.py circulates, and nothing in app.py calls `g`: {dump}"
+    );
+    let (found, dump) = shape_in(uncalled, &[]);
+    assert_eq!(
+        found,
+        ("not_ours", "unreached", Some(Relation::Reads)),
+        "no file imports lib.py, so its objects stay in it: {dump}"
+    );
+    let called = "def g(a):\n    return a.config\n\n\nresult = g(1)\n";
+    let (found, dump) = shape_in(called, &importer);
+    assert_eq!(
+        found,
+        ("not_ours", "unreached", Some(Relation::Reads)),
+        "a parameter of a function the module calls holds what the module hands it: {dump}"
+    );
+}
+
+#[test]
 fn a_bare_name_heading_a_chain_is_what_an_import_binds_it_to_elsewhere() {
     let world = snapshot(&[
         ("lib.py", CONFIG),
