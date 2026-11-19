@@ -75,7 +75,7 @@ fn impact_markdown(repo: &Path) -> String {
 /// #389: `out = []; out.append(x)` appends to a list, whatever else defines
 /// `append`. The same name through a `Report` is the caller, and through a
 /// parameter nothing types it stays possible in a module that imports
-/// `report`; a script that never does has no hedge (gh#666).
+/// `report`; a script that never does is no row, only a read in the gap.
 #[test]
 fn a_builtin_container_receiver_is_no_caller_of_a_same_named_method() {
     let report = |body: &str| {
@@ -117,8 +117,8 @@ fn a_builtin_container_receiver_is_no_caller_of_a_same_named_method() {
         "a script no import reaches is no row: {md}"
     );
     assert!(
-        md.contains("possibly called from loose.py:5") && !md.contains("stray.py"),
-        "the gap names the one read of a module that imports `report`, not the script's: {md}"
+        md.contains("possibly called from loose.py:5, stray.py:2"),
+        "the gap names the read of a module that imports `report` and the script's, whose `drain` code outside the snapshot may call: {md}"
     );
 }
 
