@@ -1,0 +1,58 @@
+name: java_entry_annotation_through_a_star_import_may_be_entered
+mode: impact
+source: synthetic
+tags: [java, entry-point, framework, annotation, wildcard-import]
+repo:
+  initial_files:
+    src/main/java/org/example/app/Listener.java: |
+      package org.example.app;
+
+      import org.example.bus.*;
+
+      public class Listener {
+          @Subscribe
+          public void onOrder(Object event) {
+              System.out.println("a");
+          }
+      }
+    src/main/java/org/example/app/Money.java: |
+      package org.example.app;
+
+      import lombok.*;
+
+      public class Money {
+          @Value
+          public int doubled(int cents) {
+              return cents * 2;
+          }
+      }
+  changed_files:
+    src/main/java/org/example/app/Listener.java: |
+      package org.example.app;
+
+      import org.example.bus.*;
+
+      public class Listener {
+          @Subscribe
+          public void onOrder(Object event) {
+              System.out.println("b");
+          }
+      }
+    src/main/java/org/example/app/Money.java: |
+      package org.example.app;
+
+      import lombok.*;
+
+      public class Money {
+          @Value
+          public int doubled(int cents) {
+              return cents * 3;
+          }
+      }
+  commit_message: "listener: say b"
+expect:
+  exact: false
+  entry_not_tested:
+    - src/main/java/org/example/app/Listener.java::onOrder
+  untested:
+    - src/main/java/org/example/app/Money.java::doubled
