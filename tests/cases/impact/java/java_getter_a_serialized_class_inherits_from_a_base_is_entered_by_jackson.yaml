@@ -1,0 +1,68 @@
+name: java_getter_a_serialized_class_inherits_from_a_base_is_entered_by_jackson
+mode: impact
+source: synthetic
+tags: [java, jackson, entry-point, serialization, inheritance]
+repo:
+  initial_files:
+    src/main/java/org/example/app/UserController.java: |
+      package org.example.app;
+
+      import org.springframework.http.ResponseEntity;
+      import org.springframework.web.bind.annotation.GetMapping;
+      import org.springframework.web.bind.annotation.RestController;
+
+      @RestController
+      public class UserController {
+          @GetMapping("/users")
+          public ResponseEntity<UserDto> user() {
+              return null;
+          }
+      }
+    src/main/java/org/example/app/UserDto.java: |
+      package org.example.app;
+
+      public class UserDto extends BaseDto {
+          public String getName() {
+              return "n";
+          }
+      }
+    src/main/java/org/example/app/BaseDto.java: |
+      package org.example.app;
+
+      public class BaseDto {
+          public long getId() {
+              return 1;
+          }
+      }
+    src/main/java/org/example/app/Unrelated.java: |
+      package org.example.app;
+
+      public class Unrelated {
+          public long getId() {
+              return 2;
+          }
+      }
+  changed_files:
+    src/main/java/org/example/app/BaseDto.java: |
+      package org.example.app;
+
+      public class BaseDto {
+          public long getId() {
+              return 1 + 0;
+          }
+      }
+    src/main/java/org/example/app/Unrelated.java: |
+      package org.example.app;
+
+      public class Unrelated {
+          public long getId() {
+              return 2 + 0;
+          }
+      }
+  commit_message: "dtos: id plus zero"
+expect:
+  exact: false
+  entry_not_tested:
+    - src/main/java/org/example/app/BaseDto.java::getId
+  untested:
+    - src/main/java/org/example/app/Unrelated.java::getId
