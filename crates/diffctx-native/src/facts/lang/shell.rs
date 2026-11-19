@@ -101,6 +101,64 @@ fn names_another_shell(source: &str) -> bool {
     interpreter == "zsh" || interpreter == "fish" || interpreter.starts_with("ksh")
 }
 
+/// Shells that run what they read on standard input as a script.
+const STDIN_SHELLS: &[&str] = &["sh", "bash", "dash", "zsh", "ksh", "ash", "mksh"];
+
+/// The bodies of the here-documents a shell runs after sourcing a file into it: their
+/// words are that shell's commands, so they are code, never text. A body that sources
+/// nothing runs in a shell that has none of this script's functions, and stays text.
+fn sourcing_heredocs(root: TsNode<'_>, source: &str) -> Vec<Range<u32>> {
+    let mut found = Vec::new();
+    let mut stack = vec![root];
+    while let Some(node) = stack.pop() {
+        let mut cursor = node.walk();
+        let children: Vec<TsNode> = node.children(&mut cursor).collect();
+        if node.kind() == "heredoc_redirect" {
+            let fed = node
+                .parent()
+                .and_then(|statement| statement.child_by_field_name("body"))
+                .into_iter()
+                .chain(children.iter().copied().filter(|c| c.kind() == "pipeline"))
+                .any(|consumer| names_a_shell(consumer, source));
+            if fed {
+                found.extend(
+                    children
+                        .iter()
+                        .filter(|c| c.kind() == "heredoc_body")
+                        .filter(|body| {
+                            sources_a_file(body.utf8_text(source.as_bytes()).unwrap_or(""))
+                        })
+                        .map(|body| body.start_byte() as u32..body.end_byte() as u32),
+                );
+            }
+        }
+        stack.extend(children);
+    }
+    found
+}
+
+/// Whether a word of the commands in `node` names a shell: `bash`, `sudo sh`, `| sh`.
+fn names_a_shell(node: TsNode<'_>, source: &str) -> bool {
+    let mut stack = vec![node];
+    while let Some(node) = stack.pop() {
+        if node.kind() == "word" {
+            let word = node.utf8_text(source.as_bytes()).unwrap_or("");
+            if STDIN_SHELLS.contains(&word.rsplit('/').next().unwrap_or(word)) {
+                return true;
+            }
+        }
+        let mut cursor = node.walk();
+        stack.extend(node.children(&mut cursor));
+    }
+    false
+}
+
+/// Whether a here-document body sources a file: a line whose command is `.` or `source`.
+fn sources_a_file(body: &str) -> bool {
+    body.lines()
+        .any(|line| matches!(line.split_whitespace().next(), Some("." | "source")))
+}
+
 impl Extractor for ShellExtractor {
     fn language(&self) -> Language {
         Language::Shell
@@ -145,6 +203,11 @@ impl Extractor for ShellExtractor {
         }
         blob.facts = walker.facts;
         blob.record_lexical(root);
+        let run = sourcing_heredocs(root, source);
+        blob.lexical.retain(|(range, _)| {
+            !run.iter()
+                .any(|body| body.start <= range.start && range.end <= body.end)
+        });
         blob.lexical.extend(
             walker
                 .prose
