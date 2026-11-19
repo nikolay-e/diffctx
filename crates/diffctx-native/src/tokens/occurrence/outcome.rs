@@ -26,7 +26,7 @@ use crate::facts::{
 use crate::resolve::{
     Binding, CandidateReason, DYNAMIC, Definition, Relation, Resolution, UnresolvedReason,
 };
-use crate::snapshot::RepoPath;
+use crate::snapshot::{Loss, RepoPath, WorkspaceModel};
 mod routes;
 
 /// What one side's resolved snapshot is indexed by, as positions in its files and
@@ -59,13 +59,16 @@ pub struct Index {
 }
 
 impl Index {
-    /// `manifests_whole`: the workspace manifests were read without a loss.
+    /// `workspace`: the manifests, whether they were read without a loss and what
+    /// their projects publish.
     pub fn new(
         files: &[FileFacts],
         bindings: &[Binding],
         definitions: &[Definition],
-        manifests_whole: bool,
+        workspace: &WorkspaceModel,
     ) -> Self {
+        let manifests_whole =
+            !(workspace.losses().iter()).any(|loss| matches!(loss, Loss::ManifestUnread { .. }));
         let mut index = Self {
             files: (files.iter().enumerate())
                 .map(|(at, file)| (file.path.clone(), at))
@@ -104,7 +107,7 @@ impl Index {
             overriders: HashMap::new(),
             unnamed: Vec::new(),
             released: HashSet::new(),
-            routes: routes::Routes::new(files, bindings, definitions),
+            routes: routes::Routes::new(files, bindings, definitions, workspace),
             manifests_whole,
         };
         for def in definitions.iter().filter(|def| {
@@ -188,13 +191,14 @@ impl<'a> View<'a> {
         self.index.exported.contains(&at)
     }
 
+    /// The view of a snapshot without manifests: none was lost, no project publishes a
+    /// package.
     pub fn new(
         files: &'a [FileFacts],
         bindings: &'a [Binding],
         definitions: &'a [Definition],
-        manifests_whole: bool,
     ) -> Self {
-        let index = Index::new(files, bindings, definitions, manifests_whole);
+        let index = Index::new(files, bindings, definitions, &WorkspaceModel::default());
         Self::over(Rc::new(index), files, bindings)
     }
 
