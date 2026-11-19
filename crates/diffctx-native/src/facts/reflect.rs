@@ -75,11 +75,27 @@ pub(super) fn computed(
     });
 }
 
-/// Drops the lookups by a variable the file gives a string literal: a held
-/// name the literal channel already reads.
-pub(super) fn settle_computed(facts: &mut KotlinFacts) {
+/// The packages of the reflection API: a file importing from them may compare a
+/// member's name (`m.getName() == "run"`) without a lookup of its own.
+const REFLECTION: [&str; 2] = ["java.lang.reflect", "kotlin.reflect"];
+
+/// Drops the lookups by a variable the file gives a string literal (a held name
+/// the literal channel already reads), and the strings held in a value where the
+/// file does not reflect: there `val label = "total"` is a mention, and a lookup
+/// elsewhere by a name it does not spell is a computed name of its own.
+pub(super) fn settle(facts: &mut KotlinFacts) {
     let consts = std::mem::take(&mut facts.consts);
     facts
         .computed
         .retain(|c| !c.arg.as_ref().is_some_and(|a| consts.contains(a)));
+    let reflects = facts.reflects
+        || facts.imports.iter().any(|import| {
+            REFLECTION.iter().any(|package| {
+                (import.path.strip_prefix(package))
+                    .is_some_and(|rest| rest.is_empty() || rest.starts_with('.'))
+            })
+        });
+    if !reflects {
+        facts.held.retain(|held| !held.value);
+    }
 }
