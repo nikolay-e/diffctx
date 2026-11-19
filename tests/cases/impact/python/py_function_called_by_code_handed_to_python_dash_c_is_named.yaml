@@ -1,0 +1,63 @@
+name: py_function_called_by_code_handed_to_python_dash_c_is_named
+mode: impact
+source: synthetic
+issue_state: open
+tags: [python, literal-name, carried-code, false-absence, layout]
+repo:
+  initial_files:
+    lib/util.py: |
+      def slugify(text):
+          return text.lower()
+    tools/line.py: |
+      import subprocess
+      import sys
+
+
+      def check():
+          subprocess.run([sys.executable, "-c", "from lib.util import slugify; print(slugify('x'))"])
+    tools/block.py: |
+      import subprocess
+      import sys
+
+
+      def check():
+          subprocess.run([
+              sys.executable,
+              "-c",
+              """
+      from lib.util import slugify
+      print(slugify('x'))
+      """,
+          ])
+    tools/named.py: |
+      import subprocess
+      import sys
+
+      CODE = """
+      import lib.util as u
+      print(u.slugify('x'))
+      """
+
+
+      def check():
+          subprocess.run([sys.executable, "-c", CODE])
+    tools/shell.py: |
+      import os
+
+
+      def check():
+          os.system("python3 -c 'from lib.util import slugify; print(slugify(1))'")
+  changed_files:
+    lib/util.py: |
+      def slugify(text):
+          return text.lower().replace(" ", "-")
+  commit_message: "util: slugify joins words with dashes"
+expect:
+  exact: false
+  discloses: true
+  no_negative_claims: true
+  relations:
+    - {from: tools/line.py, to: lib/util.py::slugify, kind: calls, resolution: unresolved}
+    - {from: tools/block.py, to: lib/util.py::slugify, kind: calls, resolution: unresolved}
+    - {from: tools/named.py, to: lib/util.py::slugify, kind: calls, resolution: unresolved}
+    - {from: tools/shell.py, to: lib/util.py::slugify, kind: calls, resolution: unresolved}

@@ -1,0 +1,44 @@
+name: shell_function_run_by_a_go_raw_string_over_lines_is_named
+mode: impact
+source: synthetic
+tags: [shell, literal-name, shell-string, false-absence, go, layout]
+repo:
+  initial_files:
+    lib/strings.sh: |
+      #!/usr/bin/env bash
+      slugify() {
+        echo "${1,,}"
+      }
+    cmd/main.go: |
+      package main
+
+      import "os/exec"
+
+      func slug() error {
+      	return exec.Command("bash", "-c", `
+      set -e
+      slugify abc
+      `).Run()
+      }
+    cmd/line.go: |
+      package main
+
+      import "os/exec"
+
+      func slugLine() error {
+      	return exec.Command("bash", "-c", `slugify abc`).Run()
+      }
+  changed_files:
+    lib/strings.sh: |
+      #!/usr/bin/env bash
+      slugify() {
+        printf '%s\n' "${1,,}"
+      }
+  commit_message: "strings: slugify prints through printf"
+expect:
+  exact: false
+  discloses: true
+  no_negative_claims: true
+  relations:
+    - {from: cmd/main.go, to: lib/strings.sh::slugify, kind: calls, resolution: unresolved}
+    - {from: cmd/line.go, to: lib/strings.sh::slugify, kind: calls, resolution: unresolved}

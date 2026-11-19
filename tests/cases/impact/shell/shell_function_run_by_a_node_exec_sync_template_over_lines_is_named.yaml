@@ -1,0 +1,42 @@
+name: shell_function_run_by_a_node_exec_sync_template_over_lines_is_named
+mode: impact
+source: synthetic
+tags: [shell, literal-name, shell-string, false-absence, javascript, layout]
+repo:
+  initial_files:
+    lib/strings.sh: |
+      #!/usr/bin/env bash
+      slugify() {
+        echo "${1,,}"
+      }
+    scripts/slug.js: |
+      const { execSync } = require("child_process");
+
+      function slug() {
+        return execSync(`
+          set -e
+          slugify abc
+        `);
+      }
+      module.exports = { slug };
+    scripts/slug_line.js: |
+      const { execSync } = require("child_process");
+
+      function slugLine() {
+        return execSync(`slugify abc`);
+      }
+      module.exports = { slugLine };
+  changed_files:
+    lib/strings.sh: |
+      #!/usr/bin/env bash
+      slugify() {
+        printf '%s\n' "${1,,}"
+      }
+  commit_message: "strings: slugify prints through printf"
+expect:
+  exact: false
+  discloses: true
+  no_negative_claims: true
+  relations:
+    - {from: scripts/slug.js, to: lib/strings.sh::slugify, kind: calls, resolution: unresolved}
+    - {from: scripts/slug_line.js, to: lib/strings.sh::slugify, kind: calls, resolution: unresolved}
