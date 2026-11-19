@@ -1671,6 +1671,21 @@ fn spelled_name(core: &Fragment) -> Option<&str> {
         .filter(|name| !name.is_empty())
 }
 
+/// Whether `text` spells `word` other than as a member (`obj.word`): a shell function runs
+/// as a command, never through an object.
+fn spelled_bare(text: &str, word: &str) -> bool {
+    text.match_indices(word).any(|(at, _)| {
+        !text[..at]
+            .chars()
+            .next_back()
+            .is_some_and(|c| keys::word_char(c) || c == '.')
+            && !text[at + word.len()..]
+                .chars()
+                .next()
+                .is_some_and(keys::word_char)
+    })
+}
+
 /// Whether `text` names `word` the way Go assembly names a Go function: `·word(SB)`. A plain
 /// word (`Helper`) is a name there and prose anywhere else.
 fn assembly_symbol(text: &str, word: &str) -> bool {
@@ -1735,6 +1750,14 @@ impl UntracedNamers {
             };
         }
         let wanted: FxHashSet<&str> = needles.iter().map(String::as_str).collect();
+        // The names only shell scripts define: `obj.slugify(x)` runs none of them.
+        let commands: FxHashSet<&str> = (own.iter())
+            .filter(|(_, name, _)| {
+                (own.iter().filter(|(_, other, _)| other == name))
+                    .all(|(file, ..)| keys::runs_as_shell(state, file))
+            })
+            .map(|(_, name, _)| name.as_str())
+            .collect();
         let changed: FxHashSet<String> = changed_rels(state).collect();
         let grepped = spelled_lines(state, diff_range, &needles);
         let mut rows: FxHashMap<String, Vec<(String, u32)>> = FxHashMap::default();
@@ -1754,6 +1777,7 @@ impl UntracedNamers {
                 if wanted.contains(word)
                     && (extension(path) != "json" || distinctive(word))
                     && (searched_as_text(word) || assembly_symbol(text, word))
+                    && (!commands.contains(word) || spelled_bare(text, word))
                     && seen.insert(word)
                 {
                     rows.entry(word.to_string())
