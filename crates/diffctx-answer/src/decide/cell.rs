@@ -459,11 +459,12 @@ impl Cell {
                 .or_default()
                 .push(at);
             let line = b.site.lines.0;
-            // A Rust test reaches a type through the function that names it
-            // in a signature or a type argument (`size_of::<T>()`).
+            // A Rust or TypeScript test reaches a type through the function that
+            // names it in a signature or a type argument (`size_of::<T>()`).
             if let Resolution::Resolved { target, .. } = &b.resolution {
                 if b.relation.uses()
-                    || (self.family == Family::Rust && b.relation == Relation::TypeUses)
+                    || (matches!(self.family, Family::Rust | Family::TypeScript)
+                        && b.relation == Relation::TypeUses)
                 {
                     self.landed
                         .entry(target.clone())
