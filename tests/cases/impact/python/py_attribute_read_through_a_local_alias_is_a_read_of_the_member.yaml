@@ -47,3 +47,9 @@ expect:
       site: 6
   decoys:
     pkg/opts.py::Internals.dns_lookup: [pkg/other.py::lookup]
+  partial:
+    # `cache` is an untyped parameter of `lookup`, which nothing calls in a module
+    # nothing imports: code outside the snapshot may hand it an `Internals`, so the
+    # read stays open, though it is no caller.
+    pkg/opts.py::Internals.dns_lookup:
+      reads: unlanded
