@@ -11,8 +11,9 @@
 # non-zero.
 # DIFFCTX_YAML_CASES_LIMIT, when set, samples the corpus.
 # An argument runs a part, for a runner that cannot hold them all inside its
-# time limit: `corpus` is the two corpus suites alone, `rest:K/N` the K-th of N
-# shards of everything else, and `rest` is `rest:1/1`. No argument runs it all.
+# time limit: `corpus` is the two corpus suites alone, `rest` everything else,
+# and `corpus:K/N` or `rest:K/N` the K-th of N shards of either. No argument
+# runs it all.
 # The shards balance expected seconds, not binary counts: `weights` below,
 # heaviest first onto the lightest shard (ties by name), so every caller gets
 # the same split for the same N. A suite missing from the table weighs
@@ -35,23 +36,22 @@ shard=1
 shards=1
 case "$part" in
 all) ;;
-corpus) run_rest=0 ;;
-rest) run_corpus=0 ;;
-rest:[1-9]*/[1-9]*)
-  run_corpus=0
-  shard=${part#rest:}
+corpus | corpus:[1-9]*/[1-9]*) run_rest=0 ;;
+rest | rest:[1-9]*/[1-9]*) run_corpus=0 ;;
+*)
+  echo "usage: $0 [all|corpus|rest|corpus:K/N|rest:K/N]" >&2
+  exit 2
+  ;;
+esac
+if [[ "$part" = *:* ]]; then
+  shard=${part#*:}
   shards=${shard#*/}
   shard=${shard%/*}
   ((shard <= shards)) || {
     echo "shard $shard of $shards" >&2
     exit 2
   }
-  ;;
-*)
-  echo "usage: $0 [all|corpus|rest|rest:K/N]" >&2
-  exit 2
-  ;;
-esac
+fi
 
 if [[ -z "${DIFFCTX_PROFILE+set}" ]]; then
   DIFFCTX_PROFILE=$(mktemp "${TMPDIR:-/tmp}/diffctx-profile-XXXXXX")
@@ -87,12 +87,11 @@ bindings 11
 lib 10
 "
 
-# The suites of shard $1 of $2, one name per line (`lib` is the library's tests).
-shard_suites() {
+# The names on stdin that fall to shard $1 of $2, one per line.
+shard_of() {
   {
     echo "$weights"
-    echo lib
-    for file in tests/*.rs; do basename "$file" .rs; done | grep -vxE 'yaml_cases|class_completeness_corpus'
+    cat
   } | awk -v fallback="$default_weight" '
     NF == 2 { seconds[$1] = $2; next }
     NF == 1 { print (($1 in seconds) ? seconds[$1] : fallback), $1 }' |
@@ -107,13 +106,20 @@ shard_suites() {
       }'
 }
 
+corpus=(class_completeness_corpus yaml_cases)
+
 status=0
 run() { "$@" || status=1; }
 
 if ((run_rest)); then
   # --features python, or analytics/, graph_export/ and project_graph/ are not
   # compiled at all: they are cfg-gated on it and ship inside the wheel.
-  names=$(shard_suites "$shard" "$shards")
+  names=$(
+    {
+      echo lib
+      for file in tests/*.rs; do basename "$file" .rs; done | grep -vxF -e "${corpus[0]}" -e "${corpus[1]}"
+    } | shard_of "$shard" "$shards"
+  )
   suites=()
   for name in $names; do
     if [[ "$name" = lib ]]; then
@@ -129,6 +135,12 @@ if ((run_rest)); then
 fi
 
 if ((run_corpus)); then
-  run cargo test --release --locked --no-fail-fast --test yaml_cases --test class_completeness_corpus
+  suites=()
+  for name in $(printf '%s\n' "${corpus[@]}" | shard_of "$shard" "$shards"); do
+    suites+=(--test "$name")
+  done
+  if ((${#suites[@]})); then
+    run cargo test --release --locked --no-fail-fast "${suites[@]}"
+  fi
 fi
 exit "$status"
