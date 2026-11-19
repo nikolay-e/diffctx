@@ -380,7 +380,7 @@ pub(super) fn removed_route(
 ) -> Unknown {
     let label = route.label.as_deref().unwrap_or("");
     let verb = route.verb.as_ref().map(|v| v.as_str());
-    let requests: Vec<String> = super::runs::route_requests(state, diff_range, verb, label)
+    let requests: Vec<String> = super::runs::route_requests(state, diff_range, &[(verb, label)])
         .into_iter()
         .filter(|(path, _)| is_test_file(path))
         .map(|(path, line)| format!("{path}:{line}"))
