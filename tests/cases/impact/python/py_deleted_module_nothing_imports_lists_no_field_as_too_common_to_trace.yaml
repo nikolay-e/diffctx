@@ -1498,9 +1498,13 @@ repo:
 expect:
   removed: [Model0, Model9]
   # no file imports pkg.schema, so no instance of its classes can exist and the
-  # removed fields owe no word-count hedge ("`type` is a whole word on N lines")
+  # removed fields owe no word-count hedge ("`type` is a whole word on N lines").
+  # A file that spells a field name reaches nothing: only a file that names the
+  # module or its classes can, so the classes are the subject of the sweep.
   unknowns: {}
   callers:
+    Model0: []
+    Model9: []
     type: []
     name: []
     code: []
