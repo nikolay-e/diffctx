@@ -1,0 +1,39 @@
+name: fj252_type_of_own_receiver_and_a_free_function_are_not_hedged
+mode: impact
+source: fj#252
+issue_state: closed
+tags: [python, type-call, dynamic-class, coverage, decoy]
+repo:
+  initial_files:
+    main.py: |
+      def total(items):
+          return sum(items)
+
+
+      def report(items):
+          return total(items)
+
+
+      class Box:
+          def clone(self):
+              return type(self)()
+  changed_files:
+    main.py: |
+      def total(items):
+          return sum(items) + 1
+
+
+      def report(items):
+          return total(items)
+
+
+      class Box:
+          def clone(self):
+              return type(self)()
+  commit_message: "main: total adds one"
+# A class built through the method's own receiver is the enclosing class or a
+# subclass, and a call that builds a class never reaches a free function.
+expect:
+  changed: [main.py::total]
+  relations:
+    - {from: "main.py::report", to: "main.py::total", kind: calls, resolution: resolved, site: 6}
