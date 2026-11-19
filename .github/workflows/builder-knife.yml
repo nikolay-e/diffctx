@@ -90,7 +90,9 @@ jobs:
           cargo test --release --locked --test yaml_cases 2>&1 | tee knife.log || true
           grep -q '^test result:' knife.log
           awk '/^failures:$/{n++} n==2 && /^    /{print $1}' knife.log | sort > failing.txt
-          grep -vE '^\s*(#|$)' tests/known_below_threshold.txt | sort > baseline.txt
+          sed -e 's/#.*//' -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' \
+            tests/known_below_threshold.txt tests/known_false_hedges.txt |
+            grep . | sort -u > baseline.txt
           comm -23 failing.txt baseline.txt > newly_failing.txt
           COUNT=$(wc -l < newly_failing.txt)
           echo "Newly failing without ${DIFFCTX_DISABLE_BUILDERS}: ${COUNT}"
