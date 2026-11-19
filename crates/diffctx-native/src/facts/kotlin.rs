@@ -614,10 +614,10 @@ fn narrowings(node: &Node, bytes: &[u8]) -> Vec<Binding> {
     } else {
         subject.end_byte()
     };
-    let operator: String = bytes
-        .get(from..tested.start_byte())
-        .map(String::from_utf8_lossy)
-        .unwrap_or_default()
+    let Some(between) = bytes.get(from..tested.start_byte()) else {
+        return Vec::new();
+    };
+    let operator: String = String::from_utf8_lossy(between)
         .chars()
         .filter(|c| !c.is_whitespace())
         .collect();
