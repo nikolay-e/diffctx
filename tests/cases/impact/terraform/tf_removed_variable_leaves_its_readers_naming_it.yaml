@@ -37,3 +37,8 @@ expect:
   exact: true
   removed:
   - zone
+  partial:
+    # A root module's variables are set from outside the code (`-var`, a tfvars
+    # file, `TF_VAR_zone`): who set the removed one is not traced.
+    variables.tf::var.zone:
+      calls: not_traced
