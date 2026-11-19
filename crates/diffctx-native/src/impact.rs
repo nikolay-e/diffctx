@@ -140,7 +140,8 @@ pub struct ImpactOutput {
     /// another runtime or a config: a command line, a Dockerfile, a
     /// settings entry that runs it (#393, #523). Imports are callers.
     pub named_by: Vec<PathReference>,
-    pub named_by_omitted: usize,
+    pub named_by_path_omitted: usize,
+    pub named_by_key_omitted: usize,
     /// The changed files outside code whose changed keys were searched as
     /// text; the lines naming them are in `named_by` with their `key`.
     pub key_searches: Vec<KeySearch>,
@@ -5217,7 +5218,7 @@ pub fn build_impact(
     } else {
         (Vec::new(), changed)
     };
-    let (named_by, named_by_omitted) = {
+    let (named_by, named_by_path_omitted) = {
         let _named = crate::profile::phase("impact.named_by");
         let (mut named, omitted) = named_by_path(state, &cells, analysed);
         if query.is_none() {
@@ -5338,8 +5339,7 @@ pub fn build_impact(
         (Vec::new(), Vec::new(), Vec::new(), Vec::new())
     };
     let mut named_by = named_by;
-    let mut named_by_omitted = named_by_omitted;
-    let (key_searches, key_files_unsearched) = {
+    let (key_searches, key_files_unsearched, named_by_key_omitted) = {
         let untraced: Vec<String> = unanalysed
             .iter()
             .filter(|f| f.reason == "content_untraced")
@@ -5359,8 +5359,7 @@ pub fn build_impact(
                 || !searches.iter().any(|k| k.path == f.path)
         });
         named_by.extend(refs);
-        named_by_omitted += omitted;
-        (searches, unsearched)
+        (searches, unsearched, omitted)
     };
     // A config or a Dockerfile nothing names stays a gap: its builds are not
     // traced, and a clean zero would claim they are.
@@ -5410,7 +5409,8 @@ pub fn build_impact(
         stale_references_omitted: stale_omitted,
         deleted_modules,
         named_by,
-        named_by_omitted,
+        named_by_path_omitted,
+        named_by_key_omitted,
         key_searches,
         key_files_unsearched,
         collection_reads,
@@ -6465,12 +6465,16 @@ fn shed_one(output: &mut ImpactOutput) -> bool {
     }
     // What names a changed file by path is context: it goes before any
     // caller, a possible one included, and its count line goes with it.
-    if output.named_by.pop().is_some() {
-        output.named_by_omitted += 1;
+    if let Some(row) = output.named_by.pop() {
+        match row.key {
+            Some(_) => output.named_by_key_omitted += 1,
+            None => output.named_by_path_omitted += 1,
+        }
         return true;
     }
-    if output.named_by_omitted > 0 {
-        output.named_by_omitted = 0;
+    if output.named_by_path_omitted + output.named_by_key_omitted > 0 {
+        output.named_by_path_omitted = 0;
+        output.named_by_key_omitted = 0;
         return true;
     }
     if output.deleted_modules.pop().is_some() {

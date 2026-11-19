@@ -1328,7 +1328,7 @@ impl ImpactV2 {
                         .filter(|r| r.key.is_none())
                         .cloned()
                         .collect(),
-                    v1.named_by_omitted,
+                    v1.named_by_path_omitted,
                 ),
                 by_key: Listing::of(
                     v1.named_by
@@ -1336,7 +1336,7 @@ impl ImpactV2 {
                         .filter(|r| r.key.is_some())
                         .cloned()
                         .collect(),
-                    0,
+                    v1.named_by_key_omitted,
                 ),
                 key_searches: v1.key_searches.clone(),
                 collections: Listing::of(v1.collection_reads.clone(), v1.collection_reads_omitted),
