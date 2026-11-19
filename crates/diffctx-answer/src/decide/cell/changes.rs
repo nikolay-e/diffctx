@@ -9,9 +9,9 @@ use anyhow::Result;
 use crate::fold::{self, Basis};
 
 use diffctx_facts::facts::{
-    Def, DefChange, DefKey, DefKind, Delta, EntryKind, Export, Fact, Framework, HeldAs, Language,
-    Lexical, Name, Origin, Scope, SemanticDef, Visibility, facts_of, holds_data, members_of,
-    semantic_changes,
+    Def, DefChange, DefKey, DefKind, Delta, EntryKind, Export, Fact, Framework, HeldAs, Import,
+    ImportKind, Language, Lexical, Name, Origin, Scope, SemanticDef, Visibility, facts_of,
+    holds_data, members_of, semantic_changes,
 };
 
 use diffctx_resolve::resolve::Definition;
@@ -480,6 +480,27 @@ impl Cell {
             .is_some_and(|def| self.head.serialized(&def.key))
     }
 
+    /// The imports `file` states at the head, without the package it declares.
+    pub(crate) fn imports_at(&self, file: &str) -> Vec<Import> {
+        let Ok(path) = RepoPath::new(file) else {
+            return Vec::new();
+        };
+        let Ok(Some(facts)) = facts_of(&self.ctx, SideTag::Head, &self.cache, &path) else {
+            return Vec::new();
+        };
+        facts
+            .blob
+            .facts
+            .iter()
+            .filter_map(|fact| match fact {
+                Fact::Import(import) if import.kind != ImportKind::SideEffect => {
+                    Some(import.clone())
+                }
+                _ => None,
+            })
+            .collect()
+    }
+
     /// The strings of `file` at the head that span `line`, with what their
     /// position in the file's tree holds them as. A Go package's callable strings
     /// count only where the package itself resolves a name by string (`Lookup`,
@@ -576,6 +597,38 @@ impl Cell {
             .iter()
             .filter_map(|fact| match fact {
                 Fact::EntryPoint(entry) if entry.target == Scope::Def(def.key.local.clone()) => {
+                    Some((entry.kind, entry.framework.clone()?))
+                }
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// The entries a framework made of the definition a range removed, read off
+    /// the base: what its callers outside the code (a route's clients) reached it
+    /// by. `lines` are its span at the base.
+    pub(crate) fn removed_entries_at(
+        &self,
+        file: &str,
+        name: &str,
+        lines: (u32, u32),
+    ) -> Vec<(EntryKind, Framework)> {
+        let Ok(path) = RepoPath::new(file) else {
+            return Vec::new();
+        };
+        let Ok(Some(facts)) = facts_of(&self.ctx, SideTag::Base, &self.cache, &path) else {
+            return Vec::new();
+        };
+        facts
+            .blob
+            .facts
+            .iter()
+            .filter_map(|fact| match fact {
+                Fact::EntryPoint(entry)
+                    if matches!(&entry.target, Scope::Def(local) if local.name.as_str() == name)
+                        && entry.site.lines.0 <= lines.1
+                        && lines.0 <= entry.site.lines.1 =>
+                {
                     Some((entry.kind, entry.framework.clone()?))
                 }
                 _ => None,

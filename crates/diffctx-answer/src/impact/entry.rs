@@ -5,7 +5,7 @@ use std::path::Path;
 
 use diffctx_base::types::Fragment;
 
-use diffctx_facts::facts::framework;
+use diffctx_facts::facts::{Import, Star, framework};
 
 use super::callers::calls_word;
 use super::changes::declaration_head;
@@ -149,16 +149,17 @@ pub(super) fn is_jvm_path(path: &str) -> bool {
 }
 
 /// What an annotation of the JVM definition says of who calls it: a framework
-/// entry point, its import naming a framework package, or an annotation of the
-/// name an entry point has whose import names none (`@Provides` of a library
-/// the table does not know), which may be one.
+/// entry point, its package a framework's, or an annotation of the name an
+/// entry point has whose package the file does not settle as a framework's
+/// (`@Provides` of a library the table does not know, a star import, a name
+/// written with its package, none at all), which may be one.
 pub(super) fn jvm_entry_point(
     f: &Fragment,
-    file: &[&Fragment],
+    imports: &[Import],
     annotations: Option<&[String]>,
 ) -> Option<String> {
-    let names: Vec<String> = match annotations {
-        Some(names) => names.to_vec(),
+    let written: Vec<(Option<String>, String)> = match annotations {
+        Some(names) => names.iter().map(|n| (None, n.clone())).collect(),
         None => f
             .content
             .lines()
@@ -169,48 +170,75 @@ pub(super) fn jvm_entry_point(
                     .strip_prefix('@')?
                     .split(|c: char| c == '(' || c.is_whitespace())
                     .next()?;
-                Some(name.rsplit('.').next().unwrap_or(name).to_string())
+                Some(match name.rsplit_once('.') {
+                    Some((package, name)) => (Some(package.to_string()), name.to_string()),
+                    None => (None, name.to_string()),
+                })
             })
             .collect(),
     };
-    let imports: Vec<&str> = file
+    let in_list = |package: &str, list: &[&str]| {
+        let dotted = format!("{package}.");
+        list.iter().any(|p| dotted.starts_with(p))
+    };
+    let stars: Vec<&str> = imports
         .iter()
-        .flat_map(|fr| fr.content.lines())
-        .filter_map(|line| {
-            let path = line.trim_start().strip_prefix("import ")?;
-            let path = path.trim_end_matches(';').trim();
-            Some(path.split(" as ").next().unwrap_or(path))
+        .filter(|i| i.star == Star::Glob)
+        .map(|i| i.module.as_str())
+        .collect();
+    let origins: Vec<(String, Origin)> = written
+        .into_iter()
+        .filter_map(|(package, name)| {
+            let named = imports.iter().find_map(|i| {
+                i.names
+                    .iter()
+                    .find(|(target, alias)| alias.as_ref().unwrap_or(target).as_str() == name)
+                    .map(|(target, _)| (i.module.as_str(), target.as_str()))
+            });
+            let (name, package) = match (&package, named) {
+                (Some(package), _) => (name, Some(package.as_str())),
+                (None, Some((module, target))) => (target.to_string(), Some(module)),
+                (None, None) => (name, None),
+            };
+            if !JVM_ENTRY_POINTS.contains(&name.as_str()) {
+                return None;
+            }
+            let origin = match package {
+                Some(p) if in_list(p, JVM_FRAMEWORK_PACKAGES) => Origin::Framework,
+                Some(p) if in_list(p, JVM_NEUTRAL_PACKAGES) => return None,
+                Some(p) => Origin::Package(Some(p.to_string())),
+                None if stars.iter().any(|p| in_list(p, JVM_FRAMEWORK_PACKAGES)) => {
+                    Origin::Framework
+                }
+                None => match stars.iter().find(|p| !in_list(p, JVM_NEUTRAL_PACKAGES)) {
+                    Some(p) => Origin::Package(Some((*p).to_string())),
+                    None if !stars.is_empty() => return None,
+                    None => Origin::Package(None),
+                },
+            };
+            Some((name, origin))
         })
         .collect();
-    let imported_from = |name: &str, trusted: bool| {
-        imports.iter().find(|path| {
-            JVM_FRAMEWORK_PACKAGES.iter().any(|p| path.starts_with(p)) == trusted
-                && path.ends_with(&format!(".{name}"))
-        })
-    };
-    let entries = names
+    origins
         .iter()
-        .filter(|name| JVM_ENTRY_POINTS.contains(&name.as_str()));
-    entries
-        .clone()
-        .find(|name| {
-            imports.iter().any(|path| {
-                path.ends_with(".*") && JVM_FRAMEWORK_PACKAGES.iter().any(|p| path.starts_with(p))
-            }) || imported_from(name, true).is_some()
-        })
-        .cloned()
+        .find(|(_, origin)| matches!(origin, Origin::Framework))
+        .map(|(name, _)| name.clone())
         .or_else(|| {
-            entries.into_iter().find_map(|name| {
-                let path = imported_from(name, false)?;
-                let package = path.rsplit_once('.')?.0;
-                (!JVM_NEUTRAL_PACKAGES.iter().any(|p| path.starts_with(p))).then(|| {
-                    format!(
-                        "{}may be entered by the framework (annotation `@{name}` from {package})",
-                        framework::ENTRY_PREFIX
-                    )
-                })
+            origins.into_iter().find_map(|(name, origin)| match origin {
+                Origin::Package(from) => Some(format!(
+                    "{}may be entered by the framework (annotation `@{name}`{})",
+                    framework::ENTRY_PREFIX,
+                    from.map_or_else(String::new, |p| format!(" from {p}"))
+                )),
+                Origin::Framework => None,
             })
         })
+}
+
+/// Where an entry-named annotation comes from, as far as the file says.
+enum Origin {
+    Framework,
+    Package(Option<String>),
 }
 
 /// A Python function decorated `@pytest.fixture` / `@fixture`, with or

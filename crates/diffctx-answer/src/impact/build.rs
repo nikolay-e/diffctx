@@ -59,7 +59,7 @@ use super::entry::{
 };
 use super::key_search::{key_references, read_by_collection};
 use super::output::{Caller, ChangedSymbol, Contract, ImpactOutput, UnanalysedFile, Unknown};
-use super::removed::{dead_modules, removed_definitions};
+use super::removed::{dead_modules, removed_definitions, removed_route};
 use super::symbol::{directory_name, parse_symbol_query};
 use super::unanalysed::{
     MAX_OUTSIDE_RUNS, MAX_UNTRACED_NAMERS, OUTSIDE_DEFINITIONS, UntracedNamers, callable_by_name,
@@ -251,7 +251,7 @@ pub fn build_impact(
                     (f.start_line(), f.end_line()),
                 )
             });
-            jvm_entry_point(f, file_of(f), stated.as_deref()).or_else(|| {
+            jvm_entry_point(f, &cells.imports_at(&path), stated.as_deref()).or_else(|| {
                 let name = f.symbol_name.as_deref().map(base_symbol)?;
                 cells
                     .of(&path)?
@@ -1722,6 +1722,26 @@ pub fn build_impact(
                     sym.unresolved = Some(Unknown::Overridable {
                         via: via.to_string(),
                     });
+                }
+            }
+            // A removed route handler is reached over HTTP by clients no model
+            // traces: a test that requests the route is one of them.
+            if sym.unresolved.is_none() {
+                let cell = cells.of(&entry.file)?;
+                let name = base_symbol(&entry.name);
+                let route = cell
+                    .removed_entries_at(&entry.file, name, entry.lines)
+                    .into_iter()
+                    .find(|(kind, _)| *kind == EntryKind::Route);
+                if let Some((_, route)) = route {
+                    sym.unresolved = Some(removed_route(
+                        state,
+                        analysed,
+                        &|path| tests.is_test_file(path),
+                        &route,
+                    ));
+                    sym.coverage =
+                        decide::coverage::Coverages::partial(decide::gap::Gap::NotTraced);
                 }
             }
             // Every removed definition of a cell language is reported, private ones
