@@ -1,0 +1,52 @@
+name: tf_registry_module_its_example_calls_is_read_from_outside
+mode: impact
+source: synthetic
+issue_state: open
+tags: [terraform, root-module]
+repo:
+  initial_files:
+    main.tf: |
+      resource "null_resource" "this" {
+        triggers = {
+          name = var.name
+        }
+      }
+    variables.tf: |
+      variable "name" {
+        type = string
+      }
+    outputs.tf: |
+      output "id" {
+        value = null_resource.this.id
+      }
+
+      output "greeting" {
+        value = "hello"
+      }
+    examples/basic/main.tf: |
+      module "greeter" {
+        source = "../.."
+        name   = "demo"
+      }
+
+      output "id" {
+        value = module.greeter.id
+      }
+  changed_files:
+    outputs.tf: |
+      output "id" {
+        value = null_resource.this.id
+      }
+
+      output "greeting" {
+        value = "hi"
+      }
+  commit_message: "greet with hi"
+expect:
+  # The repository's root directory is the module it publishes. Its own example
+  # reads `id`, not `greeting`; whoever calls the module from another repository
+  # reads that, so no clean "nothing reads it".
+  exact: false
+  changed: [outputs.tf::output.greeting]
+  no_negative_claims: true
+  discloses: true

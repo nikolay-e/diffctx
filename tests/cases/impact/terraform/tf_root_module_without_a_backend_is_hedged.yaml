@@ -1,0 +1,45 @@
+name: tf_root_module_without_a_backend_is_hedged
+mode: impact
+source: fj#193
+issue_state: open
+tags: [terraform, root-module]
+repo:
+  initial_files:
+    infra/prod/main.tf: |
+      variable "replicas" {
+        type    = number
+        default = 2
+      }
+
+      module "net" {
+        source = "../../modules/net"
+        cidr   = "10.0.0.0/16"
+      }
+    modules/net/main.tf: |
+      variable "cidr" {
+        type = string
+      }
+
+      output "cidr" {
+        value = var.cidr
+      }
+  changed_files:
+    infra/prod/main.tf: |
+      variable "replicas" {
+        type    = number
+        default = 4
+      }
+
+      module "net" {
+        source = "../../modules/net"
+        cidr   = "10.0.0.0/16"
+      }
+  commit_message: "prod: four replicas by default"
+expect:
+  # infra/prod is a root module (no module block sources it) though it keeps no
+  # backend, variable file or lock file: its variable is set from outside (-var,
+  # a variable file outside the repository), so no clean "nothing reads it"
+  exact: false
+  changed: [infra/prod/main.tf::replicas]
+  no_negative_claims: true
+  discloses: true
