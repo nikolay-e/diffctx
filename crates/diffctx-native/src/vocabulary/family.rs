@@ -397,8 +397,9 @@ impl Resolver {
         }
     }
 
-    /// Whether the module `file` is in is a root: applied from outside, so that
-    /// what sets its variables and reads its outputs is not in the snapshot.
+    /// Whether the module `file` is in is entered from outside, applied or called
+    /// by another repository, so that what sets its variables and reads its
+    /// outputs is not in the snapshot.
     pub(crate) fn root_module(&self, file: &str) -> bool {
         match self {
             Self::Terraform(r) => r.is_root(file),

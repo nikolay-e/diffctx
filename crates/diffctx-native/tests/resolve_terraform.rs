@@ -801,35 +801,30 @@ fn a_module_call_reaches_its_directory_and_a_source_that_is_no_path_reaches_noth
 }
 
 #[test]
-fn a_directory_no_call_sources_is_a_root_only_with_what_a_root_holds() {
+fn a_directory_no_call_sources_is_entered_from_outside() {
     let fx = snapshot(&[
         ("bare/main.tf", NET),
-        ("vars/main.tf", NET),
-        ("vars/prod.tfvars", "cidr = \"10.0.0.0/16\"\n"),
-        ("locked/main.tf", NET),
-        ("locked/.terraform.lock.hcl", "# lock\n"),
         (
             "state/main.tf",
             "terraform {\n  backend \"s3\" {}\n}\n\nvariable \"cidr\" {}\n",
         ),
-        (
-            "cloud/main.tf",
-            "terraform {\n  cloud {}\n}\n\nvariable \"cidr\" {}\n",
-        ),
-        (
-            "plain/main.tf",
-            "terraform {\n  required_version = \">= 1\"\n}\n",
-        ),
         ("called/main.tf", NET),
         ("called/prod.tfvars", "cidr = \"10.0.0.0/16\"\n"),
+        (
+            "examples/basic/main.tf",
+            "module \"root\" {\n  source = \"../..\"\n}\n",
+        ),
         ("main.tf", "module \"net\" {\n  source = \"./called\"\n}\n"),
     ]);
-    for dir in ["vars", "locked", "state", "cloud"] {
-        assert!(fx.head.is_root(&format!("{dir}/main.tf")), "{dir}");
+    // fj#193: neither a backend nor a variable or lock file is needed; a module
+    // published for other repositories keeps none of them.
+    for file in ["bare/main.tf", "state/main.tf", "examples/basic/main.tf"] {
+        assert!(fx.head.is_root(file), "{file}");
     }
-    for dir in ["bare", "plain", "called"] {
-        assert!(!fx.head.is_root(&format!("{dir}/main.tf")), "{dir}");
-    }
+    // The repository's root directory is the module a registry publishes, though
+    // its own example calls it; a module only the repository calls is not.
+    assert!(fx.head.is_root("main.tf"));
+    assert!(!fx.head.is_root("called/main.tf"));
 }
 
 #[test]
