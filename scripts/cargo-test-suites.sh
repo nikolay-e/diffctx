@@ -69,21 +69,28 @@ report() {
 }
 trap report EXIT
 
-# Seconds per suite, measured 2026-11-11 (`lib` is the library's inline tests,
-# an estimate).
+# Seconds per suite, the slowest of the Linux, macOS and Windows runs of
+# 2026-11-18 (`lib` is the library's inline tests, an estimate).
 default_weight=3
 weights="
-git_faults 117
-metamorphic 112
-loss_sweep 91
-hook_property 89
-impact 71
-unknowns 68
-hook 25
-lane_f 24
-budget_contract 20
-native_cli 17
-bindings 11
+impact 1206
+loss_sweep 919
+git_faults 842
+metamorphic 809
+unknowns 653
+class_completeness 536
+hook_property 361
+occurrence_classes 224
+hook 180
+lane_f 178
+facts_cache 157
+budget_contract 150
+resolve_python 59
+untracked_budget 51
+deadline_answer 50
+native_cli 43
+resolve_typescript 39
+bindings 31
 lib 10
 "
 
