@@ -1,0 +1,54 @@
+name: fj264_unimported_function_called_in_its_module_with_another_class_is_no_reader
+mode: impact
+source: fj#264
+issue_state: open
+tags: [python, dataclass, untyped-receiver, unimported-module, absence-claim, decoy]
+repo:
+  initial_files:
+    model.py: |
+      from dataclasses import dataclass
+
+
+      @dataclass
+      class Reading:
+          date: str
+          value: float
+    use.py: |
+      from model import Reading
+
+
+      def latest(r: Reading):
+          return r.date
+    other.py: |
+      class Thing:
+          def __init__(self):
+              self.size = 1
+    calc.py: |
+      from other import Thing
+
+
+      def f(row):
+          return row.value
+
+
+      def run():
+          return f(Thing())
+  changed_files:
+    model.py: |
+      from dataclasses import dataclass
+
+
+      @dataclass
+      class Reading:
+          date: int
+          value: int
+  commit_message: "model: date and value are integers"
+# `calc.py` is imported by nothing, and `f` is called only inside it, with a
+# `Thing` the module builds from a class it imports: `row` never holds a
+# `Reading`, so `f` is no reader of the field.
+expect:
+  changed: [model.py::date, model.py::value]
+  relations:
+    - {from: "use.py::latest", to: "model.py::date", kind: reads, resolution: resolved, site: 5}
+  decoys:
+    model.py::value: [calc.py::f, calc.py::run]
