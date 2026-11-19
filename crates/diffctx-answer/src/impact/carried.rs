@@ -54,7 +54,10 @@ impl Strings {
     }
 
     fn line_of(&self, at: usize) -> u32 {
-        1 + self.text[..at].matches('\n').count() as u32
+        1 + self.text.as_bytes()[..at]
+            .iter()
+            .filter(|&&b| b == b'\n')
+            .count() as u32
     }
 
     /// What piece `at` holds, without its prefix and delimiters, so the first
