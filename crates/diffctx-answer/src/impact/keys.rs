@@ -6,6 +6,7 @@
 use std::path::Path;
 
 use super::ScoredState;
+use super::carried::{Strings, names_in_carried_code};
 use crate::decide::cells::Cells;
 use diffctx_facts::facts::HeldAs;
 
@@ -697,20 +698,30 @@ fn runs_command(command: &str, name: &str) -> bool {
     })
 }
 
-/// The shell commands the file `path` holds on `line`: a quoted string of code
-/// in any language may be handed to a shell, so each one is read as a command
-/// and only ever disclosed; a config's command values and a Dockerfile's
-/// instructions come from their tree; a Makefile or justfile recipe is the line
-/// itself.
-fn commands_at(state: &ScoredState, path: &str, line: u32, text: &str) -> Vec<String> {
+/// The shell commands the file `path` holds on `line`: a string of code in any
+/// language may be handed to a shell, so each one is read as a command and only
+/// ever disclosed. In a language whose tree records its strings it is the whole
+/// literal that spans the line, in any layout; in one no tree reads, the quoted
+/// spans of the line. A config's command values and a Dockerfile's instructions
+/// come from their tree; a Makefile or justfile recipe is the line itself.
+fn commands_at(
+    state: &ScoredState,
+    cells: &Cells,
+    path: &str,
+    line: u32,
+    text: &str,
+) -> Vec<String> {
     if recipe_file(path) {
         return vec![text.to_string()];
     }
     if super::callers::is_code_file(path) {
-        return quoted_spans(text)
-            .into_iter()
-            .map(|(from, to)| text[from..to].to_string())
-            .collect();
+        return match Strings::of(state, cells, path) {
+            Some(strings) => strings.at(line),
+            None => quoted_spans(text)
+                .into_iter()
+                .map(|(from, to)| text[from..to].to_string())
+                .collect(),
+        };
     }
     let Some(source) = state
         .run
@@ -935,7 +946,7 @@ fn call_pattern(names: &[&str]) -> String {
 }
 
 /// Whether `text` calls `name`: the name as a whole word, then `(`.
-fn called(text: &str, name: &str) -> bool {
+pub(super) fn called(text: &str, name: &str) -> bool {
     text.match_indices(name).any(|(at, _)| {
         !text[..at]
             .chars()
@@ -1107,7 +1118,7 @@ impl LiteralNames {
                         _ => Vec::new(),
                     };
                     let commands = if shape == Shape::Command {
-                        commands_at(state, path, *line, text)
+                        commands_at(state, cells, path, *line, text)
                     } else {
                         Vec::new()
                     };
@@ -1166,6 +1177,16 @@ impl LiteralNames {
                         }
                     }
                 }
+            }
+        }
+        let callable: Vec<&str> = wanted.iter().copied().filter(|n| call_name(n)).collect();
+        for (name, path, line) in names_in_carried_code(state, cells, head.as_deref(), &callable) {
+            let inside = own.iter().any(|(file, own_name, (from, to))| {
+                *file == path && *own_name == name && (*from..=*to).contains(&line)
+            });
+            let named = rows.entry(name).or_default();
+            if !inside && !named.iter().any(|(p, _)| *p == path) {
+                named.push((path, line));
             }
         }
         Self { rows, bare }
