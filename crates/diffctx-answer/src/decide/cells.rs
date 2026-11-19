@@ -10,7 +10,7 @@ use anyhow::Result;
 
 use crate::run_provenance::state::ScoredState;
 
-use diffctx_facts::facts::{DefKey, FactsCache, HeldAs};
+use diffctx_facts::facts::{DefKey, FactsCache, HeldAs, Import};
 
 use diffctx_occurrence::tokens::{GroupTokens, Names, TokenIndex};
 
@@ -253,6 +253,14 @@ impl Cells {
         self.of(rel)
             .or_else(|| self.cells.first())
             .map_or(Ok(None), |cell| cell.string_pieces(rel))
+    }
+
+    /// The imports of `rel` at the head, read by the cell that answers for it,
+    /// else by any: every cell reads the same head.
+    pub(crate) fn imports_at(&self, rel: &str) -> Vec<Import> {
+        self.of(rel)
+            .or_else(|| self.cells.first())
+            .map_or_else(Vec::new, |cell| cell.imports_at(rel))
     }
 
     /// Whether a head file of a cell language may import a module by a name it
