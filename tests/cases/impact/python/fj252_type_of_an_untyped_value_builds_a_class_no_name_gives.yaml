@@ -1,0 +1,51 @@
+name: fj252_type_of_an_untyped_value_builds_a_class_no_name_gives
+mode: impact
+source: fj#252
+issue_state: open
+tags: [python, type-call, dynamic-class, coverage, absence-claim]
+repo:
+  initial_files:
+    main.py: |
+      class Base:
+          def __init__(self):
+              pass
+
+
+      class Child(Base):
+          def __init__(self):
+              pass
+
+
+      def duplicate(obj):
+          return type(obj)()
+
+
+      duplicate(Child())
+  changed_files:
+    main.py: |
+      class Base:
+          def __init__(self):
+              pass
+
+
+      class Child(Base):
+          def __init__(self):
+              self.x = 1
+
+
+      def duplicate(obj):
+          return type(obj)()
+
+
+      duplicate(Child())
+  commit_message: "child: set x"
+# `type(obj)()` builds the class of whatever `obj` is, so `duplicate` may build
+# `Child`: no name in the text says so, and the answer is partial, not exact.
+expect:
+  changed: [main.py::Child]
+  discloses: true
+  no_negative_claims: true
+  partial:
+    main.py::Child:
+      calls: not_traced
+      reads: not_traced
