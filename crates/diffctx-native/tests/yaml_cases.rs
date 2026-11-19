@@ -751,46 +751,56 @@ fn run_oracle_case(
     }
     let red = !outcome.failures.is_empty();
     let baselined = known_below_threshold().contains(case_name);
-    let (state, verdict) = match (red, baselined) {
-        (false, false) => ("pass", Ok(())),
-        (true, true) => ("baselined_red", Ok(())),
-        (false, true) => (
-            "stale_baseline",
-            Err(oracle::assertion_failed(
+    let hedged = !outcome.hedges.is_empty();
+    let listed_hedge = known_false_hedges().contains(case_name);
+    // Every list the case is stale in is named in one run, so a row stale in
+    // both lists does not hide its second staleness until the next run.
+    let mut problems: Vec<&str> = Vec::new();
+    let mut state = match (red, baselined) {
+        (false, false) => "pass",
+        (true, true) => "baselined_red",
+        (false, true) => {
+            problems.push(
                 "case now passes but is still listed in tests/known_below_threshold.txt — \
                  remove it from that file, otherwise a future regression here would be \
                  silently absorbed",
-            )),
-        ),
-        (true, false) => (
-            "fail",
-            Err(oracle::assertion_failed(outcome.failures.join("\n\n"))),
-        ),
-    };
-    let (state, verdict) = if verdict.is_ok() {
-        let hedged = !outcome.hedges.is_empty();
-        match (hedged, known_false_hedges().contains(case_name)) {
-            (false, false) => (state, verdict),
-            (true, true) => ("false_hedge", Ok(())),
-            (false, true) => (
-                "stale_false_hedge",
-                Err(oracle::assertion_failed(
-                    "case no longer hedges falsely but is still listed in \
-                     tests/known_false_hedges.txt — remove it from that file, otherwise a \
-                     future false hedge here would be silently absorbed",
-                )),
-            ),
-            (true, false) => (
-                "fail",
-                Err(oracle::assertion_failed(outcome.hedges.join("\n\n"))),
-            ),
+            );
+            "stale_baseline"
         }
-    } else {
-        (state, verdict)
+        (true, false) => {
+            outcome.report.state = "fail";
+            oracle::report::record(outcome.report);
+            return Err(oracle::assertion_failed(outcome.failures.join("\n\n")));
+        }
     };
+    match (hedged, listed_hedge) {
+        (true, true) if problems.is_empty() => state = "false_hedge",
+        (false, false) | (true, true) => {}
+        (false, true) => {
+            if problems.is_empty() {
+                state = "stale_false_hedge";
+            }
+            problems.push(
+                "case no longer hedges falsely but is still listed in \
+                 tests/known_false_hedges.txt — remove it from that file, otherwise a \
+                 future false hedge here would be silently absorbed",
+            );
+        }
+        (true, false) => {
+            let hedges = outcome.hedges.join("\n\n");
+            problems.push(&hedges);
+            outcome.report.state = "fail";
+            oracle::report::record(outcome.report);
+            return Err(oracle::assertion_failed(problems.join("\n\n")));
+        }
+    }
     outcome.report.state = state;
     oracle::report::record(outcome.report);
-    verdict
+    if problems.is_empty() {
+        Ok(())
+    } else {
+        Err(oracle::assertion_failed(problems.join("\n\n")))
+    }
 }
 
 /// The modes the binary ships, read from `src/main.rs`: the `--mode` values
