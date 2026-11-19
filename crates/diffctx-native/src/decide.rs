@@ -2933,17 +2933,11 @@ impl Cell {
             files
         });
         let index = self.index.get_or_init(|| {
-            let manifests_whole = !self
-                .ctx
-                .workspace
-                .losses()
-                .iter()
-                .any(|loss| matches!(loss, Loss::ManifestUnread { .. }));
             Rc::new(Index::new(
                 files,
                 self.head.bindings(),
                 self.head.definitions(),
-                manifests_whole,
+                &self.ctx.workspace,
             ))
         });
         let mut view = View::over(Rc::clone(index), files, self.head.bindings());
