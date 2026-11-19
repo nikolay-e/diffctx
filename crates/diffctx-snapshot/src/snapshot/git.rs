@@ -157,15 +157,18 @@ impl Asked {
 }
 
 impl GitMemo {
-    /// What a computation over this run's repository gave for `key`, the
-    /// whole of its inputs: a function of git's answers is as constant over
+    /// What a computation over this run's repository gave for `key` and the
+    /// result's type, the whole of its inputs: a function of git's answers is as constant over
     /// the run as they are. A failure is not kept.
     fn derive<T: Clone + Send + Sync + 'static>(
         &self,
         key: Vec<u8>,
         compute: impl FnOnce() -> Result<T>,
     ) -> Result<T> {
-        let cell = Arc::clone(self.derived.lock().unwrap().entry(key).or_default());
+        let mut typed = std::any::type_name::<T>().as_bytes().to_vec();
+        typed.push(0);
+        typed.extend(key);
+        let cell = Arc::clone(self.derived.lock().unwrap().entry(typed).or_default());
         let mut slot = cell.lock().unwrap();
         if let Some(known) = slot.as_ref().and_then(|v| v.downcast_ref::<T>()) {
             return Ok(known.clone());

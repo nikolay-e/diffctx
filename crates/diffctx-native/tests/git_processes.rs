@@ -144,6 +144,31 @@ fn announced_needles_are_one_search(repo: &Path) {
     );
 }
 
+fn a_cut_search_gives_no_row_of_other_needles(repo: &Path) {
+    let covered = vec!["total".to_string(), "charge".to_string()];
+    let asked = vec!["return sum".to_string(), "sum(items".to_string()];
+    let run = RunContext::unbounded();
+    let _in_run = run.enter();
+    let kept = needle_lines(repo, &covered, None, &|| true).expect("search");
+    assert!(
+        kept.iter()
+            .any(|(_, _, text)| !text.contains("return sum") && !text.contains("sum(items")),
+        "the seed has covered rows that the asked needles do not select"
+    );
+    let polls = std::cell::Cell::new(0);
+    let one_poll = || {
+        polls.set(polls.get() + 1);
+        polls.get() == 1
+    };
+    let cut = needle_lines(repo, &asked, None, &one_poll).expect("search");
+    assert!(!cut.is_empty(), "the cut search found its rows");
+    assert!(
+        cut.iter()
+            .all(|(_, _, text)| asked.iter().any(|n| text.contains(n.as_str()))),
+        "a cut search returned a row of the needles covered before it: {cut:?}"
+    );
+}
+
 #[test]
 fn a_run_starts_no_more_git_processes_than_its_cell_allows_whatever_the_repository_size() {
     let small = repository(0);
@@ -163,6 +188,7 @@ fn a_run_starts_no_more_git_processes_than_its_cell_allows_whatever_the_reposito
         }
     }
     announced_needles_are_one_search(small.path());
+    a_cut_search_gives_no_row_of_other_needles(small.path());
     let report = report.join("\n");
     assert!(failures.is_empty(), "{}\n{report}", failures.join("; "));
     eprintln!("{report}");
