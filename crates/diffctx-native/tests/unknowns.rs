@@ -1889,8 +1889,9 @@ fn a_test_helper_s_expression_body_types_the_receiver() {
 /// #505, #613: a zero needs a witness. A module a CronWorkflow runs by
 /// name, and a function only an `.astro` page calls, read as "0 callers"
 /// though impact never looked where they are named. Now the config line is
-/// named, the function says its callers may be missing, and the header
-/// carries no bare zero. A document mentioning the name is no reader.
+/// named, and the page's template expression is read as code: the function
+/// is called from it, through the import its frontmatter makes. A document
+/// mentioning the name is no reader.
 #[test]
 fn a_name_spelled_where_nothing_is_traced_is_no_zero() {
     let infra = repo(
@@ -1955,14 +1956,11 @@ fn a_name_spelled_where_nothing_is_traced_is_no_zero() {
         .as_array()
         .and_then(|d| d.iter().find(|d| d["symbol"] == "formatDate"))
         .unwrap_or_else(|| panic!("{doc:#}"));
-    assert_eq!(dates["coverage"]["calls"]["complete"], false, "{doc:#}");
+    assert_eq!(dates["rows"][0]["path"], "src/pages/index.astro", "{doc:#}");
+    assert_eq!(dates["rows"][0]["standing"], "resolved", "{doc:#}");
     let text = impact_markdown(site.path());
     assert!(
-        text.contains("callers unresolved for `formatDate`"),
-        "{text}"
-    );
-    assert!(
-        text.contains("possibly called from src/pages/index.astro:4"),
+        text.contains("called from src/pages/index.astro:4"),
         "{text}"
     );
     assert!(!text.contains("callers may be missing"), "{text}");
