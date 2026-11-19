@@ -370,6 +370,35 @@ pub(super) fn removed_definitions(
     out
 }
 
+/// What a removed route handler leaves unsaid: its clients reach it over HTTP, which
+/// no model traces. The test lines that request the route are named.
+pub(super) fn removed_route(
+    state: &ScoredState,
+    diff_range: Option<&str>,
+    is_test_file: &dyn Fn(&str) -> bool,
+    route: &diffctx_facts::facts::Framework,
+) -> Unknown {
+    let label = route.label.as_deref().unwrap_or("");
+    let verb = route.verb.as_ref().map(|v| v.as_str());
+    let requests: Vec<String> = super::runs::route_requests(state, diff_range, verb, label)
+        .into_iter()
+        .filter(|(path, _)| is_test_file(path))
+        .map(|(path, line)| format!("{path}:{line}"))
+        .take(3)
+        .collect();
+    let named = if requests.is_empty() {
+        String::new()
+    } else {
+        format!("; requested by {}", requests.join(", "))
+    };
+    Unknown::Uncovered {
+        why: format!(
+            "removed route {} {label}: its clients request it over HTTP, which no model traces{named}",
+            verb.unwrap_or("ANY"),
+        ),
+    }
+}
+
 pub(super) const PROJECT_MANIFESTS: &[&str] = &[
     "package.json",
     "pyproject.toml",
