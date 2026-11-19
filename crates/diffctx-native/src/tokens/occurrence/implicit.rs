@@ -10,8 +10,8 @@ use crate::vocabulary::family::Family;
 
 /// What `decide` already knows of a definition: `dispatched` is `dispatched_via`,
 /// `consumed_outside` is `consumed_outside` of its family, `root_module` that its
-/// directory is a Terraform root, applied from outside (`root_module` of the
-/// resolver).
+/// Terraform directory is entered from outside, applied or called by another
+/// repository (`root_module` of the resolver).
 #[derive(Clone, Copy, Default, Debug)]
 pub struct Known {
     pub dispatched: bool,
@@ -208,8 +208,8 @@ pub fn implicit_kinds(file: &FileFacts, def: &Def, known: Known) -> Vec<Implicit
         }
     }
     // A root module is set from outside; a module a call sources is set by its
-    // caller. Which is which the calls and the files of the directory say, not the
-    // depth of the path (fj#193).
+    // caller. Which is which the repository's calls say, not the depth of the path
+    // or the files a root keeps (fj#193).
     let rooted = known.root_module;
     for (family, part, kind, patterns) in TABLE {
         let names = |pattern: &str| {

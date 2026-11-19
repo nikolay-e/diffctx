@@ -887,6 +887,15 @@ pub(crate) fn control(family: Family, broken_unrelated: bool) -> Repo {
             "pub mod pricing;\npub mod util;\n".into(),
         );
     }
+    if family == Family::Terraform {
+        // A directory no module block sources is a root, set from outside the
+        // snapshot: a block that sources it and sets nothing keeps the control.
+        let dir = p.definition.rsplit_once('/').map_or(".", |(dir, _)| dir);
+        base.insert(
+            "main.tf".into(),
+            format!("module \"control\" {{\n  source = \"./{dir}\"\n}}\n"),
+        );
+    }
     base.insert(p.definition.clone(), definition_base);
     if broken_unrelated {
         let stem = match family {
