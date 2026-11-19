@@ -10,6 +10,7 @@ use super::{Claim, Reading, encloses};
 use crate::facts::{DefKey, Fact, FileFacts, Name, Scope, UseKind};
 use crate::resolve::{Binding, Definition, Relation, Resolution, UnresolvedReason};
 use crate::snapshot::RepoPath;
+use crate::snapshot::workspace::{Ecosystem, WorkspaceModel};
 use crate::testfiles::is_test_path;
 use crate::tokens::occurrence::rows::{CLASSIC_PAGES, DESERIALIZERS, ISOLATED_MODULES, RUNS_CODE};
 use crate::tokens::occurrence::{Reason, Witness};
@@ -23,6 +24,8 @@ pub(super) struct Routes {
     unbound: HashMap<RepoPath, HashSet<Name>>,
     /// The names the top level of such a file defines.
     defined: HashMap<RepoPath, HashSet<Name>>,
+    /// Such files a named project publishes: whoever installs it imports them.
+    published: HashSet<RepoPath>,
     /// An import of such a file landed on no place the bindings name: an edge may be missing.
     open: bool,
     /// Whether no route brings the subject's file to the file, by (file, subject's file).
@@ -34,6 +37,7 @@ impl Routes {
         files: &[FileFacts],
         bindings: &[Binding],
         definitions: &[Definition],
+        workspace: &WorkspaceModel,
     ) -> Self {
         let isolated: HashSet<&RepoPath> = (files.iter())
             .filter(|file| ISOLATED_MODULES.iter().any(|f| f.has(file.language())))
@@ -43,7 +47,13 @@ impl Routes {
             .iter()
             .map(|def| (&def.key, &def.file))
             .collect();
-        let mut routes = Self::default();
+        let mut routes = Self {
+            published: (isolated.iter())
+                .filter(|path| published(workspace, path.as_str()))
+                .map(|path| (*path).clone())
+                .collect(),
+            ..Self::default()
+        };
         let imports = bindings.iter().filter(|binding| {
             matches!(binding.relation, Relation::Imports | Relation::Reexports)
                 && isolated.contains(&binding.file)
@@ -125,10 +135,15 @@ impl Routes {
     }
 
     /// Whether an object defined in `subject` can come to `file` by an import: some file imports
-    /// it, it imports `subject` (through others), or it imports a file that one reaching
-    /// `subject` imports too, a module whose state both can see.
+    /// it (one of the repository, or whoever installs the project that publishes it), it
+    /// imports `subject` (through others), or it imports a file that one reaching `subject`
+    /// imports too, a module whose state both can see.
     fn meets(&self, file: &RepoPath, subject: &RepoPath) -> bool {
-        if self.open || self.importers.contains_key(file) || self.spells(file, subject) {
+        if self.open
+            || self.importers.contains_key(file)
+            || self.published.contains(file)
+            || self.spells(file, subject)
+        {
             return true;
         }
         let reached = Self::closure(&self.imports, file);
@@ -138,6 +153,35 @@ impl Routes {
                 .flat_map(|module| self.importers.get(module).into_iter().flatten())
                 .any(|importer| reaching.contains(importer))
     }
+}
+
+/// Whether `path` is a module of what a named Python project publishes: a directory with an
+/// `__init__.py`, or the package or module under one of its import roots that the project's
+/// name names. Code outside the snapshot imports it.
+fn published(workspace: &WorkspaceModel, path: &str) -> bool {
+    let Some(project) = workspace.project_of(path).map(|id| workspace.project(id)) else {
+        return false;
+    };
+    let names: Vec<String> = (project.names.iter())
+        .filter(|(ecosystem, _)| *ecosystem == Ecosystem::Python)
+        .map(|(_, name)| name.replace(['-', '.'], "_"))
+        .collect();
+    if names.is_empty() {
+        return false;
+    }
+    let dir = path.rsplit_once('/').map_or("", |(dir, _)| dir);
+    project.python_packages.contains(dir)
+        || project.import_roots.iter().any(|root| {
+            let under = if root.dir.is_empty() {
+                Some(path)
+            } else {
+                (path.strip_prefix(root.dir.as_str())).and_then(|rest| rest.strip_prefix('/'))
+            };
+            under
+                .and_then(|rest| rest.split('/').next())
+                .map(|top| top.strip_suffix(".py").unwrap_or(top).to_ascii_lowercase())
+                .is_some_and(|top| names.contains(&top))
+        })
 }
 
 /// Whether the file loads or runs code no import states: a computed import, `eval`, `exec`, a
