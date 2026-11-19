@@ -26,13 +26,16 @@ def _rust_jobs() -> list[dict]:
 
 
 def _cells(job: dict) -> list[dict[str, str]]:
-    """GitHub's expansion: the product of the vectors, then each include entry
-    extends every cell it agrees with, or becomes a cell of its own."""
+    """GitHub's expansion: the product of the vectors less every cell an exclude
+    entry agrees with, then each include entry extends every cell it agrees
+    with, or becomes a cell of its own."""
     matrix = job.get("strategy", {}).get("matrix", {})
     vectors = {k: v for k, v in matrix.items() if k not in ("include", "exclude")}
     cells: list[dict[str, str]] = [{}]
     for key, values in vectors.items():
         cells = [{**cell, key: value} for cell in cells for value in values]
+    excluded = matrix.get("exclude", [])
+    cells = [c for c in cells if not any(all(c.get(k) == v for k, v in out.items()) for out in excluded)]
     if not vectors:
         cells = []
     for extra in matrix.get("include", []):
@@ -49,16 +52,15 @@ def _expanded(text: object, cell: dict[str, str]) -> str:
 
 
 def _part_suites(part: str) -> set[str]:
-    corpus = {"yaml_cases", "class_completeness_corpus"}
-    rest = sorted(_suites() - corpus)
+    corpus = ["class_completeness_corpus", "yaml_cases"]
     if part == "all":
         return _suites()
-    if part == "corpus":
-        return corpus
-    if part == "rest":
-        return set(rest)
-    shard, shards = map(int, part.removeprefix("rest:").split("/"))
-    return set(rest[shard - 1 :: shards])
+    kind, _, shard = part.partition(":")
+    names = corpus if kind == "corpus" else sorted(_suites() - set(corpus))
+    if not shard:
+        return set(names)
+    k, n = map(int, shard.split("/"))
+    return set(names[k - 1 :: n])
 
 
 def _covered(job: dict, cell: dict[str, str]) -> set[str]:
@@ -154,10 +156,10 @@ def test_the_suites_script_reads_every_suite_off_the_tree(tmp_path):
 
 
 @POSIX_ONLY
-def test_the_parts_of_the_suites_script_run_each_suite_once(tmp_path):
-    """Windows runs the script in parts: together they are the whole, and
-    nothing runs twice."""
-    parts = ["rest:1/2", "rest:2/2", "corpus"]
+@pytest.mark.parametrize("parts", [["rest:1/2", "rest:2/2", "corpus"], ["rest:1/2", "rest:2/2", "corpus:1/2", "corpus:2/2"]])
+def test_the_parts_of_the_suites_script_run_each_suite_once(tmp_path, parts):
+    """CI runs the script in parts: together they are the whole, and nothing
+    runs twice."""
     calls = []
     for i, part in enumerate(parts):
         workdir = tmp_path / str(i)

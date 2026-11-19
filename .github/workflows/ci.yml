@@ -412,7 +412,9 @@ jobs:
 
   # The Linux job above keeps its name because branch protection requires it;
   # this one gates the same suites on macOS and Windows, where paths, line
-  # endings and process spawning differ, in the same three parts.
+  # endings and process spawning differ. Windows runs the corpus in two parts:
+  # a run of the binary costs it about twice what it costs macOS, and the two
+  # corpus suites together outgrew its 90 minutes when the class corpus grew.
   rust-diffctx-test-cross:
     name: Rust diffctx tests (${{ matrix.os }}, ${{ matrix.label }})
     strategy:
@@ -420,10 +422,14 @@ jobs:
       matrix:
         os: [macos-latest, windows-latest]
         part: ["rest:1/2", "rest:2/2", corpus]
+        exclude:
+          - {os: windows-latest, part: corpus}
         include:
           - {part: "rest:1/2", label: "1/2"}
           - {part: "rest:2/2", label: "2/2"}
           - {part: corpus, label: corpus}
+          - {os: windows-latest, part: "corpus:1/2", label: "corpus 1/2"}
+          - {os: windows-latest, part: "corpus:2/2", label: "corpus 2/2"}
     # A stream check (a PR into relay/arch) runs Linux only and leaves the other
     # platforms to the head check (a push to relay/arch) and to main: the account runs 20
     # jobs at once (5 macOS), and six streams of ~27 jobs queued for hours.
