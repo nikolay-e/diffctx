@@ -875,6 +875,14 @@ const RED: &[(&str, &str)] = &[
         "impact/python/py_module_alias_of_a_member_then_attribute_read",
         "a read in a module-level assignment belongs to the variable it binds in the answer (`pkg/use.py::fetch`); the resolver gives it to the module",
     ),
+    (
+        "impact/python/fj253_metaclass_method_called_on_the_class_may_build_it",
+        "the resolver answers `Model.create()` as a resolved read of the class, which is true at its layer; the candidate instantiation through a metaclass method is the impact layer's fj#253 rule, no binding states it",
+    ),
+    (
+        "impact/python/fj253_metaclass_method_call_resolves_to_the_metaclass_method",
+        "fj#253: `Model.create()` calls a method the metaclass defines; the resolver reads it as a read of the class and binds no call to `Meta.create`",
+    ),
 ];
 
 #[test]
