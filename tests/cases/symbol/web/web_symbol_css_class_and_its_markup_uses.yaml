@@ -39,3 +39,7 @@ expect:
     - src/layouts/Other.astro
   definitions:
   - src/styles/global.css::btn-outline
+  partial:
+    src/styles/global.css::btn-outline:
+      calls: [not_traced, name_unsearched]
+      reads: [not_traced, name_unsearched]

@@ -31,3 +31,7 @@ expect:
   definitions:
   - shop.erl::price
   no_negative_claims: true
+  partial:
+    shop.erl::price:
+      calls: not_traced
+      reads: not_traced
