@@ -1,0 +1,33 @@
+name: shell_script_named_by_its_path_is_no_word_its_interpreter_spells
+mode: impact
+source: synthetic
+tags:
+- shell
+- script
+- decoy
+- interpreter-word
+repo:
+  initial_files:
+    tools/release.sh: |
+      #!/bin/sh
+      echo release 1
+    tools/other.sh: |
+      #!/bin/sh
+      echo other
+    .github/workflows/ci.yml: |
+      jobs:
+        build:
+          runs-on: ubuntu-latest
+          steps:
+            - run: sh tools/other.sh
+  changed_files:
+    tools/release.sh: |
+      #!/bin/sh
+      echo release 2
+  commit_message: "release: print the next version"
+expect:
+  relations: []
+  exact: true
+  decoys:
+    tools/release.sh:
+    - .github/workflows/ci.yml
