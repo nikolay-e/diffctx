@@ -1,0 +1,28 @@
+name: web_symbol_css_class_names_its_rule_and_hedges_markup_reads
+mode: symbol
+source: gh#631
+issue_state: open
+tags:
+- web
+- css
+- astro
+- classes
+- symbol
+repo:
+  initial_files:
+    src/layouts/Base.astro: |
+      <nav><a href="/" class="btn btn-outline">Home</a></nav>
+    src/styles/global.css: |
+      .btn { display: inline-block; }
+      .btn-outline { border: 1px solid black; }
+  commit_message: init
+query:
+  symbol: btn-outline
+expect:
+  definitions:
+  - src/styles/global.css::btn-outline
+  no_negative_claims: true
+  partial:
+    src/styles/global.css::btn-outline:
+      calls: [not_traced, name_unsearched]
+      reads: [not_traced, name_unsearched]
