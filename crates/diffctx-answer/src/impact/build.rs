@@ -48,7 +48,7 @@ use super::cells::{
 use super::changes::{
     BaseTexts, changed_rels, commit_bounds, commits_touching, head_of, is_public, is_schema_file,
     layout_files, lines_of, moved_verbatim, names_of, rel, same_runtime, signature_changed,
-    spelling_files, unread_namers, without_decorators,
+    spelling_files, tool_contract_changed, unread_namers, without_decorators,
 };
 use super::coverage::{absence, search_coverage, uncovered_symbol, unfinished_symbol};
 use super::deliver::{proves_empty, relation_rank};
@@ -268,6 +268,19 @@ pub fn build_impact(
         } else {
             registering_decorator(f, file_of(f))
         }
+    };
+    let is_tool = |f: &Fragment| -> bool {
+        let path = rel(state, f.path());
+        f.symbol_name
+            .as_deref()
+            .map(base_symbol)
+            .is_some_and(|name| {
+                cells.of(&path).is_some_and(|cell| {
+                    cell.framework_entries_at(&path, name, (f.start_line(), f.end_line()))
+                        .into_iter()
+                        .any(|(kind, _)| kind == EntryKind::Tool)
+                })
+            })
     };
     let link = |user: &Fragment, used: &Fragment| -> bool {
         let Some(name) = used.symbol_name.as_deref().map(base_symbol) else {
@@ -870,6 +883,26 @@ pub fn build_impact(
                 }
             }
         }
+        // A client that requests the path a route serves reaches its handler
+        // through HTTP: no import or name ties them, only the path text does.
+        for (reader, line) in super::runs::route_readers(state, &cells, diff_range, core) {
+            let frags = files
+                .fragments
+                .get(diffctx_base::paths::join_native(&state.root_dir, &reader).as_str());
+            if let Some(frag) = frags.and_then(|f| cell_caller(f, line)) {
+                sources.push((
+                    frag,
+                    FINDING_WEIGHT,
+                    Some(Reach {
+                        standing: Standing::Candidate(KEY_MATCH),
+                        relation: "call",
+                        kind: Some(vocabulary::RelationKind::Calls),
+                        fold: None,
+                        lines: vec![line],
+                    }),
+                ));
+            }
+        }
         // A local `const items = rows(xs)` is a line of its function, not a
         // caller of its own: the function is, with its test link (#452).
         // An anonymous arrow (`.map((p) => …)`) is a line of the definition
@@ -1069,6 +1102,9 @@ pub fn build_impact(
             .filter(|c| diffctx_base::languages::get_language_for_file(&c.file) == Some("kotlin"))
         {
             Some(changed) => changed.api,
+            // A tool states no visibility: it is published to every agent that
+            // lists it, whatever the language spells.
+            None if is_tool(core) => tool_contract_changed(state, &base_texts, core),
             None => {
                 is_public(core.path(), symbol, without_decorators(&core.content))
                     && super::rust::module_is_public(&state.run.source(), core.path())
