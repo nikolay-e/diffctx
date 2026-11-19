@@ -10,6 +10,9 @@ use tree_sitter::Node;
 pub struct ImportFact {
     pub prefix: String,
     pub selectors: Vec<String>,
+    /// `(imported name, local alias)` of each `=>` / `as` selector: `selectors`
+    /// keeps the imported name alone.
+    pub renamed: Vec<(String, String)>,
     pub wildcard: bool,
 }
 
@@ -72,6 +75,7 @@ fn text<'a>(node: Node, bytes: &'a [u8]) -> &'a str {
 fn import_fact(node: Node, bytes: &[u8]) -> Option<ImportFact> {
     let mut path: Vec<String> = Vec::new();
     let mut selectors: Vec<String> = Vec::new();
+    let mut renamed: Vec<(String, String)> = Vec::new();
     let mut wildcard = false;
     let mut had_selector_group = false;
     let mut cursor = node.walk();
@@ -83,9 +87,7 @@ fn import_fact(node: Node, bytes: &[u8]) -> Option<ImportFact> {
             "namespace_wildcard" => wildcard = true,
             "as_renamed_identifier" | "arrow_renamed_identifier" => {
                 had_selector_group = true;
-                if let Some(name) = child.child_by_field_name("name") {
-                    selectors.push(text(name, bytes).to_string());
-                }
+                rename(child, bytes, &mut selectors, &mut renamed);
             }
             "namespace_selectors" => {
                 had_selector_group = true;
@@ -95,9 +97,7 @@ fn import_fact(node: Node, bytes: &[u8]) -> Option<ImportFact> {
                         "identifier" => selectors.push(text(sel, bytes).to_string()),
                         "namespace_wildcard" => wildcard = true,
                         "as_renamed_identifier" | "arrow_renamed_identifier" => {
-                            if let Some(name) = sel.child_by_field_name("name") {
-                                selectors.push(text(name, bytes).to_string());
-                            }
+                            rename(sel, bytes, &mut selectors, &mut renamed);
                         }
                         _ => {}
                     }
@@ -121,8 +121,27 @@ fn import_fact(node: Node, bytes: &[u8]) -> Option<ImportFact> {
     Some(ImportFact {
         prefix: path.join("."),
         selectors,
+        renamed,
         wildcard,
     })
+}
+
+fn rename(
+    node: Node,
+    bytes: &[u8],
+    selectors: &mut Vec<String>,
+    renamed: &mut Vec<(String, String)>,
+) {
+    let Some(name) = node.child_by_field_name("name") else {
+        return;
+    };
+    selectors.push(text(name, bytes).to_string());
+    if let Some(alias) = node.child_by_field_name("alias") {
+        renamed.push((
+            text(name, bytes).to_string(),
+            text(alias, bytes).to_string(),
+        ));
+    }
 }
 
 /// Every `extends_clause` type name under `node`, at any depth: `Bar` from
@@ -178,40 +197,56 @@ mod tests {
             ImportFact {
                 prefix: "repo".into(),
                 selectors: vec!["UserRepository".into()],
+                renamed: vec![],
                 wildcard: false,
             },
             ImportFact {
                 prefix: "com.foo".into(),
                 selectors: vec![],
+                renamed: vec![],
                 wildcard: true,
             },
             ImportFact {
                 prefix: "http".into(),
                 selectors: vec!["Request".into(), "Response".into()],
+                renamed: vec![],
                 wildcard: false,
             },
             ImportFact {
                 prefix: "a.b".into(),
                 selectors: vec!["C".into()],
+                renamed: vec![("C".into(), "D".into())],
                 wildcard: true,
             },
             ImportFact {
                 prefix: "a".into(),
                 selectors: vec!["B".into(), "D".into()],
+                renamed: vec![("B".into(), "C".into())],
                 wildcard: false,
             },
             ImportFact {
                 prefix: "Tables".into(),
                 selectors: vec![],
+                renamed: vec![],
                 wildcard: true,
             },
             ImportFact {
                 prefix: "a.b".into(),
                 selectors: vec!["Conf".into()],
+                renamed: vec![("Conf".into(), "Config".into())],
                 wildcard: false,
             },
         ];
         assert_eq!(got, want);
+    }
+
+    #[test]
+    fn a_rename_keeps_its_alias_in_both_spellings() {
+        let got = imports_of("import a.b.{C => D, E}\nimport a.b.F as G\n");
+        assert_eq!(got[0].selectors, vec!["C".to_string(), "E".to_string()]);
+        assert_eq!(got[0].renamed, vec![("C".to_string(), "D".to_string())]);
+        assert_eq!(got[1].selectors, vec!["F".to_string()]);
+        assert_eq!(got[1].renamed, vec![("F".to_string(), "G".to_string())]);
     }
 
     #[test]
