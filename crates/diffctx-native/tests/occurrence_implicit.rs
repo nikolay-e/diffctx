@@ -249,7 +249,7 @@ fn only_a_root_module_variable_and_output_are_set_from_outside() {
         );
         assert!(
             kinds("modules/net/main.tf", Known::default()).is_empty(),
-            "{at} of a module no root evidence names"
+            "{at} of a module a call of the repository sources"
         );
     }
 }

@@ -421,11 +421,6 @@ pub enum Fact {
     /// A string literal held as a callable's name, a shell command or the value
     /// of a named assignment.
     HeldString(HeldString),
-    /// A `terraform` block's `backend` or `cloud` block: the module keeps a state
-    /// of its own, so it is applied as a root.
-    StateBackend {
-        site: Span,
-    },
     /// A call that reaches a definition by a name the code computes: `getattr(obj,
     /// name)`, `eval`, `exec`, `globals()[key]`, `Lib.class.getMethod(name)`.
     /// `member` is set when only a member of a class can be what it reaches;
@@ -461,7 +456,7 @@ impl Fact {
             Self::ConfigRelease(release) => &release.site,
             Self::ShellPath(path) => &path.site,
             Self::HeldString(held) => &held.site,
-            Self::StateBackend { site } | Self::ComputedName { site, .. } => site,
+            Self::ComputedName { site, .. } => site,
         }
     }
 
@@ -484,9 +479,8 @@ impl Fact {
             Self::ConfigUse(_) => 13,
             Self::ConfigRelease(_) => 14,
             Self::ShellPath(_) => 15,
-            Self::StateBackend { .. } => 16,
-            Self::HeldString(_) => 17,
-            Self::ComputedName { .. } => 18,
+            Self::HeldString(_) => 16,
+            Self::ComputedName { .. } => 17,
         }
     }
 }
