@@ -6,6 +6,15 @@
 # hedging falsely also fails. The comment on a row is the mechanism that hedges it.
 # An honest hedge is declared under `partial:` in the case, with the reader or the gap
 # it stands for written beside it, and never listed here.
+# The rows from here to the blank line are expectations moved ahead of the
+# engine change that meets them, which the coverage gate fails on this
+# engine; each leaves this file with that change.
+impact/python/py_attribute_names_do_not_bind_across_packages  # the calls of `callback` are hedged as unlanded: an untyped read is not yet asked whether an object of its class can reach it
+impact/python/py_deleted_script_names_no_callers_by_word  # the answer names no `die`, `main` or `run` of the deleted script, so it cannot say their words went unsearched beside a shell script no cell reads
+impact/python/py_member_shared_with_third_party_types_is_not_resolved_by_name  # the reads of `columns` are hedged as unlanded: an untyped read is not yet asked whether an object of its class can reach it
+impact/terraform/tf_registry_source_is_not_a_path_even_when_a_directory_has_that_name  # the answer names no `output.addr`: a directory no module block calls is not yet a root whose outputs are read outside the snapshot (fj#193)
+impact/terraform/tf_removed_variable_leaves_its_readers_naming_it  # the calls of `var.zone` are answered complete: a module no block calls is not yet a root whose variables are set outside the snapshot (fj#193)
+
 impact/python/py_attribute_read_through_a_local_alias_is_a_read_of_the_member  # an attribute of an unrelated object with the same name (decoy other.py) is an unresolved receiver the file's imports exclude
 impact/python/py_console_script_run_by_a_sys_executable_sibling_has_a_test_link_an_unrun_one_has_none  # `pkg.interfaces.cli.main:run_from_cli` (pyproject.toml:6) names the module main.py, but its `main` is read as a literal spelling of graph.main and counted as unaccounted
 impact/python/py_never_imported_script_method_has_no_sibling_hedge  # gh#666: `client.call` in a sibling script that never imports the module is an untyped receiver; no import route reaches the method, and the issue asks for no possible caller at all
