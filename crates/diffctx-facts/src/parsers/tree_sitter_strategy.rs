@@ -269,7 +269,13 @@ const LANG_CONFIGS: &[LangConfig] = &[
     LangConfig {
         extensions: &[".erl", ".hrl"],
         ts_name: "erlang",
-        definition_types: &["function_clause", "type_spec", "attribute"],
+        definition_types: &[
+            "function_clause",
+            "type_spec",
+            "attribute",
+            "type_alias",
+            "opaque",
+        ],
     },
     LangConfig {
         extensions: &[".jl"],
@@ -1266,6 +1272,11 @@ fn unwrap_declarator<'a>(mut name_node: Node<'a>) -> Node<'a> {
                     None => break,
                 }
             }
+            // An Erlang `-type price() :: …` names its type through `price()`.
+            "type_name" => match name_node.child_by_field_name("name") {
+                Some(inner) => name_node = inner,
+                None => break,
+            },
             _ => break,
         }
     }
