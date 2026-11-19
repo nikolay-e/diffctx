@@ -1073,10 +1073,11 @@ fn tsconfig_paths_and_base_url_land_through_the_project() {
     );
 }
 
-/// A package is found by the name its manifest gives it, through `exports`, and
-/// only by a project that declares the dependency.
+/// A package is found by the name its manifest gives it, through `exports`, by a
+/// project that declares the dependency and by another member of its workspace,
+/// which the package manager's hoisting lets resolve it undeclared.
 #[test]
-fn workspace_packages_land_by_name_through_a_declared_dependency() {
+fn workspace_packages_land_by_name_declared_or_hoisted() {
     let fx = snapshot(&[
         (
             "package.json",
@@ -1130,13 +1131,13 @@ fn workspace_packages_land_by_name_through_a_declared_dependency() {
     );
     assert_eq!(
         fx.lands_at("packages/stray/src/main.ts", "make", 4),
-        "unresolved(OutsideProject)"
+        "packages/core/src/make.ts::make"
     );
 }
 
-/// A bare package name never crosses a project root without a declared
-/// dependency; a relative file specifier names its file, whatever project
-/// either belongs to (gh#711).
+/// A bare package name never crosses into a project that shares no workspace
+/// with it without a declared dependency; a relative file specifier names its
+/// file, whatever project either belongs to (gh#711).
 #[test]
 fn only_a_bare_package_name_needs_a_declared_dependency() {
     let fx = snapshot(&[
