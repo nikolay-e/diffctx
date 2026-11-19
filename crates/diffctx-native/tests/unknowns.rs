@@ -2573,6 +2573,37 @@ fn a_script_guard_and_a_program_main_are_entry_points_not_callers() {
     assert_no_negative_claim(&md);
 }
 
+/// A Scala file has no cell, so its imports are read off its text: an entry
+/// annotation imported from a framework package is that framework's, one
+/// imported from any other package may be one, a plain method is neither.
+#[test]
+fn a_scala_entry_annotation_is_judged_by_the_package_the_file_imports_it_from() {
+    let api = |hello: &str, tick: &str| {
+        format!(
+            "package app\n\nimport org.springframework.web.bind.annotation.{{GetMapping, PostMapping => Post}}\nimport com.example.bus.Subscribe\n\nclass Api {{\n  @GetMapping(\"/hello\")\n  def hello(name: String): String = {hello}\n\n  @Subscribe\n  def onTick(e: Any): Int = {tick}\n\n  @Post(\"/x\")\n  def post(): Int = {tick}\n\n  def plain(): Int = {tick}\n}}\n"
+        )
+    };
+    let (before, after) = (api("\"hi\"", "1"), api("\"hello\"", "2"));
+    let scala = repo(
+        &[("src/main/scala/app/Api.scala", &before)],
+        &[("src/main/scala/app/Api.scala", &after)],
+    );
+    let md = impact_markdown(scala.path());
+    assert!(
+        md.contains("Api.scala::hello (7-8) — registered by `GetMapping` — reached through the framework, not traced"),
+        "{md}"
+    );
+    assert!(
+        md.contains("Api.scala::onTick (10-11) — entry point: may be entered by the framework (annotation `@Subscribe` from com.example.bus)"),
+        "{md}"
+    );
+    assert!(
+        md.contains("Api.scala::post (13-14) — registered by `PostMapping`"),
+        "{md}"
+    );
+    assert!(!md.contains("Api.scala::plain (16-16) — "), "{md}");
+}
+
 /// Forgejo #108, #679, #107: a framework-registered handler and a
 /// `do_<METHOD>` of an HTTP handler class are reached through the framework.
 /// A handler no test spells reads as registered, not as untested; the
