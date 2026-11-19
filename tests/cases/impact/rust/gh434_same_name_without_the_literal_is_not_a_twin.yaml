@@ -1,0 +1,25 @@
+name: gh434_same_name_without_the_literal_is_not_a_twin
+mode: impact
+source: gh#434
+issue_state: open
+tags:
+- rust
+- python
+- cochange
+repo:
+  initial_files:
+    src/main.rs: |
+      pub fn empty_hint(n: usize) -> &'static str {
+          if n == 0 { "nothing changed" } else { "changed" }
+      }
+    py/_app.py: |
+      def empty_hint(n):
+          return "all clear" if n == 0 else "changed"
+  changed_files:
+    src/main.rs: |
+      pub fn empty_hint(n: usize) -> &'static str {
+          if n == 0 { "no changes" } else { "changed" }
+      }
+  commit_message: reword hint
+expect:
+  not_named_by: [py/_app.py]
