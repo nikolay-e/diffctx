@@ -1081,7 +1081,13 @@ impl Changed {
     /// of its own file: the file names it, and the path a second time would make it
     /// two names.
     pub fn symbol(&self) -> Option<String> {
-        (!(self.kind == DefKind::Module && self.name == self.file)).then(|| self.display_name())
+        (!self.named_by_its_path()).then(|| self.display_name())
+    }
+
+    /// Whether the definition is the program of its file, named by the file's path
+    /// (a shell script): a reader spells that path, never a word of it.
+    pub fn named_by_its_path(&self) -> bool {
+        self.kind == DefKind::Module && self.name == self.file
     }
 
     /// The names a renamed definition left: files outside the analysed code may

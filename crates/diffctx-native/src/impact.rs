@@ -1652,7 +1652,15 @@ fn literal_base(symbol: &str) -> &str {
 
 /// The words a reader may still spell for the names `def` was renamed from.
 fn left_words(def: &decide::Changed) -> impl Iterator<Item = &str> {
-    def.left_names().map(literal_base)
+    def.left_names()
+        .filter(|_| !def.named_by_its_path())
+        .map(literal_base)
+}
+
+/// The word a reader spells for `def`: none for a script named by its path, whose
+/// last dotted part is its extension (`sh`), the word that runs every script.
+fn spelled_word(def: &decide::Changed) -> Option<&str> {
+    (!def.named_by_its_path()).then(|| literal_base(&def.name))
 }
 
 /// The word a reader spells for `core`.
@@ -1783,8 +1791,11 @@ impl UntracedNamers {
         verdict: &decide::Verdict,
     ) {
         let mut spelled = self.literal_spellings(sym, def, verdict);
-        let word = literal_base(&def.name);
         let own = crate::vocabulary::family::Group::of_name(&sym.path);
+        let Some(word) = spelled_word(def) else {
+            Self::disclose(sym, spelled);
+            return;
+        };
         if searched_as_text(word) {
             let named = |p: &str| spelled.iter().chain(&sym.missed_in).any(|f| f.path == p);
             let fresh: Vec<UnanalysedFile> = self
@@ -1816,7 +1827,7 @@ impl UntracedNamers {
             def.kind,
             crate::facts::DefKind::Method | crate::facts::DefKind::Constructor
         );
-        for name in std::iter::once(def.name.as_str()).chain(left_words(def)) {
+        for name in spelled_word(def).into_iter().chain(left_words(def)) {
             let assigned = self
                 .naming(literal_base(name), |p| {
                     sets_variable && extension(p) == "hcl"
@@ -3926,12 +3937,12 @@ pub fn build_impact(
         let removed: Vec<&str> = cell_removed
             .iter()
             .chain(&cell_apart)
-            .map(|e| e.name.as_str())
+            .filter_map(spelled_word)
             .collect();
         let own: Vec<keys::OwnSpan> = cell_defs
             .values()
             .chain(&cell_apart)
-            .map(|e| (e.file.clone(), literal_base(&e.name).to_string(), e.lines))
+            .filter_map(|e| spelled_word(e).map(|name| (e.file.clone(), name.to_string(), e.lines)))
             .chain(
                 cores
                     .iter()
