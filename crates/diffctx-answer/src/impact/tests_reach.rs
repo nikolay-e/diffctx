@@ -82,6 +82,9 @@ pub(super) struct TestsReach<'a> {
     /// change does not touch and nothing links to are still tests in view
     /// (#123), so an absent link is a finding and not a blank.
     repo_tests: bool,
+    /// The run's pathspecs left a test file of the repository unread: it may reach
+    /// any definition, so no search above one is closed (fj#240).
+    tests_outside_scope: bool,
     /// `tested_by` per fragment: callers repeat across changed symbols, and
     /// each answer walks every test fragment.
     memo: RefCell<FxHashMap<FragmentId, (Vec<TestLink>, bool)>>,
@@ -233,7 +236,11 @@ impl<'a> TestsReach<'a> {
             && runs.is_empty()
             && doctests.is_empty()
             && asserted.is_empty()
-            && repo_holds_test_file(state, &declared);
+            && repo_holds_test_file(state, &declared, |_| true);
+        let tests_outside_scope = !state.scope.is_empty()
+            && repo_holds_test_file(state, &declared, |path| {
+                !diffctx_snapshot::source::in_scope(&state.root_dir, path, &state.scope)
+            });
         Self {
             state,
             cells,
@@ -249,6 +256,7 @@ impl<'a> TestsReach<'a> {
             asserted,
             text_reach: OnceCell::new(),
             repo_tests,
+            tests_outside_scope,
             memo: RefCell::default(),
             stops: RefCell::default(),
             above: RefCell::default(),
@@ -746,7 +754,8 @@ impl<'a> TestsReach<'a> {
     /// no test names), a test asserts a string of `f` too many files spell to name
     /// it, or the run stopped. An absence needs a closed search.
     pub(super) fn open_above(&self, f: &'a Fragment, link: &Link, own: bool) -> bool {
-        (own && self.stops(f, link))
+        self.tests_outside_scope
+            || (own && self.stops(f, link))
             || self
                 .asserted
                 .iter()
@@ -863,12 +872,17 @@ fn asks_for(f: &Fragment, name: &str) -> Option<u32> {
 }
 
 /// Whether the tree the run reads holds any test file, linked or not.
-fn repo_holds_test_file(state: &ScoredState, declared: &DeclaredTests) -> bool {
+fn repo_holds_test_file(
+    state: &ScoredState,
+    declared: &DeclaredTests,
+    wanted: impl Fn(&Path) -> bool,
+) -> bool {
     match state.run.source().list() {
         Ok(listing) => state.run.bounded(&listing.blobs).any(|b| {
-            declared.runs(&diffctx_base::paths::to_posix_display(
-                b.path.to_string_lossy(),
-            ))
+            wanted(&b.path)
+                && declared.runs(&diffctx_base::paths::to_posix_display(
+                    b.path.to_string_lossy(),
+                ))
         }),
         Err(_) => false,
     }
