@@ -1350,11 +1350,12 @@ fn a_parenthesised_call_is_a_caller_and_an_arrow_parameter_still_shadows() {
     );
 }
 
-/// #425: an `Any` receiver and an object from a factory classmethod
-/// (`await Model.from_config(…)`) are possible callers; a receiver
-/// annotated with another class is not.
+/// #425: an `Any` receiver is a possible caller; an object a factory
+/// classmethod builds with `cls()` (`await Model.from_config(…)`) is the
+/// class's own, so its call resolves; a receiver annotated with another class
+/// is no caller.
 #[test]
-fn any_receivers_and_class_factories_are_possible_callers() {
+fn any_receivers_are_possible_callers_and_class_factories_resolve() {
     let model = "class Model:\n    @classmethod\n    async def from_config(cls, cfg):\n        return cls()\n\n    async def search(self, q):\n        return q\n";
     let tmp = repo(
         &[
@@ -1373,10 +1374,14 @@ fn any_receivers_and_class_factories_are_possible_callers() {
     let doc = impact(tmp.path());
     assert_eq!(
         callers(&doc, "search", "candidate"),
-        vec!["use.py::from_factory", "use.py::research"],
+        vec!["use.py::research"],
         "{doc}"
     );
-    assert!(callers(&doc, "search", "resolved").is_empty(), "{doc}");
+    assert_eq!(
+        callers(&doc, "search", "resolved"),
+        vec!["use.py::from_factory"],
+        "{doc}"
+    );
 }
 
 /// #474: a specifier naming the repository's own workspace package resolves
