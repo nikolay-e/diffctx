@@ -121,8 +121,8 @@ struct Sig {
     type_params: Vec<(String, Vec<String>)>,
     /// The classes `@ExtensionMethod(A.class, b.B.class)` names, as written.
     extensions: Vec<String>,
-    /// The outer names of the types a method returns, `ResponseEntity`, `List`,
-    /// `Optional`, `Mono` and `Flux` unwrapped to what they carry.
+    /// The outer names of the types a method returns and of every type argument
+    /// it writes, at any depth.
     returns: Vec<String>,
 }
 
@@ -276,13 +276,19 @@ fn is_getter(rec: &DefRec<Sig>) -> bool {
         && rec.sig.declared.as_deref().is_some_and(|t| t != "void")
 }
 
-/// The types a response body of the written type carries.
-const BODY_WRAPPERS: [&str; 5] = ["ResponseEntity", "List", "Optional", "Mono", "Flux"];
-
-/// The outer names of the types written as `written` carries, unwrapping the
-/// wrappers a response body travels in: `ResponseEntity<List<User>>` is `User`.
+/// The outer names of every type `written` names, at any depth: a response body
+/// carries `Page<User>`, `Map<String, List<User>>` and a project's own wrapper
+/// alike, so each type argument is a payload.
 fn payload_types(written: &str, out: &mut Vec<String>) {
     let mut written = written.trim();
+    if let Some(bound) = written.strip_prefix('?') {
+        let bound = bound.trim();
+        written = bound
+            .strip_prefix("extends")
+            .or_else(|| bound.strip_prefix("super"))
+            .unwrap_or(bound)
+            .trim();
+    }
     if written.starts_with('<') {
         let mut level = 0usize;
         let end = written.char_indices().find(|(_, c)| {
@@ -302,25 +308,24 @@ fn payload_types(written: &str, out: &mut Vec<String>) {
     let Some(name) = outer_name(head) else {
         return;
     };
-    match arguments {
-        Some(inside) if BODY_WRAPPERS.contains(&name.as_str()) => {
-            let mut level = 0usize;
-            let mut start = 0;
-            for (at, c) in inside.char_indices() {
-                match c {
-                    '<' => level += 1,
-                    '>' => level = level.saturating_sub(1),
-                    ',' if level == 0 => {
-                        payload_types(&inside[start..at], out);
-                        start = at + 1;
-                    }
-                    _ => {}
-                }
+    out.push(name);
+    let Some(inside) = arguments else {
+        return;
+    };
+    let mut level = 0usize;
+    let mut start = 0;
+    for (at, c) in inside.char_indices() {
+        match c {
+            '<' => level += 1,
+            '>' => level = level.saturating_sub(1),
+            ',' if level == 0 => {
+                payload_types(&inside[start..at], out);
+                start = at + 1;
             }
-            payload_types(&inside[start..], out);
+            _ => {}
         }
-        _ => out.push(name),
     }
+    payload_types(&inside[start..], out);
 }
 
 fn parse_sig(kind: DefKind, text: &str) -> Sig {
@@ -623,6 +628,17 @@ impl<'w> Engine<'w> {
                     &Name::new(returned.as_str()),
                 ) {
                     classes.extend(ids);
+                }
+            }
+        }
+        // A serialized class carries the getters it inherits from a project base.
+        let mut pending: Vec<usize> = classes.iter().copied().collect();
+        while let Some(class) = pending.pop() {
+            for sup in self.supers_of(class).iter() {
+                if let Super::Repo(id) = sup {
+                    if classes.insert(*id) {
+                        pending.push(*id);
+                    }
                 }
             }
         }
