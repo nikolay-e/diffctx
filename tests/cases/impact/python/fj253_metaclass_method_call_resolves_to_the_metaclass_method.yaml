@@ -1,0 +1,38 @@
+name: fj253_metaclass_method_call_resolves_to_the_metaclass_method
+mode: impact
+source: fj#253
+issue_state: open
+tags: [python, metaclass, absence-claim]
+repo:
+  initial_files:
+    m/__init__.py: ""
+    m/model.py: |
+      class Meta(type):
+          def create(cls):
+              return cls()
+
+
+      class Model(metaclass=Meta):
+          pass
+    m/use.py: |
+      from m.model import Model
+
+
+      def build():
+          return Model.create()
+  changed_files:
+    m/model.py: |
+      class Meta(type):
+          def create(cls):
+              return cls() or None
+
+
+      class Model(metaclass=Meta):
+          pass
+  commit_message: "meta: create may return nothing"
+# `create` is no member of `Model` but of its metaclass: the class and every
+# base known is no proof that nothing named `create` is there.
+expect:
+  changed: [m/model.py::Meta.create]
+  relations:
+    - {from: "m/use.py::build", to: "m/model.py::Meta.create", kind: calls, resolution: resolved, site: 5}
