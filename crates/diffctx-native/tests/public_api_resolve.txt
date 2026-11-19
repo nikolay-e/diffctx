@@ -176,7 +176,7 @@ vocabulary::family::Resolver::exports fn (&self, file: &str, workspace: &Workspa
 vocabulary::family::Resolver::external_sources fn (&self) -> usize
 vocabulary::family::Resolver::losses fn (&self) -> &[Loss]
 vocabulary::family::Resolver::modules_named fn (&self, dotted: &str) -> Vec<RepoPath>
-vocabulary::family::Resolver::name_computers fn ( &self, member: bool, classes: &[Name], may_reach: impl Fn(&str) -> bool, ) -> usize
+vocabulary::family::Resolver::name_computers fn ( &self, member: bool, builds: bool, classes: &[Name], may_reach: impl Fn(&str) -> bool, ) -> usize
 vocabulary::family::Resolver::open fn ( family: Family, ctx: &AnalysisContext, side: SideTag, cache: &FactsCache, ) -> Result<Self>
 vocabulary::family::Resolver::read_paths fn (&self) -> &[RepoPath]
 vocabulary::family::Resolver::references_to fn (&self, key: &DefKey) -> Vec<&Binding>

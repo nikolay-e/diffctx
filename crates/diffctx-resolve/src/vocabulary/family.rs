@@ -285,13 +285,14 @@ impl Resolver {
     pub fn name_computers(
         &self,
         member: bool,
+        builds: bool,
         classes: &[Name],
         may_reach: impl Fn(&str) -> bool,
     ) -> usize {
         match self {
-            Self::Python(r) => r.name_computers(member, classes, may_reach),
-            Self::Kotlin(r) => r.name_computers(member, classes, may_reach),
-            Self::Java(r) => r.name_computers(member, classes, may_reach),
+            Self::Python(r) => r.name_computers(member, builds, classes, may_reach),
+            Self::Kotlin(r) => r.name_computers(member, builds, classes, may_reach),
+            Self::Java(r) => r.name_computers(member, builds, classes, may_reach),
             _ => 0,
         }
     }
