@@ -7,7 +7,7 @@ use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
 use super::{Claim, Reading, encloses};
-use crate::facts::{DefKey, Fact, FileFacts, Name, Scope, UseKind};
+use crate::facts::{DefKey, Fact, FileFacts, Name, Receiver, Scope, UseKind};
 use crate::resolve::{Binding, Definition, Relation, Resolution, UnresolvedReason};
 use crate::snapshot::RepoPath;
 use crate::snapshot::workspace::{Ecosystem, WorkspaceModel};
@@ -206,6 +206,30 @@ impl Reading<'_> {
             && !(self.file.blob.facts.iter()).any(|fact| matches!(fact, Fact::ComputedImport(_)))
     }
 
+    /// Whether the read's chain starts at a name nothing in the file binds (`Svc.fetch` where no
+    /// import, definition or local is `Svc`): what binds it at run time is unseen, so no import
+    /// the file lacks proves that the subject's class cannot be there.
+    fn unbound_head(&self, binding: &Binding) -> bool {
+        let head = self.file.blob.facts.iter().find_map(|fact| match fact {
+            Fact::Reference(r)
+                if r.site.bytes == binding.site.bytes
+                    && matches!(r.receiver, Receiver::Unknown) =>
+            {
+                r.qualifier.first()
+            }
+            _ => None,
+        });
+        let Some(head) = head else {
+            return false;
+        };
+        !self
+            .imports
+            .iter()
+            .any(|import| self.binds(import, head.as_str().as_bytes()))
+            && !self.locals.iter().any(|local| local.name == *head)
+            && !self.file.defs().any(|def| def.local.name == *head)
+    }
+
     /// The claim of an untyped member read: not ours when nothing brings an object of the
     /// subject's class to the receiver (no import, entry or run-time load of the file can, and
     /// the receiver is no parameter of a function something outside the code enters: a test, a
@@ -232,7 +256,7 @@ impl Reading<'_> {
             .borrow_mut()
             .entry((file.clone(), subject.clone()))
             .or_insert_with(cut);
-        if cut && !entered {
+        if cut && !entered && !self.unbound_head(binding) {
             Claim::not_ours(relation, Witness::Unreached(file.clone()))
         } else {
             Claim::candidate(relation, Reason::Unresolved(reason))
