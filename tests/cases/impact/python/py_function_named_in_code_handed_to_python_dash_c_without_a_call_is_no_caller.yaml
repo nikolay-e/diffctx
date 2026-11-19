@@ -1,0 +1,26 @@
+name: py_function_named_in_code_handed_to_python_dash_c_without_a_call_is_no_caller
+mode: impact
+source: synthetic
+tags: [python, literal-name, carried-code, decoy]
+repo:
+  initial_files:
+    lib/util.py: |
+      def slugify(text):
+          return text.lower()
+    tools/say.py: |
+      import subprocess
+      import sys
+
+
+      def say():
+          subprocess.run([sys.executable, "-c", "print('slugify is not called here')"])
+  changed_files:
+    lib/util.py: |
+      def slugify(text):
+          return text.lower().replace(" ", "-")
+  commit_message: "util: slugify joins words with dashes"
+expect:
+  exact: true
+  callers: {slugify: []}
+  decoys:
+    lib/util.py::slugify: [tools/say.py]
