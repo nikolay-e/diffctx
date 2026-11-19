@@ -4687,7 +4687,9 @@ pub fn build_impact(
     }
     // The definition has no fragment of its own (a one-line class holds its
     // method on its own lines), but each use sits in one: the caller's row is
-    // that fragment's, with the test links it has.
+    // that fragment's, with the test links it has. A fragment that names no
+    // definition (a Dockerfile or a Terraform module cut as one chunk) holds the
+    // line but not the caller: the resolver's row names the stage or the block.
     let in_fragment = |row: Caller| -> Caller {
         let Some(frag) = row.sites.first().and_then(|&site| {
             let frags = files
@@ -4698,9 +4700,13 @@ pub fn build_impact(
             return row;
         };
         let found = test_links(frag, None);
+        let (symbol, lines) = match &frag.symbol_name {
+            Some(name) => (Some(name.clone()), lines_of(&frag.id)),
+            None => (row.symbol.clone(), row.lines.clone()),
+        };
         Caller {
-            symbol: frag.symbol_name.clone(),
-            lines: lines_of(&frag.id),
+            symbol,
+            lines,
             tests: found.tests,
             registered_by: found.registered_by,
             file_tested: found.file_tested,
