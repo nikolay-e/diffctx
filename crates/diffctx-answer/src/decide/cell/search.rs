@@ -137,8 +137,11 @@ impl Cell {
         let classes: Vec<Name> = (changed.subjects.iter())
             .filter_map(|s| s.key.local.container.last().cloned())
             .collect();
+        let builds = (changed.subjects.iter())
+            .filter_map(|s| self.definition(&s.key))
+            .any(|def| matches!(def.kind, DefKind::Class | DefKind::Constructor));
         let reach = |file: &str| self.ctx.workspace.may_reference(file, &changed.file);
-        if self.head.name_computers(member, &classes, reach) > 0 {
+        if self.head.name_computers(member, builds, &classes, reach) > 0 {
             tail.push(Gap::NotTraced);
         }
         let reasons = self.stops();
