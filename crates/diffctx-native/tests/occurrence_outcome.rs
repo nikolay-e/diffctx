@@ -182,7 +182,7 @@ impl World {
     }
 
     fn outcomes(&self, subject: &Definition, file: &str, names: &[&str]) -> FileOutcomes {
-        let view = View::new(&self.files, &self.bindings, &self.definitions, true);
+        let view = View::new(&self.files, &self.bindings, &self.definitions);
         outcomes(
             &view,
             self.facts(file),
@@ -845,7 +845,7 @@ fn a_file_read_with_a_loss_makes_every_spelling_a_candidate() {
         blob: Arc::new(blob),
         ..facts.clone()
     };
-    let view = View::new(&world.files, &world.bindings, &world.definitions, true);
+    let view = View::new(&world.files, &world.bindings, &world.definitions);
     let found = outcomes(
         &view,
         &lossy,
@@ -877,7 +877,7 @@ fn a_mention_nobody_explained_is_counted_not_listed() {
         blob: Arc::new(blob),
         ..facts.clone()
     };
-    let view = View::new(&world.files, &world.bindings, &world.definitions, true);
+    let view = View::new(&world.files, &world.bindings, &world.definitions);
     let found = outcomes(
         &view,
         &read,
