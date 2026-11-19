@@ -163,6 +163,7 @@ macro_rules! shared_reader_methods {
                     site: self.span(call.range.clone()),
                     member: true,
                     class: call.class.as_deref().map(Name::new),
+                    builds: false,
                 });
             }
         }
