@@ -28,7 +28,7 @@ use diffctx_occurrence::tokens::occurrence::Standing;
 
 use diffctx_resolve::vocabulary;
 
-use super::mentions::{named_by_path, stale_references};
+use super::mentions::{named_by_path, stale_references, twin_references};
 
 use super::tests_reach::TestsReach;
 
@@ -1812,6 +1812,7 @@ pub fn build_impact(
         if query.is_none() {
             let by_module = untraced.module_refs(state, &cores, &named);
             named.extend(by_module);
+            named.extend(twin_references(state, &cores));
         }
         (named, omitted)
     };
