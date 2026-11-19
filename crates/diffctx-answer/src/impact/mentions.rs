@@ -18,6 +18,7 @@
 //! overrules the text's: a line the family resolved elsewhere names nothing here.
 
 mod spelling;
+mod twin;
 
 use std::path::Path;
 
@@ -34,6 +35,7 @@ use super::removed::{
 };
 use super::{Cells, ScoredState};
 use spelling::{Reader, Spellings};
+pub(super) use twin::twin_references;
 
 /// The kind of place a path is mentioned in.
 #[derive(Serialize, JsonSchema, Clone, Copy, PartialEq, Eq, Debug)]
