@@ -874,6 +874,34 @@ fn route_needle(label: &str) -> String {
     format!("/{}", literal.join("/"))
 }
 
+/// The lines of the head that request the route `label` (a removed handler's, so
+/// no head definition carries it): the lines a test of the run spells it on.
+pub(super) fn route_requests(
+    state: &ScoredState,
+    diff_range: Option<&str>,
+    verb: Option<&str>,
+    label: &str,
+) -> Vec<(String, u32)> {
+    let Some(label) = settled(state, label) else {
+        return Vec::new();
+    };
+    let needle = route_needle(&label);
+    let Some(spelling) = Spelling::of(EntryKind::Route, verb, &label) else {
+        return Vec::new();
+    };
+    if needle.trim_matches('/').len() < 3 {
+        return Vec::new();
+    }
+    ordered(
+        spelled_lines(state, diff_range, &[needle])
+            .rows
+            .iter()
+            .filter(|(_, _, text)| !commented(text) && spelling.spelled_by(text))
+            .map(|(path, line, _)| (path.clone(), *line))
+            .collect(),
+    )
+}
+
 /// The tests that reach the routes, commands and tools the facts state for the
 /// analysed definitions, whatever the diff touched, since the walk up from a
 /// change enters them: a test file with a line that spells the entry's key as a
