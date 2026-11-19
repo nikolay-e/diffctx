@@ -50,7 +50,8 @@ impl Extractor for HelmTemplateExtractor {
 }
 
 pub fn is_template(path: &str) -> bool {
-    Language::from_path(&RepoPath::unchecked(path.to_string())) == Some(Language::HelmTemplate)
+    let path = RepoPath::unchecked(path.replace(std::path::is_separator, "/"));
+    Language::from_path(&path) == Some(Language::HelmTemplate)
 }
 
 /// The named templates a template file defines, as `(name, lines)`: the
