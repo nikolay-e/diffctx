@@ -533,6 +533,9 @@ struct Reading {
     /// A JSON file: its values name what a JVM program binds them to (a Jackson
     /// or Gson enum constant), and no other language's definition.
     json: bool,
+    /// A web server's config: a `/name` in it is a segment of a URL path, which
+    /// reaches a program over HTTP through a route and never by a function's name.
+    served: bool,
 }
 
 impl Reading {
@@ -568,11 +571,16 @@ impl Reading {
         let php = matches!(extension.as_str(), "php" | "phtml" | "inc");
         let go = extension == "go";
         let json = diffctx_graph::keytable::is_json(path);
+        let served = extension == "conf"
+            || ["nginx", "caddyfile", "haproxy", "httpd", "apache"]
+                .iter()
+                .any(|server| name.contains(server));
         (code || values || json).then_some(Self {
             values,
             php,
             go,
             json,
+            served,
         })
     }
 }
@@ -751,6 +759,9 @@ fn spells_literally(text: &str, name: &str, reading: Reading, held: &[(HeldAs, S
         let before = text[..at].chars().next_back();
         let after = text[end..].chars().next();
         let prefixed = NAME_PREFIXES.iter().any(|p| text[..at].ends_with(p));
+        if reading.served && before == Some('/') {
+            return false;
+        }
         if (before.is_some_and(word_char) && !prefixed) || after.is_some_and(word_char) {
             return false;
         }
