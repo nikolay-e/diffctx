@@ -132,6 +132,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - "Named by path": a sentence in a config's string (a JSON dump, a
   `description:`) is no consumer, and pages and templates rank behind scripts
   and configs so the cap drops them first (Refs #673).
+- The readers of a changed key past the cap were counted under "Named by
+  path", which then printed only `- and N more` while the key list showed no
+  count. Each list now counts its own rows, in the Markdown answer and in
+  `named.by_path` and `named.by_key` (Forgejo #218).
 - A component loaded with `const Card = lazy(() => import('./Card'))` had no
   callers: the dynamic import now binds the module's default export, so the
   component it renders is a reference to it (Forgejo #106).
