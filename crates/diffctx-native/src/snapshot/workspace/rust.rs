@@ -52,7 +52,6 @@ pub struct RustCrate {
 }
 
 struct Manifest<'a> {
-    path: &'a str,
     root: &'a str,
     table: toml::Table,
 }
@@ -71,7 +70,7 @@ pub(super) fn discover(files: &Files, draft: &mut Draft) -> Result<()> {
             continue;
         };
         match toml::from_str::<toml::Table>(&text) {
-            Ok(table) => manifests.push(Manifest { path, root, table }),
+            Ok(table) => manifests.push(Manifest { root, table }),
             Err(error) => draft.unknown(
                 root,
                 Ecosystem::Cargo,
@@ -101,7 +100,12 @@ pub(super) fn discover(files: &Files, draft: &mut Draft) -> Result<()> {
         inherited.insert(manifest.root, entries);
     }
     let workspace_roots: BTreeSet<&str> = inherited.keys().copied().collect();
-    let overrides = path_overrides(files, draft)?;
+    let mut overrides = path_overrides(files, draft)?;
+    overrides.extend(
+        (manifests.iter())
+            .map(|manifest| (manifest.root.to_string(), patched_dirs(manifest)))
+            .filter(|(_, dirs)| !dirs.is_empty()),
+    );
     for manifest in &manifests {
         read_manifest(
             files,
@@ -145,6 +149,23 @@ fn path_overrides(files: &Files, draft: &mut Draft) -> Result<Vec<(String, Vec<S
         }
     }
     Ok(found)
+}
+
+/// The local crates a manifest's `[patch.<source>]` and `[replace]` tables put in place of
+/// a dependency, for the workspace it roots. A redirect to a git source or a registry
+/// leaves the repository, as the dependency it replaces does.
+fn patched_dirs(manifest: &Manifest) -> Vec<String> {
+    let sources = manifest.table.get("patch").and_then(|p| p.as_table());
+    let patches = sources
+        .into_iter()
+        .flat_map(|sources| sources.values().filter_map(|s| s.as_table()));
+    let replaced = manifest.table.get("replace").and_then(|r| r.as_table());
+    patches
+        .chain(replaced)
+        .flat_map(|table| table.values())
+        .filter_map(|spec| spec.get("path").and_then(|p| p.as_str()))
+        .filter_map(|path| join(manifest.root, path))
+        .collect()
 }
 
 /// The workspace root that owns `root`: the nearest manifest above it with a
@@ -207,10 +228,6 @@ fn read_manifest(
             dependency_tables_of(target, &mut dependency_tables);
         }
     }
-    let patched = ["patch", "replace"]
-        .iter()
-        .any(|key| table.get(*key).is_some());
-
     let owner = workspace_of(workspaces, root).and_then(|w| inherited.get(w));
 
     let mut links: Vec<String> = Vec::new();
@@ -277,14 +294,6 @@ fn read_manifest(
     let source_sets: Vec<SourceSet> = sets.collect();
     let src_root = join(root, "src").filter(|d| files.is_dir(d));
 
-    if patched {
-        draft.unknown(
-            root,
-            Ecosystem::Cargo,
-            manifest.path,
-            "[patch] or [replace] redirects dependencies this model does not follow".to_string(),
-        );
-    }
     let project = draft.project(root, Ecosystem::Cargo);
     project.root(root.to_string(), RootOrigin::Manifest);
     if let Some(src) = src_root {
