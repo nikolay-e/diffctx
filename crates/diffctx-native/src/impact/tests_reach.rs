@@ -178,7 +178,7 @@ impl<'a> TestsReach<'a> {
                         .source()
                         .read_to_string(Path::new(spelled))
                         .and_then(|text| crate::facts::local_facts(shown, &text))
-                        .is_some_and(|blob| crate::testfiles::holds_test_calls(&blob)))
+                        .is_some_and(|blob| holds_test_calls(&blob)))
             {
                 tests_at.entry(spelled).or_default().push((1, u32::MAX));
             }
@@ -864,4 +864,42 @@ fn repo_holds_test_file(state: &ScoredState, declared: &DeclaredTests) -> bool {
             .any(|b| declared.runs(&crate::paths::to_posix_display(b.path.to_string_lossy()))),
         Err(_) => false,
     }
+}
+
+/// Whether a script's facts hold a call of a test registrar: `describe(`, `it(`,
+/// `test(` or a member call on one (`describe.each(..)`, `it.only(..)`). A file a
+/// runner loads beside the code it tests is a test only when it does; `re.test(s)`
+/// is a call of `test` on something else, and so is a name the file binds itself (a
+/// definition, an import, a parameter or a local called `it`): the runner's global
+/// is not what the call reaches.
+fn holds_test_calls(blob: &crate::facts::BlobFacts) -> bool {
+    use crate::facts::{Fact, Receiver, UseKind};
+    const REGISTRARS: [&str; 3] = ["describe", "it", "test"];
+    let binds = |name: &str| {
+        blob.facts.iter().any(|fact| match fact {
+            Fact::Definition(def) => def.local.name.as_str() == name,
+            Fact::LocalBinding(local) => local.name.as_str() == name,
+            Fact::Import(import) => {
+                import.default.as_ref().is_some_and(|d| d.as_str() == name)
+                    || import.star.alias().is_some_and(|a| a.as_str() == name)
+                    || import
+                        .names
+                        .iter()
+                        .any(|(n, alias)| alias.as_ref().unwrap_or(n).as_str() == name)
+            }
+            _ => false,
+        })
+    };
+    blob.facts.iter().any(|fact| match fact {
+        Fact::Reference(r) if r.use_kind == UseKind::Call => {
+            let registrar = match r.qualifier.first() {
+                None if r.receiver == Receiver::None => Some(&r.name),
+                None => None,
+                Some(root) => Some(root),
+            };
+            registrar
+                .is_some_and(|name| REGISTRARS.contains(&name.as_str()) && !binds(name.as_str()))
+        }
+        _ => false,
+    })
 }
