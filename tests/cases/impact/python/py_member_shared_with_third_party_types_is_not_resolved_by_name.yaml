@@ -31,11 +31,10 @@ repo:
 expect:
   callers:
     columns: []
+  # `df = pd.read_csv(path)` holds what pandas hands back. No file imports
+  # models/table.py or reports/summary.py and the repository publishes no package,
+  # so no Table can reach `df`: `df.columns` is no read of the property, and the
+  # answer is complete. A published module keeps the hedge
+  # (py_published_module_nothing_imports_keeps_its_hedge).
   decoys:
     columns: [reports/summary.py]
-  partial:
-    # `df = pd.read_csv(path)`: nothing here says what an outside function hands
-    # back, so `df.columns` may or may not be a Table. The reader is not listed as
-    # a caller and the answer says the reads are not resolved, as gh#399 asks.
-    models/table.py::columns:
-      reads: unlanded
