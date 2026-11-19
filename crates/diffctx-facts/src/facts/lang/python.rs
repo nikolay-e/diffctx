@@ -629,6 +629,25 @@ impl<'t> Walker<'t> {
             .then_some(value)
     }
 
+    /// `type(<one value>)`, whatever the value is.
+    fn type_call(&self, call: Node<'t>) -> bool {
+        call.kind() == "call"
+            && call
+                .child_by_field_name("function")
+                .is_some_and(|f| self.text(f) == "type")
+            && call
+                .child_by_field_name("arguments")
+                .is_some_and(|list| list.kind() == "argument_list" && list.named_child_count() == 1)
+    }
+
+    /// `x.__class__` called, where `x` is not the method's own receiver.
+    fn builds_foreign_class(&self, cx: &Cx, chain: &[&str]) -> bool {
+        match chain {
+            [.., owner, "__class__"] => chain.len() > 2 || cx.receiver.as_deref() != Some(*owner),
+            _ => false,
+        }
+    }
+
     fn simple_chain(&self, node: Node<'t>) -> Option<Vec<&'t str>> {
         let mut parts = Vec::new();
         let mut current = node;
@@ -2400,11 +2419,21 @@ impl<'t> Walker<'t> {
         }));
     }
 
+    fn computed_class(&mut self, call: Node<'t>) {
+        self.facts.push(Fact::ComputedName {
+            site: span(call),
+            member: false,
+            class: None,
+            builds: true,
+        });
+    }
+
     fn computed_name(&mut self, call: Node<'t>, member: bool) {
         self.facts.push(Fact::ComputedName {
             site: span(call),
             member,
             class: None,
+            builds: false,
         });
     }
 
@@ -2502,15 +2531,29 @@ impl<'t> Walker<'t> {
                 "identifier" | "attribute" => {
                     callee = self.simple_chain(function);
                     self.chain(function, cx, callee_kind, depth);
+                    if callee_kind == UseKind::Call
+                        && callee
+                            .as_deref()
+                            .is_some_and(|c| self.builds_foreign_class(cx, c))
+                    {
+                        self.computed_class(node);
+                    }
                 }
                 _ => {
                     self.visit(function, cx, depth);
                     // `type(x)(..)` builds the class of `x`, as `x.__class__(..)` does.
-                    if let Some(value) = self.class_of(function) {
+                    let of = self.class_of(function);
+                    if let Some(value) = of {
                         let qualifier = [self.text(value)];
                         let receiver = self.receiver_of(cx, &qualifier);
                         let class = "__class__";
                         self.emit_ref(function, class, cx, receiver, callee_kind, &qualifier);
+                    }
+                    // The class of a value other than the method's own receiver is any class:
+                    // no name in the text says which.
+                    let own = of.is_some_and(|v| cx.receiver.as_deref() == Some(self.text(v)));
+                    if callee_kind == UseKind::Call && self.type_call(function) && !own {
+                        self.computed_class(node);
                     }
                 }
             }

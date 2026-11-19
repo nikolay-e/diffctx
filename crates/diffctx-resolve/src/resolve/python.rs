@@ -366,6 +366,20 @@ impl<'a> Engine<'a> {
         if let Some((head, resolution)) = self.head_read(f, r) {
             out.push(at(0, binding(&head, Relation::Reads, resolution)));
         }
+        // A method of the metaclass runs on the class and may build it.
+        if let Some(class) = self.metaclass_call(f, r).filter(|c| self.reachable(f, *c)) {
+            out.push(at(
+                0,
+                binding(
+                    &r.qualifier[0],
+                    Relation::Instantiates,
+                    Resolution::Candidate {
+                        targets: vec![self.ix.defs[class].key.clone()],
+                        reason: CandidateReason::Dispatch,
+                    },
+                ),
+            ));
+        }
         // The same for the members in the middle of the chain: `self.decoder`
         // in `self.decoder.decode()` is read.
         for (index, member, resolution) in self.chain_reads(f, r) {
@@ -1721,7 +1735,8 @@ impl<'a> Engine<'a> {
             Entity::Maybe(_) => Lookup::Untyped,
             // A structural type is implemented by any class that has the member.
             Entity::Instance(c) if self.is_protocol(*c) => Lookup::Any,
-            Entity::Class(c) | Entity::Instance(c) => self.class_member(*c, name, false),
+            Entity::Class(c) => self.class_object_member(*c, name),
+            Entity::Instance(c) => self.class_member(*c, name, false),
             Entity::Super(c) => self.class_member(*c, name, true),
             Entity::Def(id) => match self.ix.defs[*id].def.kind {
                 DefKind::Variable | DefKind::Constant | DefKind::Field => {
@@ -1750,6 +1765,76 @@ impl<'a> Engine<'a> {
             .map_or(Vec::new(), base_names)
             .iter()
             .any(|base| base.rsplit('.').next() == Some("Protocol"))
+    }
+
+    /// A member of the class itself as an object: the class and its bases first,
+    /// then the metaclass of any of them (`Model.create()` with `metaclass=Meta`).
+    fn class_object_member(&self, class: usize, name: &Name) -> Lookup {
+        let own = self.class_member(class, name, false);
+        let Lookup::Absent(reason) = own else {
+            return own;
+        };
+        let meta = self.metaclass_members(class, name);
+        match self.ix.primary(&meta.found) {
+            Some(id) => Lookup::Found {
+                entity: self.entity_of_def(id),
+                through: Vec::new(),
+                inherited: true,
+            },
+            None if meta.opaque && reason == UnresolvedReason::NoMember => {
+                Lookup::Absent(UnresolvedReason::ExternalBase)
+            }
+            None => Lookup::Absent(reason),
+        }
+    }
+
+    /// The members called `name` of the first metaclass, over the class and its
+    /// bases in breadth-first order, that has any, and whether a metaclass the
+    /// repository does not hold stood in the way.
+    fn metaclass_members(&self, class: usize, name: &Name) -> Members {
+        let mut queue = VecDeque::from([class]);
+        let mut seen = HashSet::new();
+        let mut members = Members::default();
+        while let Some(current) = queue.pop_front() {
+            if !seen.insert(current) {
+                continue;
+            }
+            let rec = &self.ix.defs[current];
+            let written = (rec.def.signature.as_deref()).and_then(metaclass_name);
+            if let Some(text) = written {
+                match self.resolve_dotted(rec.file, &rec.def.local.container, &text) {
+                    Entity::Class(meta) => {
+                        let held = self.class_members(meta, name, false);
+                        if !held.found.is_empty() {
+                            return held;
+                        }
+                        members.opaque |= held.opaque;
+                    }
+                    Entity::Builtin => {}
+                    _ => members.opaque = true,
+                }
+            }
+            queue.extend(self.bases(current).iter().filter_map(|base| match base {
+                Entity::Class(b) => Some(*b),
+                _ => None,
+            }));
+        }
+        members
+    }
+
+    /// The class `Class.name(..)` may build when `name` is a method of its
+    /// metaclass: the call may run `cls(..)` there.
+    fn metaclass_call(&self, f: usize, r: &Ref) -> Option<usize> {
+        if r.use_kind != UseKind::Call || r.qualifier.len() != 1 {
+            return None;
+        }
+        let scope = scope_path(&r.enclosing);
+        let (Entity::Class(class), _) = self.base_entity(f, &scope, r, 0) else {
+            return None;
+        };
+        let held = self.class_members(class, &r.name, false);
+        let meta = self.metaclass_members(class, &r.name);
+        (held.found.is_empty() && !meta.found.is_empty()).then_some(class)
     }
 
     fn class_member(&self, class: usize, name: &Name, bases_only: bool) -> Lookup {
@@ -2120,8 +2205,8 @@ fn relation_for(use_kind: UseKind, target: DefKind) -> Relation {
     }
 }
 
-/// The base classes a `class Name(A, b.B[int], metaclass=M)` signature names.
-fn base_names(signature: &str) -> Vec<String> {
+/// The comma-separated items of a class header's parentheses.
+fn header_items(signature: &str) -> Vec<String> {
     let Some(rest) = signature.strip_prefix("class ") else {
         return Vec::new();
     };
@@ -2148,6 +2233,11 @@ fn base_names(signature: &str) -> Vec<String> {
     }
     items.push(current);
     items
+}
+
+/// The base classes a `class Name(A, b.B[int], metaclass=M)` signature names.
+fn base_names(signature: &str) -> Vec<String> {
+    header_items(signature)
         .into_iter()
         .filter_map(|item| {
             let item = item.trim();
@@ -2155,6 +2245,15 @@ fn base_names(signature: &str) -> Vec<String> {
             (!item.contains('=') && is_dotted_name(head)).then(|| head.to_string())
         })
         .collect()
+}
+
+/// The `M` of a `class Name(A, metaclass=M)` signature.
+fn metaclass_name(signature: &str) -> Option<String> {
+    header_items(signature).into_iter().find_map(|item| {
+        let value = item.trim().strip_prefix("metaclass")?;
+        let value = value.trim_start().strip_prefix('=')?.trim();
+        is_dotted_name(value).then(|| value.to_string())
+    })
 }
 
 /// Whether a name that ends at `at` is the whole of its statement: nothing but
