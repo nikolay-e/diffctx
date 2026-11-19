@@ -1486,7 +1486,7 @@ struct UnreadFiles {
     /// The groups of the code no cell reads.
     code: FxHashSet<Option<crate::vocabulary::family::Group>>,
     /// The files of the groups whose cell leaves a region of a file unread (a C macro
-    /// body, a PHP template, a shell command word), by group.
+    /// body, a shell command word), by group.
     hiding: FxHashMap<crate::vocabulary::family::Group, Vec<String>>,
 }
 
@@ -1543,7 +1543,7 @@ fn hides_a_region(group: &crate::vocabulary::family::Group) -> bool {
     use crate::vocabulary::family::{Family, Group};
     matches!(
         group,
-        Group::Native | Group::Family(Family::C | Family::Php | Family::Shell)
+        Group::Native | Group::Family(Family::C | Family::Shell)
     )
 }
 
