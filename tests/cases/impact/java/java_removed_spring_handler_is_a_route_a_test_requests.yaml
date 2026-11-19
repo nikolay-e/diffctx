@@ -1,0 +1,60 @@
+name: java_removed_spring_handler_is_a_route_a_test_requests
+mode: impact
+source: fj#268
+issue_state: open
+tags: [java, spring, route, removed, tests-reach]
+repo:
+  initial_files:
+    src/main/java/demo/SessionController.java: |
+      package demo;
+
+      import org.springframework.web.bind.annotation.*;
+
+      @RestController
+      @RequestMapping("/v1")
+      public class SessionController {
+          @PatchMapping("/sessions/{sessionId}/state")
+          public String updateState(@PathVariable String sessionId) {
+              return "ok";
+          }
+
+          @GetMapping("/sessions")
+          public String list() {
+              return "[]";
+          }
+      }
+    src/test/java/demo/BoundariesIT.java: |
+      package demo;
+
+      import org.junit.jupiter.api.Test;
+      import org.springframework.beans.factory.annotation.Autowired;
+      import org.springframework.test.web.servlet.MockMvc;
+      import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
+
+      class BoundariesIT {
+          @Autowired MockMvc mvc;
+
+          @Test
+          void forbidden() throws Exception {
+              mvc.perform(patch("/v1/sessions/s1/state"));
+          }
+      }
+  changed_files:
+    src/main/java/demo/SessionController.java: |
+      package demo;
+
+      import org.springframework.web.bind.annotation.*;
+
+      @RestController
+      @RequestMapping("/v1")
+      public class SessionController {
+          @GetMapping("/sessions")
+          public String list() {
+              return "[]";
+          }
+      }
+  commit_message: "sessions: drop the state endpoint"
+expect:
+  exact: false
+  no_negative_claims: true
+  discloses: true

@@ -1,0 +1,42 @@
+name: java_entry_annotation_written_with_its_package_may_be_entered
+mode: impact
+source: synthetic
+tags: [java, entry-point, framework, annotation, qualified-name]
+repo:
+  initial_files:
+    src/main/java/org/example/app/Listener.java: |
+      package org.example.app;
+
+      public class Listener {
+          @org.example.bus.Subscribe
+          public void onOrder(Object event) {
+              System.out.println("a");
+          }
+
+          @lombok.Value
+          public int doubled(int cents) {
+              return cents * 2;
+          }
+      }
+  changed_files:
+    src/main/java/org/example/app/Listener.java: |
+      package org.example.app;
+
+      public class Listener {
+          @org.example.bus.Subscribe
+          public void onOrder(Object event) {
+              System.out.println("b");
+          }
+
+          @lombok.Value
+          public int doubled(int cents) {
+              return cents * 3;
+          }
+      }
+  commit_message: "listener: say b"
+expect:
+  exact: false
+  entry_not_tested:
+    - src/main/java/org/example/app/Listener.java::onOrder
+  untested:
+    - src/main/java/org/example/app/Listener.java::doubled

@@ -1,0 +1,84 @@
+name: java_getter_of_a_type_argument_at_any_depth_is_entered_by_jackson
+mode: impact
+source: synthetic
+tags: [java, jackson, entry-point, serialization, generics]
+repo:
+  initial_files:
+    src/main/java/org/example/app/UserController.java: |
+      package org.example.app;
+
+      import java.util.Map;
+      import org.springframework.data.domain.Page;
+      import org.springframework.http.ResponseEntity;
+      import org.springframework.web.bind.annotation.GetMapping;
+      import org.springframework.web.bind.annotation.RestController;
+
+      @RestController
+      public class UserController {
+          @GetMapping("/users")
+          public ResponseEntity<Page<UserDto>> users() {
+              return null;
+          }
+
+          @GetMapping("/teams")
+          public Map<String, Page<TeamDto>> teams() {
+              return null;
+          }
+      }
+    src/main/java/org/example/app/UserDto.java: |
+      package org.example.app;
+
+      public class UserDto {
+          public String getName() {
+              return "n";
+          }
+      }
+    src/main/java/org/example/app/TeamDto.java: |
+      package org.example.app;
+
+      public class TeamDto {
+          public String getTitle() {
+              return "t";
+          }
+      }
+    src/main/java/org/example/app/Plain.java: |
+      package org.example.app;
+
+      public class Plain {
+          public String getName() {
+              return "p";
+          }
+      }
+  changed_files:
+    src/main/java/org/example/app/UserDto.java: |
+      package org.example.app;
+
+      public class UserDto {
+          public String getName() {
+              return "n".trim();
+          }
+      }
+    src/main/java/org/example/app/TeamDto.java: |
+      package org.example.app;
+
+      public class TeamDto {
+          public String getTitle() {
+              return "t".trim();
+          }
+      }
+    src/main/java/org/example/app/Plain.java: |
+      package org.example.app;
+
+      public class Plain {
+          public String getName() {
+              return "p".trim();
+          }
+      }
+  commit_message: "dtos: trim the names"
+expect:
+  exact: false
+  entry_not_tested:
+    - src/main/java/org/example/app/UserDto.java::getName
+    - src/main/java/org/example/app/TeamDto.java::getTitle
+  untested:
+    - src/main/java/org/example/app/Plain.java::getName
