@@ -1,0 +1,51 @@
+name: tf_published_module_output_is_read_from_outside
+mode: impact
+source: synthetic
+issue_state: open
+tags: [terraform, root-module]
+repo:
+  initial_files:
+    main.tf: |
+      resource "null_resource" "this" {
+        triggers = {
+          name = var.name
+        }
+      }
+    variables.tf: |
+      variable "name" {
+        type = string
+      }
+    outputs.tf: |
+      output "id" {
+        value = null_resource.this.id
+      }
+
+      output "greeting" {
+        value = "hello"
+      }
+    versions.tf: |
+      terraform {
+        required_providers {
+          null = {
+            source = "hashicorp/null"
+          }
+        }
+      }
+  changed_files:
+    outputs.tf: |
+      output "id" {
+        value = null_resource.this.id
+      }
+
+      output "greeting" {
+        value = "hi"
+      }
+  commit_message: "greet with hi"
+expect:
+  # A module the repository publishes: nothing in it calls the module and nothing
+  # says it is applied here. Whoever calls it from another repository reads its
+  # outputs, so no clean "nothing reads it".
+  exact: false
+  changed: [outputs.tf::output.greeting]
+  no_negative_claims: true
+  discloses: true
