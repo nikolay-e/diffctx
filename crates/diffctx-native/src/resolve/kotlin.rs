@@ -1254,6 +1254,25 @@ impl<'w> Engine<'w> {
         })
     }
 
+    /// The extensions `name` of an outside type that the file does not see. A
+    /// call of that name on the type with no import of one in view may still be
+    /// one of them, through an import the code or the reader lacks; answered as
+    /// a call into outside code, it would leave them with no caller.
+    fn unseen_extensions(&self, f: usize, own: &Name, name: &Name) -> Vec<usize> {
+        self.ix
+            .extensions
+            .get(name)
+            .into_iter()
+            .flatten()
+            .copied()
+            .filter(|id| {
+                let rec = &self.ix.defs[*id];
+                matches!(&rec.def.local.disambig, Some(Disambig::ImplOf(receiver)) if receiver.as_str() == own.as_str())
+                    && self.reach(f, *id).is_ok()
+            })
+            .collect()
+    }
+
     /// A member `name` of a Swift `extension` of a type the repository does not
     /// declare (`extension Int { … }`).
     fn extension_member(
@@ -1431,9 +1450,14 @@ impl<'w> Engine<'w> {
                         self.resolved_checked(f, id, EvidenceKind::TypedReceiver),
                     );
                 }
-                None => self
-                    .foreign_holder(f, scope, held, r)
-                    .unwrap_or_else(|| unresolved(UnresolvedReason::External)),
+                None => self.foreign_holder(f, scope, held, r).unwrap_or_else(|| {
+                    let unseen = self.unseen_extensions(f, held, &r.name);
+                    if unseen.is_empty() {
+                        unresolved(UnresolvedReason::External)
+                    } else {
+                        self.candidates(&unseen, CandidateReason::UntypedReceiver)
+                    }
+                }),
             },
             Ent::Package(package) => {
                 let ids: Vec<usize> = self
