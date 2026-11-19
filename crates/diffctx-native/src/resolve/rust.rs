@@ -44,6 +44,11 @@ const MAX_CANDIDATES: usize = 24;
 const MAX_DEPTH: usize = 6;
 /// How many re-exports and globs a name may pass through.
 const MAX_HOPS: usize = 8;
+/// The types no path names, so the resolver types no receiver of one.
+const PRIMITIVES: &[&str] = &[
+    "bool", "char", "str", "f32", "f64", "i8", "i16", "i32", "i64", "i128", "isize", "u8", "u16",
+    "u32", "u64", "u128", "usize",
+];
 
 /// Names the language and its standard library bring into every module.
 const PRELUDE: &[&str] = &[
@@ -1754,8 +1759,71 @@ impl<'a> Engine<'a> {
                 None => Outcome::Unresolved(UnresolvedReason::NoMember),
             },
             Typed::Dyn(tr) => self.dispatched(site, tr, &r.name),
-            Typed::External => Outcome::Unresolved(UnresolvedReason::ExternalBase),
-            Typed::Unknown => self.untyped_outcome(site, r),
+            Typed::External => self
+                .receiver_owner(site, r, receiver)
+                .and_then(|owner| self.extension_method(site, r, &owner))
+                .unwrap_or(Outcome::Unresolved(UnresolvedReason::ExternalBase)),
+            Typed::Unknown => self
+                .receiver_owner(site, r, receiver)
+                .filter(|owner| PRIMITIVES.contains(&owner.as_str()))
+                .and_then(|owner| self.extension_method(site, r, &owner))
+                .unwrap_or_else(|| self.untyped_outcome(site, r)),
+        }
+    }
+
+    /// The name of the type a call's receiver is written as, where no field
+    /// follows it: `i32` for `x` of `x: i32`, the impl's type for `self`.
+    fn receiver_owner(&self, site: &Site, r: &Ref, receiver: &Receiver) -> Option<Name> {
+        if !r.qualifier.is_empty() {
+            return None;
+        }
+        match receiver {
+            Receiver::Typed(t) | Receiver::New(t) => t.as_str().rsplit("::").next().map(Name::new),
+            Receiver::SelfType => self.owner_name(site),
+            _ => None,
+        }
+    }
+
+    /// A trait of the repository implemented for a type it does not hold
+    /// (`impl Shout for String`, `impl Double for i32`) gives that type a method
+    /// wherever the trait is in scope; nothing else of the repository can.
+    fn extension_method(&self, site: &Site, r: &Ref, owner: &Name) -> Option<Outcome> {
+        let file = &self.ix.files[site.file];
+        let impls: Vec<usize> = self
+            .ix
+            .methods
+            .get(&r.name)?
+            .iter()
+            .copied()
+            .filter(|m| {
+                let rec = &self.ix.defs[*m];
+                rec.rest.first() == Some(owner)
+                    && matches!(rec.def.local.disambig, Some(Disambig::ImplOf(_)))
+                    && self.reachable(site.file, *m)
+                    && self.visible_from(*m, site)
+            })
+            .collect();
+        let in_scope: Vec<usize> = impls
+            .iter()
+            .copied()
+            .filter(|m| {
+                let rec = &self.ix.defs[*m];
+                rec.file == site.file
+                    || matches!(
+                        &rec.def.local.disambig,
+                        Some(Disambig::ImplOf(t)) if file.names.contains(&Name::new(t.as_str().rsplit("::").next().unwrap_or("")))
+                    )
+            })
+            .collect();
+        match in_scope.as_slice() {
+            [one] => Some(Outcome::Found(*one, EvidenceKind::TypedReceiver)),
+            [] if impls.is_empty() => None,
+            // A trait a glob or `use Trait as _` brings in is in scope though the file names it not.
+            [] => Some(Outcome::Candidates(impls, CandidateReason::UntypedReceiver)),
+            _ => Some(Outcome::Candidates(
+                in_scope,
+                CandidateReason::UntypedReceiver,
+            )),
         }
     }
 

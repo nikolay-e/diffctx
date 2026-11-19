@@ -629,8 +629,12 @@ impl<'t> Walker<'t> {
     /// The type a declaration states, for the receivers of values of it.
     fn ty_of(&self, node: Node<'t>, cx: &Cx) -> Option<Ty> {
         match node.kind() {
-            "type_identifier" | "scoped_type_identifier" | "identifier" | "scoped_identifier" => {
-                let path = path_of(self.bytes, node)?;
+            "type_identifier"
+            | "scoped_type_identifier"
+            | "identifier"
+            | "scoped_identifier"
+            | "primitive_type" => {
+                let path = type_path(self.bytes, node)?;
                 if let [only] = path.as_slice() {
                     if only == "Self" {
                         return cx.self_path.clone().map(Ty::Named);
@@ -760,7 +764,7 @@ impl<'t> Walker<'t> {
             "generic_type" => ty.child_by_field_name("type").unwrap_or(ty),
             _ => ty,
         };
-        let Some(path) = path_of(self.bytes, head) else {
+        let Some(path) = type_path(self.bytes, head) else {
             return;
         };
         let Some(self_name) = path.last().cloned() else {
@@ -1932,6 +1936,17 @@ fn path_of(bytes: &[u8], node: Node<'_>) -> Option<Vec<String>> {
             path_of(bytes, node.child_by_field_name("type")?)
         }
         _ => None,
+    }
+}
+
+/// A type's path, or the name of a primitive type, which is no path but names
+/// a type all the same (`impl Double for i32`, `x: i32`).
+fn type_path(bytes: &[u8], node: Node<'_>) -> Option<Vec<String>> {
+    match node.kind() {
+        "primitive_type" => Some(vec![
+            String::from_utf8_lossy(&bytes[node.byte_range()]).into_owned(),
+        ]),
+        _ => path_of(bytes, node),
     }
 }
 

@@ -170,6 +170,4 @@ impact/shell/sh_function_run_through_an_xargs_function_of_the_script_is_a_caller
 impact/typescript/ts_global_augmentation_of_a_builtin_type_is_called_through_it  # the call on a `string` receiver is a candidate of the member the global augmentation declares (possibly called), not a resolved caller: a builtin receiver carries no type to pick `String` by
 impact/typescript/ts_namespace_merged_into_a_class_in_another_file_reads_its_member_bare  # `defaults` read bare in another file's body of a namespace merged into the class `Foo` is a hedged read, not a resolved caller: the file's scope does not hold the other file's member
 # Name-resolution routes whose answer is wrong today: each row names what it answers wrongly.
-impact/rust/rs_extension_trait_method_is_dispatched  # fj#257: a repository trait's method on an outside type is answered as a call into outside code, so the caller that calls it is not named
-impact/rust/rs_trait_impl_for_a_primitive_type_called_through_the_type_is_a_caller  # the methods of an impl for a primitive type are no definitions, so the change is outside any
 impact/go/go_external_test_package_call_of_the_builtin_max_is_no_caller  # fj#234 open
