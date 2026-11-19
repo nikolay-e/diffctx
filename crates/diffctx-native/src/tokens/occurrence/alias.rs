@@ -131,8 +131,25 @@ fn assigned_to(file: &FileFacts, text: &[u8], at: &Range<u32>) -> Option<(Name, 
             .filter(|byte| !byte.is_ascii_whitespace())
             .collect();
         let before = byte_before(text, bytes.start);
-        (matches!(gap.as_slice(), b"=" | b":=" | b"=::" | b"=&") && before != Some(b'='))
+        (assignment(&gap) && before != Some(b'='))
             .then(|| (name.clone(), scope, store || before == Some(b'.')))
+    })
+}
+
+/// Whether the bytes between an assignment's target and an occurrence, whitespace
+/// dropped, are its operator: alone, or before the written qualifier the occurrence
+/// is the last name of (`fetch = Svc.fetch`).
+fn assignment(gap: &[u8]) -> bool {
+    if matches!(gap, b"=" | b":=" | b"=::" | b"=&") {
+        return true;
+    }
+    let qualifier = gap.strip_prefix(b":=").or_else(|| gap.strip_prefix(b"="));
+    qualifier.is_some_and(|chain| {
+        (chain.ends_with(b".") || chain.ends_with(b"::"))
+            && chain.iter().any(u8::is_ascii_alphanumeric)
+            && chain
+                .iter()
+                .all(|byte| byte.is_ascii_alphanumeric() || b"_$.:".contains(byte))
     })
 }
 
@@ -173,6 +190,30 @@ pub fn callee_of(text: &[u8], at: &Range<u32>) -> Option<Name> {
     (!path.is_empty() && !STATEMENT_KEYWORDS.contains(&path)).then(|| Name::new(path))
 }
 
+/// The members of a function value that call it, or hand it on to be called.
+const CALLING_MEMBERS: &[&[u8]] = &[
+    b"__call__",
+    b"__wrapped__",
+    b"__func__",
+    b"call",
+    b"apply",
+    b"bind",
+    b"invoke",
+    b"callAsFunction",
+];
+
+/// The member the occurrence at `at` is the receiver of: `name` in `value.name`.
+fn member_of<'t>(text: &'t [u8], at: &Range<u32>) -> Option<&'t [u8]> {
+    let rest = text.get(at.end as usize..)?.trim_ascii_start();
+    let rest = rest.strip_prefix(b"?").unwrap_or(rest);
+    let member = rest.strip_prefix(b".")?.trim_ascii_start();
+    let length = member
+        .iter()
+        .take_while(|byte| byte.is_ascii_alphanumeric() || b"_$".contains(byte))
+        .count();
+    (length > 0).then(|| &member[..length])
+}
+
 /// Whether the occurrence is an item of a collection literal written beside others or alone
 /// (`("name", fn, False)`, `[fn]`), no argument of a call: the value is held in the collection.
 fn element_of(text: &[u8], at: &Range<u32>) -> bool {
@@ -203,6 +244,11 @@ pub fn value_use(
         return None;
     }
     let unplaced = || {
+        // A member read through the value (`get_settings.cache_clear()`) places it as that
+        // member's receiver, which calls it only through a member that calls its receiver.
+        if member_of(text, at).is_some_and(|member| !CALLING_MEMBERS.contains(&member)) {
+            return None;
+        }
         let callable = matches!(
             kind,
             DefKind::Function | DefKind::Method | DefKind::Constructor
