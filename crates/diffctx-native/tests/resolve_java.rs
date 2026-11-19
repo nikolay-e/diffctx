@@ -775,6 +775,17 @@ const RED: &[(&str, &str)] = &[
          class-keyed decoy is withheld by impact, which sets a comment-only edit aside as layout, \
          so only the full pipeline judges it",
     ),
+    (
+        "impact/java/java_receiver_typed_by_a_supertype_of_a_class_names_that_class",
+        "the resolver binds a call on a `CharSequence` receiver to no method of the repository: \
+         `Shout.subSequence`, which implements it, is no candidate of `viaSupertype`",
+    ),
+    (
+        "symbol/java/java_symbol_class_method_inherited_by_an_implementer_is_a_candidate_of_the_interface_call",
+        "the resolver states the call through `Interface` resolved to its default method and \
+         leaves out `SuperClass.method`, which `SubClass` inherits and the call reaches; both \
+         are candidates of it",
+    ),
 ];
 
 #[test]
