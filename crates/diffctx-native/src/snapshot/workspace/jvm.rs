@@ -1,7 +1,9 @@
 //! Kotlin and the JVM: Gradle settings and build scripts, Maven poms, the
 //! source sets under `src/`. The scripts are read as text and never run, so
-//! a dependency a script computes is not seen; a script that reaches for
-//! another build (`includeBuild`) leaves its projects' dependencies unknown.
+//! a dependency a script computes is not seen. A build that includes another
+//! (`includeBuild`) may have any coordinate it names substituted by one of that
+//! build's projects, so each of its projects may depend on all of them; a path
+//! the settings compute leaves its projects' dependencies unknown.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -30,15 +32,15 @@ pub(super) fn discover(files: &Files, draft: &mut Draft) -> Result<()> {
         for (_, dir) in &build.modules {
             project.link_member(dir.clone());
         }
-        for dir in &build.included_builds {
-            project.link_dir(dir.clone());
-        }
-    }
-    for (root, build) in &settings {
-        if !build.included_builds.is_empty() {
-            let note = "includeBuild substitutes dependencies by coordinate".to_string();
-            for dir in std::iter::once(root).chain(build.modules.iter().map(|(_, d)| d)) {
-                draft.unknown(dir, Ecosystem::Gradle, &build.file, note.clone());
+        let substitutes = substitutes(&settings, build);
+        for dir in std::iter::once(root).chain(build.modules.iter().map(|(_, d)| d)) {
+            let project = draft.project(dir, Ecosystem::Gradle);
+            for substitute in &substitutes {
+                project.link_dir(substitute.clone());
+            }
+            if build.computed_build {
+                let note = "an included build's path is computed by the settings".to_string();
+                draft.unknown(dir, Ecosystem::Gradle, &build.file, note);
             }
         }
     }
@@ -78,7 +80,12 @@ pub(super) fn discover(files: &Files, draft: &mut Draft) -> Result<()> {
                 );
             }
             let project = draft.project(root, Ecosystem::Gradle);
-            for dir in dirs {
+            for dir in dirs.into_iter().chain(
+                build
+                    .map(|b| substitutes(&settings, b))
+                    .into_iter()
+                    .flatten(),
+            ) {
                 project.link_dir(dir);
             }
             for dir in sources {
@@ -188,6 +195,21 @@ struct Settings {
     /// `(gradle path without the leading colon, directory)`.
     modules: Vec<(String, String)>,
     included_builds: Vec<String>,
+    /// An `includeBuild` whose path is no literal.
+    computed_build: bool,
+}
+
+/// The projects that may stand in for a coordinate `build` names: each build it
+/// includes, with that build's own modules.
+fn substitutes(settings: &BTreeMap<String, Settings>, build: &Settings) -> Vec<String> {
+    let mut dirs = Vec::new();
+    for dir in &build.included_builds {
+        dirs.push(dir.clone());
+        if let Some(included) = settings.get(dir) {
+            dirs.extend(included.modules.iter().map(|(_, module)| module.clone()));
+        }
+    }
+    dirs
 }
 
 impl Settings {
@@ -280,14 +302,13 @@ fn parse_settings(root: &str, text: &str) -> Settings {
     let mut paths: Vec<String> = Vec::new();
     let mut overrides: BTreeMap<String, String> = BTreeMap::new();
     let mut included_builds = Vec::new();
+    let mut computed_build = false;
     for (index, raw) in lines.iter().enumerate() {
         let line = raw.split("//").next().unwrap_or("").trim();
         if line.starts_with("includeBuild") {
-            included_builds.extend(
-                quoted(&statement(&lines, index))
-                    .into_iter()
-                    .filter_map(|d| join(root, &d)),
-            );
+            let paths = quoted(&statement(&lines, index));
+            computed_build |= paths.is_empty();
+            included_builds.extend(paths.into_iter().filter_map(|d| join(root, &d)));
         } else if line.starts_with("include")
             && !line["include".len()..].starts_with(|c: char| c.is_alphanumeric() || c == '_')
         {
@@ -328,6 +349,7 @@ fn parse_settings(root: &str, text: &str) -> Settings {
         file: String::new(),
         modules,
         included_builds,
+        computed_build,
     }
 }
 
