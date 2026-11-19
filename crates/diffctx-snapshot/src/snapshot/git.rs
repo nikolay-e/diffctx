@@ -4,6 +4,7 @@
 //! whoever asks, so a reader used from a worker thread keeps its run's limits.
 
 use std::cell::{Cell, RefCell};
+use std::ffi::OsString;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, ChildStdout, Command, Output, Stdio};
@@ -14,6 +15,7 @@ use std::time::{Duration, Instant};
 use wait_timeout::ChildExt;
 
 use crate::snapshot::error::{Result, SnapshotError};
+use crate::snapshot::grep::Searches;
 use crate::snapshot::loss::SideTag;
 
 pub const DEFAULT_TIMEOUT_SECONDS: u64 = 60;
@@ -46,8 +48,27 @@ thread_local! {
 /// Publishes a run's limits to this thread until the guard drops: every git
 /// child the engine's questions start here ([`run_git`](crate::snapshot::run_git)
 /// and its kin) is bounded by them, as a reader is by the budget it was built with.
-pub fn enter_run(budget: RunBudget) -> RunScope {
-    RunScope(AMBIENT.with(|a| a.replace(budget)))
+pub fn enter_run(budget: RunBudget, memo: Arc<GitMemo>) -> RunScope {
+    RunScope(
+        AMBIENT.with(|a| a.replace(budget)),
+        MEMO.with(|m| m.replace(Some(memo))),
+    )
+}
+
+/// Restores the limits and the memo of the run that was current before
+/// [`enter_run`].
+pub struct RunScope(RunBudget, Option<Arc<GitMemo>>);
+
+impl Drop for RunScope {
+    fn drop(&mut self) {
+        let before = std::mem::take(&mut self.0);
+        AMBIENT.with(|a| *a.borrow_mut() = before);
+        MEMO.with(|m| *m.borrow_mut() = self.1.take());
+    }
+}
+
+thread_local! {
+    static MEMO: RefCell<Option<Arc<GitMemo>>> = const { RefCell::new(None) };
 }
 
 /// Git children this process has started: what a gate on the number of
@@ -64,13 +85,114 @@ fn start_git(cmd: &mut Command) -> std::io::Result<Child> {
     cmd.spawn()
 }
 
-/// Restores the limits of the run that was current before [`enter_run`].
-pub struct RunScope(RunBudget);
+/// What one run's read-only git commands answered, by the command asked: the
+/// same question put again in the run is read from here, not from a new child.
+/// A run's own value, never shared between runs: a repository may change
+/// between them. Only a command that cannot change the repository, and an
+/// answer git gave (success, or the 1 of "no"), is kept; a failure, a timeout
+/// and a cancellation are asked again.
+#[derive(Debug, Default)]
+pub struct GitMemo {
+    answers: Mutex<std::collections::HashMap<Asked, Arc<Mutex<Option<Output>>>>>,
+    kept_bytes: AtomicUsize,
+    derived: Mutex<std::collections::HashMap<Vec<u8>, Arc<Mutex<Option<Derived>>>>>,
+    searches: Mutex<std::collections::HashMap<(PathBuf, Option<String>), Arc<Mutex<Searches>>>>,
+}
 
-impl Drop for RunScope {
-    fn drop(&mut self) {
-        let before = std::mem::take(&mut self.0);
-        AMBIENT.with(|a| *a.borrow_mut() = before);
+type Derived = Arc<dyn std::any::Any + Send + Sync>;
+
+/// Larger answers stay unkept (a listing of a repository-sized tree), so the
+/// memo never holds more than a run could have held as one read.
+const KEPT_ANSWER_BYTES: usize = 8 * 1024 * 1024;
+const KEPT_TOTAL_BYTES: usize = 64 * 1024 * 1024;
+
+/// The git subcommands that read and never write, whose answer over one run's
+/// repository does not change: the run reads one state of it.
+const READ_ONLY: [&str; 11] = [
+    "rev-parse",
+    "rev-list",
+    "log",
+    "ls-files",
+    "ls-tree",
+    "merge-base",
+    "status",
+    "diff",
+    "diff-tree",
+    "diff-files",
+    "grep",
+];
+
+#[derive(Debug, PartialEq, Eq, Hash)]
+struct Asked {
+    dir: Option<PathBuf>,
+    args: Vec<OsString>,
+    envs: Vec<(OsString, Option<OsString>)>,
+}
+
+impl Asked {
+    /// `Some` for a command whose answer may be kept: a read-only subcommand
+    /// that takes no standard input, under the environment it names.
+    fn of(cmd: &Command) -> Option<Self> {
+        let args: Vec<OsString> = cmd.get_args().map(Into::into).collect();
+        let mut rest = args.iter();
+        let subcommand = loop {
+            let arg = rest.next()?;
+            match arg.to_str()? {
+                "-C" | "-c" => {
+                    rest.next()?;
+                }
+                option if option.starts_with('-') => {}
+                name => break name,
+            }
+        };
+        READ_ONLY.contains(&subcommand).then(|| Self {
+            dir: cmd.get_current_dir().map(Path::to_path_buf),
+            args,
+            envs: cmd
+                .get_envs()
+                .map(|(k, v)| (k.to_os_string(), v.map(OsString::from)))
+                .collect(),
+        })
+    }
+}
+
+impl GitMemo {
+    /// What a computation over this run's repository gave for `key`, the
+    /// whole of its inputs: a function of git's answers is as constant over
+    /// the run as they are. A failure is not kept.
+    fn derive<T: Clone + Send + Sync + 'static>(
+        &self,
+        key: Vec<u8>,
+        compute: impl FnOnce() -> Result<T>,
+    ) -> Result<T> {
+        let cell = Arc::clone(self.derived.lock().unwrap().entry(key).or_default());
+        let mut slot = cell.lock().unwrap();
+        if let Some(known) = slot.as_ref().and_then(|v| v.downcast_ref::<T>()) {
+            return Ok(known.clone());
+        }
+        let value = compute()?;
+        *slot = Some(Arc::new(value.clone()));
+        Ok(value)
+    }
+
+    fn answer(&self, asked: Asked, ask: impl FnOnce() -> Result<Output>) -> Result<Output> {
+        let cell = Arc::clone(self.answers.lock().unwrap().entry(asked).or_default());
+        // A second asker of the same command waits for the first's answer
+        // rather than starting its own child.
+        let mut slot = cell.lock().unwrap();
+        if let Some(known) = slot.as_ref() {
+            return Ok(known.clone());
+        }
+        let output = ask()?;
+        let kept = output.stdout.len() + output.stderr.len();
+        let answered = output.status.success() || output.status.code() == Some(1);
+        if answered
+            && kept <= KEPT_ANSWER_BYTES
+            && self.kept_bytes.fetch_add(kept, Ordering::Relaxed) + kept <= KEPT_TOTAL_BYTES
+        {
+            *slot = Some(output.clone());
+        }
+        Ok(output)
     }
 }
 
@@ -142,6 +264,8 @@ pub(crate) struct Exec {
     timeout_secs: u64,
     budget: RunBudget,
     stall_file: Option<PathBuf>,
+    /// The memo of the run on the thread that built this.
+    memo: Option<Arc<GitMemo>>,
 }
 
 /// Test hook: the file a stalled child leaves when its output stops.
@@ -224,6 +348,7 @@ impl Exec {
             timeout_secs: GIT_TIMEOUT_SECS.with(Cell::get),
             budget,
             stall_file: test_git_stall_file(),
+            memo: MEMO.with(|m| m.borrow().clone()),
         }
     }
 
@@ -300,7 +425,14 @@ impl Exec {
 
     /// A prepared command run to completion under the run's limits, whatever
     /// its exit status: the caller reads the status.
-    pub(crate) fn output(&self, mut cmd: Command) -> Result<Output> {
+    pub(crate) fn output(&self, cmd: Command) -> Result<Output> {
+        match self.memo.as_deref().zip(Asked::of(&cmd)) {
+            Some((memo, asked)) => memo.answer(asked, || self.spawned(cmd)),
+            None => self.spawned(cmd),
+        }
+    }
+
+    fn spawned(&self, mut cmd: Command) -> Result<Output> {
         cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
         let child = start_git(&mut cmd).map_err(|e| {
             if e.kind() == std::io::ErrorKind::NotFound {
@@ -310,6 +442,28 @@ impl Exec {
             }
         })?;
         supervise(child, &self.limits())
+    }
+
+    /// `compute`, once per `key` in this run when it has a memo. `key` names
+    /// every input of `compute`.
+    pub(crate) fn derived<T: Clone + Send + Sync + 'static>(
+        &self,
+        key: Vec<u8>,
+        compute: impl FnOnce() -> Result<T>,
+    ) -> Result<T> {
+        match &self.memo {
+            Some(memo) => memo.derive(key, compute),
+            None => compute(),
+        }
+    }
+
+    /// The run's fixed-string searches of `root` at `rev`; `None` outside a run.
+    pub(crate) fn searches(&self, root: &Path, rev: Option<&str>) -> Option<Arc<Mutex<Searches>>> {
+        let memo = self.memo.as_deref()?;
+        let key = (root.to_path_buf(), rev.map(str::to_string));
+        Some(Arc::clone(
+            memo.searches.lock().unwrap().entry(key).or_default(),
+        ))
     }
 
     /// `finish` for a command that reads `input` on its stdin.

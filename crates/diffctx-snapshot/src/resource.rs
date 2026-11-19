@@ -378,6 +378,8 @@ struct Inner {
     /// Answers that depend on a path alone (is it a repository, what
     /// `.diffctx/ignore` declares), asked up to seven times a run: `memoized`.
     memo: Mutex<rustc_hash::FxHashMap<(&'static str, std::path::PathBuf), Arc<Memoized>>>,
+    /// The run's read-only git answers, shared by every thread that enters it.
+    git_memo: Arc<crate::snapshot::GitMemo>,
 }
 
 #[derive(Clone)]
@@ -433,6 +435,7 @@ impl RunContext {
                 changed_lines: Mutex::new(None),
                 polls_left,
                 memo: Mutex::default(),
+                git_memo: Arc::default(),
             }),
         }
     }
@@ -691,11 +694,14 @@ impl RunContext {
     pub fn enter(&self) -> ScopedContext {
         let prev = CURRENT.with(|c| c.replace(Some(self.clone())));
         SELF_REPORTED.with(|r| r.set(0));
-        let git = crate::snapshot::enter_run(crate::snapshot::RunBudget {
-            deadline: self.inner.io_expires_at,
-            cancel: Some(self.inner.cancel.clone()),
-            read_fault: None,
-        });
+        let git = crate::snapshot::enter_run(
+            crate::snapshot::RunBudget {
+                deadline: self.inner.io_expires_at,
+                cancel: Some(self.inner.cancel.clone()),
+                read_fault: None,
+            },
+            self.inner.git_memo.clone(),
+        );
         ScopedContext { prev, _git: git }
     }
 

@@ -643,25 +643,39 @@ impl SnapshotReader {
             rows.push(parse_tree_record(record)?);
         }
         apply_floor(&mut rows);
-        // The rule files of the tree, read through this reader's own door.
-        let mut rule_files: Vec<(RepoPath, Vec<u8>)> = Vec::new();
-        for row in &rows {
-            let readable = row.decision == Decision::Admit
-                && matches!(row.mode, Mode::Regular | Mode::Executable)
-                && ignore::is_rule_file(&row.path);
-            if let (true, Some(oid)) = (readable, &row.oid) {
-                let bytes = self.read_object(&row.path, oid).inspect_err(|error| {
-                    self.record_failure(&row.path, error);
-                })?;
-                rule_files.push((row.path.clone(), bytes.to_vec()));
+        // What the tree's ignore rules say of its paths is the tree's: the
+        // readers of one run that serve it ask once, and a repeat reads no
+        // rule file either. A reader whose size cap a rule file exceeds asks
+        // again, for that file is an error to it, not a rule.
+        let ask = || -> Result<(usize, FxHashMap<String, Hit>)> {
+            // The rule files of the tree, read through this reader's own door.
+            let mut rule_files: Vec<(RepoPath, Vec<u8>)> = Vec::new();
+            for row in &rows {
+                let readable = row.decision == Decision::Admit
+                    && matches!(row.mode, Mode::Regular | Mode::Executable)
+                    && ignore::is_rule_file(&row.path);
+                if let (true, Some(oid)) = (readable, &row.oid) {
+                    let bytes = self.read_object(&row.path, oid).inspect_err(|error| {
+                        self.record_failure(&row.path, error);
+                    })?;
+                    rule_files.push((row.path.clone(), bytes.to_vec()));
+                }
             }
-        }
-        let paths: Vec<&str> = rows
-            .iter()
-            .filter(|row| row.decision == Decision::Admit)
-            .map(|row| row.path.as_str())
-            .collect();
-        let hits = ignore::check(exec, &Basis::Tree { files: &rule_files }, &paths)?;
+            let widest = rule_files.iter().map(|(_, bytes)| bytes.len()).max();
+            let paths: Vec<&str> = rows
+                .iter()
+                .filter(|row| row.decision == Decision::Admit)
+                .map(|row| row.path.as_str())
+                .collect();
+            let hits = ignore::check(exec, &Basis::Tree { files: &rule_files }, &paths)?;
+            Ok((widest.unwrap_or(0), hits))
+        };
+        let (widest, hits) = exec.derived(
+            format!("tree ignores {} {tree}", work.display()).into_bytes(),
+            ask,
+        )?;
+        let cap = usize::try_from(self.inner.admission.policy().size_cap).unwrap_or(usize::MAX);
+        let (_, hits) = if widest > cap { ask()? } else { (widest, hits) };
         self.decide_rows(&mut rows, &hits);
         Ok(rows)
     }

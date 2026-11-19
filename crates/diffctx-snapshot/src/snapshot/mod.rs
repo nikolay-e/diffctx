@@ -46,12 +46,12 @@ pub use diff::{diff_text, validate_pathspec};
 pub use error::{Result, SnapshotError};
 pub(crate) use git::SCAN_STRIDE;
 pub use git::{
-    DEFAULT_TIMEOUT_SECONDS, REPO_LOCATING_ENV, ReadFault, RunBudget, RunScope, enter_run,
+    DEFAULT_TIMEOUT_SECONDS, GitMemo, REPO_LOCATING_ENV, ReadFault, RunBudget, RunScope, enter_run,
     git_command, git_spawns, set_git_timeout,
 };
 pub use grep::{
     Row, files_with_declaration, files_with_word, files_with_word_any_case, lines_matching,
-    needle_lines, word_first_lines, word_lines,
+    needle_lines, register_needles, word_first_lines, word_lines,
 };
 pub use ignore::name_working_tree_changes;
 pub use loss::{Loss, SideTag, Stage};
