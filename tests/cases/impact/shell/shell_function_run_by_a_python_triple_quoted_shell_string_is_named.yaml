@@ -1,0 +1,43 @@
+name: shell_function_run_by_a_python_triple_quoted_shell_string_is_named
+mode: impact
+source: synthetic
+tags: [shell, literal-name, shell-string, false-absence, layout]
+repo:
+  initial_files:
+    lib/strings.sh: |
+      #!/usr/bin/env bash
+      slugify() {
+        echo "${1,,}"
+      }
+    app.py: |
+      import subprocess
+
+
+      def slug():
+          subprocess.run(
+              """
+              set -e
+              slugify abc
+              """,
+              shell=True,
+          )
+    app_line.py: |
+      import subprocess
+
+
+      def slug_line():
+          subprocess.run("""slugify abc""", shell=True)
+  changed_files:
+    lib/strings.sh: |
+      #!/usr/bin/env bash
+      slugify() {
+        printf '%s\n' "${1,,}"
+      }
+  commit_message: "strings: slugify prints through printf"
+expect:
+  exact: false
+  discloses: true
+  no_negative_claims: true
+  relations:
+    - {from: app.py, to: lib/strings.sh::slugify, kind: calls, resolution: unresolved}
+    - {from: app_line.py, to: lib/strings.sh::slugify, kind: calls, resolution: unresolved}
