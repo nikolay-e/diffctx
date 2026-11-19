@@ -33,44 +33,23 @@ pub struct TerraformResolver {
     /// The directories a module call of the repository sources: their variables
     /// are set and their outputs read by that call.
     called: HashSet<String>,
-    /// The directories that carry what a root module carries: a state backend, a
-    /// variable file or a lock file. A directory without any of them is not known to
-    /// be applied from outside.
-    applied: HashSet<String>,
 }
 
 impl TerraformResolver {
     /// Resolves every Terraform file of `side`.
     pub fn open(ctx: &AnalysisContext, side: SideTag, cache: &FactsCache) -> Result<Self> {
         let Gathered {
-            listing,
             losses,
             files,
             read,
+            ..
         } = gather_of(ctx, side, cache, Language::Terraform)?;
         let index = Index::build(files);
         let (definitions, bindings, external, called) = Engine { ix: &index }.run();
-        let by_name = listing
-            .entries
-            .iter()
-            .map(|entry| entry.path.as_str())
-            .filter(|path| is_root_file(path));
-        let by_backend = index
-            .files
-            .iter()
-            .filter(|file| {
-                (file.blob.facts.iter()).any(|fact| matches!(fact, Fact::StateBackend { .. }))
-            })
-            .map(|file| file.path.as_str());
-        let applied = by_name
-            .chain(by_backend)
-            .map(|path| dir_of(path).to_string())
-            .collect();
         Ok(Self {
             solved: Solved::new(definitions, bindings, losses, read),
             external,
             called,
-            applied,
         })
     }
 
@@ -80,19 +59,17 @@ impl TerraformResolver {
         self.external
     }
 
-    /// Whether the module `file` is in is applied from outside: no call of the
-    /// repository sources its directory and the directory holds a state backend, a
-    /// variable file or a lock file. A directory nothing calls and nothing says is
-    /// applied has no consumer outside the repository to name.
+    /// Whether the module `file` is in is entered from outside: what sets its
+    /// variables and reads its outputs (an operator's apply, another repository's
+    /// call) is not in the snapshot. So is a directory no call of the repository
+    /// sources, with or without a backend, a variable file or a lock file, none of
+    /// which a module published for others keeps (fj#193); and so is the
+    /// repository's root directory, the module a registry publishes, even where
+    /// the repository's own examples call it.
     pub fn is_root(&self, file: &str) -> bool {
         let dir = dir_of(file);
-        !self.called.contains(dir) && self.applied.contains(dir)
+        dir.is_empty() || !self.called.contains(dir)
     }
-}
-
-fn is_root_file(path: &str) -> bool {
-    let name = path.rsplit('/').next().unwrap_or(path);
-    name == ".terraform.lock.hcl" || name.ends_with(".tfvars") || name.ends_with(".tfvars.json")
 }
 
 solved_by!(TerraformResolver);

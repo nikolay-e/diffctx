@@ -6,11 +6,5 @@
 # hedging falsely also fails. The comment on a row is the mechanism that hedges it.
 # An honest hedge is declared under `partial:` in the case, with the reader or the gap
 # it stands for written beside it, and never listed here.
-# The rows from here to the blank line are expectations moved ahead of the
-# engine change that meets them, which the coverage gate fails on this
-# engine; each leaves this file with that change.
-impact/terraform/tf_registry_source_is_not_a_path_even_when_a_directory_has_that_name  # the answer names no `output.addr`: a directory no module block calls is not yet a root whose outputs are read outside the snapshot (fj#193)
-impact/terraform/tf_removed_variable_leaves_its_readers_naming_it  # the calls of `var.zone` are answered complete: a module no block calls is not yet a root whose variables are set outside the snapshot (fj#193)
-
 symbol/java/java_symbol_method_of_a_final_class_is_complete_beside_its_extensible_twin  # the answer's name_unsearched gap hedges the final class's method the case declares complete
 symbol/java/java_symbol_package_private_method_of_another_package_is_complete_beside_its_colluding_twin  # the answer's name_unsearched gap does not match the declared partial for the package-private twin

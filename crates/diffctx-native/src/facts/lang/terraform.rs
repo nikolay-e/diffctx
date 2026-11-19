@@ -353,9 +353,6 @@ impl<'t> Walker<'t> {
             // `provider`, `moved`, `import`, `check` and the rest define nothing
             // the module's own code names; what they read is the module's.
             _ => {
-                if kind == "terraform" {
-                    self.state_backend(body);
-                }
                 self.walk_body(
                     body,
                     &Cx {
@@ -364,20 +361,6 @@ impl<'t> Walker<'t> {
                     },
                     1,
                 );
-            }
-        }
-    }
-
-    /// A `backend` or `cloud` block inside a `terraform` block.
-    fn state_backend(&mut self, body: Option<Node<'t>>) {
-        for nested in body.into_iter().flat_map(children) {
-            if nested.kind() != "block" {
-                continue;
-            }
-            if let Some((kind, _, _)) = self.shape(nested) {
-                if matches!(kind, "backend" | "cloud") {
-                    self.facts.push(Fact::StateBackend { site: span(nested) });
-                }
             }
         }
     }
