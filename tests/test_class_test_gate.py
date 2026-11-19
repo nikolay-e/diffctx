@@ -129,6 +129,7 @@ def _run_gate(
     commits: list[tuple[str, dict[str, str | None]]],
     body: str = "",
     base_engine: str = "v1\n",
+    base_files: dict[str, str] | None = None,
 ) -> subprocess.CompletedProcess:
     env = _env(tmp_path)
     repo = tmp_path / "repo"
@@ -145,6 +146,7 @@ def _run_gate(
             "tests/cases/impact/python/existing.yaml": "always_green\n",
             "tests/cases/diff/algorithm/legacy.yaml": "always_green\n",
             "docs/notes.md": "notes\n",
+            **(base_files or {}),
         },
     )
     _git(repo, env, "checkout", "-q", "-b", "pr")
@@ -259,6 +261,45 @@ class TestACaseTheHeadLists:
         assert result.returncode == 1, result.stdout + result.stderr
         assert "case impact/python/fixed (listed on the head): expected green on the head" in result.stdout + result.stderr
         assert "without a failed assertion" not in result.stdout + result.stderr
+
+
+LISTED_CASE = {"tests/cases/impact/python/listed.yaml": "needs_fix\n"}
+
+
+class TestARowTheRangeTakesOff:
+    """A case the base lists and the head no longer does is the fix's witness, though its file is unchanged."""
+
+    def test_it_is_red_on_the_base_and_green_on_the_head(self, tmp_path):
+        base = {**LISTED_CASE, BASELINE: "impact/python/listed  # wrong until the fix\n"}
+        result = _run_gate(tmp_path, [("fix: stop the false clean", {ENGINE: "v2\n", BASELINE: ""})], base_files=base)
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert "case impact/python/listed is red on the base" in result.stdout
+        assert "case impact/python/listed is green on the head" in result.stdout
+
+    def test_a_false_hedge_row_counts_as_well(self, tmp_path):
+        base = {**LISTED_CASE, FALSE_HEDGES: "impact/python/listed\n"}
+        result = _run_gate(tmp_path, [("fix: stop the false hedge", {ENGINE: "v2\n", FALSE_HEDGES: ""})], base_files=base)
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert "case impact/python/listed is red on the base" in result.stdout
+
+    def test_a_row_taken_off_without_the_fix_is_refused(self, tmp_path):
+        base = {**LISTED_CASE, BASELINE: "impact/python/listed\n"}
+        result = _run_gate(tmp_path, [("fix: a fix that fixes nothing", {ENGINE: "v1 again\n", BASELINE: ""})], base_files=base)
+        assert result.returncode == 1
+        assert "case impact/python/listed: expected green on the head" in result.stdout + result.stderr
+
+    def test_a_row_whose_case_the_range_deletes_is_no_witness(self, tmp_path):
+        base = {**LISTED_CASE, BASELINE: "impact/python/listed\n"}
+        commit = {ENGINE: "v2\n", BASELINE: "", "tests/cases/impact/python/listed.yaml": None}
+        result = _run_gate(tmp_path, [("fix: stop the false clean", commit)], base_files=base)
+        assert result.returncode == 1
+        assert "no class test was added or changed" in result.stdout + result.stderr
+
+    def test_a_row_of_a_case_green_on_the_base_is_no_witness(self, tmp_path):
+        base = {BASELINE: "impact/python/existing\n"}
+        result = _run_gate(tmp_path, [("fix: stop the false clean", {ENGINE: "v2\n", BASELINE: ""})], base_files=base)
+        assert result.returncode == 1
+        assert "no class test is red on the base" in result.stdout + result.stderr
 
 
 class TestWhereEachKindOfTestRuns:
