@@ -738,33 +738,11 @@ fn cases_root() -> PathBuf {
 /// The Kotlin cases the resolver cannot answer yet, each with the reason. The
 /// list is held both ways: a listed case that turns green fails the run, as does
 /// a red case that is not listed.
-const RED: &[(&str, &str)] = &[
-    (
-        "impact/kotlin/k6_kotlin_get_method_in_the_definitions_own_file",
-        "a method named by the string of `getMethod(\"hidden\")` is no syntactic reference, so \
+const RED: &[(&str, &str)] = &[(
+    "impact/kotlin/k6_kotlin_get_method_in_the_definitions_own_file",
+    "a method named by the string of `getMethod(\"hidden\")` is no syntactic reference, so \
          the resolver binds nothing there; the answer's literal-name scan names it",
-    ),
-    (
-        "impact/kotlin/kotlin_receiver_typed_any_that_no_walk_narrows_still_names_the_class",
-        "a call on a receiver declared `Any` that no walk narrows binds no candidate in the \
-         project class that defines the method",
-    ),
-    (
-        "impact/kotlin/kotlin_receiver_typed_by_a_supertype_of_a_class_names_that_class",
-        "a call on a receiver typed by a library supertype binds no candidate in the project \
-         class that implements it",
-    ),
-    (
-        "impact/kotlin/kotlin_smart_cast_receiver_declared_any_reaches_the_narrowed_class",
-        "a receiver declared `Any` and narrowed by a smart cast (`is`, `as`, `require`, an early \
-         return) is not typed by the narrowed class",
-    ),
-    (
-        "impact/kotlin/kotlin_smart_cast_to_another_class_does_not_reach_the_changed_one",
-        "a smart cast is not followed, so the call the narrowed receiver makes on the changed \
-         class binds nothing",
-    ),
-];
+)];
 
 #[test]
 fn the_kotlin_corpus_is_answered_as_the_list_says() {
