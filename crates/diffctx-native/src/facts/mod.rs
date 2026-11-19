@@ -55,7 +55,10 @@ pub use model::{
 pub(crate) fn local_facts(path: &str, text: &str) -> Option<BlobFacts> {
     static REGISTRY: std::sync::OnceLock<Registry> = std::sync::OnceLock::new();
     let name = std::path::Path::new(path).file_name()?.to_str()?;
-    let language = Language::detect(&crate::snapshot::RepoPath::new(name).ok()?, text.as_bytes())?;
+    let Ok(name) = crate::snapshot::RepoPath::new(name) else {
+        return None;
+    };
+    let language = Language::detect(&name, text.as_bytes())?;
     let extractor = REGISTRY.get_or_init(lang::builtin).get(language)?;
     Some(extractor.extract(text.as_bytes(), &crate::snapshot::RunBudget::default()))
 }
