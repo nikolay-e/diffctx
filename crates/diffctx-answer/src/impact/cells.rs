@@ -54,6 +54,16 @@ pub(super) fn is_module_block_binding(core: &Fragment, file: &[&Fragment]) -> bo
         })
 }
 
+/// The variable a script assigns: a definition `--symbol` starts from, never a
+/// caller. A top-level `token=$(login)` runs the call once at the script's scope.
+fn is_script_variable(f: &Fragment) -> bool {
+    f.kind == FragmentKind::Variable
+        && match diffctx_base::languages::get_language_for_file(f.path()) {
+            Some(language) => language == "bash",
+            None => Path::new(f.path()).extension().is_none(),
+        }
+}
+
 /// The fragment that owns a line of use: the smallest named one around it.
 pub(super) fn cell_caller<'a>(frags: &[&'a Fragment], line: u32) -> Option<&'a Fragment> {
     frags
@@ -64,6 +74,7 @@ pub(super) fn cell_caller<'a>(frags: &[&'a Fragment], line: u32) -> Option<&'a F
                 && line <= f.end_line()
                 && f.kind != FragmentKind::Excerpt
                 && !f.kind.is_signature()
+                && !is_script_variable(f)
         })
         .min_by_key(|f| (f.symbol_name.is_none(), f.line_count()))
 }
