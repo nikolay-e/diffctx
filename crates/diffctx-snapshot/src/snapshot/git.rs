@@ -7,7 +7,7 @@ use std::cell::{Cell, RefCell};
 use std::io::{BufRead, BufReader, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, ChildStdout, Command, Output, Stdio};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, mpsc};
 use std::time::{Duration, Instant};
 
@@ -48,6 +48,20 @@ thread_local! {
 /// and its kin) is bounded by them, as a reader is by the budget it was built with.
 pub fn enter_run(budget: RunBudget) -> RunScope {
     RunScope(AMBIENT.with(|a| a.replace(budget)))
+}
+
+/// Git children this process has started: what a gate on the number of
+/// processes a run costs reads before and after.
+pub fn git_spawns() -> usize {
+    GIT_SPAWNS.load(Ordering::Relaxed)
+}
+
+static GIT_SPAWNS: AtomicUsize = AtomicUsize::new(0);
+
+/// The one place a git child starts, so the count above is every one of them.
+fn start_git(cmd: &mut Command) -> std::io::Result<Child> {
+    GIT_SPAWNS.fetch_add(1, Ordering::Relaxed);
+    cmd.spawn()
 }
 
 /// Restores the limits of the run that was current before [`enter_run`].
@@ -288,7 +302,7 @@ impl Exec {
     /// its exit status: the caller reads the status.
     pub(crate) fn output(&self, mut cmd: Command) -> Result<Output> {
         cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
-        let child = cmd.spawn().map_err(|e| {
+        let child = start_git(&mut cmd).map_err(|e| {
             if e.kind() == std::io::ErrorKind::NotFound {
                 SnapshotError::Git("git is not installed or not in PATH".into())
             } else {
@@ -303,7 +317,7 @@ impl Exec {
         cmd.stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
-        let mut child = cmd.spawn().map_err(SnapshotError::Io)?;
+        let mut child = start_git(&mut cmd).map_err(SnapshotError::Io)?;
         let mut stdin = child.stdin.take().ok_or_else(|| {
             SnapshotError::Git(format!("git {}: no stdin", label.first().unwrap_or(&"")))
         })?;
@@ -780,12 +794,12 @@ struct BatchConn {
 
 impl BatchConn {
     fn start(root: &Path, max_bytes: usize) -> Result<Self> {
-        let mut child = git_command(root)
-            .args(["cat-file", "--batch"])
+        let mut cmd = git_command(root);
+        cmd.args(["cat-file", "--batch"])
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
-            .stderr(Stdio::null())
-            .spawn()?;
+            .stderr(Stdio::null());
+        let mut child = start_git(&mut cmd)?;
         let (Some(stdin), Some(stdout)) = (child.stdin.take(), child.stdout.take()) else {
             kill_tree(&mut child);
             return Err(SnapshotError::Protocol(
