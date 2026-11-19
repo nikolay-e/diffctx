@@ -821,6 +821,11 @@ impl Verdict {
         self.uses.iter().filter(|u| u.also_changed)
     }
 
+    /// Whether the search says a route no model traces can reach the definition.
+    pub(crate) fn not_traced(&self) -> bool {
+        self.coverage().gaps().contains(&Gap::NotTraced)
+    }
+
     /// Whether every gap of the search is a file of the group it could not place:
     /// nothing else stands in the way of what a file outside code says of it.
     pub(crate) fn gaps_are_only_unaccounted(&self) -> bool {
@@ -1935,6 +1940,21 @@ impl Cell {
                 .map(|n| n.as_str().to_string())
                 .collect(),
         )
+    }
+
+    /// Whether a call spanning `line` of `file` at the head reaches a definition by a
+    /// name the code computes (`getattr(obj, name)`, `globals()[key]`, `eval`).
+    pub(crate) fn computes_name_at(&self, file: &str, line: u32) -> bool {
+        let Ok(path) = RepoPath::new(file) else {
+            return false;
+        };
+        let Ok(Some(facts)) = facts_of(&self.ctx, SideTag::Head, &self.cache, &path) else {
+            return false;
+        };
+        facts.blob.facts.iter().any(|fact| {
+            matches!(fact, Fact::ComputedName { site, .. }
+                if (site.lines.0..=site.lines.1).contains(&line))
+        })
     }
 
     /// The strings of `file` at the head that sit where the language holds a callable
