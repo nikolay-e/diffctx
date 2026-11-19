@@ -97,6 +97,7 @@ pub struct GitMemo {
     kept_bytes: AtomicUsize,
     derived: Mutex<std::collections::HashMap<Vec<u8>, Arc<Mutex<Option<Derived>>>>>,
     searches: Mutex<std::collections::HashMap<(PathBuf, Option<String>), Arc<Mutex<Searches>>>>,
+    batches: Mutex<std::collections::HashMap<(PathBuf, usize), Arc<Mutex<CatBatch>>>>,
 }
 
 type Derived = Arc<dyn std::any::Any + Send + Sync>;
@@ -467,6 +468,29 @@ impl Exec {
         Some(Arc::clone(
             memo.searches.lock().unwrap().entry(key).or_default(),
         ))
+    }
+
+    /// The object reader of `root`, one for every reader of the run that keeps
+    /// blobs up to `cap` bytes. Outside a run each reader has its own.
+    pub(crate) fn batch(&self, root: &Path, cap: usize) -> Arc<Mutex<CatBatch>> {
+        let open = || {
+            // Without the memo: the run's memo owns this reader.
+            let exec = Self {
+                memo: None,
+                ..self.clone()
+            };
+            Arc::new(Mutex::new(CatBatch::new(root, cap, exec)))
+        };
+        match self.memo.as_deref() {
+            Some(memo) => Arc::clone(
+                memo.batches
+                    .lock()
+                    .unwrap()
+                    .entry((root.to_path_buf(), cap))
+                    .or_insert_with(open),
+            ),
+            None => open(),
+        }
     }
 
     /// `finish` for a command that reads `input` on its stdin.
@@ -1115,13 +1139,13 @@ impl CatBatch {
         }
     }
 
-    /// The object `oid` names. A connection that went wrong is replaced once
+    /// The object `oid` names, within the limits of the reader that asks. A connection that went wrong is replaced once
     /// and the request asked again; a second failure is an error, never an
     /// absent object.
-    pub(crate) fn get(&mut self, oid: &str) -> Result<Reply> {
+    pub(crate) fn get(&mut self, asker: &Exec, oid: &str) -> Result<Reply> {
         let mut last = String::new();
         for _ in 0..2 {
-            match self.ask(oid)? {
+            match self.ask(asker, oid)? {
                 Raw::Reply(reply) => return Ok(reply),
                 Raw::Broken(why) => last = why,
             }
@@ -1129,8 +1153,8 @@ impl CatBatch {
         Err(SnapshotError::Protocol(format!("{last} ({oid})")))
     }
 
-    fn ask(&mut self, oid: &str) -> Result<Raw> {
-        let limits = self.exec.limits();
+    fn ask(&mut self, asker: &Exec, oid: &str) -> Result<Raw> {
+        let limits = asker.limits();
         if let Some(stop) = limits.exhausted() {
             return Err(stop);
         }
@@ -1174,6 +1198,14 @@ impl CatBatch {
         if let Some(conn) = self.conn.take() {
             conn.shut_down(Some(&limits));
         }
+    }
+}
+
+impl std::fmt::Debug for CatBatch {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CatBatch")
+            .field("root", &self.root)
+            .finish_non_exhaustive()
     }
 }
 
