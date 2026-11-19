@@ -4483,14 +4483,25 @@ pub fn build_impact(
         let mut outside_tests = 0;
         let mut listed_namers = 0;
         let mut unlisted_namers = 0;
+        // A string on the line of a call that computes a name (`globals()["handle_" +
+        // kind]`) is that call's: the route no model traces, already named.
+        let computes = |file: &UnanalysedFile| {
+            verdict.as_ref().is_some_and(decide::Verdict::not_traced)
+                && cells.of(&file.path).is_some_and(|cell| {
+                    file.lines
+                        .iter()
+                        .any(|line| cell.computes_name_at(&file.path, *line))
+                })
+        };
         for (file, literal) in named {
             if !missed_in.iter().any(|m| m.path == file.path)
                 && !(literal
-                    && verdict.as_ref().is_some_and(|v| {
-                        file.lines
-                            .iter()
-                            .any(|line| v.names_another(&file.path, *line))
-                    }))
+                    && (computes(&file)
+                        || verdict.as_ref().is_some_and(|v| {
+                            file.lines
+                                .iter()
+                                .any(|line| v.names_another(&file.path, *line))
+                        })))
                 && !callers.iter().any(|c| c.path == file.path)
                 && !verdict
                     .as_ref()
