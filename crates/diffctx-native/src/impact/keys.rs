@@ -351,7 +351,7 @@ const TEMPLATE_GLOBS: &[&str] = &[
     ":(glob,icase)**/*.hbs",
 ];
 
-fn word_char(c: char) -> bool {
+pub(super) fn word_char(c: char) -> bool {
     c.is_alphanumeric() || c == '_'
 }
 
@@ -935,7 +935,7 @@ fn unread_file(state: &ScoredState, path: &str) -> bool {
 }
 
 /// Whether the file is a shell script, by its name or its shebang.
-fn runs_as_shell(state: &ScoredState, path: &str) -> bool {
+pub(super) fn runs_as_shell(state: &ScoredState, path: &str) -> bool {
     match crate::languages::get_language_for_file(path) {
         Some(language) => language == "bash",
         None => state
