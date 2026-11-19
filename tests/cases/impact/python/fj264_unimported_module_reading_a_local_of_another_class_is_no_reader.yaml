@@ -1,0 +1,51 @@
+name: fj264_unimported_module_reading_a_local_of_another_class_is_no_reader
+mode: impact
+source: fj#264
+issue_state: open
+tags: [python, dataclass, untyped-receiver, unimported-module, absence-claim, decoy]
+repo:
+  initial_files:
+    model.py: |
+      from dataclasses import dataclass
+
+
+      @dataclass
+      class Reading:
+          date: str
+          value: float
+    use.py: |
+      from model import Reading
+
+
+      def latest(r: Reading):
+          return r.date
+    other.py: |
+      class Thing:
+          def __init__(self):
+              self.size = 1
+    calc.py: |
+      from other import Thing
+
+
+      def g():
+          t = Thing().child
+          return t.value
+  changed_files:
+    model.py: |
+      from dataclasses import dataclass
+
+
+      @dataclass
+      class Reading:
+          date: int
+          value: int
+  commit_message: "model: date and value are integers"
+# `calc.py` is imported by nothing and `g` takes its receiver from an object it
+# builds of an unrelated class it imports: no `Reading` can reach `t`, so `g` is
+# no reader.
+expect:
+  changed: [model.py::date, model.py::value]
+  relations:
+    - {from: "use.py::latest", to: "model.py::date", kind: reads, resolution: resolved, site: 5}
+  decoys:
+    model.py::value: [calc.py::g]
