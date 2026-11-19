@@ -58,7 +58,7 @@ impl Extractor for SqlExtractor {
 enum Tok<'a> {
     /// An identifier or keyword, as spelled.
     Word(&'a str),
-    /// A `"quoted identifier"`, its case kept.
+    /// A `"quoted identifier"` or a MySQL `` `quoted identifier` ``, its case kept.
     Quoted(&'a str),
     Punct(u8),
     /// A string or number literal.
@@ -160,10 +160,10 @@ fn lex(text: &str, base: usize, first_line: u32) -> Vec<Token<'_>> {
                 });
                 line = end;
             }
-            b'"' => {
+            b'"' | b'`' => {
                 i += 1;
-                while i < b.len() && !(b[i] == b'"' && b.get(i + 1) != Some(&b'"')) {
-                    i += if b[i] == b'"' { 2 } else { 1 };
+                while i < b.len() && !(b[i] == c && b.get(i + 1) != Some(&c)) {
+                    i += if b[i] == c { 2 } else { 1 };
                 }
                 let close = i.min(b.len());
                 i = (i + 1).min(b.len());
@@ -395,6 +395,12 @@ fn definition_of(text: &str, statement: &[Token<'_>]) -> Option<Definition> {
         Tok::Word(w) | Tok::Quoted(w) => w.to_string(),
         _ => return None,
     };
+    // The name's own text: a quoted one is read between its quotes, where a use
+    // of it spells the word.
+    let name_text = match name_token.tok {
+        Tok::Quoted(_) => name_token.at + 1..name_token.to - 1,
+        _ => name_token.at..name_token.to,
+    };
     let head_end = statement
         .iter()
         .position(|t| matches!(t.tok, Tok::Dollar(_)) || is_word(t.tok, "as"))
@@ -412,7 +418,7 @@ fn definition_of(text: &str, statement: &[Token<'_>]) -> Option<Definition> {
         kind,
         lines: (first.line, last.end),
         bytes: first.at..last.to,
-        name_at: name_token.at..name_token.to,
+        name_at: name_text.clone(),
         name_lines: (name_token.line, name_token.end),
         signature: header.join(" "),
         body: statement[head_end..].iter().map(|t| t.at..t.to).collect(),
