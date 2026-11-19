@@ -138,6 +138,12 @@ pub fn grep_word_first_lines(
     snapshot::word_first_lines(repo_root, word, pathspec).map(|rows| admitted_rows(source, rows))
 }
 
+/// Announces the needles a later [`grep_lines`] of this run will ask for, so
+/// the run searches them with the first question's, in one process.
+pub fn grep_register_needles(repo_root: &Path, needles: &[String], rev: Option<&str>) {
+    snapshot::register_needles(repo_root, needles, rev);
+}
+
 /// Every line holding one of `needles` (fixed strings) at `rev`, or in the
 /// working tree when `rev` is `None`: (repo-relative path, line, text). Past
 /// the run's deadline the rows found are the answer, and the run says it is
