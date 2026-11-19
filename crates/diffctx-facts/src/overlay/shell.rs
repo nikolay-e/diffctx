@@ -8,6 +8,9 @@ use std::path::Path;
 
 use tree_sitter::Node;
 
+use crate::facts::{DefKind, Fact};
+use diffctx_base::types::FragmentKind;
+
 #[derive(Default)]
 struct ShellFacts {
     functions: Vec<String>,
@@ -51,6 +54,34 @@ fn by_shebang(path: &str, text: &str) -> bool {
 /// Whether `path`, whose text is `text`, is a script.
 fn is_script(path: &str, text: &str) -> bool {
     by_path(path).unwrap_or_else(|| by_shebang(path, text))
+}
+
+/// Whether the name or the extension leaves `path` possibly a script: a file
+/// of another language is never read as one.
+pub(super) fn may_be_script(path: &str) -> bool {
+    by_path(path) != Some(false)
+}
+
+/// The variables a script assigns, as `(name, lines, kind)`: the facts layer
+/// reports each as a definition, and the fragments they are anchored on have to
+/// exist for `--symbol` to start from one.
+pub(super) fn variables(path: &str, text: &str) -> Vec<(Option<String>, (u32, u32), FragmentKind)> {
+    if !is_script(path, text) {
+        return Vec::new();
+    }
+    crate::facts::local_facts(path, text).map_or_else(Vec::new, |blob| {
+        blob.facts
+            .iter()
+            .filter_map(|fact| match fact {
+                Fact::Definition(d) if d.kind == DefKind::Variable => Some((
+                    Some(d.local.name.as_str().to_string()),
+                    d.span.lines,
+                    FragmentKind::Variable,
+                )),
+                _ => None,
+            })
+            .collect()
+    })
 }
 
 /// The functions a script defines, when `path` is one.
