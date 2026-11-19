@@ -6,6 +6,7 @@
 mod css;
 mod helm;
 mod javascript;
+mod prometheus;
 mod python;
 mod shell;
 mod sql;
@@ -71,6 +72,7 @@ fn declarations_of(path: &str) -> Option<Declarations> {
         Some(Reader::Js) => Some(javascript::declarations),
         None if sql::is_sql(path) => Some(|_, text| sql::declarations(text)),
         None if helm::is_template(path) => Some(|_, text| helm::declarations(text)),
+        None if prometheus::is_rule_file(path) => Some(|_, text| prometheus::declarations(text)),
         None if css::is_stylesheet(path) => Some(|_, text| css::declarations(text)),
         None if shell::may_be_script(path) => Some(shell::variables),
         None => None,

@@ -21,7 +21,7 @@
 //! errors, and the facts around them are still given.
 
 use std::cell::Cell;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::ops::Range;
 
 use crate::facts::config::{
@@ -105,6 +105,7 @@ pub(super) fn facts_of_reading(
 ) -> Vec<Fact> {
     let mut facts = Vec::new();
     let mut earlier: HashMap<ObjectId, u16> = HashMap::new();
+    let mut named: HashSet<String> = HashSet::new();
     for found in objects(reading) {
         let id = found.object.id.clone();
         if found.object.templated {
@@ -195,6 +196,7 @@ pub(super) fn facts_of_reading(
         }
     }
     for document in &reading.documents {
+        facts.extend(rule_definitions(document, source, &mut named));
         facts.extend(pointers_of(document).into_iter().map(Fact::ConfigPointer));
         for release in releases_of(document) {
             // Argo CD's `path` is read from the release, not from the pointer
@@ -206,6 +208,48 @@ pub(super) fn facts_of_reading(
         }
     }
     facts
+}
+
+/// The alerting and recording rules of a Prometheus rule file (`groups[].rules[]`,
+/// or a `PrometheusRule`'s `spec.groups`) as `(name node, rule node)`: each is a
+/// definition named by its `alert` or `record`, the name a dashboard, a route or a
+/// `promtool` test spells. Nothing here reads those uses.
+pub(crate) fn rules_of(document: &Node) -> Vec<(&Node, &Node)> {
+    [document.get("groups"), document.at("spec.groups")]
+        .into_iter()
+        .flatten()
+        .filter_map(Node::as_seq)
+        .flatten()
+        .filter_map(|group| group.get("rules")?.as_seq())
+        .flatten()
+        .filter_map(|rule| Some((rule.get("alert").or_else(|| rule.get("record"))?, rule)))
+        .filter(|(name, _)| name.as_str().is_some())
+        .collect()
+}
+
+/// A name written twice is one definition.
+fn rule_definitions(document: &Node, source: &str, named: &mut HashSet<String>) -> Vec<Fact> {
+    rules_of(document)
+        .into_iter()
+        .filter_map(|(name, rule)| {
+            let text = name.as_str()?;
+            named.insert(text.to_string()).then(|| {
+                Fact::Definition(Def {
+                    local: LocalKey::new(Vec::new(), text, Namespace::Value),
+                    kind: DefKind::Field,
+                    span: rule.span.clone(),
+                    name_span: name.span.clone(),
+                    signature: None,
+                    decorators: Vec::new(),
+                    visibility: Visibility::Public,
+                    body_hash: tree_hash(rule),
+                    text_hash: hash_text(slice(source, &rule.span).as_bytes()),
+                    doc_hash: None,
+                    initializer: Default::default(),
+                })
+            })
+        })
+        .collect()
 }
 
 pub(super) fn slice<'a>(source: &'a str, span: &Span) -> &'a str {
