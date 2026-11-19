@@ -958,8 +958,13 @@ pub(super) fn dropped_definitions(state: &ScoredState, path: &str) -> Vec<String
     let Ok(Some(base)) = source.base().read_lossy(&file) else {
         return Vec::new();
     };
-    let kept =
-        crate::keytable::defined_names(path, &source.read_to_string(&file).unwrap_or_default());
+    // A config gone at the head, or unread there (the run notes why), keeps none of
+    // the names its base defined.
+    let kept = source
+        .read_bytes(&file)
+        .map_or_else(rustc_hash::FxHashSet::default, |head| {
+            crate::keytable::defined_names(path, &String::from_utf8_lossy(&head))
+        });
     crate::keytable::defined_names(path, &base)
         .into_iter()
         .filter(|name| !kept.contains(name))
