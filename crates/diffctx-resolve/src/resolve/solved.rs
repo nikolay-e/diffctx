@@ -32,6 +32,8 @@ pub(super) struct Computer {
     file: RepoPath,
     /// Every such call reaches members only.
     members_only: bool,
+    /// Every such call builds a class: only a class or its constructor is reached.
+    builds_only: bool,
     /// The classes the calls are written on, when every one of them says.
     classes: Option<Vec<Name>>,
 }
@@ -41,22 +43,28 @@ pub(super) fn computers_of(files: &[FileFacts]) -> Vec<Computer> {
     files
         .iter()
         .filter_map(|file| {
-            let calls: Vec<(bool, Option<&Name>)> = file
+            let calls: Vec<(bool, bool, Option<&Name>)> = file
                 .blob
                 .facts
                 .iter()
                 .filter_map(|fact| match fact {
-                    Fact::ComputedName { member, class, .. } => Some((*member, class.as_ref())),
+                    Fact::ComputedName {
+                        member,
+                        class,
+                        builds,
+                        ..
+                    } => Some((*member, *builds, class.as_ref())),
                     _ => None,
                 })
                 .collect();
             calls.first()?;
             Some(Computer {
                 file: file.path.clone(),
-                members_only: calls.iter().all(|(member, _)| *member),
+                members_only: calls.iter().all(|(member, ..)| *member),
+                builds_only: calls.iter().all(|(_, builds, _)| *builds),
                 classes: calls
                     .iter()
-                    .map(|(_, class)| class.cloned())
+                    .map(|(.., class)| class.cloned())
                     .collect::<Option<Vec<Name>>>(),
             })
         })
@@ -119,15 +127,22 @@ impl Solved {
 
     /// How many files that `may_reach` compute a name that could be a definition's:
     /// any of them for a function, the ones that reach members for a member of one
-    /// of `classes` (a call written on another class leaves it out).
+    /// of `classes` (a call written on another class leaves it out), and the ones
+    /// that build a class only when `builds` (the definition is a class or its
+    /// constructor).
     pub fn name_computers(
         &self,
         member: bool,
+        builds: bool,
         classes: &[Name],
         may_reach: impl Fn(&str) -> bool,
     ) -> usize {
         (self.computers.iter())
-            .filter(|c| (member || !c.members_only) && may_reach(c.file.as_str()))
+            .filter(|c| {
+                (member || !c.members_only)
+                    && (builds || !c.builds_only)
+                    && may_reach(c.file.as_str())
+            })
             .filter(|c| {
                 c.classes
                     .as_ref()
