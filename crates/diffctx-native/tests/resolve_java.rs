@@ -764,27 +764,10 @@ const RED: &[(&str, &str)] = &[
          class for an added field, so only the full pipeline judges them",
     ),
     (
-        "impact/java/java_class_method_inherited_by_an_implementer_is_called_through_the_interface",
-        "the resolver names the caller `main` without its class and states the call resolved; \
-         the call through the interface binds `SuperClass.main` to the inherited method only \
-         as a candidate",
-    ),
-    (
         "impact/java/java_comment_inside_a_class_stays_layout_only",
         "no resolver capability is missing: the resolver states the read of `Keys.USER`, and the \
          class-keyed decoy is withheld by impact, which sets a comment-only edit aside as layout, \
          so only the full pipeline judges it",
-    ),
-    (
-        "impact/java/java_receiver_typed_by_a_supertype_of_a_class_names_that_class",
-        "the resolver binds a call on a `CharSequence` receiver to no method of the repository: \
-         `Shout.subSequence`, which implements it, is no candidate of `viaSupertype`",
-    ),
-    (
-        "symbol/java/java_symbol_class_method_inherited_by_an_implementer_is_a_candidate_of_the_interface_call",
-        "the resolver states the call through `Interface` resolved to its default method and \
-         leaves out `SuperClass.method`, which `SubClass` inherits and the call reaches; both \
-         are candidates of it",
     ),
 ];
 
