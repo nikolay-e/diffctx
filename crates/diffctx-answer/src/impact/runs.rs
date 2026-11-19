@@ -914,15 +914,39 @@ pub(super) fn route_readers(
     let Some(cell) = cells.of(&shown) else {
         return Vec::new();
     };
-    let spellings: Vec<(String, Spelling)> = cell
-        .framework_entries_at(&shown, name, (core.start_line(), core.end_line()))
-        .into_iter()
+    let served = cell.framework_entries_at(&shown, name, (core.start_line(), core.end_line()));
+    let routes: Vec<(Option<&str>, &str)> = served
+        .iter()
         .filter(|(kind, _)| *kind == EntryKind::Route)
         .filter_map(|(_, framework)| {
-            let label = settled(state, framework.label.as_deref().filter(|l| !l.is_empty())?)?;
+            Some((None, framework.label.as_deref().filter(|l| !l.is_empty())?))
+        })
+        .collect();
+    route_requests(state, diff_range, &routes)
+        .into_iter()
+        .filter(|(path, _)| {
+            *path != shown
+                && is_code_file(path)
+                && !diffctx_base::testfiles::is_test_path(Path::new(path))
+        })
+        .collect()
+}
+
+/// The lines of the head that request one of the routes, each a verb (any when
+/// none) and a label: the lines a test of the run spells one on. Request lines
+/// only, one search for all the routes; a comment does not request.
+pub(super) fn route_requests(
+    state: &ScoredState,
+    diff_range: Option<&str>,
+    routes: &[(Option<&str>, &str)],
+) -> Vec<(String, u32)> {
+    let spellings: Vec<(String, Spelling)> = routes
+        .iter()
+        .filter_map(|(verb, label)| {
+            let label = settled(state, label)?;
             let needle = route_needle(&label);
             (needle.trim_matches('/').len() >= 3)
-                .then(|| Some((needle, Spelling::of(EntryKind::Route, None, &label)?)))?
+                .then(|| Some((needle, Spelling::of(EntryKind::Route, *verb, &label)?)))?
         })
         .collect();
     if spellings.is_empty() {
@@ -931,46 +955,16 @@ pub(super) fn route_readers(
     let mut needles: Vec<String> = spellings.iter().map(|(needle, _)| needle.clone()).collect();
     needles.sort();
     needles.dedup();
-    let grepped = spelled_lines(state, diff_range, &needles);
-    grepped
-        .rows
-        .into_iter()
-        .filter(|(path, _, text)| {
-            *path != shown
-                && is_code_file(path)
-                && !diffctx_base::testfiles::is_test_path(Path::new(path))
-                && !commented(text)
-                && spellings
-                    .iter()
-                    .any(|(_, spelling)| spelling.spelled_by(text))
-        })
-        .map(|(path, line, _)| (path, line))
-        .collect()
-}
-
-/// The lines of the head that request the route `label` (a removed handler's, so
-/// no head definition carries it): the lines a test of the run spells it on.
-pub(super) fn route_requests(
-    state: &ScoredState,
-    diff_range: Option<&str>,
-    verb: Option<&str>,
-    label: &str,
-) -> Vec<(String, u32)> {
-    let Some(label) = settled(state, label) else {
-        return Vec::new();
-    };
-    let needle = route_needle(&label);
-    let Some(spelling) = Spelling::of(EntryKind::Route, verb, &label) else {
-        return Vec::new();
-    };
-    if needle.trim_matches('/').len() < 3 {
-        return Vec::new();
-    }
     ordered(
-        spelled_lines(state, diff_range, &[needle])
+        spelled_lines(state, diff_range, &needles)
             .rows
             .iter()
-            .filter(|(_, _, text)| !commented(text) && spelling.spelled_by(text))
+            .filter(|(_, _, text)| {
+                !commented(text)
+                    && spellings
+                        .iter()
+                        .any(|(_, spelling)| spelling.spelled_by(text))
+            })
             .map(|(path, line, _)| (path.clone(), *line))
             .collect(),
     )
