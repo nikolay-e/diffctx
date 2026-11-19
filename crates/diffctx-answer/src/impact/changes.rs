@@ -369,6 +369,69 @@ pub(super) fn signature_changed(
     base_texts: &BaseTexts,
     core: &Fragment,
 ) -> bool {
+    base_lacks(state, base_texts, core, declaration_head)
+}
+
+/// Whether the contract of a tool an agent protocol publishes moved: its
+/// declaration, return annotation included, and the docstring the agent reads
+/// as its description.
+pub(super) fn tool_contract_changed(
+    state: &ScoredState,
+    base_texts: &BaseTexts,
+    core: &Fragment,
+) -> bool {
+    base_lacks(state, base_texts, core, |content| {
+        let body = without_decorators(content);
+        let head = declaration_head(body);
+        let doc = docstring_after(body, head.lines().count());
+        format!("{head}\n{doc}")
+    })
+}
+
+/// The leading string literal of the body that follows the `skip` lines of a
+/// declaration: the whole of a triple-quoted one, the line of any other.
+fn docstring_after(content: &str, skip: usize) -> String {
+    let mut lines = content
+        .lines()
+        .skip(skip)
+        .skip_while(|l| l.trim().is_empty());
+    let Some(first) = lines.next() else {
+        return String::new();
+    };
+    let opened = first
+        .trim_start()
+        .trim_start_matches(['r', 'u', 'b', 'R', 'U', 'B']);
+    let Some(quote) = ["\"\"\"", "'''"]
+        .into_iter()
+        .find(|q| opened.starts_with(q))
+    else {
+        return if opened.starts_with(['"', '\'']) {
+            first.to_string()
+        } else {
+            String::new()
+        };
+    };
+    let mut doc = vec![first];
+    if !opened[quote.len()..].contains(quote) {
+        for line in lines {
+            doc.push(line);
+            if line.contains(quote) {
+                break;
+            }
+        }
+    }
+    doc.join("\n")
+}
+
+/// Whether `surface` of the definition, read at its head, is absent from the
+/// file at the base revision, whitespace-insensitively; a base that cannot be
+/// read, or has no such file, says the surface is new.
+fn base_lacks(
+    state: &ScoredState,
+    base_texts: &BaseTexts,
+    core: &Fragment,
+    surface: impl Fn(&str) -> String,
+) -> bool {
     let rel_path = rel(state, core.path());
     let old = match base_texts.read(&rel_path) {
         Ok(Some(old)) => old,
@@ -379,7 +442,7 @@ pub(super) fn signature_changed(
         }
     };
     let squash = |s: &str| s.split_whitespace().collect::<Vec<_>>().join(" ");
-    let head = squash(&declaration_head(&core.content));
+    let head = squash(&surface(&core.content));
     head.is_empty() || !squash(&old).contains(&head)
 }
 

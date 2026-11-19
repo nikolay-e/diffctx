@@ -16,6 +16,7 @@ use diffctx_facts::facts::framework::jvm;
 use diffctx_facts::facts::{Fact, ImportKind, Scope};
 use diffctx_snapshot::snapshot::workspace::dir_of;
 
+use super::callers::is_code_file;
 use super::changes::{changed_rels, rel, spelled_lines};
 use super::dispatch::base_symbol;
 use super::mentions::{Naming, basename_of, commented, naming, path_search, starts_a_program};
@@ -872,6 +873,58 @@ fn route_needle(label: &str) -> String {
         .take_while(|segment| !is_parameter(segment))
         .collect();
     format!("/{}", literal.join("/"))
+}
+
+/// The lines of source files that spell the path of a route `core` serves
+/// (`fetch("/api/items")`): a client's request names no handler, so each is a
+/// candidate caller and never a resolved one. A line of `core`'s own file, a
+/// test (its link is the tests'), a comment and a file that is no code are
+/// not read.
+pub(super) fn route_readers(
+    state: &ScoredState,
+    cells: &Cells,
+    diff_range: Option<&str>,
+    core: &Fragment,
+) -> Vec<(String, u32)> {
+    let shown = rel(state, core.path());
+    let Some(name) = core.symbol_name.as_deref().map(base_symbol) else {
+        return Vec::new();
+    };
+    let Some(cell) = cells.of(&shown) else {
+        return Vec::new();
+    };
+    let spellings: Vec<(String, Spelling)> = cell
+        .framework_entries_at(&shown, name, (core.start_line(), core.end_line()))
+        .into_iter()
+        .filter(|(kind, _)| *kind == EntryKind::Route)
+        .filter_map(|(_, framework)| {
+            let label = settled(state, framework.label.as_deref().filter(|l| !l.is_empty())?)?;
+            let needle = route_needle(&label);
+            (needle.trim_matches('/').len() >= 3)
+                .then(|| Some((needle, Spelling::of(EntryKind::Route, None, &label)?)))?
+        })
+        .collect();
+    if spellings.is_empty() {
+        return Vec::new();
+    }
+    let mut needles: Vec<String> = spellings.iter().map(|(needle, _)| needle.clone()).collect();
+    needles.sort();
+    needles.dedup();
+    let grepped = spelled_lines(state, diff_range, &needles);
+    grepped
+        .rows
+        .into_iter()
+        .filter(|(path, _, text)| {
+            *path != shown
+                && is_code_file(path)
+                && !diffctx_base::testfiles::is_test_path(Path::new(path))
+                && !commented(text)
+                && spellings
+                    .iter()
+                    .any(|(_, spelling)| spelling.spelled_by(text))
+        })
+        .map(|(path, line, _)| (path, line))
+        .collect()
 }
 
 /// The tests that reach the routes, commands and tools the facts state for the
