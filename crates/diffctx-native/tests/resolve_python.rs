@@ -830,10 +830,6 @@ const RED: &[(&str, &str)] = &[
          reports a use passed as a value",
     ),
     (
-        "symbol/python/py_def_under_a_global_declaration_is_a_definition_its_callers_a_gap",
-        "a def under a `global` declaration inside a function is no definition the resolver holds",
-    ),
-    (
         "symbol/python/py_local_function_read_where_no_use_is_stated_stays_open",
         "a nested function is no definition the resolver holds, so its read where no use is \
          stated binds nothing",
