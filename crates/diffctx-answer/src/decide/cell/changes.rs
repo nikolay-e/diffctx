@@ -2,6 +2,7 @@
 //! lineages and the reshaped defaults.
 
 use std::collections::{BTreeMap, HashMap, HashSet};
+use std::ops::Range;
 
 use anyhow::Result;
 
@@ -9,7 +10,7 @@ use crate::fold::{self, Basis};
 
 use diffctx_facts::facts::{
     Def, DefChange, DefKey, DefKind, Delta, EntryKind, Export, Fact, Framework, HeldAs, Language,
-    Name, Origin, Scope, SemanticDef, Visibility, facts_of, holds_data, members_of,
+    Lexical, Name, Origin, Scope, SemanticDef, Visibility, facts_of, holds_data, members_of,
     semantic_changes,
 };
 
@@ -511,6 +512,32 @@ impl Cell {
             held.retain(|(how, _)| *how != HeldAs::Callable);
         }
         held
+    }
+
+    /// The head text of `file` and the byte ranges of its string literals, as the
+    /// file's tree reads them; `None` where no tree records the strings.
+    pub(crate) fn string_pieces(&self, file: &str) -> Result<Option<(String, Vec<Range<u32>>)>> {
+        let path = RepoPath::new(file)?;
+        let Some(facts) = facts_of(&self.ctx, SideTag::Head, &self.cache, &path)? else {
+            return Ok(None);
+        };
+        let ranges: Vec<Range<u32>> = facts
+            .blob
+            .lexical
+            .iter()
+            .filter(|(_, kind)| *kind == Lexical::String)
+            .map(|(range, _)| range.clone())
+            .collect();
+        if ranges.is_empty() {
+            return Ok(None);
+        }
+        let Some(bytes) = self.ctx.head.read(&path)? else {
+            return Ok(None);
+        };
+        let Ok(text) = String::from_utf8(bytes.to_vec()) else {
+            return Ok(None);
+        };
+        Ok(Some((text, ranges)))
     }
 
     /// Whether a file of `file`'s directory, the Go package, references one of the calls

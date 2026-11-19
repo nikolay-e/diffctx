@@ -244,6 +244,17 @@ impl Cells {
             .map_or_else(Vec::new, |cell| cell.held_strings_at(rel, line))
     }
 
+    /// The head text of `rel` and the byte ranges of its string literals, read by
+    /// the cell that answers for it, else by any.
+    pub(crate) fn string_pieces(
+        &self,
+        rel: &str,
+    ) -> anyhow::Result<Option<(String, Vec<std::ops::Range<u32>>)>> {
+        self.of(rel)
+            .or_else(|| self.cells.first())
+            .map_or(Ok(None), |cell| cell.string_pieces(rel))
+    }
+
     /// Whether a head file of a cell language may import a module by a name it
     /// computes (`importlib.import_module(name)`, `import(path)`, `require(path)`),
     /// which no importer search can see: some file holds a `ComputedImport` fact, or
