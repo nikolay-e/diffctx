@@ -44,6 +44,7 @@ const SCOPES: &[(&str, Option<&[&str]>)] = &[
     ("parsers/keyword_calls.rs", Some(&["python"])),
     ("facts/lang/typescript.rs", Some(JS)),
     ("overlay/javascript.rs", Some(JS)),
+    ("overlay/css.rs", Some(&["css"])),
     ("facts/lang/rust.rs", Some(&["rust"])),
     ("parsers/rust_tests.rs", Some(&["rust"])),
     ("facts/lang/go.rs", Some(&["go"])),
