@@ -2059,6 +2059,47 @@ fn a_removed_name_too_common_to_search_hedges_beside_a_sibling_that_hides_a_regi
     );
 }
 
+/// PHP's cell reads a template's echo, a directive and an interpolated string as code,
+/// so a PHP sibling hides no region: a removed name beside one is a complete zero, and
+/// a Blade template that calls it is named, not left to a search the name escapes.
+#[test]
+fn a_removed_php_method_hides_in_no_php_sibling() {
+    let class = |method: &str| {
+        format!("<?php\nclass Ctx {{\n{method}    public function user() {{ return 1; }}\n}}\n")
+    };
+    let beside = |path: &str, text: &str| {
+        repo(
+            &[
+                (
+                    "src/Ctx.php",
+                    &class("    public function request() { return 2; }\n"),
+                ),
+                (path, text),
+            ],
+            &[("src/Ctx.php", &class(""))],
+        )
+    };
+    let doc =
+        impact_json(beside("src/Other.php", "<?php\nfunction other() { return 3; }\n").path());
+    assert!(
+        !doc["definitions"].to_string().contains("name_unsearched"),
+        "{doc:#}"
+    );
+
+    let doc = impact_json(
+        beside(
+            "resources/views/page.blade.php",
+            "@if ($c->request())\n<p>yes</p>\n@endif\n",
+        )
+        .path(),
+    );
+    let gaps = doc["definitions"][0]["gaps"].to_string();
+    assert!(
+        gaps.contains("resources/views/page.blade.php") && !gaps.contains("name_unsearched"),
+        "{doc:#}"
+    );
+}
+
 /// Whether a definition says no binding model reads its language.
 fn not_modelled(definition: &serde_json::Value) -> bool {
     definition["gaps"]
