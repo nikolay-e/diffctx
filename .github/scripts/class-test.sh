@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # The class-test gate (T9). A pull request that carries a `fix` commit touching
 # engine source (crates/*/src, src) must carry the test that would have caught
-# the fix's class: an added or changed case under tests/cases/{diff,impact,symbol}
+# the fix's class: an added or changed case under tests/cases/{diff,impact,symbol},
+# a case whose row it takes off known_below_threshold.txt or known_false_hedges.txt,
 # or the metamorphic, fault, hook-property or gap-reasons suite. That test must FAIL on the
 # pull request's base and PASS on its head, or any unrelated test change would
 # satisfy the gate. At least one of them must be red on the base; the others
@@ -68,9 +69,27 @@ fi
 changes=$(git diff --name-status --no-renames "${BASE_SHA}...${HEAD_SHA}")
 class_cases=$(awk -F'\t' '$1 != "D" {print $2}' <<<"$changes" | grep -E "$cases" || true)
 class_suites=$(awk -F'\t' '$1 != "D" {print $2}' <<<"$changes" | grep -E "$suites" || true)
+# A case the range takes off a list keeps its file, yet it is the fix's witness:
+# wrong or falsely hedged on the base, right on the head.
+list_rows() { # rev: the case names its two lists hold
+  local list
+  for list in known_below_threshold.txt known_false_hedges.txt; do
+    git show "${1}:${crate}/tests/${list}" 2>/dev/null || true
+  done | sed -e 's/#.*//' -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' | { grep -v '^$' || true; } | sort -u
+}
+for row in $(comm -23 <(list_rows "$BASE_SHA") <(list_rows "$HEAD_SHA")); do
+  for path in "tests/cases/${row}.yaml" "tests/cases/${row}.yml" "tests/cases/diff/${row}.yaml" "tests/cases/diff/${row}.yml"; do
+    if git cat-file -e "${HEAD_SHA}:${path}" 2>/dev/null; then
+      class_cases+=$'\n'"$path"
+      break
+    fi
+  done
+done
+class_cases=$(sed '/^$/d' <<<"$class_cases" | sort -u)
 if [[ -z "$class_cases$class_suites" ]]; then
   echo "::error::a fix commit touches engine source and no class test was added or changed" \
-    "(tests/cases/{diff,impact,symbol}/, metamorphic.rs, git_faults.rs, hook_property.rs, gap_reasons.rs)." \
+    "(tests/cases/{diff,impact,symbol}/, a row taken off known_below_threshold.txt or known_false_hedges.txt," \
+    "metamorphic.rs, git_faults.rs, hook_property.rs, gap_reasons.rs)." \
     "Add one, or write 'Class test: none — truth|leak|delivery gh#N' in the PR body."
   exit 1
 fi
