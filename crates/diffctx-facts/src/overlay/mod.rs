@@ -70,6 +70,7 @@ fn declarations_of(path: &str) -> Option<Declarations> {
         Some(Reader::Js) => Some(javascript::declarations),
         None if sql::is_sql(path) => Some(|_, text| sql::declarations(text)),
         None if helm::is_template(path) => Some(|_, text| helm::declarations(text)),
+        None if shell::may_be_script(path) => Some(shell::variables),
         None => None,
     }
 }
