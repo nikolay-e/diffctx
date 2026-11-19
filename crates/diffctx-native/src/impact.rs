@@ -1528,14 +1528,18 @@ impl UnreadFiles {
     }
 
     /// Whether a file this definition's cell did not read could spell its name: one of
-    /// its own group is read by its cell, so only a file of another group counts, or a
-    /// sibling of `path` in a group whose cell leaves a region of a file unread.
-    fn could_spell(&self, own: Option<crate::vocabulary::family::Group>, path: &str) -> bool {
+    /// its own group is read by its cell, so only a file of another group counts.
+    fn could_spell(&self, own: Option<crate::vocabulary::family::Group>) -> bool {
         self.text.iter().any(|group| own.is_none() || *group != own)
             || self.code.iter().any(|group| *group != own)
-            || own
-                .and_then(|group| self.hiding.get(&group))
-                .is_some_and(|files| files.iter().any(|f| f != path))
+    }
+
+    /// Whether a sibling of `path` in a group whose cell leaves a region of a file unread
+    /// could spell a removed name there: the account of a removed name looks only where
+    /// the base resolved it, while a live definition's account reads its whole group.
+    fn hides_beside(&self, own: Option<crate::vocabulary::family::Group>, path: &str) -> bool {
+        own.and_then(|group| self.hiding.get(&group))
+            .is_some_and(|files| files.iter().any(|f| f != path))
     }
 }
 
@@ -1831,7 +1835,7 @@ impl UntracedNamers {
                 .map(|(path, line)| UnanalysedFile::new(path, "not_traced", vec![line]))
                 .collect();
             spelled.extend(fresh);
-        } else if self.unread.could_spell(own, &sym.path) {
+        } else if self.unread.could_spell(own) || self.unread.hides_beside(own, &sym.path) {
             sym.coverage = (sym.coverage.clone()).with(Some(decide::Gap::NameUnsearched));
         }
         Self::disclose(sym, spelled);
@@ -1916,8 +1920,7 @@ impl UntracedNamers {
                 files: named.len(),
             }));
             sym.missed_in.extend(named);
-        } else if !searched_as_text(literal_base(name))
-            && (quoted || self.unread.could_spell(own, &sym.path))
+        } else if !searched_as_text(literal_base(name)) && (quoted || self.unread.could_spell(own))
         {
             sym.coverage = sym.coverage.clone().with(Some(decide::Gap::NameUnsearched));
         }
@@ -4774,10 +4777,12 @@ pub fn build_impact(
             && callable_by_name(core.path())
             && spelled_name(core).is_some_and(|n| !searched_as_text(n))
             && (verdict.as_ref().is_some_and(decide::Verdict::names_quoted)
-                || untraced.unread.could_spell(
-                    crate::vocabulary::family::Group::of_name(&rel(state, core.path())),
-                    &rel(state, core.path()),
-                ));
+                || untraced
+                    .unread
+                    .could_spell(crate::vocabulary::family::Group::of_name(&rel(
+                        state,
+                        core.path(),
+                    ))));
         let coverage = search_coverage(verdict.as_ref(), unresolved.as_ref(), outside)
             .with(unsearched.then_some(decide::Gap::NameUnsearched));
         // No test found is an absence only from a closed search: the callers
