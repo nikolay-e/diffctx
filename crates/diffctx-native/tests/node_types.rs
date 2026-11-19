@@ -52,6 +52,7 @@ const SCOPES: &[(&str, Option<&[&str]>)] = &[
     ("facts/java.rs", Some(&["java"])),
     ("facts/lang/kotlin.rs", Some(&["kotlin"])),
     ("facts/kotlin.rs", Some(&["kotlin"])),
+    ("facts/reflect.rs", Some(&["java", "kotlin"])),
     ("facts/lang/c.rs", Some(&["c", "cpp"])),
     ("facts/lang/php.rs", Some(&["php"])),
     ("facts/lang/swift.rs", Some(&["swift"])),
