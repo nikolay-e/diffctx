@@ -18,7 +18,7 @@ use once_cell::sync::Lazy;
 use rustc_hash::FxHashMap;
 use tree_sitter::{Node, Tree};
 
-use super::reflect::{ComputedCall, class_literal_in, computed, lookup_position, settle_computed};
+use super::reflect::{ComputedCall, class_literal_in, computed, lookup_position, settle};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Import {
@@ -206,6 +206,9 @@ pub struct KotlinFacts {
     pub computed: Vec<ComputedCall>,
     /// Variables and properties whose value is a string literal.
     pub consts: Vec<String>,
+    /// The file looks a member up by name (`getMethod`, `findVirtual`) or imports
+    /// the reflection API: only there is a string it holds in a value a name.
+    pub reflects: bool,
     /// Lines with an ERROR or MISSING node: what was read elsewhere is right,
     /// what sits there may be missing.
     pub error_lines: Vec<u32>,
@@ -219,6 +222,9 @@ pub struct KotlinFacts {
 pub struct HeldString {
     pub range: Range<usize>,
     pub text: String,
+    /// Held in a value (a variable, an assignment, a comparison, a `case` label, a
+    /// collection), not by an annotation: a name only where the file reflects.
+    pub value: bool,
 }
 
 /// The names `expression` calls as `.name(`.
@@ -419,7 +425,7 @@ pub(super) fn extract(root: Node, bytes: &[u8]) -> KotlinFacts {
     facts.error_lines.extend(unread_type_lines(bytes, &facts));
     facts.error_lines.sort_unstable();
     facts.error_lines.dedup();
-    settle_computed(&mut facts);
+    settle(&mut facts);
     facts
 }
 
@@ -438,6 +444,7 @@ fn lookup_call(call: &Node, bytes: &[u8], facts: &mut KotlinFacts) {
     else {
         return;
     };
+    facts.reflects = true;
     let Some(arguments) = child(*call, "call_suffix").and_then(|s| child(s, "value_arguments"))
     else {
         return;
@@ -1334,11 +1341,13 @@ pub(super) fn hold(node: Node, bytes: &[u8], holds: Holds, out: &mut Vec<HeldStr
     out.push(HeldString {
         range: range.clone(),
         text: inner.to_string(),
+        value: holds == Holds::Name,
     });
     if holds == Holds::Expression {
         out.extend(called_names(inner).map(|name| HeldString {
             range: range.clone(),
             text: name.to_string(),
+            value: false,
         }));
     }
 }

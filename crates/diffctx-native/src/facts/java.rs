@@ -15,7 +15,7 @@ use super::kotlin::{
     Binding, Declaration, Holds, Import, InitCall, KotlinFacts, Receiver, Use, UseKind, Visibility,
     child, hold, line_of, push_use, squash, text, walk,
 };
-use super::reflect::{class_literal_in, computed, lookup_position, settle_computed};
+use super::reflect::{class_literal_in, computed, lookup_position, settle};
 
 /// The types around a node: each name, its visibility, and whether it is an
 /// interface, whose members are public unless they say otherwise.
@@ -83,7 +83,7 @@ pub(super) fn extract(root: Node, bytes: &[u8]) -> KotlinFacts {
         uses_at(&node, bytes, &mut facts.uses);
         Some(inner)
     });
-    settle_computed(&mut facts);
+    settle(&mut facts);
     facts
 }
 
@@ -96,6 +96,7 @@ fn lookup_call(call: &Node, bytes: &[u8], facts: &mut KotlinFacts) {
     else {
         return;
     };
+    facts.reflects = true;
     let Some(arguments) = call.child_by_field_name("arguments") else {
         return;
     };
