@@ -1788,7 +1788,6 @@ impl<'a> Engine<'a> {
     /// (`impl Shout for String`, `impl Double for i32`) gives that type a method
     /// wherever the trait is in scope; nothing else of the repository can.
     fn extension_method(&self, site: &Site, r: &Ref, owner: &Name) -> Option<Outcome> {
-        let file = &self.ix.files[site.file];
         let impls: Vec<usize> = self
             .ix
             .methods
@@ -1806,14 +1805,7 @@ impl<'a> Engine<'a> {
         let in_scope: Vec<usize> = impls
             .iter()
             .copied()
-            .filter(|m| {
-                let rec = &self.ix.defs[*m];
-                rec.file == site.file
-                    || matches!(
-                        &rec.def.local.disambig,
-                        Some(Disambig::ImplOf(t)) if file.names.contains(&Name::new(t.as_str().rsplit("::").next().unwrap_or("")))
-                    )
-            })
+            .filter(|m| self.ix.defs[*m].file == site.file || self.trait_named(site.file, *m))
             .collect();
         match in_scope.as_slice() {
             [one] => Some(Outcome::Found(*one, EvidenceKind::TypedReceiver)),
@@ -2020,10 +2012,7 @@ impl<'a> Engine<'a> {
                         .rest
                         .first()
                         .is_some_and(|owner| file.names.contains(owner))
-                    || matches!(
-                        &rec.def.local.disambig,
-                        Some(Disambig::ImplOf(t)) if file.names.contains(&Name::new(t.as_str().rsplit("::").next().unwrap_or("")))
-                    )
+                    || self.trait_named(site.file, *m)
             })
             .collect();
         targets.sort_unstable();
@@ -2035,6 +2024,15 @@ impl<'a> Engine<'a> {
             return Outcome::Unresolved(UnresolvedReason::TooManyCandidates);
         }
         Outcome::Candidates(targets, CandidateReason::UntypedReceiver)
+    }
+
+    /// Whether `file` names the trait of the impl that holds method `m`: a trait's
+    /// method is in scope where its trait is (`use crate::ext::Shout`).
+    fn trait_named(&self, file: usize, m: usize) -> bool {
+        matches!(
+            &self.ix.defs[m].def.local.disambig,
+            Some(Disambig::ImplOf(t)) if self.ix.files[file].names.contains(&Name::new(t.as_str().rsplit("::").next().unwrap_or("")))
+        )
     }
 
     /// A private item is named only in its module and the ones below it; a
