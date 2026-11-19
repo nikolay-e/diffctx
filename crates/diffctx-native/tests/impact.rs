@@ -5747,6 +5747,46 @@ fn a_renamed_name_spelled_by_too_many_files_is_said_to_be_left_out_of_the_search
     assert!(!md.contains("named nowhere"), "{md}");
 }
 
+/// Forgejo #218: the readers of a changed key past the per-file cap are
+/// counted under the key list. Nothing names the config by its path, so no
+/// path list prints a count it does not hold.
+#[test]
+fn a_key_search_past_its_cap_counts_the_rest_under_the_key_list() {
+    let readers: Vec<(String, String)> = ["alpha", "beta", "gamma", "delta", "epsilon"]
+        .iter()
+        .map(|n| {
+            (
+                format!("app/{n}.py"),
+                format!("def {n}_attempts(settings):\n    return settings[\"retry_limit\"] + 1\n"),
+            )
+        })
+        .collect();
+    let mut base: Vec<(&str, &str)> = vec![("config/app.yaml", "retry_limit: 3\nport: 30\n")];
+    base.extend(readers.iter().map(|(p, t)| (p.as_str(), t.as_str())));
+    let tmp = repo(&base, &[("config/app.yaml", "retry_limit: 5\nport: 30\n")]);
+
+    let doc = impact(tmp.path(), "HEAD~1..HEAD");
+    let by_key = &doc["named"]["by_key"];
+    assert_eq!(by_key["total"].as_u64(), Some(5), "{doc}");
+    let omitted = omitted_of(by_key);
+    assert!(omitted > 0, "{doc}");
+    assert_eq!(omitted_of(&doc["named"]["by_path"]), 0, "{doc}");
+
+    let md = impact_markdown(tmp.path(), "HEAD~1..HEAD");
+    assert!(!md.contains("Named by path"), "{md}");
+    let keyed: Vec<&str> = md
+        .lines()
+        .skip_while(|l| !l.starts_with("Named by a changed key"))
+        .skip(1)
+        .take_while(|l| l.starts_with("  - "))
+        .collect();
+    assert_eq!(
+        keyed.last().copied(),
+        Some(format!("  - and {omitted} more").as_str()),
+        "{md}"
+    );
+}
+
 /// Forgejo #109: a run stopped at any poll inside the key search returns,
 /// names the deadline, and lists no line the whole run does not.
 #[test]
