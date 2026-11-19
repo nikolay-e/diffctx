@@ -78,3 +78,12 @@ corpus B/python | B | python | impact/python/py_constructor_inherited_from_the_s
 corpus B/python | B | python | impact/python/py_constructor_inherited_from_the_second_base_is_reached_by_the_subclass_construction | strip_imports | impact # proof lost: with the caller's imports stripped the answer is empty and complete
 corpus B/python | B | python | impact/python/py_inherited_constructor_is_reached_by_the_subclass_construction | strip_everything | impact # proof lost: with the caller's imports, types and package clause stripped the answer lists only zoo/notes.py, calls complete; the caller is neither listed nor disclosed
 corpus B/python | B | python | impact/python/py_inherited_constructor_is_reached_by_the_subclass_construction | strip_imports | impact # proof lost: with the caller's imports stripped the answer lists only zoo/notes.py, calls complete; the caller is neither listed nor disclosed
+
+# The rows below are variants moved ahead of the engine change that meets
+# them; each leaves this file with that change.
+corpus A/python | A | python | impact/python/py_deleted_module_nothing_imports_lists_no_field_as_too_common_to_trace | unchanged .xyz | impact # removed definition: the answer names nothing beside an unread file spelling `Model0`
+corpus A/python | A | python | impact/python/py_deleted_module_nothing_imports_lists_no_field_as_too_common_to_trace | unchanged, command position (script) | impact # removed definition: the answer names nothing beside a script running `Model0`
+corpus A/python | A | python | impact/python/py_deleted_module_nothing_imports_lists_no_field_as_too_common_to_trace | unchanged, command position (Makefile) | impact # removed definition: the answer names nothing beside a Makefile running `Model0`
+corpus A/python | A | python | impact/python/py_deleted_module_nothing_imports_lists_no_field_as_too_common_to_trace | unchanged, command position (CI step) | impact # removed definition: the answer names nothing beside a CI step running `Model0`
+corpus A/python | A | python | impact/python/py_deleted_module_nothing_imports_lists_no_field_as_too_common_to_trace | unchanged, template text (html) | impact # removed definition: the answer names nothing beside an html template spelling `Model0`
+corpus A/python | A | python | impact/python/py_deleted_module_nothing_imports_lists_no_field_as_too_common_to_trace | unchanged, template text (jinja) | impact # removed definition: the answer names nothing beside a jinja template spelling `Model0`
