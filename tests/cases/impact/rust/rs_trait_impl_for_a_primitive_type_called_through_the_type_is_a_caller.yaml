@@ -45,3 +45,5 @@ expect:
   changed: ['src/ext.rs::double']
   relations:
   - {from: 'src/run.rs::go', to: 'src/ext.rs::double', kind: calls, resolution: resolved}
+  partial:
+    src/ext.rs::double: {calls: dispatched, reads: dispatched}

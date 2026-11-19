@@ -308,6 +308,30 @@ fn a3_a_name_match_is_no_caller() -> Result<(), Failed> {
     }])
 }
 
+/// A declared partial is a claim about a definition: one the answer lacks is a
+/// wrong answer, never a hedge only `known_false_hedges.txt` could hold.
+fn a_partial_of_a_missing_definition_is_a_failure() -> Result<(), Failed> {
+    let declared = |target: &str| {
+        format!("{CHARGE_CALLS_TOTAL}  partial:\n    {target}: {{calls: dispatched}}\n")
+    };
+    let missing = declared("shop/pricing.py::subtotal");
+    let present = declared("shop/pricing.py::total");
+    let row = answer(&json!([charge("resolved", "call", None)]));
+    for (case, fails) in [(&missing, true), (&present, false)] {
+        let found = failures(case, &row).map_err(Failed::from)?;
+        let named = found
+            .iter()
+            .any(|f| f.contains("reports no such definition"));
+        if named != fails {
+            return Err(Failed::from(format!(
+                "partial in {case}: expected a missing definition {}, got {found:?}",
+                if fails { "named" } else { "not named" }
+            )));
+        }
+    }
+    Ok(())
+}
+
 /// A4: while an answer states no kind, code kinds are compared on (from, to,
 /// resolution) alone.
 fn a4_kind_is_loose_but_the_rest_is_not() -> Result<(), Failed> {
@@ -669,7 +693,7 @@ fn a_site_has_one_standing() -> Result<(), Failed> {
 }
 
 pub(crate) fn trials() -> Vec<Trial> {
-    let rules: [(&str, fn() -> Result<(), Failed>); 14] = [
+    let rules: [(&str, fn() -> Result<(), Failed>); 15] = [
         (
             "a1_a_named_test_function_needs_the_answer_to_name_it",
             a1_a_named_test_function_needs_the_answer_to_name_it,
@@ -714,6 +738,10 @@ pub(crate) fn trials() -> Vec<Trial> {
         ),
         ("a7_a_folded_row_is_no_caller", a7_a_folded_row_is_no_caller),
         ("a_site_has_one_standing", a_site_has_one_standing),
+        (
+            "a_partial_of_a_missing_definition_is_a_failure",
+            a_partial_of_a_missing_definition_is_a_failure,
+        ),
     ];
     rules
         .into_iter()

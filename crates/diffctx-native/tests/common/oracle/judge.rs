@@ -30,6 +30,7 @@ pub(crate) fn judge(
     check_definitions(case, answer, &mut failures);
     check_unknowns(case, answer, &mut failures);
     check_coverage(case, answer, &mut failures);
+    check_partial_targets(compiled, answer, &mut failures);
     check_lists(case, answer, &mut failures);
     check_text(answer, &mut failures);
 
@@ -375,13 +376,6 @@ pub(crate) fn gate(case: &Case, compiled: &Compiled, answer: &Answer) -> Vec<Str
     .collect();
     let mut failures = Vec::new();
     let known: BTreeSet<&Node> = answer.definitions.iter().collect();
-    for (target, _) in &compiled.partial {
-        if !known.iter().any(|node| target.covers(node)) {
-            failures.push(format!(
-                "partial of `{target}`: the answer reports no such definition"
-            ));
-        }
-    }
     for node in known {
         let declared: Vec<&BTreeMap<&'static str, BTreeSet<String>>> = compiled
             .partial
@@ -468,6 +462,19 @@ fn named_gaps<'a>(
         .map(|(kind, _)| kind.as_str())
         .collect();
     (!kinds.is_empty()).then_some(kinds)
+}
+
+/// A declared partial whose definition the answer lacks is a wrong answer, as a
+/// missing coverage subject is, not a hedge: it can be baselined until the
+/// engine yields the definition.
+fn check_partial_targets(compiled: &Compiled, answer: &Answer, failures: &mut Vec<String>) {
+    for (target, _) in &compiled.partial {
+        if !answer.definitions.iter().any(|node| target.covers(node)) {
+            failures.push(format!(
+                "partial of `{target}`: the answer reports no such definition"
+            ));
+        }
+    }
 }
 
 fn check_coverage(case: &Case, answer: &Answer, failures: &mut Vec<String>) {
