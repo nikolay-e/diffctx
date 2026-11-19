@@ -2,10 +2,10 @@
 name: Nightly full eval
 
 # ci.yml already gates the full corpus per-case against
-# known_below_threshold.txt. This nightly re-runs the suite with
-# DIFFCTX_YAML_IGNORE_BASELINE=1 to report the raw failure count, so
-# baseline growth/shrinkage is tracked even when every per-case verdict
-# matches the checked-in list.
+# known_below_threshold.txt and known_false_hedges.txt. This nightly
+# re-runs the suite with DIFFCTX_YAML_IGNORE_BASELINE=1 to report the raw
+# failure count, so baseline growth/shrinkage is tracked even when every
+# per-case verdict matches the checked-in lists.
 
 on:
   schedule:
@@ -38,12 +38,13 @@ jobs:
           key: cargo-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
           restore-keys: cargo-${{ runner.os }}-
 
-      # ci.yml now gates every case per-case against
-      # tests/known_below_threshold.txt, so an aggregate pass count no longer
-      # adds protection — it could not name the regressing case anyway, and an
-      # improvement anywhere masked a regression elsewhere. What is still worth
-      # a nightly is the size of the baseline itself: with it bypassed, the raw
-      # failure count must not grow, and shrinking it is the visible work.
+      # ci.yml now gates every case per-case against the two lists, so an
+      # aggregate pass count no longer adds protection — it could not name the
+      # regressing case anyway, and an improvement anywhere masked a regression
+      # elsewhere. What is still worth a nightly is the size of the lists
+      # themselves: with both bypassed, the raw failure count must not exceed
+      # the names they list (read as the harness reads them), and shrinking
+      # them is the visible work.
       - name: Run full yaml_cases suite with the baseline bypassed
         working-directory: crates/diffctx-native
         env:
@@ -58,14 +59,16 @@ jobs:
             echo "Could not parse failure count from test output" >&2
             exit 1
           fi
-          BASELINE_SIZE=$(grep -cvE '^\s*(#|$)' tests/known_below_threshold.txt)
-          echo "Below threshold: ${FAILED} (baseline file lists ${BASELINE_SIZE})"
-          if [ "${FAILED}" -gt "${BASELINE_SIZE}" ]; then
-            echo "Below-threshold count ${FAILED} exceeds the ${BASELINE_SIZE} listed in" >&2
-            echo "tests/known_below_threshold.txt — a case regressed without being recorded." >&2
+          LISTED=$(sed -e 's/#.*//' -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' \
+            tests/known_below_threshold.txt tests/known_false_hedges.txt |
+            grep . | sort -u | grep -c .)
+          echo "Failing: ${FAILED} (the two lists name ${LISTED})"
+          if [ "${FAILED}" -gt "${LISTED}" ]; then
+            echo "${FAILED} cases fail, but known_below_threshold.txt and" >&2
+            echo "known_false_hedges.txt name ${LISTED} — a case regressed without being recorded." >&2
             exit 1
           fi
-          if [ "${FAILED}" -lt "${BASELINE_SIZE}" ]; then
-            echo "::notice::${BASELINE_SIZE} baselined but only ${FAILED} still fail —" \
-                 "prune tests/known_below_threshold.txt"
+          if [ "${FAILED}" -lt "${LISTED}" ]; then
+            echo "::notice::the two lists name ${LISTED} but only ${FAILED} still fail —" \
+                 "prune tests/known_below_threshold.txt or tests/known_false_hedges.txt"
           fi
