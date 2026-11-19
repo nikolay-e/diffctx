@@ -37,3 +37,8 @@ expect:
   decoys:
     hashicorp/consul/aws/main.tf::output.addr:
     - main.tf
+  partial:
+    # No module block calls the directory by its path, so it is a root module:
+    # whoever applies it reads its outputs from outside the code.
+    hashicorp/consul/aws/main.tf::output.addr:
+      calls: not_traced
