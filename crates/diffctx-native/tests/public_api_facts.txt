@@ -303,6 +303,7 @@ parsers::rust_tests::test_functions fn (text: &str) -> Result<Vec<(u32, u32)>, U
 parsers::scala mod
 parsers::scala::ImportFact struct derive(Clone, Debug, Default, Eq, PartialEq)
 parsers::scala::ImportFact.prefix field String
+parsers::scala::ImportFact.renamed field Vec<(String, String)>
 parsers::scala::ImportFact.selectors field Vec<String>
 parsers::scala::ImportFact.wildcard field bool
 parsers::scala::ScalaFacts struct derive(Clone, Debug, Default)
