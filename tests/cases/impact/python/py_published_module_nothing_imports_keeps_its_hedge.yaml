@@ -1,0 +1,37 @@
+name: py_published_module_nothing_imports_keeps_its_hedge
+mode: impact
+source: synthetic
+tags: [python, attribute-read, published-module]
+repo:
+  initial_files:
+    pyproject.toml: |
+      [project]
+      name = "tablekit"
+      version = "0.1.0"
+    tablekit/__init__.py: ""
+    tablekit/table.py: |
+      class Table:
+          def __init__(self, rows):
+              self.rows = rows
+    tablekit/report.py: |
+      def names(frame):
+          return list(frame.columns)
+  changed_files:
+    tablekit/table.py: |
+      class Table:
+          def __init__(self, rows):
+              self.rows = rows
+
+          @property
+          def columns(self):
+              return sorted(self.rows[0])
+  commit_message: "table: expose the column names"
+expect:
+  callers:
+    columns: []
+  partial:
+    # Nothing in the repository imports report.py, but the project publishes it:
+    # whoever installs tablekit may hand `names` a Table, so `frame.columns` may
+    # read the property and the reads stay open.
+    tablekit/table.py::columns:
+      reads: unlanded
