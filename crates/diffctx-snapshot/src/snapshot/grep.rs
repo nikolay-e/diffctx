@@ -251,7 +251,9 @@ pub fn needle_lines(
             searches.pending.clear();
         }
     }
-    let everything = searches.covered.len() == wanted.len();
+    // Sizes alone would take covered {a, b} for wanted {c, d} after a cut search.
+    let everything = searches.covered.len() == wanted.len()
+        && wanted.iter().all(|n| searches.covered.contains(*n));
     Ok(searches
         .rows
         .iter()
