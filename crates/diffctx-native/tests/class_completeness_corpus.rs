@@ -32,7 +32,9 @@
 //                         (macro body, after a parse error, command position,
 //                         template text) whose label contains the text
 //   DIFFCTX_CLASS_ACCOUNT append, per region and language, how many runs the
-//                         insertion made, named, hedged and called absent
+//                         insertion made, named, hedged and called absent, and
+//                         how many hedges were there without the name: one
+//                         more run per hedge, made only for this account
 //
 // Rows read `class family case variant query complete_empty excerpt`, with
 // the family being the case's language directory. Class `E` is a run that
@@ -504,6 +506,7 @@ fn enumeration(language: &str) {
     let mut findings = Vec::new();
     let mut tallies: BTreeMap<(&'static str, &'static str), Tally> = BTreeMap::new();
     let only_sites = knob("DIFFCTX_CLASS_SITE");
+    let accounting = knob("DIFFCTX_CLASS_ACCOUNT").is_some();
     let mut checked = 0;
     for loaded in load(language) {
         let Some(subject) = subject(&loaded.case) else {
@@ -550,12 +553,16 @@ fn enumeration(language: &str) {
                         tally.absent += 1;
                     } else {
                         tally.hedged += 1;
-                        let neutral = materialise(loaded.case.mode, &neutral_repo);
-                        if matches!(
-                            ask(&neutral, &loaded.case),
-                            Ok(Some(baseline)) if unmoved_by_no_use(&doc, &baseline)
-                        ) {
-                            tally.unmoved += 1;
+                        // `unmoved` is read by the account alone: without it the
+                        // second run would decide nothing.
+                        if accounting {
+                            let neutral = materialise(loaded.case.mode, &neutral_repo);
+                            if matches!(
+                                ask(&neutral, &loaded.case),
+                                Ok(Some(baseline)) if unmoved_by_no_use(&doc, &baseline)
+                            ) {
+                                tally.unmoved += 1;
+                            }
                         }
                     }
                 }
