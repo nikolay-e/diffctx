@@ -20,7 +20,10 @@ use _diffctx::pipeline::{
 use diffctx_config::config::limits::DEFAULT_PPR_ALPHA;
 use diffctx_config::mode::ScoringMode;
 use diffctx_snapshot::resource::RunContext;
-use diffctx_snapshot::snapshot::{git_spawns, needle_lines, register_needles};
+use diffctx_snapshot::snapshot::{
+    Admission, Oid, RepoPath, Side, SnapshotReader, git_spawns, needle_lines, open,
+    register_needles, rev_oid,
+};
 use tempfile::TempDir;
 
 mod support;
@@ -144,6 +147,32 @@ fn announced_needles_are_one_search(repo: &Path) {
     );
 }
 
+fn readers_of_a_run_share_one_object_reader(repo: &Path) {
+    let run = RunContext::unbounded();
+    let _in_run = run.enter();
+    let root = open(repo).expect("open");
+    let commit = rev_oid(repo, "HEAD").expect("rev").expect("a commit");
+    let side = || Side::Tree(Oid::parse(&commit).expect("oid"));
+    let admission = std::sync::Arc::new(Admission::default());
+    let first = SnapshotReader::new(&root, side(), admission.clone()).expect("reader");
+    let second = SnapshotReader::new(&root, side(), admission).expect("reader");
+    let path = RepoPath::new("shop/pricing.py").expect("path");
+    assert!(
+        first.read(&path).expect("read").is_some(),
+        "the seed has it"
+    );
+    let before = git_spawns();
+    assert!(
+        second.read(&path).expect("read").is_some(),
+        "the seed has it"
+    );
+    assert_eq!(
+        git_spawns() - before,
+        0,
+        "a second reader of the run asks the first one's object reader"
+    );
+}
+
 fn a_cut_search_gives_no_row_of_other_needles(repo: &Path) {
     let covered = vec!["total".to_string(), "charge".to_string()];
     let asked = vec!["return sum".to_string(), "sum(items".to_string()];
@@ -189,6 +218,7 @@ fn a_run_starts_no_more_git_processes_than_its_cell_allows_whatever_the_reposito
     }
     announced_needles_are_one_search(small.path());
     a_cut_search_gives_no_row_of_other_needles(small.path());
+    readers_of_a_run_share_one_object_reader(small.path());
     let report = report.join("\n");
     assert!(failures.is_empty(), "{}\n{report}", failures.join("; "));
     eprintln!("{report}");

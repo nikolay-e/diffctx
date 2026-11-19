@@ -160,7 +160,7 @@ struct Inner {
     id: ContentId,
     admission: Arc<Admission>,
     exec: Exec,
-    batch: Mutex<CatBatch>,
+    batch: Arc<Mutex<CatBatch>>,
     table: Mutex<Option<Arc<Table>>>,
     /// What a collapsed read of the checkout's untracked files found, for a
     /// working-tree reader: the directories it left unread are losses.
@@ -235,7 +235,7 @@ impl SnapshotReader {
                 root: root.clone(),
                 basis,
                 id,
-                batch: Mutex::new(CatBatch::new(work, cap, exec.clone())),
+                batch: exec.batch(work, cap),
                 admission,
                 exec,
                 table: Mutex::new(None),
@@ -535,7 +535,7 @@ impl SnapshotReader {
         self.inner.exec.inject_read_fault(self.role())?;
         // A stream that went wrong twice on this object is an error: it is
         // never answered another way, so no read is quietly a different one.
-        match lock(&self.inner.batch)?.get(oid.as_str())? {
+        match lock(&self.inner.batch)?.get(&self.inner.exec, oid.as_str())? {
             Reply::Blob(bytes) => Ok(Bytes::from(bytes)),
             // The tree names this object: git not having it is a broken or
             // partial repository, not an absent file.
