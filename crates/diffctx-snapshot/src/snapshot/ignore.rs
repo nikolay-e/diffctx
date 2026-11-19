@@ -17,6 +17,7 @@ use crate::snapshot::error::{Result, SnapshotError};
 use crate::snapshot::git::{Exec, Scratch, git_command};
 use crate::snapshot::types::RepoPath;
 
+#[derive(Clone)]
 pub(crate) struct Hit {
     pub source: IgnoreSource,
     /// The same rule excludes an ancestor directory: the path is caught only
@@ -84,6 +85,9 @@ fn patterns_of(rule_file: &str, content: &str) -> Vec<String> {
         .collect()
 }
 
+/// The checkout's rules asked of the same paths answer the same within a run:
+/// several readers of it ask. A tree's readers
+/// are memoized where they read its rule files, once per tree.
 pub(crate) fn check(
     exec: &Exec,
     basis: &Basis<'_>,
@@ -92,6 +96,32 @@ pub(crate) fn check(
     if paths.is_empty() {
         return Ok(FxHashMap::default());
     }
+    let Basis::WorkingTree { root, untracked } = basis else {
+        return check_in_scratch(exec, basis, paths);
+    };
+    // Every input, each field after its length: two questions with one key
+    // are one.
+    let mut key = Vec::new();
+    let mut field = |bytes: &[u8]| {
+        key.extend_from_slice(&bytes.len().to_le_bytes());
+        key.extend_from_slice(bytes);
+    };
+    field(root.as_os_str().as_encoded_bytes());
+    for name in *untracked {
+        field(name);
+    }
+    field(b"paths");
+    for path in paths {
+        field(path.as_bytes());
+    }
+    exec.derived(key, || check_in_scratch(exec, basis, paths))
+}
+
+fn check_in_scratch(
+    exec: &Exec,
+    basis: &Basis<'_>,
+    paths: &[&str],
+) -> Result<FxHashMap<String, Hit>> {
     let scratch = Scratch::new()?;
     let (dir, patterns, own_excludes) = match basis {
         Basis::WorkingTree { root, untracked } => (

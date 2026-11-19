@@ -6,6 +6,9 @@
 //! three files and one of twenty must cost the same: a spawn per item shows as
 //! a difference, whatever the ceiling.
 //!
+//! Needles announced before the first search share it: one `git grep` for every
+//! consumer that announced, and each gets the rows its own needles select.
+//!
 //! One test: the counter is the process's, and a second test would count into it.
 
 use std::path::Path;
@@ -16,7 +19,8 @@ use _diffctx::pipeline::{
 };
 use diffctx_config::config::limits::DEFAULT_PPR_ALPHA;
 use diffctx_config::mode::ScoringMode;
-use diffctx_snapshot::snapshot::git_spawns;
+use diffctx_snapshot::resource::RunContext;
+use diffctx_snapshot::snapshot::{git_spawns, needle_lines, register_needles};
 use tempfile::TempDir;
 
 mod support;
@@ -105,6 +109,66 @@ fn processes(repo: &Path, run: fn(&Path)) -> usize {
     git_spawns() - before
 }
 
+fn announced_needles_are_one_search(repo: &Path) {
+    let (total, charge) = (vec!["total".to_string()], vec!["charge".to_string()]);
+    let more = || true;
+    let alone = (
+        needle_lines(repo, &total, None, &more).expect("search"),
+        needle_lines(repo, &charge, None, &more).expect("search"),
+    );
+    assert!(
+        !alone.0.is_empty() && !alone.1.is_empty(),
+        "the seed spells both"
+    );
+
+    let run = RunContext::unbounded();
+    let _in_run = run.enter();
+    let before = git_spawns();
+    register_needles(repo, &total, None);
+    register_needles(repo, &charge, None);
+    let together = (
+        needle_lines(repo, &total, None, &more).expect("search"),
+        needle_lines(repo, &charge, None, &more).expect("search"),
+    );
+    assert_eq!(
+        git_spawns() - before,
+        1,
+        "two announced needles, one search"
+    );
+    assert_eq!(together, alone, "each reads the rows of its own needles");
+    needle_lines(repo, &total, None, &more).expect("search");
+    assert_eq!(
+        git_spawns() - before,
+        1,
+        "a needle searched is not searched again"
+    );
+}
+
+fn a_cut_search_gives_no_row_of_other_needles(repo: &Path) {
+    let covered = vec!["total".to_string(), "charge".to_string()];
+    let asked = vec!["return sum".to_string(), "sum(items".to_string()];
+    let run = RunContext::unbounded();
+    let _in_run = run.enter();
+    let kept = needle_lines(repo, &covered, None, &|| true).expect("search");
+    assert!(
+        kept.iter()
+            .any(|(_, _, text)| !text.contains("return sum") && !text.contains("sum(items")),
+        "the seed has covered rows that the asked needles do not select"
+    );
+    let polls = std::cell::Cell::new(0);
+    let one_poll = || {
+        polls.set(polls.get() + 1);
+        polls.get() == 1
+    };
+    let cut = needle_lines(repo, &asked, None, &one_poll).expect("search");
+    assert!(!cut.is_empty(), "the cut search found its rows");
+    assert!(
+        cut.iter()
+            .all(|(_, _, text)| asked.iter().any(|n| text.contains(n.as_str()))),
+        "a cut search returned a row of the needles covered before it: {cut:?}"
+    );
+}
+
 #[test]
 fn a_run_starts_no_more_git_processes_than_its_cell_allows_whatever_the_repository_size() {
     let small = repository(0);
@@ -123,6 +187,8 @@ fn a_run_starts_no_more_git_processes_than_its_cell_allows_whatever_the_reposito
             failures.push(format!("{name}: over its ceiling"));
         }
     }
+    announced_needles_are_one_search(small.path());
+    a_cut_search_gives_no_row_of_other_needles(small.path());
     let report = report.join("\n");
     assert!(failures.is_empty(), "{}\n{report}", failures.join("; "));
     eprintln!("{report}");
