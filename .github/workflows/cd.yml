@@ -451,6 +451,7 @@ jobs:
           echo "${listing}" | grep -m5 -E 'crates/diffctx-native/src/.*\.rs$'
           echo "${listing}" | grep -m1 -E 'crates/diffctx-base/src/.*\.rs$'
           echo "${listing}" | grep -m1 -E 'crates/diffctx-snapshot/src/.*\.rs$'
+          echo "${listing}" | grep -m1 -E 'crates/diffctx-facts/src/.*\.rs$'
           echo "${listing}" | grep -m1 -E 'crates/diffctx-config/src/.*\.rs$'
           echo "OK: sdist contains Rust sources"
 

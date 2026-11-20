@@ -5,9 +5,9 @@
 
 mod snapshot_fixture;
 
-use _diffctx::facts::config::identity_of;
-use _diffctx::facts::{FactsCache, LocalKey, Namespace};
 use _diffctx::resolve::{Binding, CandidateReason, ConfigResolver, Relation, Resolution};
+use diffctx_facts::facts::config::identity_of;
+use diffctx_facts::facts::{FactsCache, LocalKey, Namespace};
 use diffctx_snapshot::snapshot::{AnalysisContext, RangeSpec, RunBudget, Side, SideTag};
 use snapshot_fixture::Repo;
 
@@ -39,7 +39,7 @@ fn open(files: &[(&str, &str)]) -> Fixture {
 impl Fixture {
     /// `Kind/name@namespace in file`, for a key of the snapshot; a member of an
     /// object (its labels) is `Kind/name@namespace.member`.
-    fn where_is(&self, key: &_diffctx::facts::DefKey) -> String {
+    fn where_is(&self, key: &diffctx_facts::facts::DefKey) -> String {
         let found = self
             .head
             .definitions()

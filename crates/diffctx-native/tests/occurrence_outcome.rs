@@ -8,7 +8,6 @@ mod snapshot_fixture;
 
 use std::sync::Arc;
 
-use _diffctx::facts::{DefKind, FactsCache, FileFacts, Lexical, facts_of};
 use _diffctx::occurrence::{
     Basis, Entry, FileOutcomes, Outcome, Reason, View, Witness, admitted, counts_against, outcomes,
 };
@@ -17,6 +16,7 @@ use _diffctx::resolve::{
     JavaResolver, KotlinResolver, PhpResolver, PythonResolver, Relation, Resolution, RustResolver,
     ShellResolver, TypeScriptResolver, UnresolvedReason,
 };
+use diffctx_facts::facts::{DefKind, FactsCache, FileFacts, Lexical, facts_of};
 use diffctx_snapshot::snapshot::{AnalysisContext, RangeSpec, RepoPath, RunBudget, Side, SideTag};
 use snapshot_fixture::Repo;
 

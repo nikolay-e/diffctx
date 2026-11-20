@@ -832,7 +832,7 @@ mod tests {
     fn a_fragmented_bundle_yields_one_view_per_document() {
         let bundle = "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: web-config\ndata:\n  LOG_LEVEL: info\n---\napiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: web\nspec:\n  selector:\n    matchLabels:\n      app: web\n  template:\n    metadata:\n      labels:\n        app: web\n        tier: frontend\n    spec:\n      containers:\n      - name: web\n        image: nginx:1.25\n---\napiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: api\nspec:\n  selector:\n    matchLabels:\n      app: api\n  template:\n    metadata:\n      labels:\n        app: api\n        tier: backend\n    spec:\n      containers:\n      - name: api\n        image: api:1.0\n";
         let fragments =
-            crate::parsers::fragment_file(std::sync::Arc::from("k8s/bundle.yaml"), bundle);
+            diffctx_facts::parsers::fragment_file(std::sync::Arc::from("k8s/bundle.yaml"), bundle);
         let covered: Vec<(u32, u32)> = fragments
             .iter()
             .map(|f| (f.id.start_line, f.id.end_line))
@@ -859,7 +859,7 @@ mod tests {
 
         let service = "apiVersion: v1\nkind: Service\nmetadata:\n  name: web\nspec:\n  selector:\n    app: web\n  ports:\n  - port: 8080\n    targetPort: 8080\n";
         let mut all = fragments;
-        all.extend(crate::parsers::fragment_file(
+        all.extend(diffctx_facts::parsers::fragment_file(
             std::sync::Arc::from("k8s/service.yaml"),
             service,
         ));

@@ -1,6 +1,10 @@
 mod config_parser;
+pub mod embedded;
 mod generic;
+pub mod keyword_calls;
 mod markdown;
+pub mod rust_tests;
+pub mod scala;
 mod tree_sitter_strategy;
 
 use std::sync::Arc;
@@ -25,9 +29,17 @@ static STRATEGIES: Lazy<Vec<Box<dyn FragmentationStrategy>>> = Lazy::new(|| {
     ]
 });
 
-pub(crate) use tree_sitter_strategy::{has_grammar, inline_scripts, parse_file, parse_tree};
+pub use tree_sitter_strategy::{has_grammar, inline_scripts, parse_file, parse_tree};
 
-pub(crate) use tree_sitter_strategy::{Declaration, ParseOutcome, code_only, declarations};
+pub use tree_sitter_strategy::{Declaration, ParseOutcome, code_only, declarations};
+
+/// `content` as code: comments and string literals blanked, interpolations
+/// kept, read off the file's grammar (#460, #475). A name inside
+/// `"must be refused"` or a comment is not a reference (#345). A file
+/// without a grammar is read as written.
+pub fn code_text(path: &str, content: &str) -> std::sync::Arc<str> {
+    crate::parsers::code_only(path, content).unwrap_or_else(|| content.into())
+}
 
 /// Why a code file's definitions were not all read (#454): `no_grammar` when
 /// this build has no grammar for its language, `parse_timeout` when the
@@ -35,7 +47,7 @@ pub(crate) use tree_sitter_strategy::{Declaration, ParseOutcome, code_only, decl
 /// out, `parse_partial` when it broke on some lines and the rest was read.
 /// `None` for a clean parse, a definition-free script included, and for
 /// prose, config and data, which have no definitions to miss.
-pub(crate) fn unanalysed_reason(
+pub fn unanalysed_reason(
     path: &str,
     has_definition: bool,
     content: impl FnOnce() -> Option<Vec<u8>>,
@@ -57,7 +69,7 @@ pub(crate) fn unanalysed_reason(
 }
 
 /// How a reason of `unanalysed_reason` reads in prose.
-pub(crate) fn unanalysed_text(reason: &str) -> &'static str {
+pub fn unanalysed_text(reason: &str) -> &'static str {
     match reason {
         "no_grammar" => "no grammar in this build",
         "parse_timeout" => "parse timed out",
@@ -71,7 +83,7 @@ pub(crate) fn unanalysed_text(reason: &str) -> &'static str {
     }
 }
 
-pub(crate) fn fragment_file(path: Arc<str>, content: &str) -> Vec<Fragment> {
+pub fn fragment_file(path: Arc<str>, content: &str) -> Vec<Fragment> {
     for strategy in STRATEGIES.iter() {
         if strategy.can_handle(&path, content) {
             let fragments = strategy.fragment(Arc::clone(&path), content);
@@ -247,6 +259,28 @@ fn create_code_gap_fragments(
     }
 
     fragments
+}
+
+/// A file's syntax tree, parsed once and asked where its nodes sit.
+pub struct Syntax(tree_sitter::Tree);
+
+impl Syntax {
+    pub fn of_file(path: &str, content: &str) -> Option<Self> {
+        parse_file(path, content).map(|(tree, _)| Self(tree))
+    }
+
+    /// The grammar's parent node kind and field of the node at `start..end`, as
+    /// `kind/field`.
+    pub fn position(&self, start: usize, end: usize) -> Option<String> {
+        let node = self.0.root_node().descendant_for_byte_range(start, end)?;
+        let parent = node.parent()?;
+        let mut cursor = parent.walk();
+        let child = parent
+            .children(&mut cursor)
+            .position(|c| c.id() == node.id());
+        let field = child.and_then(|child| parent.field_name_for_child(child as u32));
+        Some(format!("{}/{}", parent.kind(), field.unwrap_or("")))
+    }
 }
 
 #[cfg(test)]

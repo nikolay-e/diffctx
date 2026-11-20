@@ -24,8 +24,8 @@ use std::collections::{HashMap, HashSet};
 use super::{
     Binding, CandidateReason, Evidence, EvidenceKind, Relation, Resolution, UnresolvedReason,
 };
-use crate::facts::config::{Resolved, SourcePointer, UseOf, directory_of};
-use crate::facts::{DefKey, DefKind, Fact, FileFacts, Language, Name};
+use diffctx_facts::facts::config::{Resolved, SourcePointer, UseOf, directory_of};
+use diffctx_facts::facts::{DefKey, DefKind, Fact, FileFacts, Language, Name};
 
 pub(super) struct Bound {
     pub(super) bindings: Vec<Binding>,

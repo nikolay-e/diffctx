@@ -5,9 +5,9 @@
 
 use std::path::Path;
 
-use _diffctx::facts::Language;
-use _diffctx::facts::blob_oid;
-use _diffctx::facts::lang::builtin;
+use diffctx_facts::facts::Language;
+use diffctx_facts::facts::blob_oid;
+use diffctx_facts::facts::lang::builtin;
 use diffctx_snapshot::snapshot::{Loss, RepoPath, RunBudget};
 use walkdir::WalkDir;
 

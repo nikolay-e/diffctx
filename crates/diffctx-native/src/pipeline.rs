@@ -776,7 +776,9 @@ fn unanalysed_namers(
             .iter()
             .any(|f| Path::new(f.path()) == file.as_path() && f.kind.is_definition_kind());
         let Some((reason, lines)) =
-            crate::parsers::unanalysed_reason(&rel, has_definition, || source.read_bytes(file))
+            diffctx_facts::parsers::unanalysed_reason(&rel, has_definition, || {
+                source.read_bytes(file)
+            })
         else {
             continue;
         };
@@ -801,7 +803,7 @@ fn unanalysed_namers_text(unread: &[crate::impact::UnanalysedFile]) -> String {
         let why = format!(
             "{}{}",
             file.language.map(|l| format!("{l}: ")).unwrap_or_default(),
-            crate::parsers::unanalysed_text(file.reason)
+            diffctx_facts::parsers::unanalysed_text(file.reason)
         );
         match groups.iter_mut().find(|(w, _)| *w == why) {
             Some((_, paths)) => paths.push(&file.path),
@@ -837,7 +839,7 @@ fn shadowed_definitions<'f>(
     container: &str,
     run: &diffctx_snapshot::resource::RunContext,
 ) -> Vec<&'f Fragment> {
-    use crate::facts::Fact;
+    use diffctx_facts::facts::Fact;
     let mut stand_ins: Vec<&Fragment> = Vec::new();
     let mut paths: Vec<&str> = fragments.iter().map(Fragment::path).collect();
     paths.sort_unstable();
@@ -850,7 +852,7 @@ fn shadowed_definitions<'f>(
         else {
             continue;
         };
-        let Some(blob) = crate::facts::local_facts(path, &text) else {
+        let Some(blob) = diffctx_facts::facts::local_facts(path, &text) else {
             continue;
         };
         for fact in &blob.facts {
@@ -904,11 +906,11 @@ fn is_local_fragment(
     name: &str,
     run: &diffctx_snapshot::resource::RunContext,
 ) -> bool {
-    use crate::facts::{Fact, LocalKind};
+    use diffctx_facts::facts::{Fact, LocalKind};
     let Some(text) = run.source().read_to_string(Path::new(fragment.path())) else {
         return false;
     };
-    let Some(blob) = crate::facts::local_facts(fragment.path(), &text) else {
+    let Some(blob) = diffctx_facts::facts::local_facts(fragment.path(), &text) else {
         return false;
     };
     let (from, to) = (fragment.start_line(), fragment.end_line());
@@ -927,8 +929,10 @@ fn is_local_fragment(
 }
 
 /// The definitions (and callbacks, outermost last) a scope sits in.
-fn scope_chain(scope: &crate::facts::Scope) -> (Vec<&str>, Vec<&crate::facts::Scope>) {
-    use crate::facts::Scope;
+fn scope_chain(
+    scope: &diffctx_facts::facts::Scope,
+) -> (Vec<&str>, Vec<&diffctx_facts::facts::Scope>) {
+    use diffctx_facts::facts::Scope;
     let mut callbacks = Vec::new();
     let mut current = scope;
     loop {
@@ -956,12 +960,12 @@ fn scope_chain(scope: &crate::facts::Scope) -> (Vec<&str>, Vec<&crate::facts::Sc
 /// name (`name.attr`, `nonlocal name`, a spelling no fact stands on): each may be
 /// a use the answer does not list.
 fn unplaced_spellings(
-    blob: &crate::facts::BlobFacts,
+    blob: &diffctx_facts::facts::BlobFacts,
     text: &str,
     name: &str,
-    enclosing: &crate::facts::Scope,
+    enclosing: &diffctx_facts::facts::Scope,
 ) -> Vec<u32> {
-    use crate::facts::{Fact, Scope};
+    use diffctx_facts::facts::{Fact, Scope};
     let mut home = enclosing;
     while let Scope::Callback { parent, .. } = home {
         home = parent;
@@ -1018,14 +1022,14 @@ fn local_uses(
     name: &str,
     run: &diffctx_snapshot::resource::RunContext,
 ) -> Vec<crate::impact::LocalOf> {
-    use crate::facts::{Fact, LocalKind, Receiver};
+    use diffctx_facts::facts::{Fact, LocalKind, Receiver};
     let mut found: Vec<crate::impact::LocalOf> = Vec::new();
     for file in files {
         let Some(text) = run.source().read_to_string(file) else {
             continue;
         };
         let display = diffctx_base::paths::display_rel_or_abs(root_dir, file);
-        let Some(blob) = crate::facts::local_facts(&display, &text) else {
+        let Some(blob) = diffctx_facts::facts::local_facts(&display, &text) else {
             continue;
         };
         let lines: Vec<&str> = text.split('\n').collect();
@@ -1034,7 +1038,7 @@ fn local_uses(
                 .get(line as usize - 1)
                 .map_or(0, |l| l.len() - l.trim_start().len())
         };
-        let locals: Vec<&crate::facts::Local> = blob
+        let locals: Vec<&diffctx_facts::facts::Local> = blob
             .facts
             .iter()
             .filter_map(|f| match f {
@@ -1104,7 +1108,7 @@ fn local_uses(
                 uses.push(crate::impact::LocalUse {
                     inside: inner.or_else(|| at.last().map(|s| s.to_string())),
                     line,
-                    call: matches!(r.use_kind, crate::facts::UseKind::Call),
+                    call: matches!(r.use_kind, diffctx_facts::facts::UseKind::Call),
                 });
             }
             uses.sort_by_key(|u| u.line);
@@ -1195,7 +1199,7 @@ fn resolve_symbol_change_set(
     let mut seen: FxHashSet<FragmentId> = FxHashSet::default();
     let mut fragments =
         crate::fragmentation::process_files_for_fragments(&files, root_dir, &mut seen, true, run);
-    crate::overlay::overlay_definitions(&mut fragments, &run.source());
+    diffctx_facts::overlay::overlay_definitions(&mut fragments, &run.source());
     let indent = |f: &Fragment| {
         f.content
             .lines()
@@ -1228,8 +1232,8 @@ fn resolve_symbol_change_set(
     // guessed from indentation. An extension's receiver is the last of its
     // container, set apart by the `ImplOf` disambiguator.
     let kotlin_owned = |def: &Fragment, owner: &str| -> Option<bool> {
-        use crate::facts::lang::kotlin::KotlinExtractor;
-        use crate::facts::{Disambig, Extractor as _, Fact};
+        use diffctx_facts::facts::lang::kotlin::KotlinExtractor;
+        use diffctx_facts::facts::{Disambig, Extractor as _, Fact};
         if diffctx_base::languages::get_language_for_file(def.path()) != Some("kotlin") {
             return None;
         }
@@ -1263,7 +1267,7 @@ fn resolve_symbol_change_set(
     };
     let owned_by = |def: &Fragment, owner: &str| {
         if let Some(owned) = kotlin_owned(def, owner).or_else(|| {
-            crate::overlay::stated_owner(def.path(), def.start_line(), owner, &run.source())
+            diffctx_facts::overlay::stated_owner(def.path(), def.start_line(), owner, &run.source())
         }) {
             return owned;
         }
@@ -1782,7 +1786,7 @@ pub fn compute_scored_state_anchored(
         &run,
     ));
     if reverse_references {
-        crate::overlay::overlay_definitions(&mut all_fragments, &run.source());
+        diffctx_facts::overlay::overlay_definitions(&mut all_fragments, &run.source());
     }
 
     let t_parse_discovered = Instant::now();
@@ -1934,7 +1938,7 @@ fn settle_layout(
             .par_iter_mut()
             .zip(texts.par_iter())
             .for_each(|(runs, text)| {
-                crate::change_class::settle_layout(runs, text.as_deref(), &|| run.check());
+                diffctx_facts::change_class::settle_layout(runs, text.as_deref(), &|| run.check());
             });
     }
 }
@@ -1948,7 +1952,11 @@ pub(crate) fn classify_changes(
     hunks: &[diffctx_base::types::DiffHunk],
     hunk_texts: &[diffctx_base::changed_lines::HunkText],
     fragments: &[Fragment],
-) -> Vec<(String, crate::change_class::ChangeClass, &'static str)> {
+) -> Vec<(
+    String,
+    diffctx_facts::change_class::ChangeClass,
+    &'static str,
+)> {
     // A file is layout-only when every run of it is: lines that only moved
     // from one run to another are a reorder, not a reformat.
     let mut sides_by_file: FxHashMap<&str, (Vec<String>, Vec<String>, bool)> = FxHashMap::default();
@@ -1987,7 +1995,7 @@ pub(crate) fn classify_changes(
             let lines: Vec<String> = removed.iter().chain(added).cloned().collect();
             let layout = !lines.is_empty() && runs_layout;
             let (class, reason) =
-                crate::change_class::classify(&file_hunks, &lines, generated, layout);
+                diffctx_facts::change_class::classify(&file_hunks, &lines, generated, layout);
             (display, class, reason)
         })
         .collect()
@@ -2105,7 +2113,11 @@ pub(crate) fn trim_commit_messages(messages: &[String], cap_tokens: u32) -> Vec<
 /// Every changed file's evidence tier, keyed by the path its fragments carry.
 pub(crate) fn evidence_priority_of(
     changed_files: &[PathBuf],
-    change_classes: &[(String, crate::change_class::ChangeClass, &'static str)],
+    change_classes: &[(
+        String,
+        diffctx_facts::change_class::ChangeClass,
+        &'static str,
+    )],
 ) -> FxHashMap<Arc<str>, u8> {
     changed_files
         .iter()
@@ -2125,8 +2137,11 @@ pub(crate) fn evidence_priority_of(
 /// generated files (4). A test stub printed whole while the migration it
 /// exercises was omitted is the inversion (#311). Read on the repository
 /// path: an absolute one under a `tests/` directory made every file a test.
-pub(crate) fn evidence_tier(repo_path: &str, class: crate::change_class::ChangeClass) -> u8 {
-    use crate::change_class::ChangeClass;
+pub(crate) fn evidence_tier(
+    repo_path: &str,
+    class: diffctx_facts::change_class::ChangeClass,
+) -> u8 {
+    use diffctx_facts::change_class::ChangeClass;
     let path = Path::new(repo_path);
     let ext = diffctx_base::languages::file_ext(path);
     match class {
@@ -2764,7 +2779,11 @@ fn full_empty_output(
 /// row saying it is not represented.
 fn list_unrepresented_changes(
     output: &mut DiffContextOutput,
-    change_classes: &[(String, crate::change_class::ChangeClass, &'static str)],
+    change_classes: &[(
+        String,
+        diffctx_facts::change_class::ChangeClass,
+        &'static str,
+    )],
     fragmentless: &FxHashSet<String>,
 ) {
     output.inventory.changed = Listing::of(

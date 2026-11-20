@@ -13,6 +13,7 @@ repository = "https://github.com/nikolay-e/diffctx"
 [workspace.dependencies]
 diffctx-base = { path = "crates/diffctx-base", version = "2.0.0-dev.0" }
 diffctx-config = { path = "crates/diffctx-config", version = "2.0.0-dev.0" }
+diffctx-facts = { path = "crates/diffctx-facts", version = "2.0.0-dev.0", default-features = false }
 diffctx-snapshot = { path = "crates/diffctx-snapshot", version = "2.0.0-dev.0" }
 dunce = "1"
 libc = "0.2"
@@ -30,6 +31,55 @@ tiktoken-rs = "=0.12.1"
 toml = "1.1"
 tracing = "0.1"
 wait-timeout = "0.2"
+
+# The tree-sitter grammars: diffctx-facts parses with them (its features lang-core and
+# lang-extra, which the shell forwards), and the shell's tests read sources with a few.
+tree-sitter = "0.25"
+tree-sitter-python = "0.25"
+tree-sitter-javascript = "0.25"
+tree-sitter-typescript = "0.23"
+tree-sitter-go = "0.25"
+tree-sitter-rust = "0.24"
+tree-sitter-java = "0.23"
+tree-sitter-c = "0.24"
+tree-sitter-cpp = "0.23"
+tree-sitter-c-sharp = "0.23"
+tree-sitter-ruby = "0.23"
+tree-sitter-php = "0.25"
+tree-sitter-scala = "0.26"
+tree-sitter-swift = "0.7"
+# The fwcd grammar (fwcd's own crate stops at 0.3.8, pinned to tree-sitter
+# < 0.23, fwcd#242), as BrokkAi publishes its maintained fork with symbol-
+# prefixed C exports. Exact pin: a fork's next release is reviewed, not taken.
+# On a 1,036-file Kotlin codebase it lost no type declaration and broke on none;
+# tree-sitter-kotlin-sg 0.4.1 silently dropped 7 classes (a bodyless
+# annotated class swallowed the next one) and broke 5 Compose files, and
+# tree-sitter-kotlin-ng dropped 8 and broke whole classes on `get(...)`.
+brokk-tree-sitter-kotlin = "=0.4.6"
+tree-sitter-html = "0.23"
+tree-sitter-bash = "0.25"
+tree-sitter-css = "0.25"
+tree-sitter-json = "0.24"
+tree-sitter-haskell = "0.24"
+tree-sitter-julia = "0.23"
+tree-sitter-ocaml = "0.26"
+tree-sitter-yaml = "0.7"
+tree-sitter-r = "1.2"
+tree-sitter-elixir = "0.3"
+tree-sitter-lua = "0.5"
+tree-sitter-zig = "1.1"
+tree-sitter-erlang = "0.21"
+tree-sitter-nix = "0.3"
+tree-sitter-groovy = "0.1"
+tree-sitter-objc = "3.0"
+tree-sitter-cmake = "0.7"
+tree-sitter-make = "1.1"
+tree-sitter-hcl = "1.1"
+tree-sitter-clojure = "0.1"
+tree-sitter-graphql = "0.2"
+tree-sitter-dart = "0.3"
+tree-sitter-prisma-io = "1.6"
+tree-sitter-svelte-ng = "1.0"
 
 [workspace.lints.clippy]
 pedantic = { level = "warn", priority = -1 }

@@ -8,16 +8,13 @@
 pub mod in_memory_harness;
 
 // Change set: what the diff touched, cut into fragments.
-pub mod change_class;
 pub(crate) mod decide;
 pub(crate) mod fold;
 pub(crate) mod fragmentation;
-pub(crate) mod parsers;
 pub(crate) mod tokens;
 
 // Graph: relationships between fragments.
 pub(crate) mod edges;
-pub mod facts;
 pub(crate) mod graph;
 pub(crate) mod keytable;
 pub(crate) mod provenance;
@@ -44,7 +41,6 @@ pub mod delivery;
 pub mod hook;
 pub mod impact;
 pub mod locate;
-pub(crate) mod overlay;
 pub mod render;
 
 // Orchestration and shared configuration.

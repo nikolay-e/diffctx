@@ -30,7 +30,7 @@ const REWRITE: &str = "DIFFCTX_NODE_TYPES_REWRITE";
 const JS: &[&str] = &["javascript", "typescript", "tsx"];
 const NONE: &[&str] = &[];
 
-/// Every file under `src` that mentions tree-sitter, and the grammars it reads.
+/// Every file under a crate's `src` that mentions tree-sitter, and the grammars it reads.
 /// `None` is every grammar: the code that walks any tree.
 const SCOPES: &[(&str, Option<&[&str]>)] = &[
     ("change_class.rs", None),
@@ -39,14 +39,13 @@ const SCOPES: &[(&str, Option<&[&str]>)] = &[
     ("facts/lexical.rs", None),
     ("facts/lang/mod.rs", None),
     ("facts/lang/walker.rs", None),
-    ("tokens/occurrence/debug.rs", None),
     ("facts/lang/python.rs", Some(&["python"])),
     ("overlay/python.rs", Some(&["python"])),
-    ("pipeline/keyword_binding.rs", Some(&["python"])),
+    ("parsers/keyword_calls.rs", Some(&["python"])),
     ("facts/lang/typescript.rs", Some(JS)),
     ("overlay/javascript.rs", Some(JS)),
     ("facts/lang/rust.rs", Some(&["rust"])),
-    ("impact/rust.rs", Some(&["rust"])),
+    ("parsers/rust_tests.rs", Some(&["rust"])),
     ("facts/lang/go.rs", Some(&["go"])),
     ("facts/lang/java.rs", Some(&["java"])),
     ("facts/java.rs", Some(&["java"])),
@@ -62,10 +61,10 @@ const SCOPES: &[(&str, Option<&[&str]>)] = &[
     ("facts/config/yaml.rs", Some(&["yaml"])),
     ("facts/config/json.rs", Some(&["json"])),
     ("facts/config/syntax.rs", Some(&["yaml", "json"])),
-    ("edges/semantic/legacy/scala.rs", Some(&["scala"])),
+    ("parsers/scala.rs", Some(&["scala"])),
     // Reads a Bash tree for two kinds (`command`, `redirected_statement`) outside
     // any table; the report of this list names them.
-    ("impact.rs", Some(NONE)),
+    ("parsers/embedded.rs", Some(NONE)),
 ];
 
 /// The grammars the crate parses with, by the name `parsers` gives them.
@@ -465,8 +464,15 @@ fn read_source(file: &str, text: &str) -> FileReads {
     out
 }
 
-fn src() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("src")
+fn srcs() -> Vec<PathBuf> {
+    let crates = Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
+    let mut found: Vec<PathBuf> = fs::read_dir(&crates)
+        .expect("crates")
+        .map(|e| e.expect("entry").path().join("src"))
+        .filter(|p| p.is_dir())
+        .collect();
+    found.sort();
+    found
 }
 
 fn sources(dir: &Path, found: &mut Vec<PathBuf>) {
@@ -488,12 +494,18 @@ fn sources(dir: &Path, found: &mut Vec<PathBuf>) {
 fn tables() -> BTreeMap<String, Reads> {
     let known: Vec<&str> = grammars().iter().map(|(name, _)| *name).collect();
     let mut found = Vec::new();
-    sources(&src(), &mut found);
+    for root in srcs() {
+        sources(&root, &mut found);
+    }
     let mut per_grammar: BTreeMap<String, Reads> = BTreeMap::new();
     let mut unscoped = Vec::new();
     for path in found {
+        let root = srcs()
+            .into_iter()
+            .find(|s| path.starts_with(s))
+            .expect("under a crate's src");
         let relative = path
-            .strip_prefix(src())
+            .strip_prefix(&root)
             .expect("under src")
             .to_string_lossy()
             .replace('\\', "/");

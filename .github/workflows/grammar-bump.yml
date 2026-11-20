@@ -1,10 +1,10 @@
 # .github/workflows/grammar-bump.yml
 name: grammar-bump
 
-# Moves the tree-sitter grammars of crates/diffctx-native to their latest
+# Moves the tree-sitter grammars (the workspace's, parsed by diffctx-facts) to their latest
 # releases and says what that buys: the corpus gate on the new grammars, and the
 # blobs a newer grammar reads that the pinned one did not
-# (crates/diffctx-native/src/facts/grammar_witnesses.txt, which is how a parse error
+# (crates/diffctx-facts/src/facts/grammar_witnesses.txt, which is how a parse error
 # is named `grammar_outdated`).
 #
 # Triggered by the label `grammars:bump` on a pull_request of this repository.
@@ -84,8 +84,8 @@ jobs:
       - name: Patch of what moved
         id: patch
         run: |
-          git diff -- Cargo.lock crates/diffctx-native/Cargo.toml \
-            crates/diffctx-native/src/facts/grammar_witnesses.txt > "$RUNNER_TEMP/grammar-bump.patch"
+          git diff -- Cargo.lock Cargo.toml \
+            crates/diffctx-facts/src/facts/grammar_witnesses.txt > "$RUNNER_TEMP/grammar-bump.patch"
           if [ -s "$RUNNER_TEMP/grammar-bump.patch" ] && [ "${{ steps.gate.outcome }}" = success ]; then
             echo "changed=true" >> "$GITHUB_OUTPUT"
           else
@@ -123,8 +123,8 @@ jobs:
         run: |
           git apply --index \
             --include=Cargo.lock \
-            --include=crates/diffctx-native/Cargo.toml \
-            --include=crates/diffctx-native/src/facts/grammar_witnesses.txt \
+            --include=Cargo.toml \
+            --include=crates/diffctx-facts/src/facts/grammar_witnesses.txt \
             "$RUNNER_TEMP/grammar-bump.patch"
           git -c user.name=github-actions[bot] \
               -c user.email=41898282+github-actions[bot]@users.noreply.github.com \

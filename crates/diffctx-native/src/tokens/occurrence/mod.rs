@@ -17,11 +17,11 @@ mod scanner;
 use std::fmt;
 use std::ops::Range;
 
-use crate::facts::{DefKey, ModulePath, Name, Scope, Span};
 use crate::resolve::{CandidateReason, Relation, UnresolvedReason};
+use diffctx_facts::facts::{DefKey, ModulePath, Name, Scope, Span};
 use diffctx_snapshot::snapshot::{Loss, RepoPath, SideTag};
 
-pub use crate::facts::Lexical;
+pub use diffctx_facts::facts::Lexical;
 pub use implicit::{Known, entered, implicit_kinds};
 pub use outcome::{FileOutcomes, Index, View, admitted, counts_against, outcomes};
 pub use scanner::{Case, Scan, scan};

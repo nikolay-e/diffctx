@@ -38,11 +38,11 @@ use super::{
     Binding, CandidateReason, Definition, Evidence, EvidenceKind, Relation, Resolution, Solved,
     UnresolvedReason,
 };
-use crate::facts::config::{
+use diffctx_facts::facts::config::{
     ConfigRef, LabelSet, ObjectId, PointerKind, Resolved, Selector, SourcePointer, Strength,
     directory_of, identity_of, k8s,
 };
-use crate::facts::{
+use diffctx_facts::facts::{
     DefKey, DefKind, Fact, FactsCache, FileFacts, Language, LocalKey, Name, Namespace, Scope,
 };
 use diffctx_snapshot::snapshot::{AnalysisContext, RepoPath, Result, SideTag};

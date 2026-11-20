@@ -1,8 +1,8 @@
 //! The C extractor, read through the facts it states: one table per kind of
 //! fact, each fixture small enough to read its answer off the source.
 
-use _diffctx::facts::lang::c::CExtractor;
-use _diffctx::facts::{
+use diffctx_facts::facts::lang::c::CExtractor;
+use diffctx_facts::facts::{
     BlobFacts, Def, DefKind, Disambig, EntryKind, Extractor, Fact, Import, ImportKind, LocalKey,
     LocalKind, Namespace, Receiver, Ref, Scope, Visibility,
 };

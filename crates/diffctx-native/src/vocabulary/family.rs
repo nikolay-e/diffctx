@@ -7,12 +7,12 @@ use std::sync::Arc;
 
 use anyhow::Result;
 
-use crate::facts::{DefKey, FactsCache, Language, Name};
 use crate::resolve::{
     Binding, CResolver, ConfigResolver, Definition, DockerfileResolver, GoResolver, JavaResolver,
     KotlinResolver, PhpResolver, PythonResolver, RustResolver, ShellResolver, SqlResolver,
     SwiftResolver, TerraformResolver, TypeScriptResolver,
 };
+use diffctx_facts::facts::{DefKey, FactsCache, Language, Name};
 use diffctx_snapshot::snapshot::{
     self, Admission, AdmissionPolicy, AnalysisContext, Loss, RangeSpec, RepoPath, RunBudget, Side,
     SideTag, WorkspaceModel,

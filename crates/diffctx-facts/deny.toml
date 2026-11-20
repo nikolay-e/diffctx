@@ -1,0 +1,7 @@
+# The facts layer is the tree-sitter user and carries no Python bindings, directly or through anything it
+# pulls in. ci.yml runs `cargo deny check bans` from this directory, which scopes the graph to this crate;
+# the advisories, licenses and sources run once for the workspace from the root deny.toml.
+[bans]
+deny = [
+    { crate = "pyo3", reason = "the facts layer carries no Python bindings" },
+]

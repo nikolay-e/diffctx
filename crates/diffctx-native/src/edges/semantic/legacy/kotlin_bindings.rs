@@ -21,7 +21,7 @@ use std::sync::Arc;
 
 use rustc_hash::{FxHashMap, FxHashSet};
 
-use crate::facts::kotlin::{
+use diffctx_facts::facts::kotlin::{
     Declaration, InitCall, KotlinFacts, Receiver, Use, UseKind, Visibility,
 };
 use diffctx_snapshot::source::Source;
@@ -201,7 +201,7 @@ impl<'a> KotlinResolver<'a> {
             .source
             .read_bytes(&self.root.join(rel))
             .and_then(|b| String::from_utf8(b).ok())
-            .and_then(|text| crate::facts::kotlin::facts(&text));
+            .and_then(|text| diffctx_facts::facts::kotlin::facts(&text));
         self.facts
             .borrow_mut()
             .insert(rel.to_string(), read.clone());

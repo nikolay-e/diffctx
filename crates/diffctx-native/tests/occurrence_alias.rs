@@ -4,18 +4,18 @@
 use std::ops::Range;
 use std::sync::Arc;
 
-use _diffctx::facts::lang::go::GoExtractor;
-use _diffctx::facts::lang::python::PythonExtractor;
-use _diffctx::facts::lang::rust::RustExtractor;
-use _diffctx::facts::lang::typescript::TypeScript;
-use _diffctx::facts::{
-    DefKind, Extractor, Fact, FileFacts, ModulePath, Name, ProjectId, Scope, UseKind,
-};
 use _diffctx::occurrence::{
     Alias, AliasBound, AliasScope, Basis, Case, MAX_ALIAS_HOPS, MAX_ALIAS_NAMES, Outcome, Reason,
     ValuePlace, close_aliases, scan, value_use,
 };
 use _diffctx::resolve::Relation;
+use diffctx_facts::facts::lang::go::GoExtractor;
+use diffctx_facts::facts::lang::python::PythonExtractor;
+use diffctx_facts::facts::lang::rust::RustExtractor;
+use diffctx_facts::facts::lang::typescript::TypeScript;
+use diffctx_facts::facts::{
+    DefKind, Extractor, Fact, FileFacts, ModulePath, Name, ProjectId, Scope, UseKind,
+};
 use diffctx_snapshot::snapshot::{RepoPath, RunBudget};
 
 type Found = Option<(Outcome, Basis)>;

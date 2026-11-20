@@ -7,7 +7,7 @@ use std::collections::{HashMap, HashSet};
 use super::{Binding, CandidateReason, Definition, Relation, Resolution};
 use std::sync::Arc;
 
-use crate::facts::{
+use diffctx_facts::facts::{
     DefKey, Fact, FactsCache, FileFacts, Language, ModulePath, Name, Namespace, ProjectId, expired,
     facts_of,
 };

@@ -4,8 +4,8 @@
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 
-use _diffctx::facts::lang::rust::RustExtractor;
-use _diffctx::facts::{
+use diffctx_facts::facts::lang::rust::RustExtractor;
+use diffctx_facts::facts::{
     BlobFacts, Def, DefKind, Disambig, EntryKind, Export, Extractor, Fact, Import, LocalKey,
     Receiver, Ref, Scope, UseKind, Visibility,
 };

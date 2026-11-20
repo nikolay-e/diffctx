@@ -1,7 +1,7 @@
 //! The Dockerfile extractor, read through the facts it states.
 
-use _diffctx::facts::lang::dockerfile::DockerfileExtractor;
-use _diffctx::facts::{
+use diffctx_facts::facts::lang::dockerfile::DockerfileExtractor;
+use diffctx_facts::facts::{
     BlobFacts, Def, DefKind, Disambig, Extractor, Fact, LocalKey, Namespace, Receiver, Ref, Scope,
 };
 use diffctx_snapshot::snapshot::RunBudget;
@@ -174,8 +174,9 @@ fn onbuild_and_heredoc_bodies_are_not_read() {
 fn a_variable_and_a_stage_read_are_sited_at_their_names_alone() {
     let source = "ARG V=1\nFROM a AS builder\nCOPY --from=builder /x /y\nRUN --mount=type=cache,from=builder,target=/c true\n";
     let facts = docker(source);
-    let spelled =
-        |span: &_diffctx::facts::Span| &source[span.bytes.start as usize..span.bytes.end as usize];
+    let spelled = |span: &diffctx_facts::facts::Span| {
+        &source[span.bytes.start as usize..span.bytes.end as usize]
+    };
     assert_eq!(spelled(&def_named(&facts, "V").name_span), "V");
     let sites: Vec<&str> = facts
         .facts

@@ -308,7 +308,7 @@ mod tests {
     fn untyped_pairs(diff: Option<&str>, files: &[(&str, &str)]) -> Vec<(String, String)> {
         let fragments: Vec<Fragment> = files
             .iter()
-            .flat_map(|(p, c)| crate::parsers::fragment_file(std::sync::Arc::from(*p), c))
+            .flat_map(|(p, c)| diffctx_facts::parsers::fragment_file(std::sync::Arc::from(*p), c))
             .collect();
         let lines = diff
             .map(|d| std::sync::Arc::new(diffctx_base::changed_lines::ChangedLines::from_diff(d)));
@@ -374,7 +374,7 @@ mod tests {
         ];
         let fragments: Vec<Fragment> = files
             .iter()
-            .flat_map(|(p, c)| crate::parsers::fragment_file(std::sync::Arc::from(*p), c))
+            .flat_map(|(p, c)| diffctx_facts::parsers::fragment_file(std::sync::Arc::from(*p), c))
             .collect();
         let added = application.lines().last().unwrap_or_default();
         let diff = format!(

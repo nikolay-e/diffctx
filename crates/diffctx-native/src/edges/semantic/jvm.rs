@@ -201,9 +201,9 @@ fn parse_scala_import_clause(clause: &str) -> Option<ScalaImport> {
 /// three readers below (imports, package, inheritance) run in separate
 /// passes over the same fragments, and a parse per pass would triple the
 /// cost of the one seam that now parses inside an edge builder.
-fn scala_facts(content: &str) -> Option<super::legacy::scala::ScalaFacts> {
+fn scala_facts(content: &str) -> Option<diffctx_facts::parsers::scala::ScalaFacts> {
     thread_local! {
-        static MEMO: std::cell::RefCell<FxHashMap<u64, Option<super::legacy::scala::ScalaFacts>>> =
+        static MEMO: std::cell::RefCell<FxHashMap<u64, Option<diffctx_facts::parsers::scala::ScalaFacts>>> =
             std::cell::RefCell::new(FxHashMap::default());
     }
     let key = {
@@ -218,7 +218,7 @@ fn scala_facts(content: &str) -> Option<super::legacy::scala::ScalaFacts> {
             memo.clear();
         }
         memo.entry(key)
-            .or_insert_with(|| super::legacy::scala::facts(content))
+            .or_insert_with(|| diffctx_facts::parsers::scala::facts(content))
             .clone()
     })
 }
@@ -883,7 +883,7 @@ impl EdgeBuilder for JVMEdgeBuilder {
             // never see (#496). Scala's `apply` and paren-less calls make a
             // bare name no such call.
             let java = jf.path().ends_with(".java");
-            let code = crate::parsers::code_only(jf.path(), &jf.content)
+            let code = diffctx_facts::parsers::code_only(jf.path(), &jf.content)
                 .filter(|_| java)
                 .unwrap_or_default();
             for cap in UNQUALIFIED_CALL_RE.captures_iter(&code) {

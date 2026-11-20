@@ -41,8 +41,8 @@ use super::{
     Binding, CandidateReason, Definition, Evidence, EvidenceKind, Relation, Resolution, Solved,
     UnresolvedReason, is_callable, is_value, unresolved,
 };
-use crate::facts::lang::php::PROPERTIES;
-use crate::facts::{
+use diffctx_facts::facts::lang::php::PROPERTIES;
+use diffctx_facts::facts::{
     Def, DefKey, DefKind, Fact, FactsCache, FileFacts, ImportKind, Language, Name, Receiver, Ref,
     Scope, Span, UseKind, Visibility, expired,
 };

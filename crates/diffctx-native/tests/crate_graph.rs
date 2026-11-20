@@ -11,6 +11,10 @@ use serde_json::Value;
 
 /// `(dependent, dependency)` by package name. The base depends on no workspace crate.
 const EDGES: &[(&str, &str)] = &[
+    ("diffctx-facts", "diffctx-snapshot"),
+    ("diffctx-facts", "diffctx-config"),
+    ("diffctx-facts", "diffctx-base"),
+    ("diffctx", "diffctx-facts"),
     ("diffctx-config", "diffctx-base"),
     ("diffctx-snapshot", "diffctx-base"),
     ("diffctx-snapshot", "diffctx-config"),

@@ -25,103 +25,18 @@ path = "src/main.rs"
 default = ["lang-core", "lang-extra"]
 python = ["pyo3"]
 
-lang-core = [
-    "tree-sitter-python",
-    "tree-sitter-javascript",
-    "tree-sitter-typescript",
-    "tree-sitter-go",
-    "tree-sitter-rust",
-    "tree-sitter-java",
-    "tree-sitter-c",
-    "tree-sitter-cpp",
-    "tree-sitter-c-sharp",
-    "tree-sitter-ruby",
-    "tree-sitter-php",
-    "tree-sitter-bash",
-    "tree-sitter-html",
-    "tree-sitter-css",
-    "tree-sitter-json",
-    "tree-sitter-yaml",
-]
+lang-core = ["diffctx-facts/lang-core"]
 
-lang-extra = [
-    "tree-sitter-haskell",
-    "tree-sitter-julia",
-    "tree-sitter-ocaml",
-    "tree-sitter-r",
-    "tree-sitter-elixir",
-    "tree-sitter-lua",
-    "tree-sitter-zig",
-    "tree-sitter-erlang",
-    "tree-sitter-nix",
-    "tree-sitter-groovy",
-    "tree-sitter-objc",
-    "tree-sitter-cmake",
-    "tree-sitter-make",
-    "tree-sitter-hcl",
-    "tree-sitter-clojure",
-    "tree-sitter-graphql",
-    "tree-sitter-dart",
-    "tree-sitter-prisma-io",
-    "tree-sitter-svelte-ng",
-    "tree-sitter-scala",
-    "tree-sitter-swift",
-    "brokk-tree-sitter-kotlin",
-]
+lang-extra = ["diffctx-facts/lang-extra"]
 
 [dependencies]
 diffctx-base.workspace = true
+diffctx-facts.workspace = true
 diffctx-config.workspace = true
 diffctx-snapshot.workspace = true
 mimalloc = { version = "0.1", default-features = false }
 clap = { version = "4", features = ["derive"] }
 dunce.workspace = true
-tree-sitter = "0.25"
-tree-sitter-python = { version = "0.25", optional = true }
-tree-sitter-javascript = { version = "0.25", optional = true }
-tree-sitter-typescript = { version = "0.23", optional = true }
-tree-sitter-go = { version = "0.25", optional = true }
-tree-sitter-rust = { version = "0.24", optional = true }
-tree-sitter-java = { version = "0.23", optional = true }
-tree-sitter-c = { version = "0.24", optional = true }
-tree-sitter-cpp = { version = "0.23", optional = true }
-tree-sitter-c-sharp = { version = "0.23", optional = true }
-tree-sitter-ruby = { version = "0.23", optional = true }
-tree-sitter-php = { version = "0.25", optional = true }
-tree-sitter-scala = { version = "0.26", optional = true }
-tree-sitter-swift = { version = "0.7", optional = true }
-# The fwcd grammar (fwcd's own crate stops at 0.3.8, pinned to tree-sitter
-# < 0.23, fwcd#242), as BrokkAi publishes its maintained fork with symbol-
-# prefixed C exports. Exact pin: a fork's next release is reviewed, not taken.
-# On a 1,036-file Kotlin codebase it lost no type declaration and broke on none;
-# tree-sitter-kotlin-sg 0.4.1 silently dropped 7 classes (a bodyless
-# annotated class swallowed the next one) and broke 5 Compose files, and
-# tree-sitter-kotlin-ng dropped 8 and broke whole classes on `get(...)`.
-brokk-tree-sitter-kotlin = { version = "=0.4.6", optional = true }
-tree-sitter-html = { version = "0.23", optional = true }
-tree-sitter-bash = { version = "0.25", optional = true }
-tree-sitter-css = { version = "0.25", optional = true }
-tree-sitter-json = { version = "0.24", optional = true }
-tree-sitter-haskell = { version = "0.24", optional = true }
-tree-sitter-julia = { version = "0.23", optional = true }
-tree-sitter-ocaml = { version = "0.26", optional = true }
-tree-sitter-yaml = { version = "0.7", optional = true }
-tree-sitter-r = { version = "1.2", optional = true }
-tree-sitter-elixir = { version = "0.3", optional = true }
-tree-sitter-lua = { version = "0.5", optional = true }
-tree-sitter-zig = { version = "1.1", optional = true }
-tree-sitter-erlang = { version = "0.21", optional = true }
-tree-sitter-nix = { version = "0.3", optional = true }
-tree-sitter-groovy = { version = "0.1", optional = true }
-tree-sitter-objc = { version = "3.0", optional = true }
-tree-sitter-cmake = { version = "0.7", optional = true }
-tree-sitter-make = { version = "1.1", optional = true }
-tree-sitter-hcl = { version = "1.1", optional = true }
-tree-sitter-clojure = { version = "0.1", optional = true }
-tree-sitter-graphql = { version = "0.2", optional = true }
-tree-sitter-dart = { version = "0.3", optional = true }
-tree-sitter-prisma-io = { version = "1.6", optional = true }
-tree-sitter-svelte-ng = { version = "1.0", optional = true }
 tiktoken-rs.workspace = true
 rayon.workspace = true
 serde.workspace = true
@@ -143,6 +58,45 @@ schemars.workspace = true
 
 [dev-dependencies]
 diffctx-snapshot = { workspace = true, features = ["test-support"] }
+tree-sitter.workspace = true
+tree-sitter-python.workspace = true
+tree-sitter-javascript.workspace = true
+tree-sitter-typescript.workspace = true
+tree-sitter-go.workspace = true
+tree-sitter-rust.workspace = true
+tree-sitter-java.workspace = true
+tree-sitter-c.workspace = true
+tree-sitter-cpp.workspace = true
+tree-sitter-c-sharp.workspace = true
+tree-sitter-ruby.workspace = true
+tree-sitter-php.workspace = true
+tree-sitter-scala.workspace = true
+tree-sitter-swift.workspace = true
+brokk-tree-sitter-kotlin.workspace = true
+tree-sitter-html.workspace = true
+tree-sitter-bash.workspace = true
+tree-sitter-css.workspace = true
+tree-sitter-json.workspace = true
+tree-sitter-haskell.workspace = true
+tree-sitter-julia.workspace = true
+tree-sitter-ocaml.workspace = true
+tree-sitter-yaml.workspace = true
+tree-sitter-r.workspace = true
+tree-sitter-elixir.workspace = true
+tree-sitter-lua.workspace = true
+tree-sitter-zig.workspace = true
+tree-sitter-erlang.workspace = true
+tree-sitter-nix.workspace = true
+tree-sitter-groovy.workspace = true
+tree-sitter-objc.workspace = true
+tree-sitter-cmake.workspace = true
+tree-sitter-make.workspace = true
+tree-sitter-hcl.workspace = true
+tree-sitter-clojure.workspace = true
+tree-sitter-graphql.workspace = true
+tree-sitter-dart.workspace = true
+tree-sitter-prisma-io.workspace = true
+tree-sitter-svelte-ng.workspace = true
 tempfile.workspace = true
 libtest-mimic = "0.8"
 # Only the diffctx-test example walks case files by pattern; it rode in
