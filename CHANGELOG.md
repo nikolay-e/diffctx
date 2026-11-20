@@ -82,6 +82,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Two methods of one name in one file (`A::new` and `B::new`, `A.run` and
+  `B.run`) that call a changed function are two callers, not one row named
+  `new` spanning both classes. In the text answer an implementer of a changed
+  trait method reads "implemented by", not "called from".
 - A table keeps the schema it is spelled behind: `stems.assets` and
   `library.assets` are two tables, so a migration of one no longer pulls in the
   other's model or queries. A name written without a schema is the one its own
