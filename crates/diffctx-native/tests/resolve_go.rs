@@ -713,8 +713,8 @@ fn the_go_corpus_is_answered_as_the_list_says() {
     let mut stale: Vec<String> = Vec::new();
     for (name, path) in &cases {
         let raw = fs::read_to_string(path).expect("a case file");
-        let case: Case =
-            serde_yaml::from_str(&raw).unwrap_or_else(|e| panic!("{name} does not parse: {e}"));
+        let case: Case = diffctx_base::yaml::from_str(&raw)
+            .unwrap_or_else(|e| panic!("{name} does not parse: {e}"));
         if case.dispute.is_some() {
             disputed += 1;
             continue;

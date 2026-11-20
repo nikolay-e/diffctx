@@ -193,15 +193,15 @@ fn files() -> &'static [(String, String, String)] {
             let Ok(text) = std::fs::read_to_string(entry.path()) else {
                 continue;
             };
-            let Ok(case) = serde_yaml::from_str::<serde_yaml::Value>(&text) else {
+            let Ok(case) = diffctx_base::yaml::to_value(&text) else {
                 continue;
             };
             let name = entry.path().strip_prefix(&root).expect("under root");
             let mut texts = BTreeMap::new();
             for key in ["initial_files", "changed_files"] {
-                for (path, body) in case["repo"][key].as_mapping().into_iter().flatten() {
-                    if let (Some(path), Some(body)) = (path.as_str(), body.as_str()) {
-                        texts.insert(path.to_string(), body.to_string());
+                for (path, body) in case["repo"][key].as_object().into_iter().flatten() {
+                    if let Some(body) = body.as_str() {
+                        texts.insert(path.clone(), body.to_string());
                     }
                 }
             }

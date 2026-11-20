@@ -444,7 +444,7 @@ fn run_case_with_scoring(
 ) -> Result<(), Failed> {
     let raw = fs::read_to_string(case_path).map_err(|e| Failed::from(format!("read: {e}")))?;
     let case: TestCase =
-        serde_yaml::from_str(&raw).map_err(|e| Failed::from(format!("parse YAML: {e}")))?;
+        diffctx_base::yaml::from_str(&raw).map_err(|e| Failed::from(format!("parse YAML: {e}")))?;
 
     if case.repo.initial_files.is_empty()
         && case.repo.changed_files.is_empty()

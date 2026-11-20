@@ -876,7 +876,7 @@ fn values_of(holder: &Holder, text: &str, key: &str) -> Vec<(String, bool)> {
             )
         }
         Holder::Json(at) => strings(strings_at(serde_json::from_str(text).ok(), at, key)),
-        Holder::Yaml(at) => strings(strings_at(serde_yaml::from_str(text).ok(), at, key)),
+        Holder::Yaml(at) => strings(strings_at(crate::yaml::to_value(text).ok(), at, key)),
         Holder::Script => script_values(text, key),
         Holder::ScriptBlock(scope) => script_values(&object_under(text, scope), key),
     }
@@ -1132,6 +1132,16 @@ mod tests {
 
     fn is_test(p: &str) -> bool {
         is_test_path(Path::new(p))
+    }
+
+    #[test]
+    fn a_yaml_runner_config_reads_yes_and_zero_padded_values_as_strings() {
+        let holder = Holder::Yaml(&[]);
+        let read = |text: &str| values_of(&holder, text, "spec");
+        assert_eq!(read("spec: yes\n"), [("yes".to_string(), false)]);
+        assert_eq!(read("spec: [on, 0755, 1_000]\n").len(), 3);
+        assert_eq!(read("spec: [a]\nspec: [b]\n"), []);
+        assert_eq!(read("spec:\n  - test/a.js\n  - test/b.js\n").len(), 2);
     }
 
     #[test]

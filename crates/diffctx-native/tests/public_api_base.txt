@@ -217,3 +217,7 @@ types::extract_identifier_counts fn (text: &str, min_length: usize) -> (FxHashMa
 types::extract_identifier_list fn (text: &str, min_length: usize) -> Vec<String>
 types::extract_identifiers fn (text: &str, min_length: usize) -> FxHashSet<String>
 types::unquote_c_style fn (quoted: &str) -> String
+yaml mod
+yaml::YamlError struct derive(Debug, thiserror::Error)
+yaml::from_str fn <T: DeserializeOwned>(text: &str) -> Result<T, YamlError>
+yaml::to_value fn (text: &str) -> Result<Value, YamlError>

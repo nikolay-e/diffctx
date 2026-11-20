@@ -43,6 +43,7 @@ const LAYERS: &[(&str, &[&str])] = &[
             "profile",
             "changed_lines",
             "test_rng",
+            "yaml",
         ],
     ),
     ("settings", &["config", "mode", "stopwords", "signatures"]),

@@ -22,9 +22,6 @@ items are removed rather than logged — history lives in git.
   `test_coverage_gaps.py`) — ~20 copy-paste methods → one
   `@pytest.mark.parametrize`. Gate: the three files stay green.
   Net: ~−290 LOC, zero coverage loss.
-- **`serde_yaml 0.9` is archived** — used in 3 files. Gate: test-suite
-  parity on a maintained fork (`serde_norway`/`serde_yml`), or
-  consciously pin-and-accept.
 
 ## Intentional — do not "fix"
 
