@@ -1,8 +1,9 @@
 #![allow(dead_code, reason = "each test file uses its own part of the fixture")]
 
+use std::collections::HashSet;
 use std::path::Path;
 
-use _diffctx::snapshot::{Listing, Oid, RepoRoot, open};
+use _diffctx::snapshot::{Listing, Oid, RangeSpec, RepoRoot, open};
 
 /// A real repository in a temp directory, driven by the real `git`, with the
 /// user's global and system configuration out of the way.
@@ -76,6 +77,31 @@ impl Repo {
         self.git(&["add", "-A"]);
         self.git(&["commit", "-q", "-m", message]);
         self.head()
+    }
+
+    /// The lines a range wrote, by path: the new side of `git diff -U0` from its base to its
+    /// head, or to the tracked working tree. A snapshot writes none.
+    pub(crate) fn written(&self, range: &RangeSpec) -> HashSet<(String, u32)> {
+        let (base, head) = match range {
+            RangeSpec::Review { base, head } => (base, Some(head.as_str())),
+            RangeSpec::WorkingTree { base } => (base, None),
+            _ => return HashSet::new(),
+        };
+        let mut args = vec!["diff", "-U0", "--no-color", base.as_str()];
+        args.extend(head);
+        let (mut path, mut written) = (String::new(), HashSet::new());
+        for line in self.git(&args).lines() {
+            if let Some(to) = line.strip_prefix("+++ ") {
+                path = to.strip_prefix("b/").unwrap_or(to).to_string();
+            } else if let Some(new) = line.strip_prefix("@@ -").and_then(|h| h.split(' ').nth(1)) {
+                let new = new.trim_start_matches('+');
+                let (start, count) = new.split_once(',').unwrap_or((new, "1"));
+                let start: u32 = start.parse().expect("a hunk's first line");
+                let count: u32 = count.parse().expect("a hunk's line count");
+                written.extend((start..start + count).map(|n| (path.clone(), n)));
+            }
+        }
+        written
     }
 }
 

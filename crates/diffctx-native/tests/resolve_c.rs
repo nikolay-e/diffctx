@@ -32,12 +32,15 @@ use walkdir::WalkDir;
 
 struct Fixture {
     _repo: Repo,
+    /// The lines the range wrote: a use on one is in the diff, whatever defines it.
+    written: HashSet<(String, u32)>,
     ctx: AnalysisContext,
     head: CResolver,
     base: CResolver,
 }
 
 fn open(repo: Repo, range: RangeSpec) -> Fixture {
+    let written = repo.written(&range);
     let ctx = AnalysisContext::new(repo.root.clone(), range, RunBudget::default())
         .expect("an analysis context");
     let cache = FactsCache::disabled();
@@ -45,6 +48,7 @@ fn open(repo: Repo, range: RangeSpec) -> Fixture {
     let base = CResolver::open(&ctx, SideTag::Base, &cache).expect("the base resolves");
     Fixture {
         _repo: repo,
+        written,
         ctx,
         head,
         base,
@@ -239,11 +243,13 @@ impl Node {
 
     /// Whether `self`, read as an expectation, names `found`: an empty path or
     /// a missing symbol stands for any, and a member may be written `Class.name`.
+    /// A caller is found by its dotted name, which a bare name also names.
     fn covers(&self, found: &Self) -> bool {
         (self.path.is_empty() || self.path == found.path)
             && self.symbol.as_ref().is_none_or(|wanted| {
                 found.symbol.as_ref().is_some_and(|have| {
                     have == wanted
+                        || have.ends_with(&format!(".{wanted}"))
                         || wanted
                             .rsplit(['.', ':'])
                             .next()
@@ -337,7 +343,7 @@ struct Group {
     kind: Relation,
     resolution: &'static str,
     lines: BTreeSet<u32>,
-    /// The caller is itself a changed definition.
+    /// The caller is itself a changed definition, or the range wrote the use.
     in_diff: bool,
     /// Reached through a glob's pattern: the case asks for the import, and the
     /// calls through the loaded module are the same fact.
@@ -435,11 +441,12 @@ fn groups(fixture: &Fixture, node: &Node, changed: &Changed) -> Vec<Group> {
             let local = owner(&binding.from);
             let from = Node {
                 path: binding.file.to_string(),
-                symbol: local.map(|l| l.name.to_string()),
+                symbol: local.map(dotted),
             };
-            let in_diff =
-                local.is_some_and(|l| changed.0.contains(&(binding.file.to_string(), dotted(l))));
             let line = binding.site.lines.0;
+            let in_diff = local
+                .is_some_and(|l| changed.0.contains(&(binding.file.to_string(), dotted(l))))
+                || fixture.written.contains(&(binding.file.to_string(), line));
             let by_glob = matches!(
                 binding.resolution,
                 Resolution::Candidate {
