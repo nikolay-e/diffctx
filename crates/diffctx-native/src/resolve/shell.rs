@@ -31,9 +31,9 @@ use super::{
     Binding, CandidateReason, Definition, Evidence, EvidenceKind, Relation, Resolution, Solved,
     UnresolvedReason,
 };
-use crate::facts::shell::{PathHead, PathUse};
-use crate::facts::{DefKey, DefKind, Fact, FactsCache, Language, Name, Scope, UseKind};
 use diffctx_base::paths::normalize_lexical;
+use diffctx_facts::facts::shell::{PathHead, PathUse};
+use diffctx_facts::facts::{DefKey, DefKind, Fact, FactsCache, Language, Name, Scope, UseKind};
 use diffctx_snapshot::snapshot::{AnalysisContext, Result, SideTag};
 
 /// The bindings of one snapshot's shell scripts.

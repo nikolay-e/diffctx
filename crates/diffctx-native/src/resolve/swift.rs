@@ -5,7 +5,7 @@
 use super::Solved;
 use super::kotlin;
 use super::solved::{Gathered, gather_of};
-use crate::facts::{FactsCache, Language};
+use diffctx_facts::facts::{FactsCache, Language};
 use diffctx_snapshot::snapshot::{AnalysisContext, Loss, Result, SideTag, Stage};
 
 /// The bindings of one snapshot's Swift files.

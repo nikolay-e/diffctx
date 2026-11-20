@@ -15,13 +15,15 @@ use crate::answer::render::place;
 use crate::answer::v2::GuardState;
 use crate::answer::{Answer, RenderCtx};
 use crate::decide::{self, Cells, Effect};
-use crate::facts::{EntryKind, framework};
 use crate::run_provenance::state::ScoredState;
 use crate::tokens::Names;
 use crate::tokens::occurrence::{Hedge, Reason};
 use crate::vocabulary;
 use diffctx_base::container::{innermost, named_container_of, within};
 use diffctx_base::types::{Fragment, FragmentId, FragmentKind};
+use diffctx_facts::facts::{EntryKind, framework};
+use diffctx_facts::parsers::code_text;
+use diffctx_facts::parsers::embedded::names_word;
 
 mod keys;
 mod mentions;
@@ -594,7 +596,7 @@ pub struct Caller {
     pub sites: Vec<u32>,
     /// The definition the sites sit in, when the resolver names it: its `lines` are then
     /// the sites, not that definition's span.
-    pub(crate) within: Option<crate::facts::LocalKey>,
+    pub(crate) within: Option<diffctx_facts::facts::LocalKey>,
 }
 
 impl Caller {
@@ -900,16 +902,6 @@ fn calls_word(line: &str, name: &str) -> bool {
     })
 }
 
-/// Whether `text` holds `name` as a whole word; `$` is a word character,
-/// as in a JavaScript identifier.
-fn names_word(text: &str, name: &str) -> bool {
-    let word = |c: char| c.is_alphanumeric() || c == '_' || c == '$';
-    text.match_indices(name).any(|(at, _)| {
-        !text[..at].chars().next_back().is_some_and(word)
-            && !text[at + name.len()..].chars().next().is_some_and(word)
-    })
-}
-
 fn is_code_file(path: &str) -> bool {
     let ext = diffctx_base::languages::file_ext(Path::new(path));
     diffctx_config::config::extensions::CODE_EXTENSIONS.contains(ext.as_str())
@@ -926,14 +918,6 @@ enum Receiver<'a> {
         stem: &'a str,
         aliases: &'a [String],
     },
-}
-
-/// `content` as code: comments and string literals blanked, interpolations
-/// kept, read off the file's grammar (#460, #475). A name inside
-/// `"must be refused"` or a comment is not a reference (#345). A file
-/// without a grammar is read as written.
-pub(crate) fn code_text(path: &str, content: &str) -> std::sync::Arc<str> {
-    crate::parsers::code_only(path, content).unwrap_or_else(|| content.into())
 }
 
 fn receiver_before(code: &str, at: usize) -> Option<&str> {
@@ -1443,9 +1427,10 @@ fn unanalysed_files(state: &ScoredState, changed: &[String]) -> Vec<UnanalysedFi
                 };
                 return Some(UnanalysedFile::new(path.clone(), reason, Vec::new()));
             };
-            let (reason, lines) = crate::parsers::unanalysed_reason(path, has_definition, || {
-                source.read_bytes(&state.root_dir.join(path))
-            })?;
+            let (reason, lines) =
+                diffctx_facts::parsers::unanalysed_reason(path, has_definition, || {
+                    source.read_bytes(&state.root_dir.join(path))
+                })?;
             Some(UnanalysedFile::new(path.clone(), reason, lines))
         })
         .collect();
@@ -1861,7 +1846,7 @@ impl UntracedNamers {
         let mut spelled: Vec<UnanalysedFile> = Vec::new();
         let member = matches!(
             def.kind,
-            crate::facts::DefKind::Method | crate::facts::DefKind::Constructor
+            diffctx_facts::facts::DefKind::Method | diffctx_facts::facts::DefKind::Constructor
         );
         for name in spelled_word(def).into_iter().chain(left_words(def)) {
             let assigned = self
@@ -2120,68 +2105,6 @@ pub(crate) fn runtime_of(path: &str) -> String {
     .to_string()
 }
 
-fn children_of<'t>(node: tree_sitter::Node<'t>, kind: &str) -> Vec<tree_sitter::Node<'t>> {
-    let mut cursor = node.walk();
-    (node.named_children(&mut cursor))
-        .filter(|child| child.kind() == kind)
-        .collect()
-}
-
-/// The line of the first command in `script` that runs `runtime`'s
-/// interpreter on code naming `name`: a heredoc fed to it, or its `-c`/`-e`
-/// argument. The line, and the bytes of the command.
-pub(crate) fn embedded_naming(
-    script: &str,
-    runtime: &str,
-    name: &str,
-) -> Option<(u32, std::ops::Range<u32>)> {
-    let (interpreters, as_file): (&[&str], &str) = match runtime {
-        "python" => (&["python", "pypy"], "embedded.py"),
-        "js" => (&["node", "deno", "bun"], "embedded.js"),
-        _ => return None,
-    };
-    let tree = crate::parsers::parse_tree("bash", script)?;
-    let text = |n: tree_sitter::Node| n.utf8_text(script.as_bytes()).unwrap_or("");
-    // Only code names it: a comment or a string in the embedded program
-    // does not (`# column-aligned`).
-    let names = |embedded: &str| names_word(&code_text(as_file, embedded), name);
-    let mut stack = vec![tree.root_node()];
-    while let Some(node) = stack.pop() {
-        let mut cursor = node.walk();
-        stack.extend(node.children(&mut cursor));
-        if node.kind() != "command" {
-            continue;
-        }
-        let mut cursor = node.walk();
-        let words: Vec<&str> = node.named_children(&mut cursor).map(text).collect();
-        if !words.iter().any(|w| {
-            let base = w.rsplit('/').next().unwrap_or(w);
-            interpreters.iter().any(|i| base.starts_with(i))
-        }) {
-            continue;
-        }
-        // Any `-c`/`-e`: a container runner's own `-e K=V` comes before the
-        // interpreter's `-c`.
-        let inline = words
-            .windows(2)
-            .any(|pair| matches!(pair[0], "-c" | "-e") && names(pair[1].trim_matches(['\'', '"'])));
-        let fed = node.parent().is_some_and(|p| {
-            p.kind() == "redirected_statement"
-                && children_of(p, "heredoc_redirect")
-                    .iter()
-                    .any(|r| (children_of(*r, "heredoc_body").iter()).any(|b| names(text(*b))))
-        });
-        if inline || fed {
-            let at = |offset: usize| u32::try_from(offset).unwrap_or(u32::MAX);
-            return Some((
-                at(node.start_position().row + 1),
-                at(node.start_byte())..at(node.end_byte()),
-            ));
-        }
-    }
-    None
-}
-
 /// No runtime crosses from one to the other: a Kotlin test cannot run a
 /// Swift function, and a Python name in a Kotlin file is not a call of it
 /// (#458, #487).
@@ -2278,7 +2201,7 @@ fn layout_files(state: &ScoredState) -> FxHashSet<&str> {
     state
         .change_classes
         .iter()
-        .filter(|(_, class, _)| *class == crate::change_class::ChangeClass::Layout)
+        .filter(|(_, class, _)| *class == diffctx_facts::change_class::ChangeClass::Layout)
         .map(|(p, _, _)| p.as_str())
         .chain(
             state
@@ -3279,7 +3202,7 @@ fn cell_caller<'a>(frags: &[&'a Fragment], line: u32) -> Option<&'a Fragment> {
 /// fragment around the line is the factory, which may itself be changed. The row is
 /// the nested definition's, never the factory's.
 fn owned_by_a_nested_definition(frag: &Fragment, u: &decide::Use) -> bool {
-    let crate::facts::Scope::Def(local) = &u.scope else {
+    let diffctx_facts::facts::Scope::Def(local) = &u.scope else {
         return false;
     };
     matches!(
@@ -3432,7 +3355,7 @@ fn cell_row(u: &decide::Use) -> Caller {
     let reach = reach_of(u);
     let reexport = u.relation == crate::resolve::Relation::Reexports;
     let within = match &u.scope {
-        crate::facts::Scope::Def(local) => Some(local.clone()),
+        diffctx_facts::facts::Scope::Def(local) => Some(local.clone()),
         _ => None,
     };
     let caller = within.as_ref().map(|local| local.name.as_str().to_string());
@@ -4541,7 +4464,7 @@ pub fn build_impact(
         let dispatchable = py.is_none_or(|def| {
             matches!(
                 def.kind,
-                crate::facts::DefKind::Method | crate::facts::DefKind::Property
+                diffctx_facts::facts::DefKind::Method | diffctx_facts::facts::DefKind::Property
             )
         });
         let route = (callers.is_empty() && !resolved_in_diff && dispatchable)
@@ -5549,13 +5472,13 @@ fn removed_definitions(
             .into_iter()
             .collect::<String>();
         let (Some(at_base), Some(at_head)) = (
-            crate::parsers::declarations(old_path, &before),
-            crate::parsers::declarations(&h.path, &after),
+            diffctx_facts::parsers::declarations(old_path, &before),
+            diffctx_facts::parsers::declarations(&h.path, &after),
         ) else {
             // Declarations the grammar could not read in time (a parse past
             // its budget on a large file) are definitions nobody can name as
             // removed: the answer says so, never "nothing removed".
-            if crate::parsers::has_grammar(old_path) {
+            if diffctx_facts::parsers::has_grammar(old_path) {
                 state.run.note_file(
                     diffctx_snapshot::resource::LimitReason::ReadFailed,
                     old_path.to_string(),
@@ -5564,7 +5487,7 @@ fn removed_definitions(
             continue;
         };
         let still: FxHashSet<&str> = at_head.iter().map(|d| d.name.as_str()).collect();
-        let public = |d: &crate::parsers::Declaration| {
+        let public = |d: &diffctx_facts::parsers::Declaration| {
             let head = d.head.trim_start();
             is_public(old_path, Some(&d.name), head)
                 || d.container.is_some_and(|c| {

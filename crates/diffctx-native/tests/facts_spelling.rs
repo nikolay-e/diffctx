@@ -19,11 +19,11 @@
 //! something (a TypeScript member written as a string, a Terraform label) are
 //! not identifiers a language lets one write either way.
 
-use _diffctx::facts::lang::kotlin::KotlinExtractor;
-use _diffctx::facts::lang::rust::RustExtractor;
-use _diffctx::facts::lang::sql::SqlExtractor;
-use _diffctx::facts::lang::swift::SwiftExtractor;
-use _diffctx::facts::{
+use diffctx_facts::facts::lang::kotlin::KotlinExtractor;
+use diffctx_facts::facts::lang::rust::RustExtractor;
+use diffctx_facts::facts::lang::sql::SqlExtractor;
+use diffctx_facts::facts::lang::swift::SwiftExtractor;
+use diffctx_facts::facts::{
     BlobFacts, Disambig, Export, Extractor, Fact, LocalKey, Receiver, Ref, Scope,
 };
 use diffctx_snapshot::snapshot::RunBudget;

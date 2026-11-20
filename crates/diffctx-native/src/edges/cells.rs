@@ -17,7 +17,6 @@ use std::sync::Arc;
 
 use rustc_hash::{FxHashMap, FxHashSet};
 
-use crate::facts::{DefKey, Language};
 use crate::resolve::{Binding, Relation, Resolution, UnresolvedReason};
 use crate::vocabulary::family::{self, Family, HeadFamily};
 use diffctx_base::types::{Fragment, FragmentId};
@@ -26,6 +25,7 @@ use diffctx_config::config::edge_weights::{
     KUBERNETES, PYTHON_SEMANTIC, SEMANTIC_DISCOVERY, TERRAFORM_SEMANTIC,
 };
 use diffctx_config::config::weights::{EDGE_WEIGHTS, EdgeWeightConfig, LANG_WEIGHTS};
+use diffctx_facts::facts::{DefKey, Language};
 use diffctx_snapshot::resource::{LimitReason, current_source, note_current};
 use diffctx_snapshot::snapshot::RepoPath;
 

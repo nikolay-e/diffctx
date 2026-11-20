@@ -2,8 +2,8 @@
 //! contract on the syntax of the Swift grammar, on source small enough to read
 //! the answer off.
 
-use _diffctx::facts::lang::swift::SwiftExtractor;
-use _diffctx::facts::{
+use diffctx_facts::facts::lang::swift::SwiftExtractor;
+use diffctx_facts::facts::{
     BlobFacts, Def, DefKind, Disambig, EntryKind, Extractor, Fact, ImportKind, Language, Receiver,
     Ref, Scope, Star, TypeName, UseKind,
 };

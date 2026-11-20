@@ -29,8 +29,8 @@ use diffctx_snapshot::snapshot::{ContentId, Listing, Oid, Result, SnapshotReader
 /// bumped.
 pub const SCHEMA: u32 = 2;
 
-/// The digest of the sources under `src/` and of the lock file the crate was
-/// built with (`build.rs`): what an extractor emits is a function of them, so an
+/// The digest of this crate's sources, of the workspace crates it depends on and
+/// of the lock file it was built with (`build.rs`): what an extractor emits is a function of them, so an
 /// entry written by another build is a miss and nobody has to remember to say so.
 pub const FINGERPRINT: u64 = include!(concat!(env!("OUT_DIR"), "/facts_fingerprint.in"));
 pub const DEFAULT_CAP_BYTES: u64 = 256 * 1024 * 1024;
@@ -400,7 +400,7 @@ impl FactsCache {
 
     /// The listing of a snapshot, taken once per snapshot: it names each file's
     /// blob, which is what a lookup keys on.
-    pub(crate) fn listing(&self, reader: &SnapshotReader) -> Result<Arc<Listing>> {
+    pub fn listing(&self, reader: &SnapshotReader) -> Result<Arc<Listing>> {
         let known = lock(&self.listings)
             .iter()
             .find(|(id, _)| id == reader.id())

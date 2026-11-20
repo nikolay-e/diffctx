@@ -19,7 +19,7 @@ use std::path::Path;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use _diffctx::facts::{
+use diffctx_facts::facts::{
     BlobFacts, Def, DefKey, DefKind, Disambig, Extractor, Fact, FactsCache, Language, LocalKey,
     ModulePath, Name, Namespace, ProjectId, Registry, Span, TypeName, Visibility, hash_text,
     hash_tokens,

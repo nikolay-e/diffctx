@@ -6,11 +6,11 @@
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 
-use _diffctx::facts::config::{
+use diffctx_facts::facts::config::{
     Dialect, Flaw, Node, Options, PointerKind, Reading, Resolved, Row, ScalarKind, Segment,
     SourcePointer, Strength, Templating, Value, directory_of, extract, objects, read,
 };
-use _diffctx::facts::{Scope, Span, config::FieldPath};
+use diffctx_facts::facts::{Scope, Span, config::FieldPath};
 use diffctx_snapshot::snapshot::RunBudget;
 
 fn load(dialect: Dialect, text: &str) -> Reading {

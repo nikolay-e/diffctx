@@ -2,7 +2,7 @@
 //! in their indexes, not in how they read a candidate list or a reach, or in what a name lands on.
 
 use super::{CandidateReason, Evidence, EvidenceKind, UnresolvedReason};
-use crate::facts::{Ref, Span};
+use diffctx_facts::facts::{Ref, Span};
 
 /// A type a value has, for the engines that follow a value to its type's methods.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]

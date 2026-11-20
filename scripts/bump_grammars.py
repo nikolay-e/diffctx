@@ -3,7 +3,7 @@
 
 bump_grammars.py bump
     Rewrites the version requirement of every `tree-sitter-*` dependency of
-    crates/diffctx-native/Cargo.toml to the latest release and updates those
+    the workspace (Cargo.toml) to the latest release and updates those
     packages in Cargo.lock. Exact pins (`=x.y.z`) are reviewed, not taken. Prints
     a Markdown table of what moved.
 
@@ -11,7 +11,7 @@ bump_grammars.py witnesses BASE HEAD
     BASE and HEAD are outputs of `examples/grammar_scan` before and after the
     bump. A blob that is `error` in BASE and `ok` in HEAD is one a newer grammar
     reads and the pinned one did not: it is added to
-    crates/diffctx-native/src/facts/grammar_witnesses.txt, which is how a parse
+    crates/diffctx-facts/src/facts/grammar_witnesses.txt, which is how a parse
     error is named `grammar_outdated` rather than `parse_error` (facts/grammar.rs).
 """
 
@@ -25,8 +25,8 @@ import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-MANIFEST = ROOT / "crates/diffctx-native/Cargo.toml"
-WITNESSES = ROOT / "crates/diffctx-native/src/facts/grammar_witnesses.txt"
+MANIFEST = ROOT / "Cargo.toml"
+WITNESSES = ROOT / "crates/diffctx-facts/src/facts/grammar_witnesses.txt"
 DEPENDENCY = re.compile(r'^(?P<name>tree-sitter-[\w-]+)\s*=\s*(?P<head>\{\s*version\s*=\s*|)"(?P<req>[^"]+)"')
 
 

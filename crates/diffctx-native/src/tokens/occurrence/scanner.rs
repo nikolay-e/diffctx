@@ -8,7 +8,7 @@ use std::cmp::max;
 use std::ops::Range;
 
 use super::{Class, Occurrence};
-use crate::facts::{BlobFacts, FileFacts, Language, Lexical};
+use diffctx_facts::facts::{BlobFacts, FileFacts, Language, Lexical};
 
 /// Whether the language binds a name regardless of its case. Where unsure, it
 /// does: a wider scan only adds candidates.

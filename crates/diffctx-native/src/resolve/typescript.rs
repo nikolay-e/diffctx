@@ -30,11 +30,11 @@ use super::{
     Binding, CandidateReason, Definition, Evidence, EvidenceKind, Relation, Resolution, Solved,
     UnresolvedReason, plain_relation,
 };
-use crate::facts::{
+use diffctx_base::paths::normalize_lexical;
+use diffctx_facts::facts::{
     Def, DefKey, DefKind, Export, Fact, FactsCache, FileFacts, Import, ImportKind, Initializer,
     Language, LocalKind, Name, Namespace, Receiver, Ref, Scope, Span, UseKind, Visibility,
 };
-use diffctx_base::paths::normalize_lexical;
 use diffctx_snapshot::snapshot::workspace::{Alias, Ecosystem, Project, ProjectId, RootOrigin};
 use diffctx_snapshot::snapshot::{
     AnalysisContext, Bytes, Loss, NotAnalysedReason, RepoPath, Result, SideTag, SnapshotReader,

@@ -65,7 +65,11 @@ pub struct ScoredState {
     pub commit_count: usize,
     /// `(display path, class, reason)` per changed file — the priority the
     /// evidence floor ranks by and the inventory row the artifact prints.
-    pub change_classes: Vec<(String, crate::change_class::ChangeClass, &'static str)>,
+    pub change_classes: Vec<(
+        String,
+        diffctx_facts::change_class::ChangeClass,
+        &'static str,
+    )>,
     pub heavy_latency_ms: HeavyLatencyMs,
     /// Everything a reader needs to reproduce this state: the resolved
     /// configuration and its hash, the input revisions, the limits in force.

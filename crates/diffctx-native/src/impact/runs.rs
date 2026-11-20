@@ -10,10 +10,10 @@ use std::path::Path;
 
 use rustc_hash::{FxHashMap, FxHashSet};
 
-use crate::facts::EntryKind;
-use crate::facts::framework::jvm;
-use crate::facts::{Fact, ImportKind, Scope};
 use diffctx_base::testfiles::{Bound, DeclaredTests};
+use diffctx_facts::facts::EntryKind;
+use diffctx_facts::facts::framework::jvm;
+use diffctx_facts::facts::{Fact, ImportKind, Scope};
 use diffctx_snapshot::snapshot::workspace::dir_of;
 
 use super::mentions::{Naming, basename_of, commented, naming, path_search, starts_a_program};
@@ -147,7 +147,7 @@ fn is_document(path: &str) -> bool {
 /// run in. A relative import is the package of `shown` moved up `relative - 1`
 /// levels, as the resolver reads it; a star import binds no name.
 fn module_namespace(shown: &str, text: &str) -> Vec<Bound> {
-    let Some(blob) = crate::facts::local_facts(shown, text) else {
+    let Some(blob) = diffctx_facts::facts::local_facts(shown, text) else {
         return Vec::new();
     };
     let mut bound = Vec::new();

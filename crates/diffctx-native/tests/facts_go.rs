@@ -4,8 +4,8 @@
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 
-use _diffctx::facts::lang::go::GoExtractor;
-use _diffctx::facts::{
+use diffctx_facts::facts::lang::go::GoExtractor;
+use diffctx_facts::facts::{
     BlobFacts, Def, DefKind, EntryKind, Export, Extractor, Fact, Import, ImportKind, LocalKey,
     ModulePath, Receiver, Ref, Scope, Star, TypeName, Visibility,
 };

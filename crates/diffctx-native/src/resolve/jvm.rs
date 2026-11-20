@@ -30,7 +30,7 @@ use super::{
     EvidenceKind, Relation, Resolution, Solved, UnresolvedReason, is_callable, java, kotlin,
     plain_relation, solved::computers_of,
 };
-use crate::facts::{
+use diffctx_facts::facts::{
     Def, DefKey, DefKind, Disambig, Export, Fact, FactsCache, FileFacts, ImportKind, Language,
     LocalKey, Name, Namespace, Scope, Span, UseKind, Visibility, expired, facts_of,
 };

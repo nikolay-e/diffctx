@@ -5,12 +5,12 @@ use std::sync::Arc;
 use rustc_hash::{FxHashMap, FxHashSet};
 use similar::{ChangeTag, TextDiff};
 
-use crate::parsers::fragment_file;
 use crate::render::{DiffContextOutput, build_diff_context_output};
 use diffctx_base::types::{DiffHunk, Fragment, FragmentId};
 use diffctx_config::config::budget::BUDGET;
 use diffctx_config::config::tokenization::TOKENIZATION;
 use diffctx_config::mode::{PipelineConfig, ScoringMode};
+use diffctx_facts::parsers::fragment_file;
 
 pub struct MemoryRepo {
     pub name: String,
@@ -324,7 +324,7 @@ pub fn build_diff_context_in_memory(
     let mut hunk_texts = diffctx_base::changed_lines::hunk_texts(&diff_text);
     for runs in hunk_texts.chunk_by_mut(|a, b| a.path == b.path) {
         let text = all_files.get(runs[0].path.as_str()).map(String::as_str);
-        crate::change_class::settle_layout(runs, text, &|| run.check());
+        diffctx_facts::change_class::settle_layout(runs, text, &|| run.check());
     }
     let change_classes = crate::pipeline::classify_changes(
         dummy_root,

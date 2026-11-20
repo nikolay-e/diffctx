@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::Arc;
 
-use _diffctx::facts::{
+use diffctx_facts::facts::{
     CacheKey, FINGERPRINT, Fact, FactsCache, Import, ImportKind, Language, ModulePath, Name,
     SCHEMA, Scope, Span, Star, blob_oid, facts_of, hash_tokens, lang,
 };
@@ -466,7 +466,7 @@ fn parse_errors_survive_the_cache_and_name_the_path_they_are_read_for() {
 
 #[test]
 fn facts_come_in_source_order_and_hashes_are_delimited() {
-    use _diffctx::facts::{BlobFacts, Fact, PathMention, Scope, Span};
+    use diffctx_facts::facts::{BlobFacts, Fact, PathMention, Scope, Span};
     let mention = |at: u32, text: &str| {
         Fact::PathMention(PathMention {
             site: Span::new(at..at + 1, (1, 1)),

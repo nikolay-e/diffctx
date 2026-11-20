@@ -202,7 +202,7 @@ jobs:
 
       - name: Check the lower crates' bans
         run: |
-          for crate in diffctx-base diffctx-config diffctx-snapshot; do
+          for crate in diffctx-base diffctx-config diffctx-snapshot diffctx-facts; do
             (cd "crates/${crate}" && cargo deny check bans)
           done
 

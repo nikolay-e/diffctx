@@ -703,7 +703,7 @@ fn get_tree_sitter_language(ts_name: &str) -> Option<Language> {
 /// A grammar compiled into this build parses the file: structure is to be
 /// expected, so its absence is a blind spot. A language without one is read
 /// as text by design (#330).
-pub(crate) fn has_grammar(path: &str) -> bool {
+pub fn has_grammar(path: &str) -> bool {
     find_lang_config(path).is_some_and(|c| LANGUAGE_CACHE.contains_key(c.ts_name))
 }
 
@@ -716,7 +716,7 @@ pub(crate) fn has_grammar(path: &str) -> bool {
 /// removed for the parse and put back. `None` without a grammar or when
 /// the parse timed out. Each text is parsed once: a caller is checked
 /// against every changed definition.
-pub(crate) fn code_only(path: &str, content: &str) -> Option<Arc<str>> {
+pub fn code_only(path: &str, content: &str) -> Option<Arc<str>> {
     let config = find_lang_config(path)?;
     let key = {
         use std::hash::{Hash, Hasher};
@@ -766,7 +766,7 @@ static MASKS: Lazy<std::sync::Mutex<FxHashMap<u64, Arc<str>>>> =
 /// A named declaration the grammar sees: a function, method, class,
 /// interface or a member signature, with the container it sits in.
 #[derive(Debug, Clone)]
-pub(crate) struct Declaration {
+pub struct Declaration {
     pub name: String,
     pub start_line: u32,
     pub end_line: u32,
@@ -781,7 +781,7 @@ pub(crate) struct Declaration {
 /// reach: a function's own locals are left out. `None` without a grammar.
 /// The removed definitions of a change are compared on these, base against
 /// head, rather than read off removed lines by regex (#515).
-pub(crate) fn declarations(path: &str, content: &str) -> Option<Vec<Declaration>> {
+pub fn declarations(path: &str, content: &str) -> Option<Vec<Declaration>> {
     let config = find_lang_config(path)?;
     let tree = parse_tree(config.ts_name, content)?;
     let mut out = Vec::new();
@@ -963,7 +963,7 @@ fn keep_interpolations(node: Node, original: &[u8], out: &mut [u8]) {
 /// parsed, so a reader asking later learns what happened rather than
 /// guessing from the fragments that came out (#454).
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum ParseOutcome {
+pub enum ParseOutcome {
     Clean,
     /// Error or missing nodes: the first few lines they start on, to name,
     /// and every line span they cover. What sits elsewhere was read.
@@ -1043,7 +1043,7 @@ pub(super) fn parse_outcome(path: &str, content: &str) -> Option<ParseOutcome> {
 
 /// A parse of `content` under the grammar of `path`, and that grammar's
 /// name. `None` without a grammar or when the parse timed out.
-pub(crate) fn parse_file(path: &str, content: &str) -> Option<(Tree, &'static str)> {
+pub fn parse_file(path: &str, content: &str) -> Option<(Tree, &'static str)> {
     let config = find_lang_config(path)?;
     Some((parse_tree(config.ts_name, content)?, config.ts_name))
 }
@@ -1051,7 +1051,7 @@ pub(crate) fn parse_file(path: &str, content: &str) -> Option<(Tree, &'static st
 /// A parse of `content` under the named grammar, from the same thread-local
 /// parser cache and under the same wall-clock bound the fragmenter uses.
 /// `None` when the grammar is not compiled in or the parse timed out.
-pub(crate) fn parse_tree(ts_name: &'static str, content: &str) -> Option<Tree> {
+pub fn parse_tree(ts_name: &'static str, content: &str) -> Option<Tree> {
     let language = get_tree_sitter_language(ts_name)?;
     parse_with_cached_parser(ts_name, &language, content)
 }
@@ -1693,7 +1693,7 @@ fn inject_embedded_languages(
 /// it, every other byte but a newline blanked, so one parse places each
 /// identifier at its line and column in the page. Classic scripts share one
 /// global scope, which one program over all of them models.
-pub(crate) fn inline_scripts(html: &str) -> Option<String> {
+pub fn inline_scripts(html: &str) -> Option<String> {
     let tree = parse_tree("html", html)?;
     let source = html.as_bytes();
     let mut code: Vec<u8> = source

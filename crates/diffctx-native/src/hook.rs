@@ -3209,21 +3209,22 @@ fn named_in_scope(
     scope: &Scope,
     names: &[String],
 ) -> Option<rustc_hash::FxHashSet<String>> {
-    use crate::facts::Fact;
+    use diffctx_facts::facts::Fact;
     const MAX_READ: u64 = 1024 * 1024;
     // Past a few files the reading costs what the lookup would.
     const MAX_PLACES: usize = 20;
     if scope.0.is_empty() || scope.0.len() > MAX_PLACES {
         return None;
     }
-    let registry = crate::facts::lang::builtin();
+    let registry = diffctx_facts::facts::lang::builtin();
     let mut spelled: rustc_hash::FxHashSet<String> = rustc_hash::FxHashSet::default();
     for place in &scope.0 {
         let path = root.join(place);
         if place.is_empty() || !path.is_file() || std::fs::metadata(&path).ok()?.len() > MAX_READ {
             return None;
         }
-        let language = crate::facts::Language::from_path(&snap::RepoPath::new(place).ok()?)?;
+        let language =
+            diffctx_facts::facts::Language::from_path(&snap::RepoPath::new(place).ok()?)?;
         let bytes = std::fs::read(&path).ok()?;
         let blob = registry
             .get(language)?

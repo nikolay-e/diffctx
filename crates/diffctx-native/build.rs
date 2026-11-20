@@ -1,11 +1,9 @@
-//! Fingerprints of the code that decides what an on-disk cache may serve: the
-//! facts cache keys its entries on every source under `src/` and the lock file
-//! (the grammars come with it), the token cache on the sources that make
-//! tokens. A hand-bumped version is forgotten by the change that needed it; a
-//! digest of the code cannot be. The facts extractors read through `parsers`,
-//! `languages` and the snapshot, so no subset of `src/` is a fingerprint. The
-//! sources of every workspace path dependency (read from the manifests, so a
-//! new leaf crate joins by being depended on) count as this crate's own.
+//! The fingerprint of the code that makes tokens: the token cache keys its
+//! entries on `token_corpus.rs` and on the sources of every workspace path
+//! dependency (read from the manifests, so a new leaf crate joins by being
+//! depended on). A hand-bumped version is forgotten by the change that needed
+//! it; a digest of the code cannot be. The facts cache keys on diffctx-facts'
+//! own build script.
 
 use std::env;
 use std::fs;
@@ -109,9 +107,6 @@ fn digest(root: &Path, files: &[&str], dirs: &[&str], lock: Option<&Path>) -> u6
 fn main() {
     let root = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").expect("a manifest dir"));
     let out = PathBuf::from(env::var_os("OUT_DIR").expect("an out dir"));
-    let lock = [root.join("Cargo.lock"), root.join("../../Cargo.lock")]
-        .into_iter()
-        .find(|p| p.is_file());
     println!("cargo:rerun-if-changed=build.rs");
     println!("cargo:rerun-if-changed=src");
     let dependencies = path_dependency_sources(&root);
@@ -121,13 +116,6 @@ fn main() {
             .chain(dependencies.iter().cloned())
             .collect()
     };
-    let facts_dirs = dirs(&["src"]);
-    let facts = digest(
-        &root,
-        &[],
-        &facts_dirs.iter().map(String::as_str).collect::<Vec<_>>(),
-        lock.as_deref(),
-    );
     let token_dirs = dirs(&[]);
     let tokens = digest(
         &root,
@@ -135,11 +123,6 @@ fn main() {
         &token_dirs.iter().map(String::as_str).collect::<Vec<_>>(),
         None,
     );
-    fs::write(
-        out.join("facts_fingerprint.in"),
-        format!("{facts:#018x}_u64"),
-    )
-    .expect("write the facts fingerprint");
     fs::write(
         out.join("tokens_fingerprint.in"),
         format!("{tokens:#018x}_u64"),

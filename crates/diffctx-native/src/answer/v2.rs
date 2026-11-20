@@ -234,8 +234,8 @@ pub enum Gap {
     },
 }
 
-impl From<crate::facts::Delta> for Delta {
-    fn from(delta: crate::facts::Delta) -> Self {
+impl From<diffctx_facts::facts::Delta> for Delta {
+    fn from(delta: diffctx_facts::facts::Delta) -> Self {
         Self {
             signature: delta.signature,
             body: delta.body,
@@ -574,7 +574,7 @@ impl Guard {
             };
         }
         if let Some(registrar) = &caller.registered_by {
-            let state = if registrar.starts_with(crate::facts::framework::ENTRY_PREFIX) {
+            let state = if registrar.starts_with(diffctx_facts::facts::framework::ENTRY_PREFIX) {
                 GuardState::EntryPoint
             } else {
                 GuardState::Registered

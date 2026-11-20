@@ -4,8 +4,8 @@
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 
-use _diffctx::facts::lang::python::PythonExtractor;
-use _diffctx::facts::{
+use diffctx_facts::facts::lang::python::PythonExtractor;
+use diffctx_facts::facts::{
     BlobFacts, Def, Disambig, Export, Extractor, Fact, Import, ImportKind, Language, Local,
     LocalKey, Receiver, Ref, Scope, TypeName,
 };
@@ -475,7 +475,7 @@ fn a_lambda_is_transparent_to_the_def_around_it() {
 
 #[test]
 fn the_main_guard_is_module_scope_and_an_entry_not_a_caller() {
-    use _diffctx::facts::EntryKind;
+    use diffctx_facts::facts::EntryKind;
     let source = "def main():\n    helper()\n\nif __name__ == \"__main__\":\n    main()\n";
     let blob = extract(source);
     let entries: Vec<_> = blob
@@ -895,7 +895,7 @@ fn a_call_states_how_its_receiver_was_written() {
     let named = |parts: &[&str]| {
         parts
             .iter()
-            .map(|p| _diffctx::facts::Name::new(*p))
+            .map(|p| diffctx_facts::facts::Name::new(*p))
             .collect()
     };
     assert_eq!(

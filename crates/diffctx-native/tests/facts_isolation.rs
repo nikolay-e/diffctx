@@ -40,7 +40,7 @@ fn violations(source: &str, reach: usize) -> Vec<String> {
 
 #[test]
 fn the_facts_layer_uses_only_the_snapshot_module() {
-    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("src/facts");
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../diffctx-facts/src/facts");
     let mut files = 0;
     let mut reaches = Vec::new();
     for entry in WalkDir::new(&root) {

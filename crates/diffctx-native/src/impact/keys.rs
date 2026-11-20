@@ -7,7 +7,7 @@ use std::path::Path;
 
 use super::ScoredState;
 use crate::decide::Cells;
-use crate::facts::HeldAs;
+use diffctx_facts::facts::HeldAs;
 
 /// The terms of one line of a config: its key-shaped words and its value phrases.
 pub(super) fn terms(line: &str) -> Vec<String> {
@@ -711,7 +711,7 @@ fn commands_at(state: &ScoredState, path: &str, line: u32, text: &str) -> Vec<St
     else {
         return Vec::new();
     };
-    crate::facts::config::commands::commands(path, &source, &read_budget(state))
+    diffctx_facts::facts::config::commands::commands(path, &source, &read_budget(state))
         .into_iter()
         .filter(|command| (command.lines.0..=command.lines.1).contains(&line))
         .map(|command| command.text)
@@ -1235,7 +1235,7 @@ const MAX_SCHEMA_SIBLINGS: usize = 16;
 /// whether it spells them or lacks one (gh#743). Two siblings make a
 /// collection; one is a pair, whose shared keys say nothing of a schema.
 pub(super) fn schema_keys(state: &ScoredState, path: &str, tree: &[String]) -> Vec<String> {
-    use crate::facts::config::{Dialect, Options, read};
+    use diffctx_facts::facts::config::{Dialect, Options, read};
     let (dir, name) = path.rsplit_once('/').unwrap_or(("", path));
     let Some((_, ext)) = name.rsplit_once('.') else {
         return Vec::new();

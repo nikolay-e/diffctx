@@ -2,8 +2,8 @@
 //! reads of views are references, and comments, strings and the head of a
 //! definition are neither (#459).
 
-use _diffctx::facts::lang::sql::SqlExtractor;
-use _diffctx::facts::{
+use diffctx_facts::facts::lang::sql::SqlExtractor;
+use diffctx_facts::facts::{
     BlobFacts, Def, DefKind, Extractor, Fact, Language, Namespace, Ref, Scope, UseKind,
 };
 use diffctx_snapshot::snapshot::RunBudget;

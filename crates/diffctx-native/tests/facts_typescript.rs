@@ -5,8 +5,8 @@
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 
-use _diffctx::facts::lang::typescript::{JavaScript, TypeScript};
-use _diffctx::facts::{
+use diffctx_facts::facts::lang::typescript::{JavaScript, TypeScript};
+use diffctx_facts::facts::{
     BlobFacts, Def, Disambig, Export, Extractor, Fact, Import, ImportKind, Initializer, LocalKey,
     Namespace, Receiver, Ref, Scope, Star, Visibility,
 };
@@ -1139,7 +1139,7 @@ exports.c = function () { return a(); };
 
 #[test]
 fn the_file_serves_both_languages() {
-    let languages: Vec<String> = _diffctx::facts::lang::typescript::extractors()
+    let languages: Vec<String> = diffctx_facts::facts::lang::typescript::extractors()
         .iter()
         .map(|extractor| extractor.language().to_string())
         .collect();

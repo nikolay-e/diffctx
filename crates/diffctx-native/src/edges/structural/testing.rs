@@ -195,8 +195,9 @@ mod tests {
     /// subject stays a naming link.
     #[test]
     fn a_test_that_imports_its_subject_links_by_the_import() {
-        let file =
-            |path: &str, content: &str| crate::parsers::fragment_file(Arc::from(path), content);
+        let file = |path: &str, content: &str| {
+            diffctx_facts::parsers::fragment_file(Arc::from(path), content)
+        };
         let test = |import: &str| {
             format!("import pytest\n{import}\n\ndef test_sum():\n    assert total([1, 2]) == 3\n")
         };

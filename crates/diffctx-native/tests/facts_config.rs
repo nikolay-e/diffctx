@@ -1,9 +1,9 @@
 //! The configuration extractor, fact kind by fact kind, on YAML small enough to
 //! read the right answer off. Nothing here runs diffctx to learn an answer.
 
-use _diffctx::facts::config::{ObjectId, Strength, identity_of};
-use _diffctx::facts::lang::config::ConfigExtractor;
-use _diffctx::facts::{BlobFacts, Def, DefKind, Disambig, Extractor, Fact, Scope};
+use diffctx_facts::facts::config::{ObjectId, Strength, identity_of};
+use diffctx_facts::facts::lang::config::ConfigExtractor;
+use diffctx_facts::facts::{BlobFacts, Def, DefKind, Disambig, Extractor, Fact, Scope};
 use diffctx_snapshot::snapshot::{Loss, RunBudget};
 
 fn extract(source: &str) -> BlobFacts {

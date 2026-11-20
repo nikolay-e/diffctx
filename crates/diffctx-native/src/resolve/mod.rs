@@ -13,7 +13,7 @@
 //! a project root, and a link between two projects exists only through a declared
 //! dependency (`WorkspaceModel::may_reference` decides, in one place).
 //!
-//! The layer reads a repository only through `diffctx_snapshot::snapshot` and `crate::facts`
+//! The layer reads a repository only through `diffctx_snapshot::snapshot` and `diffctx_facts::facts`
 //! (`tests/resolve_isolation.rs` holds it).
 //!
 //! An empty value is never how a failed read or a lost fact looks here: the
@@ -64,7 +64,7 @@ pub use swift::SwiftResolver;
 pub use terraform::TerraformResolver;
 pub use typescript::TypeScriptResolver;
 
-use crate::facts::{DefKey, DefKind, Name, Scope, Span, UseKind};
+use diffctx_facts::facts::{DefKey, DefKind, Name, Scope, Span, UseKind};
 use diffctx_snapshot::snapshot::RepoPath;
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Debug)]

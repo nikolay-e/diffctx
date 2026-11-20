@@ -29,8 +29,8 @@ use super::{
     Binding, CandidateReason, Definition, Evidence, EvidenceKind, Relation, Resolution, Solved,
     UnresolvedReason, unresolved,
 };
-use crate::facts::{DefKey, DefKind, Fact, FactsCache, FileFacts, Language, Name, Scope};
 use diffctx_base::paths::normalize_lexical;
+use diffctx_facts::facts::{DefKey, DefKind, Fact, FactsCache, FileFacts, Language, Name, Scope};
 use diffctx_snapshot::snapshot::{AnalysisContext, RepoPath, Result, SideTag};
 
 /// The bindings of one snapshot's Dockerfiles.
@@ -210,7 +210,7 @@ impl FileRec {
         }
     }
 
-    fn stage_use(&self, r: &crate::facts::Ref) -> Resolution {
+    fn stage_use(&self, r: &diffctx_facts::facts::Ref) -> Resolution {
         match self.stage_at(&r.enclosing) {
             Some(at) => self.stage_named(at, r.name.as_str()),
             None => unresolved(UnresolvedReason::NoBinding),
@@ -243,7 +243,7 @@ impl FileRec {
         last_env.or(last_arg)
     }
 
-    fn variable_use(&self, r: &crate::facts::Ref) -> Resolution {
+    fn variable_use(&self, r: &diffctx_facts::facts::Ref) -> Resolution {
         let name = r.name.as_str();
         let mut stage = self.stage_at(&r.enclosing);
         let mut before = r.site.bytes.start;

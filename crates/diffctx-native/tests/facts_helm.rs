@@ -1,10 +1,10 @@
 //! The Helm extractors, fact kind by fact kind, on files small enough to read the
 //! right answer off. Nothing here runs diffctx to learn an answer.
 
-use _diffctx::facts::config::{ConfigUse, UseOf};
-use _diffctx::facts::lang::config::ConfigExtractor;
-use _diffctx::facts::lang::helm::{HelmTemplateExtractor, HelmValuesExtractor};
-use _diffctx::facts::{BlobFacts, Def, DefKind, Extractor, Fact, Language, Scope};
+use diffctx_facts::facts::config::{ConfigUse, UseOf};
+use diffctx_facts::facts::lang::config::ConfigExtractor;
+use diffctx_facts::facts::lang::helm::{HelmTemplateExtractor, HelmValuesExtractor};
+use diffctx_facts::facts::{BlobFacts, Def, DefKind, Extractor, Fact, Language, Scope};
 use diffctx_snapshot::snapshot::{Loss, RepoPath, RunBudget};
 
 fn language_of(path: &str) -> Option<Language> {

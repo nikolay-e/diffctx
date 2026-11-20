@@ -1,9 +1,9 @@
 //! The shell extractor, fact kind by fact kind, on scripts small enough to read
 //! the right answer off. Nothing here runs diffctx to learn an answer.
 
-use _diffctx::facts::lang::shell::{ShellExtractor, UnreadShellExtractor};
-use _diffctx::facts::shell::{PathHead, PathUse};
-use _diffctx::facts::{BlobFacts, Def, DefKind, Extractor, Fact, Language, UseKind};
+use diffctx_facts::facts::lang::shell::{ShellExtractor, UnreadShellExtractor};
+use diffctx_facts::facts::shell::{PathHead, PathUse};
+use diffctx_facts::facts::{BlobFacts, Def, DefKind, Extractor, Fact, Language, UseKind};
 use diffctx_snapshot::snapshot::{Loss, RepoPath, RunBudget};
 
 fn extract(source: &str) -> BlobFacts {

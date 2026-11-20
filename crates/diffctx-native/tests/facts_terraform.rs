@@ -5,8 +5,8 @@
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 
-use _diffctx::facts::lang::terraform::TerraformExtractor;
-use _diffctx::facts::{
+use diffctx_facts::facts::lang::terraform::TerraformExtractor;
+use diffctx_facts::facts::{
     BlobFacts, Def, DefKind, Extractor, Fact, LocalKey, Receiver, Ref, Scope, Visibility,
 };
 use diffctx_snapshot::snapshot::{Loss, RunBudget, Stage};

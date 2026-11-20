@@ -6,7 +6,7 @@
 
 use std::collections::BTreeSet;
 
-use _diffctx::facts::EntryKind;
+use diffctx_facts::facts::EntryKind;
 
 mod support;
 use support::families::{Family, discloses, says_empty};

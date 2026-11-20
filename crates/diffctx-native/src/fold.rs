@@ -6,8 +6,8 @@
 
 #![deny(clippy::disallowed_methods)]
 
-use crate::facts::{DefKind, Language};
 use crate::resolve::Relation;
+use diffctx_facts::facts::{DefKind, Language};
 
 /// Why a row is folded.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]

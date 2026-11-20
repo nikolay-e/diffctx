@@ -39,7 +39,7 @@ pub use cache::{
     CacheKey, CacheStats, DEFAULT_CAP_BYTES, FINGERPRINT, FactsCache, SCHEMA, default_dir,
 };
 pub use changes::{DefChange, Delta, Origin, SemanticChangeSet, SemanticDef, semantic_changes};
-pub(crate) use changes::{holds_data, members_of};
+pub use changes::{holds_data, members_of};
 pub use extractor::{Extractor, Registry, expired};
 pub use file::facts_of;
 pub use hash::{Hasher, hash_text, hash_tokens};
@@ -53,7 +53,7 @@ pub use model::{
 };
 
 /// The facts an extractor states about a file; `None` for a language none reads.
-pub(crate) fn local_facts(path: &str, text: &str) -> Option<BlobFacts> {
+pub fn local_facts(path: &str, text: &str) -> Option<BlobFacts> {
     static REGISTRY: std::sync::OnceLock<Registry> = std::sync::OnceLock::new();
     let name = std::path::Path::new(path).file_name()?.to_str()?;
     let Ok(name) = diffctx_snapshot::snapshot::RepoPath::new(name) else {

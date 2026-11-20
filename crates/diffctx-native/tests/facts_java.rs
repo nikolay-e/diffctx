@@ -1,8 +1,8 @@
 //! The Java extractor, read through the facts it states: one table per kind of
 //! fact, each fixture small enough to read its answer off the source.
 
-use _diffctx::facts::lang::java::JavaExtractor;
-use _diffctx::facts::{
+use diffctx_facts::facts::lang::java::JavaExtractor;
+use diffctx_facts::facts::{
     BlobFacts, Def, DefKind, Disambig, EntryKind, Extractor, Fact, Import, ImportKind, LocalKey,
     LocalKind, Namespace, Receiver, Ref, Scope, UseKind, Visibility,
 };

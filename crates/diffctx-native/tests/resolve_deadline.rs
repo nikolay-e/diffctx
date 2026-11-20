@@ -9,8 +9,8 @@ mod snapshot_fixture;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
-use _diffctx::facts::{BlobFacts, Extractor, FactsCache, Language};
 use _diffctx::resolve::{GoResolver, PythonResolver, RustResolver, TypeScriptResolver};
+use diffctx_facts::facts::{BlobFacts, Extractor, FactsCache, Language};
 use diffctx_snapshot::snapshot::{
     AnalysisContext, Loss, RangeSpec, RunBudget, Side, SideTag, Stage,
 };
