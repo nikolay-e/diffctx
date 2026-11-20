@@ -141,7 +141,7 @@ if ((run_rest)); then
   for name in $names; do
     if [[ "$name" = lib ]]; then
       run cargo test --locked --lib --features python
-      for crate in diffctx-base diffctx-config diffctx-snapshot diffctx-facts diffctx-resolve diffctx-occurrence; do
+      for crate in diffctx-base diffctx-config diffctx-snapshot diffctx-facts diffctx-resolve diffctx-occurrence diffctx-graph diffctx-select diffctx-answer; do
         run cargo test --locked --package "$crate"
       done
     else

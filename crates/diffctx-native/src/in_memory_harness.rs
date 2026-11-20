@@ -5,7 +5,7 @@ use std::sync::Arc;
 use rustc_hash::{FxHashMap, FxHashSet};
 use similar::{ChangeTag, TextDiff};
 
-use crate::render::{DiffContextOutput, build_diff_context_output};
+use diffctx_answer::render::{DiffContextOutput, build_diff_context_output};
 use diffctx_base::types::{DiffHunk, Fragment, FragmentId};
 use diffctx_config::config::budget::BUDGET;
 use diffctx_config::config::tokenization::TOKENIZATION;
@@ -136,7 +136,7 @@ pub fn final_state_edges(repo: &MemoryRepo) -> Vec<FileEdge> {
         &repo.initial_files,
         &repo.changed_files,
     ));
-    let capped = crate::edges::collect_capped_edges(
+    let capped = diffctx_graph::edges::collect_capped_edges(
         &fragments,
         tree.as_ref().map(|t| t.root.as_path()),
         false,
@@ -182,7 +182,7 @@ pub fn typed_key_links(repo: &MemoryRepo) -> Vec<TypedKeyLink> {
         &compute_memory_diff_text(&repo.initial_files, &repo.changed_files),
     ));
     let _in_run = run.enter();
-    let mut links: Vec<TypedKeyLink> = crate::keytable::typed_links(&fragments, None)
+    let mut links: Vec<TypedKeyLink> = diffctx_graph::keytable::typed_links(&fragments, None)
         .into_iter()
         .map(|l| TypedKeyLink {
             kind: l.kind,
@@ -245,7 +245,7 @@ pub fn build_diff_context_in_memory(
     .collect();
     let tree = TempTree::write(&all_files);
     let tree_root = tree.as_ref().map(|t| t.root.clone());
-    let discovery_ctx = crate::discovery::DiscoveryContext {
+    let discovery_ctx = diffctx_graph::discovery::DiscoveryContext {
         root_dir: tree_root.clone().unwrap_or_else(|| PathBuf::from(".")),
         changed_files: changed_file_paths.clone(),
         all_candidates: all_file_paths.clone(),
@@ -333,7 +333,7 @@ pub fn build_diff_context_in_memory(
         &hunk_texts,
         &all_fragments,
     );
-    let fragmentless = crate::run_provenance::state::fragmentless_changed_files(
+    let fragmentless = diffctx_answer::run_provenance::state::fragmentless_changed_files(
         dummy_root,
         &changed_files,
         &all_fragments,
@@ -358,7 +358,7 @@ pub fn build_diff_context_in_memory(
 
     let used: u32 = selected.iter().map(|f| f.token_count).sum();
     let remaining = selection_budget.saturating_sub(used);
-    crate::postpass::ensure_changed_files_represented(
+    diffctx_select::postpass::ensure_changed_files_represented(
         &mut selected,
         &all_fragments,
         &changed_files,
@@ -372,7 +372,7 @@ pub fn build_diff_context_in_memory(
 
     let mut changed_list: Vec<String> = changed_paths.iter().cloned().collect();
     changed_list.sort();
-    let change = crate::render::ChangeSummary {
+    let change = diffctx_answer::render::ChangeSummary {
         range_spec: None,
         index_tree: None,
         lockfile_changes: Vec::new(),

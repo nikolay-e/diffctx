@@ -31,6 +31,9 @@ lang-extra = ["diffctx-facts/lang-extra"]
 
 [dependencies]
 diffctx-base.workspace = true
+diffctx-answer.workspace = true
+diffctx-select.workspace = true
+diffctx-graph.workspace = true
 diffctx-occurrence.workspace = true
 diffctx-resolve.workspace = true
 diffctx-facts.workspace = true
@@ -50,15 +53,14 @@ anyhow.workspace = true
 tracing.workspace = true
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 regex.workspace = true
-once_cell.workspace = true
 rustc-hash.workspace = true
 similar = "3"
 walkdir = "2"
 libc.workspace = true
 pyo3 = { version = "0.30", features = ["extension-module", "abi3-py311"], optional = true }
-schemars.workspace = true
 
 [dev-dependencies]
+diffctx-graph = { workspace = true, features = ["test-support"] }
 diffctx-snapshot = { workspace = true, features = ["test-support"] }
 tree-sitter.workspace = true
 tree-sitter-python.workspace = true
@@ -120,11 +122,6 @@ required-features = ["lang-core"]
 [[test]]
 name = "public_api"
 required-features = ["lang-core"]
-
-# The fingerprints digest the sources of the workspace path dependencies, read
-# from the manifests.
-[build-dependencies]
-toml.workspace = true
 
 [lints]
 workspace = true

@@ -7,8 +7,8 @@ use pyo3::types::{PyDict, PyList};
 
 use crate::delivery::{Delivery, Mode, Note, Request};
 use crate::pipeline;
-use crate::render::DiffContextOutput;
-use crate::run_provenance::state::ScoredState;
+use diffctx_answer::render::DiffContextOutput;
+use diffctx_answer::run_provenance::state::ScoredState;
 use diffctx_config::config::limits::{
     DEFAULT_PIPELINE_TIMEOUT_SECONDS, DEFAULT_PPR_ALPHA, DEFAULT_SCORING,
     DEFAULT_STOPPING_THRESHOLD,
@@ -978,7 +978,7 @@ pub fn _diffctx(m: &Bound<'_, PyModule>) -> PyResult<()> {
         "SCORING_MODES",
         diffctx_config::mode::SCORING_MODE_NAMES.to_vec(),
     )?;
-    m.add("BUILD_LABEL", crate::run_provenance::BUILD_LABEL)?;
+    m.add("BUILD_LABEL", diffctx_answer::run_provenance::BUILD_LABEL)?;
     m.add("GitError", m.py().get_type::<GitError>())?;
     m.add(
         "ComputeTimeoutError",

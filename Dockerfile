@@ -12,8 +12,11 @@ COPY crates/diffctx-snapshot ./crates/diffctx-snapshot
 COPY crates/diffctx-facts ./crates/diffctx-facts
 COPY crates/diffctx-resolve ./crates/diffctx-resolve
 COPY crates/diffctx-occurrence ./crates/diffctx-occurrence
+COPY crates/diffctx-graph ./crates/diffctx-graph
+COPY crates/diffctx-select ./crates/diffctx-select
+COPY crates/diffctx-answer ./crates/diffctx-answer
 COPY crates/diffctx-config ./crates/diffctx-config
-COPY crates/diffctx-native/Cargo.toml crates/diffctx-native/build.rs ./crates/diffctx-native/
+COPY crates/diffctx-native/Cargo.toml ./crates/diffctx-native/
 COPY crates/diffctx-native/src ./crates/diffctx-native/src
 COPY crates/diffctx-native/tests ./crates/diffctx-native/tests
 
