@@ -36,7 +36,7 @@ pub(crate) struct Scaffold {
 
 pub(crate) fn scaffolds() -> &'static BTreeMap<String, Scaffold> {
     static ALL: OnceLock<BTreeMap<String, Scaffold>> = OnceLock::new();
-    ALL.get_or_init(|| serde_yaml::from_str(SCAFFOLDS).expect("scaffolds.yaml"))
+    ALL.get_or_init(|| diffctx_base::yaml::from_str(SCAFFOLDS).expect("scaffolds.yaml"))
 }
 
 // The families that have no scaffold, with the reason: a full match, so a
@@ -83,7 +83,7 @@ pub(crate) struct Seed {
 }
 
 pub(crate) fn load(table: &str) -> Vec<Seed> {
-    serde_yaml::from_str(table).expect("a seed table")
+    diffctx_base::yaml::from_str(table).expect("a seed table")
 }
 
 impl Seed {

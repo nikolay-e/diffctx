@@ -18,3 +18,4 @@ pub mod test_rng;
 pub mod testfiles;
 pub mod tokenizer;
 pub mod types;
+pub mod yaml;

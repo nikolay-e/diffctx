@@ -544,15 +544,15 @@ fn corpus_sources() -> Vec<(String, String)> {
             let Some(text) = read_text(entry.path()) else {
                 continue;
             };
-            let Ok(case) = serde_yaml::from_str::<serde_yaml::Value>(&text) else {
+            let Ok(case) = diffctx_base::yaml::to_value(&text) else {
                 continue;
             };
             for group in ["initial_files", "changed_files", "untracked_files"] {
-                let Some(files) = case["repo"][group].as_mapping() else {
+                let Some(files) = case["repo"][group].as_object() else {
                     continue;
                 };
                 for (name, content) in files {
-                    if let (Some(name), Some(content)) = (name.as_str(), content.as_str()) {
+                    if let Some(content) = content.as_str() {
                         let at = found.len();
                         found.push((format!("case{at}/{name}"), content.to_string()));
                     }

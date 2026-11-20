@@ -30,7 +30,7 @@ fn fragments(text: &str, format: &str) -> Vec<(String, String, bool)> {
     let doc: serde_json::Value = if format == "json" {
         serde_json::from_str(text).unwrap()
     } else {
-        serde_yaml::from_str(text).unwrap()
+        diffctx_base::yaml::from_str(text).unwrap()
     };
     doc["fragments"]
         .as_array()

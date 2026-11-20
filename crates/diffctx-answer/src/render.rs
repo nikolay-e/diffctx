@@ -634,23 +634,6 @@ mod tests {
     }
 
     #[test]
-    fn renamed_files_serialize_as_labelled_from_to_in_yaml() {
-        let out = empty_output(vec![("old.py".to_string(), "new.py".to_string())]);
-        let yaml = serde_yaml::to_string(&out).unwrap();
-        assert!(
-            yaml.contains("from: old.py"),
-            "expected labelled `from:` entry, got:\n{yaml}"
-        );
-        assert!(
-            yaml.contains("to: new.py"),
-            "expected labelled `to:` entry, got:\n{yaml}"
-        );
-        // Guards against serde's default tuple-as-two-element-sequence shape
-        // (`- - old.py\n  - new.py`), which drops the from/to labels.
-        assert!(!yaml.contains("- - old.py"));
-    }
-
-    #[test]
     fn renamed_files_serialize_as_labelled_from_to_in_json() {
         let out = empty_output(vec![("old.py".to_string(), "new.py".to_string())]);
         let json = serde_json::to_value(&out).unwrap();
