@@ -8,44 +8,20 @@
 pub mod in_memory_harness;
 
 // Change set: what the diff touched, cut into fragments.
-pub(crate) mod decide;
-pub(crate) mod fold;
-pub(crate) mod fragmentation;
 
 // Graph: relationships between fragments.
-pub(crate) mod edges;
-pub(crate) mod graph;
-pub(crate) mod keytable;
-pub(crate) mod provenance;
 
 // Ranking: relevance of each candidate to the change.
-pub(crate) mod core;
-pub(crate) mod discovery;
-pub(crate) mod filtering;
-pub(crate) mod ppr;
-pub(crate) mod scoring;
-pub(crate) mod token_corpus;
 
 // Selection: the budgeted greedy and its repairs.
-pub(crate) mod postpass;
-pub(crate) mod select;
-pub(crate) mod utility;
 
 // Output.
-pub mod answer;
 pub mod artifact;
 pub mod delivery;
 pub mod hook;
-pub mod impact;
-pub mod locate;
-pub mod render;
 
 // Orchestration and shared configuration.
-pub mod effective_config;
 pub mod pipeline;
-pub mod run_provenance;
-#[cfg(test)]
-pub(crate) mod test_rng;
 
 // `diffctx graph`: a side feature reachable only through the Python bindings.
 #[cfg(feature = "python")]

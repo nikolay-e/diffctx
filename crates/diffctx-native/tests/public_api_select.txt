@@ -1,0 +1,35 @@
+# Every pub item of diffctx-select, as tests/public_api.rs reads it from the crate's src/.
+# A new item is red; so is a line the code no longer has: delete it. The count is capped by
+# public_items.diffctx-select in budget.toml, which only goes down.
+postpass mod
+postpass::coherence_post_pass fn ( selected: &mut Vec<Fragment>, all_fragments: &[Fragment], graph: &Graph, budget: u32, admissible_files: Option<&FxHashSet<Arc<str>>>, )
+postpass::ensure_changed_files_represented fn ( selected: &mut Vec<Fragment>, all_fragments: &[Fragment], changed_files: &[PathBuf], remaining_budget: u32, root_dir: &Path, source: &Source, core_ids: &FxHashSet<FragmentId>, core_excerpts: &FxHashMap<FragmentId, Fragment>, stand_in_ids: &FxHashSet<FragmentId>, )
+postpass::rescue_nontrivial_context fn ( selected: &mut Vec<Fragment>, all_fragments: &[Fragment], rel_scores: &FxHashMap<FragmentId, f64>, core_ids: &FxHashSet<FragmentId>, budget: u32, admissible_files: Option<&FxHashSet<Arc<str>>>, )
+select mod
+select::SelectionReason enum derive(Clone, Copy, Debug, Eq, PartialEq)
+select::SelectionReason::BestSingleton variant BestSingleton
+select::SelectionReason::BudgetExhausted variant BudgetExhausted
+select::SelectionReason::NoCandidates variant NoCandidates
+select::SelectionReason::NoUtility variant NoUtility
+select::SelectionReason::StoppedByTau variant StoppedByTau
+select::SelectionReason::TopK variant TopK
+select::SelectionResult struct
+select::SelectionResult.greedy_iters field usize
+select::SelectionResult.reason field SelectionReason
+select::SelectionResult.selected field Vec<Fragment>
+select::SelectionResult.stand_in_ids field FxHashSet<FragmentId>
+select::SelectionResult.stopping_certificate field f64
+select::SelectionResult.used_tokens field u32
+select::SelectionResult.utility field f64
+select::lazy_greedy_select fn ( fragments: Vec<Fragment>, core_ids: &FxHashSet<FragmentId>, rel: &FxHashMap<FragmentId, f64>, needs: &[InformationNeed], budget_tokens: u32, tau: f64, file_importance: Option<&FxHashMap<Arc<str>, f64>>, core_excerpts: Option<&FxHashMap<FragmentId, Fragment>>, admissible_files: Option<&FxHashSet<Arc<str>>>, declared_admissible_files: Option<&FxHashSet<Arc<str>>>, evidence_priority: Option<&FxHashMap<Arc<str>, u8>>, changed_lines: Option<&FxHashMap<FragmentId, f64>>, ) -> SelectionResult
+utility mod
+utility use boltzmann::{boltzmann_select, calibrate_beta}
+utility use importance::compute_file_importance
+utility use needs::InformationNeed
+utility::needs mod
+utility::needs::InformationNeed struct derive(Clone, Debug)
+utility::needs::InformationNeed.need_type field String
+utility::needs::InformationNeed.priority field f64
+utility::needs::InformationNeed.scope field Option<Arc<str>>
+utility::needs::InformationNeed.symbol field String
+utility::needs::needs_from_diff fn ( all_fragments: &[Fragment], core_ids: &FxHashSet<FragmentId>, diff_text: &str, ) -> Vec<InformationNeed>

@@ -63,7 +63,7 @@ jobs:
           CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
           VERSION: ${{ inputs.version }}
         run: |
-          for crate in diffctx-base diffctx-config diffctx-snapshot diffctx-facts diffctx-resolve diffctx-occurrence diffctx; do
+          for crate in diffctx-base diffctx-config diffctx-snapshot diffctx-facts diffctx-resolve diffctx-occurrence diffctx-graph diffctx-select diffctx-answer diffctx; do
             if curl -fsS -A release-check "https://crates.io/api/v1/crates/${crate}/${VERSION}" > /dev/null; then
               echo "${crate} ${VERSION} is already on crates.io"
             else

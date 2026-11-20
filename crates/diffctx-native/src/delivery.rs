@@ -19,11 +19,12 @@ use std::time::Instant;
 use anyhow::Result;
 use serde_json::{Value, json};
 
-use crate::answer::envelope::fit_of;
 use crate::artifact::{self, Format, UNLIMITED_BUDGET_TOKENS};
-use crate::impact::{self, ImpactOutput};
 use crate::pipeline;
-use crate::render::DiffContextOutput;
+use diffctx_answer::answer::envelope::fit_of;
+use diffctx_answer::impact::output::ImpactOutput;
+use diffctx_answer::impact::{self};
+use diffctx_answer::render::DiffContextOutput;
 use diffctx_base::tokenizer::count_tokens;
 use diffctx_config::mode::ScoringMode;
 use diffctx_snapshot::resource::{CoverageReport, CoverageStatus, LimitReason, ResourceUsage};
@@ -56,7 +57,7 @@ impl Mode {
 pub enum Profile {
     Cli,
     /// Candidates counted, not listed, and the whole text within
-    /// [`impact::AUTOMATIC_TOKEN_CAP`]; nothing is recorded as reviewed.
+    /// [`impact::deliver::AUTOMATIC_TOKEN_CAP`]; nothing is recorded as reviewed.
     Hook,
 }
 
@@ -229,14 +230,14 @@ fn impact_delivery(request: &Request) -> Result<Delivery> {
 /// The answer alone: the envelope, charged to the cap here, goes before it.
 fn render_impact(request: &Request, output: &mut ImpactOutput) -> String {
     if request.profile == Profile::Hook {
-        return impact::render_automatic(output, impact::AUTOMATIC_TOKEN_CAP);
+        return impact::deliver::render_automatic(output, impact::deliver::AUTOMATIC_TOKEN_CAP);
     }
     let cap = within(
         Some(resolved(request.budget).unwrap_or(impact::IMPACT_TOKEN_CAP)),
         request.ceiling,
     )
     .unwrap_or(impact::IMPACT_TOKEN_CAP);
-    impact::deliver_framed(
+    impact::deliver::deliver_framed(
         output,
         request.format == Format::Md,
         cap,
@@ -393,7 +394,7 @@ fn judge(
     let stopped: Vec<String> = limits
         .iter()
         .filter(|r| matches!(r, LimitReason::Deadline | LimitReason::Cancelled))
-        .map(|r| crate::impact::reason_names(std::slice::from_ref(r)))
+        .map(|r| diffctx_answer::impact::output::reason_names(std::slice::from_ref(r)))
         .collect();
     if !stopped.is_empty() {
         notes.push(Note::Warning(format!(

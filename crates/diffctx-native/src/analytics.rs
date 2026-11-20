@@ -3,9 +3,9 @@ use std::sync::Arc;
 
 use rustc_hash::{FxHashMap, FxHashSet};
 
-use crate::graph::Graph;
 use diffctx_base::types::{EdgeCategory, Fragment, FragmentId};
 use diffctx_config::config::analytics::ANALYTICS;
+use diffctx_graph::graph::Graph;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum QuotientLevel {
@@ -528,7 +528,7 @@ mod tests {
             .iter()
             .map(|(s, d, _, c)| ((s.clone(), d.clone()), *c))
             .collect();
-        crate::graph::build_graph(fragments, weights, categories)
+        diffctx_graph::graph::build_graph(fragments, weights, categories)
     }
 
     #[test]

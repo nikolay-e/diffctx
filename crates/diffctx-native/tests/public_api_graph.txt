@@ -1,0 +1,139 @@
+# Every pub item of diffctx-graph, as tests/public_api.rs reads it from the crate's src/.
+# A new item is red; so is a line the code no longer has: delete it. The count is capped by
+# public_items.diffctx-graph in budget.toml, which only goes down.
+core mod
+core::compute_changed_lines fn ( hunks: &[DiffHunk], core_ids: &FxHashSet<FragmentId>, all_fragments: &[Fragment], ) -> FxHashMap<FragmentId, f64>
+core::compute_seed_weights fn ( hunks: &[DiffHunk], core_ids: &FxHashSet<FragmentId>, all_fragments: &[Fragment], ) -> FxHashMap<FragmentId, f64>
+core::identify_core_fragments fn ( hunks: &[DiffHunk], all_fragments: &[Fragment], ) -> FxHashSet<FragmentId>
+discovery mod
+discovery::BM25Discovery impl DiscoveryStrategy for BM25Discovery
+discovery::BM25Discovery struct
+discovery::BM25Discovery.top_k field usize
+discovery::BM25Discovery::new fn (top_k: usize) -> Self
+discovery::DefaultDiscovery impl DiscoveryStrategy for DefaultDiscovery
+discovery::DefaultDiscovery struct
+discovery::DiscoveryContext struct
+discovery::DiscoveryContext.all_candidates field Vec<PathBuf>
+discovery::DiscoveryContext.changed_files field Vec<PathBuf>
+discovery::DiscoveryContext.diff_text field String
+discovery::DiscoveryContext.expansion_concepts field FxHashSet<String>
+discovery::DiscoveryContext.file_cache field FxHashMap<PathBuf, String>
+discovery::DiscoveryContext.root_dir field PathBuf
+discovery::DiscoveryContext.run field diffctx_snapshot::resource::RunContext
+discovery::DiscoveryContext.source field diffctx_snapshot::source::Source
+discovery::DiscoveryContext.token_corpus field OnceLock<TokenCorpus>
+discovery::DiscoveryStrategy trait
+discovery::DiscoveryStrategy::discover fn (&self, ctx: &DiscoveryContext) -> Vec<PathBuf>
+discovery::DiscoveryStrategy::discover_attributed fn ( &self, ctx: &DiscoveryContext, ) -> (Vec<PathBuf>, Vec<(PathBuf, &'static str)>)
+discovery::DiscoveryStrategy::name fn (&self) -> &'static str
+discovery::EnsembleDiscovery impl DiscoveryStrategy for EnsembleDiscovery
+discovery::EnsembleDiscovery struct
+discovery::EnsembleDiscovery::new fn (strategies: Vec<Box<dyn DiscoveryStrategy>>) -> Self
+discovery::ReverseReferenceDiscovery impl DiscoveryStrategy for ReverseReferenceDiscovery
+discovery::ReverseReferenceDiscovery struct
+discovery::TestFileDiscovery impl DiscoveryStrategy for TestFileDiscovery
+discovery::TestFileDiscovery struct
+edges mod
+edges::collect_capped_edges fn ( fragments: &[Fragment], repo_root: Option<&Path>, skip_expensive: bool, ctx: &diffctx_snapshot::resource::RunContext, ) -> CappedEdges
+filtering mod
+fragmentation mod
+fragmentation::changed_text fn (file_path: &Path, root_dir: &Path, source: &Source) -> Option<String>
+fragmentation::create_whole_file_fragment fn ( path: &Path, root_dir: &Path, source: &Source, ) -> Option<Fragment>
+fragmentation::fragment_files fn ( files: &[PathBuf], root_dir: &Path, seen_frag_ids: &mut FxHashSet<FragmentId>, is_changed: bool, ctx: &diffctx_snapshot::resource::RunContext, hunks: &[diffctx_base::types::DiffHunk], ) -> Vec<Fragment>
+fragmentation::is_generated_file fn (path: &Path, content: &str) -> bool
+fragmentation::looks_binary fn (bytes: &[u8]) -> bool
+fragmentation::process_files_for_fragments fn ( files: &[PathBuf], root_dir: &Path, seen_frag_ids: &mut FxHashSet<FragmentId>, is_changed: bool, ctx: &diffctx_snapshot::resource::RunContext, ) -> Vec<Fragment>
+graph mod
+graph::CappedEdges struct
+graph::CappedEdges.cap_stats field EdgeCapStats
+graph::CappedEdges.edges field Vec<CompactEdge>
+graph::CappedEdges.idx_to_node field Vec<FragmentId>
+graph::CappedEdges.node_to_idx field FxHashMap<FragmentId, u32>
+graph::CompactEdge struct derive(Clone, Copy)
+graph::CompactEdge.category field EdgeCategory
+graph::CompactEdge.dst field u32
+graph::CompactEdge.naming field bool
+graph::CompactEdge.src field u32
+graph::CompactEdge.weight field f64
+graph::CsrGraph struct
+graph::CsrGraph.idx_to_node field Vec<FragmentId>
+graph::CsrGraph.indices field Vec<u32>
+graph::CsrGraph.indptr field Vec<u32>
+graph::CsrGraph.n field usize
+graph::CsrGraph.node_to_idx field FxHashMap<FragmentId, u32>
+graph::CsrGraph.out_weight_sum field Vec<f64>
+graph::CsrGraph.weights field Vec<f64>
+graph::EdgeCapStats struct derive(Clone, Default)
+graph::EdgeCapStats.edges_after_cap field usize
+graph::EdgeCapStats.edges_before_cap field usize
+graph::EdgeCapStats.edges_dropped_by_cap field usize
+graph::EdgeCapStats.emissions_by_category field Vec<(EdgeCategory, u64, u64)>
+graph::EdgeCapStats.max_out_edges_per_node field usize
+graph::EdgeCapStats.nodes_capped field usize
+graph::Graph struct
+graph::Graph.cap_stats field EdgeCapStats
+graph::Graph::categorized_edge_count fn (&self) -> usize
+graph::Graph::edge_category fn (&self, src: &FragmentId, dst: &FragmentId) -> Option<EdgeCategory>
+graph::Graph::edge_count fn (&self) -> usize
+graph::Graph::ego_graph fn ( &self, seeds: &FxHashSet<FragmentId>, radius: usize, ) -> FxHashMap<FragmentId, f64>
+graph::Graph::ego_graph_weighted fn ( &self, seeds: &FxHashMap<FragmentId, f64>, radius: usize, ) -> FxHashMap<FragmentId, f64>
+graph::Graph::for_each_categorized_edge fn <F: FnMut(&FragmentId, &FragmentId, EdgeCategory)>( &self, f: F, )
+graph::Graph::for_each_forward_neighbor fn <F: FnMut(&FragmentId, f64)>( &self, node: &FragmentId, mut f: F, )
+graph::Graph::forward_edge_weight fn (&self, src: &FragmentId, dst: &FragmentId) -> Option<f64>
+graph::Graph::fwd_csr fn (&self) -> Option<&CsrGraph>
+graph::Graph::new fn () -> Self
+graph::Graph::node_count fn (&self) -> usize
+graph::Graph::to_csr fn (&self) -> &(CsrGraph, CsrGraph)
+graph::build_graph_capped fn (capped: CappedEdges) -> Graph
+keytable mod
+keytable use self::definitions::defined_names
+keytable use self::extract::registers_metrics
+keytable::BuildSite struct
+keytable::BuildSite.dockerfile field String
+keytable::BuildSite.line field usize
+keytable::BuildSite.path field String
+keytable::BuildSite.text field String
+keytable::Counterpart struct
+keytable::Counterpart.changed_line field usize
+keytable::Counterpart.changed_path field String
+keytable::Counterpart.key field String
+keytable::Counterpart.kind field &'static str
+keytable::Counterpart.line field usize
+keytable::Counterpart.path field String
+keytable::TypedLink struct
+keytable::TypedLink.a_mechanism field &'static str
+keytable::TypedLink.a_path field String
+keytable::TypedLink.b_mechanism field &'static str
+keytable::TypedLink.b_path field String
+keytable::TypedLink.key field String
+keytable::TypedLink.kind field &'static str
+keytable::TypedLink.strength field &'static str
+keytable::build_sites fn (fragments: &[Fragment], repo_root: Option<&Path>) -> Vec<BuildSite>
+keytable::counterparts_of_change fn ( fragments: &[Fragment], repo_root: Option<&Path>, lines: Option<std::sync::Arc<ChangedLines>>, ) -> Vec<Counterpart>
+keytable::is_json fn (rel: &str) -> bool
+keytable::metric_readers fn ( fragments: &[Fragment], repo_root: Option<&Path>, lines: Option<std::sync::Arc<ChangedLines>>, ) -> Vec<Counterpart>
+keytable::runs_named_after fn ( fragments: &[Fragment], repo_root: Option<&Path>, dockerfiles: &[String], ) -> Vec<Counterpart>
+keytable::typed_links fn (fragments: &[Fragment], repo_root: Option<&Path>) -> Vec<TypedLink>
+ppr mod
+scoring mod
+scoring::ScoringResult impl Default for ScoringResult
+scoring::ScoringResult struct
+scoring::ScoringResult.admissible_files field Option<FxHashSet<std::sync::Arc<str>>>
+scoring::ScoringResult.declared_admissible_files field Option<FxHashSet<std::sync::Arc<str>>>
+scoring::ScoringResult.filtered_fragments field Vec<Fragment>
+scoring::ScoringResult.graph field Graph
+scoring::ScoringResult.graph_build_ms field f64
+scoring::ScoringResult.ppr_backward_pushes field usize
+scoring::ScoringResult.ppr_forward_pushes field usize
+scoring::ScoringResult.ppr_truncated field bool
+scoring::ScoringResult.rel_scores field FxHashMap<FragmentId, f64>
+scoring::ScoringStrategy trait
+scoring::ScoringStrategy::score_and_filter fn ( &self, all_fragments: &[Fragment], core_ids: &FxHashSet<FragmentId>, hunks: &[DiffHunk], repo_root: Option<&Path>, seed_weights: Option<&FxHashMap<FragmentId, f64>>, discovered_paths: Option<&FxHashSet<Arc<str>>>, ctx: &diffctx_snapshot::resource::RunContext, ) -> ScoringResult
+scoring::create_scoring_strategy fn (config: &PipelineConfig) -> Box<dyn ScoringStrategy>
+scoring::file_admission_enabled fn () -> bool
+token_corpus mod
+token_corpus::DocTokens struct
+token_corpus::DocTokens.term_counts field FxHashMap<String, u32>
+token_corpus::DocTokens.total_len field u32
+token_corpus::TokenCorpus struct
+token_corpus::TokenCorpus.docs field Vec<(PathBuf, DocTokens)>

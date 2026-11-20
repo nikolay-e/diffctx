@@ -4,11 +4,11 @@ use anyhow::{Context, Result};
 use rustc_hash::FxHashSet;
 use tracing::info;
 
-use crate::edges;
-use crate::fragmentation::process_files_for_fragments;
-use crate::graph::{self, Graph};
 use diffctx_base::types::{Fragment, FragmentId};
 use diffctx_config::config::limits::LIMITS;
+use diffctx_graph::edges;
+use diffctx_graph::fragmentation::process_files_for_fragments;
+use diffctx_graph::graph::{self, Graph};
 use diffctx_snapshot::candidate_files::collect_candidate_files;
 
 pub(crate) struct ProjectGraph {

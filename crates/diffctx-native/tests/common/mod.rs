@@ -4,7 +4,7 @@ use std::sync::OnceLock;
 
 use serde::Deserialize;
 
-use _diffctx::render::{DiffContextOutput, FragmentEntry};
+use diffctx_answer::render::{DiffContextOutput, FragmentEntry};
 
 #[derive(Debug, Deserialize, Clone, Default)]
 pub(crate) struct TestCase {

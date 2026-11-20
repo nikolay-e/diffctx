@@ -393,7 +393,7 @@ fn check(shape: &Shape) {
     init_repo(repo);
     (shape.build)(repo);
     let whole = whole(repo, shape);
-    let schema = _diffctx::impact::impact_schema();
+    let schema = diffctx_answer::impact::impact_schema();
     let mut listed: Vec<(u32, std::collections::BTreeSet<String>)> = Vec::new();
     for format in [Format::Markdown, Format::Json] {
         let least = declared_need(&run(repo, shape, format, Some(1)), format)

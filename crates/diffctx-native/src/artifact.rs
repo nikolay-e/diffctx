@@ -9,16 +9,14 @@
 //! ([`fit_value`]).
 
 use std::fmt::Write as _;
-use std::sync::Arc;
 
-use rustc_hash::{FxHashMap, FxHashSet};
+use rustc_hash::FxHashSet;
 use serde_json::Value;
 
-use crate::answer::v2::Range;
-use crate::render::{CONTEXT_SCHEMA, DiffContextOutput, FragmentEntry};
+use diffctx_answer::answer::v2::Range;
+use diffctx_answer::render::{CONTEXT_SCHEMA, DiffContextOutput, FragmentEntry};
 use diffctx_base::tokenizer::count_tokens;
-use diffctx_facts::change_class::ChangeClass;
-use diffctx_snapshot::resource::{CoverageReport, CoverageStatus, LimitReason, ResourceUsage};
+use diffctx_snapshot::resource::{CoverageStatus, ResourceUsage};
 
 /// More tokens than the `needs` line of a document ever takes.
 const NEEDS_LINE_TOKENS: u32 = 16;
@@ -133,13 +131,6 @@ fn declare_exempt(pack: &mut DiffContextOutput, exempt: u32, format: Format) -> 
         fit.exempt = exempt;
     }
     render(pack, format)
-}
-
-/// A pack document, shed a fragment at a time.
-impl diffctx_base::fit::Shed for DiffContextOutput {
-    fn shed_one(&mut self) -> bool {
-        drop_one_fragment(self)
-    }
 }
 
 /// The line that says the budget could not hold even the least the artifact says.
@@ -325,133 +316,6 @@ fn yaml_block(out: &mut String, key: &str, s: &str, indent: &str) {
             let _ = writeln!(out, "{indent}  {line}");
         }
     }
-}
-
-/// One fragment fewer, or a changed one shortened; `false` once nothing is
-/// left to drop.
-fn drop_one_fragment(pack: &mut DiffContextOutput) -> bool {
-    let classes: FxHashMap<&str, ChangeClass> = pack
-        .changes
-        .iter()
-        .map(|c| (c.path.as_str(), c.class))
-        .collect();
-    let Some(index) = drop_index(&pack.fragments, &classes) else {
-        return false;
-    };
-    // A changed fragment is shortened from its tail before it goes: a larger
-    // budget must never show less of the change. Dropped whole, the rewrite
-    // of `plan` vanished at the budget where a smaller one showed its
-    // signature, while the one-line bumps above it stayed (#438). Context
-    // has no such floor and drops whole.
-    let changed = pack.fragments[index].role.as_deref() == Some("changed");
-    if !(changed && halve_witness(&mut pack.fragments[index])) {
-        pack.fragments.remove(index);
-    }
-    let represented: FxHashSet<&str> = pack.fragments.iter().map(|f| f.path.as_str()).collect();
-    let mut unrepresented = false;
-    for change in &mut pack.changes {
-        let shown = represented.contains(change.path.as_str());
-        unrepresented |= !shown && !change.no_fragments;
-        change.represented = shown;
-    }
-    record_cut(pack, unrepresented);
-    true
-}
-
-fn record_cut(pack: &mut DiffContextOutput, unrepresented: bool) {
-    let coverage = pack.coverage.get_or_insert_with(|| CoverageReport {
-        status: CoverageStatus::Partial,
-        limits: Vec::new(),
-        capped: Vec::new(),
-        limited_files: Vec::new(),
-        resources: ResourceUsage::default(),
-        unknown: vec!["resources".to_string()],
-        lossy_files: Vec::new(),
-    });
-    let cut = LimitReason::SelectionBudgetExceeded;
-    if !coverage.limits.contains(&cut) {
-        coverage.limits.push(cut);
-    }
-    if unrepresented {
-        coverage.status = CoverageStatus::Degraded;
-    } else if coverage.status == CoverageStatus::Complete {
-        coverage.status = CoverageStatus::Partial;
-    }
-}
-
-const CLIPPED_MARKER_PREFIX: &str = "… [";
-const CLIPPED_MARKER_SUFFIX: &str = " more lines of this change]";
-
-fn halve_witness(fragment: &mut FragmentEntry) -> bool {
-    let Some(content) = fragment.content.as_deref() else {
-        return false;
-    };
-    let mut lines: Vec<&str> = content.lines().collect();
-    let mut hidden = 0usize;
-    if let Some(n) = lines
-        .last()
-        .and_then(|l| l.strip_prefix(CLIPPED_MARKER_PREFIX))
-        .and_then(|l| l.strip_suffix(CLIPPED_MARKER_SUFFIX))
-        .and_then(|n| n.parse::<usize>().ok())
-    {
-        hidden = n;
-        lines.pop();
-    }
-    if lines.len() < 2 {
-        return false;
-    }
-    let keep = (lines.len() * 3 / 4).clamp(1, lines.len() - 1);
-    hidden += lines.len() - keep;
-    let clipped = format!(
-        "{}\n{CLIPPED_MARKER_PREFIX}{hidden}{CLIPPED_MARKER_SUFFIX}\n",
-        lines[..keep].join("\n")
-    );
-    let start: usize = fragment
-        .lines
-        .split('-')
-        .next()
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(1);
-    fragment.lines = format!("{start}-{}", start + keep - 1);
-    fragment.content = Some(Arc::from(clipped.as_str()));
-    true
-}
-
-/// What goes next when the document is over its budget: context from the
-/// tail; then a changed file's second fragment, before any file loses its
-/// last; then those last witnesses. Changed fragments go lowest evidence
-/// tier first — generated files, mechanical bumps, config and docs, tests,
-/// production last — the reverse of the order the selection placed them
-/// in, and from the tail within a tier. By position alone the production
-/// file went first because `zsrc/` sorts after `README.md` and `tests/`
-/// (#411, #438).
-fn drop_index(
-    fragments: &[FragmentEntry],
-    classes: &FxHashMap<&str, ChangeClass>,
-) -> Option<usize> {
-    if let Some(i) = fragments
-        .iter()
-        .rposition(|f| f.role.as_deref() != Some("changed"))
-    {
-        return Some(i);
-    }
-    let tier = |f: &FragmentEntry| {
-        let class = classes
-            .get(f.path.as_str())
-            .copied()
-            .unwrap_or(ChangeClass::Content);
-        crate::pipeline::evidence_tier(&f.path, class)
-    };
-    let mut per_file: FxHashMap<&str, usize> = FxHashMap::default();
-    for f in fragments {
-        *per_file.entry(f.path.as_str()).or_default() += 1;
-    }
-    let lowest_from_the_tail = |second: bool| {
-        (0..fragments.len())
-            .filter(|&i| !second || per_file[fragments[i].path.as_str()] > 1)
-            .max_by_key(|&i| (tier(&fragments[i]), i))
-    };
-    lowest_from_the_tail(true).or_else(|| lowest_from_the_tail(false))
 }
 
 /// Whether the document names anything beyond its heading.
@@ -641,7 +505,13 @@ fn coverage_note(pack: &DiffContextOutput) -> Option<String> {
     let files: Vec<String> = coverage
         .limited_files
         .iter()
-        .map(|f| format!("{} ({})", f.path, crate::impact::reason_names(&[f.reason])))
+        .map(|f| {
+            format!(
+                "{} ({})",
+                f.path,
+                diffctx_answer::impact::output::reason_names(&[f.reason])
+            )
+        })
         .collect();
     let place = if files.is_empty() {
         String::new()
@@ -651,7 +521,7 @@ fn coverage_note(pack: &DiffContextOutput) -> Option<String> {
     Some(format!(
         "Coverage: {} — the run hit a limit ({}){place}; context may be missing.",
         coverage.status.as_str(),
-        crate::impact::reason_names(&coverage.limits)
+        diffctx_answer::impact::output::reason_names(&coverage.limits)
     ))
 }
 
@@ -871,6 +741,9 @@ fn escape_text_path(path: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use diffctx_base::fit::Shed;
+    use diffctx_snapshot::resource::LimitReason;
+    use std::sync::Arc;
 
     fn entry(path: &str, role: Option<&str>, lines: usize) -> FragmentEntry {
         let body: String = (0..lines).map(|i| format!("line_{i}\n")).collect();
@@ -887,8 +760,10 @@ mod tests {
     fn pack(fragments: Vec<FragmentEntry>, changed: &[&str]) -> DiffContextOutput {
         let mut pack = DiffContextOutput::empty("repo");
         pack.fragments = fragments;
-        pack.inventory.changed =
-            crate::answer::v2::Listing::of(changed.iter().map(|p| (*p).to_string()).collect(), 0);
+        pack.inventory.changed = diffctx_answer::answer::v2::Listing::of(
+            changed.iter().map(|p| (*p).to_string()).collect(),
+            0,
+        );
         pack
     }
 
@@ -902,11 +777,11 @@ mod tests {
             &[],
         );
 
-        assert!(drop_one_fragment(&mut doc));
+        assert!(doc.shed_one());
         assert_eq!(doc.fragments.len(), 1, "context must drop, not shrink");
         assert_eq!(doc.fragments[0].path, "app.py");
 
-        assert!(drop_one_fragment(&mut doc));
+        assert!(doc.shed_one());
         let witness = &doc.fragments[0];
         assert_eq!(witness.lines, "1-30");
         assert!(

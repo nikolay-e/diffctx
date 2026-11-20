@@ -13,6 +13,8 @@ pub mod paths;
 pub mod peak_rss;
 pub mod profile;
 pub mod sanitize;
+#[cfg(feature = "test-support")]
+pub mod test_rng;
 pub mod testfiles;
 pub mod tokenizer;
 pub mod types;

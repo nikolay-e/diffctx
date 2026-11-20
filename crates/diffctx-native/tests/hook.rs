@@ -350,7 +350,7 @@ fn an_older_pin_says_once_per_session_that_a_newer_one_is_installed() {
 
     // A build no release pipeline made says so: it shares the release's
     // version, and only the mark tells its runs from the release's (#570).
-    let label = _diffctx::run_provenance::BUILD_LABEL;
+    let label = diffctx_answer::run_provenance::BUILD_LABEL;
     assert!(label == running || label == format!("{running}+source"));
     let log = hook_log(cache.path());
     assert!(
@@ -4196,7 +4196,7 @@ fn a_log_line_names_the_call_and_the_repositories_that_landed() {
         "{log}"
     );
     assert!(
-        landed.split(' ').last() == Some(_diffctx::run_provenance::BUILD_LABEL),
+        landed.split(' ').last() == Some(diffctx_answer::run_provenance::BUILD_LABEL),
         "the version stays last: {log}"
     );
 }
