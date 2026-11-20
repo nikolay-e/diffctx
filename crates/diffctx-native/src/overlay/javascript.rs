@@ -10,7 +10,7 @@ use once_cell::sync::Lazy;
 use rustc_hash::FxHashMap;
 
 use super::{DeclKind, Declaration};
-use crate::types::FragmentKind;
+use diffctx_base::types::FragmentKind;
 
 /// What one JS/TS file or page declares beyond what the fragmenter cuts.
 #[derive(Debug, Default)]

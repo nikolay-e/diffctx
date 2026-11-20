@@ -5,7 +5,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::config::analytics::ANALYTICS;
 use crate::graph::Graph;
-use crate::types::{EdgeCategory, Fragment, FragmentId};
+use diffctx_base::types::{EdgeCategory, Fragment, FragmentId};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum QuotientLevel {
@@ -498,7 +498,7 @@ fn round4(v: f64) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::FragmentKind;
+    use diffctx_base::types::FragmentKind;
     use regex::Regex;
 
     fn fid(path: &str, start: u32, end: u32) -> FragmentId {

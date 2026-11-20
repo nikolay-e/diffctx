@@ -4,7 +4,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::config::limits::SIBLING;
 use crate::config::weights::EDGE_WEIGHTS;
-use crate::types::Fragment;
+use diffctx_base::types::Fragment;
 
 use super::super::EdgeDict;
 use super::super::base::{EdgeBuilder, add_edge};
@@ -78,13 +78,13 @@ impl EdgeBuilder for SiblingEdgeBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::FragmentKind;
+    use diffctx_base::types::FragmentKind;
     use rustc_hash::FxHashSet as Set;
     use std::sync::Arc;
 
     fn frag(path: &str, start: u32) -> Fragment {
         Fragment {
-            id: crate::types::FragmentId::new(Arc::from(path), start, start + 5),
+            id: diffctx_base::types::FragmentId::new(Arc::from(path), start, start + 5),
             kind: FragmentKind::Function,
             content: Arc::from(""),
             identifiers: Set::default(),

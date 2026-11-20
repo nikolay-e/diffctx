@@ -11,13 +11,13 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use crate::config::edge_weights::{GO_SEMANTIC, SEMANTIC_DISCOVERY};
 use crate::config::extensions::GO_EXTENSIONS;
 use crate::config::weights::EDGE_WEIGHTS;
-use crate::types::{Fragment, FragmentId};
+use diffctx_base::types::{Fragment, FragmentId};
 
 use super::super::EdgeDict;
 use super::super::base::{self, EdgeBuilder, add_edge, add_edges_from_ids};
 
 fn is_go_file(path: &Path) -> bool {
-    GO_EXTENSIONS.contains(crate::languages::file_ext(path).as_str())
+    GO_EXTENSIONS.contains(diffctx_base::languages::file_ext(path).as_str())
 }
 
 fn is_go_test_file(path: &Path) -> bool {

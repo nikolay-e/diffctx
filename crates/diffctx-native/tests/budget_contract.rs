@@ -415,7 +415,7 @@ fn check(shape: &Shape) {
             );
             let text = run(repo, shape, format, budget);
             let cap = budget.unwrap_or(2_000);
-            let tokens = _diffctx::tokenizer::count_tokens(&text);
+            let tokens = diffctx_base::tokenizer::count_tokens(&text);
             match declared_need(&text, format) {
                 Some(needed) => {
                     assert!(
@@ -790,7 +790,7 @@ fn artifact_check(name: &str, mode: &str, format: &str, build: fn(&Path)) {
     ] {
         let at = format!("{name} {mode} {format} budget {budget} (least {least})");
         let text = at_most(budget);
-        let cost = _diffctx::tokenizer::count_tokens(&text);
+        let cost = diffctx_base::tokenizer::count_tokens(&text);
         match artifact_need(&text, format) {
             Some(needed) => {
                 assert!(

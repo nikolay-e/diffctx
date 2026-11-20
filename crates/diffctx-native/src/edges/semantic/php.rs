@@ -6,13 +6,13 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::config::extensions::PHP_EXTENSIONS;
 use crate::config::weights::EDGE_WEIGHTS;
-use crate::types::Fragment;
+use diffctx_base::types::Fragment;
 
 use super::super::EdgeDict;
 use super::super::base::{self, EdgeBuilder, discover_by_refs};
 
 fn is_php_file(path: &Path) -> bool {
-    PHP_EXTENSIONS.contains(crate::languages::file_ext(path).as_str())
+    PHP_EXTENSIONS.contains(diffctx_base::languages::file_ext(path).as_str())
 }
 
 static USE_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?m)^\s*use\s+([\w\\]+)").unwrap());

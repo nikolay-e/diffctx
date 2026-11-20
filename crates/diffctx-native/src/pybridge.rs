@@ -614,7 +614,7 @@ fn get_raw_diff_text(
 
 #[pyfunction]
 fn get_language_for_file(path: &str) -> Option<String> {
-    crate::languages::get_language_for_file(path).map(|s| s.to_string())
+    diffctx_base::languages::get_language_for_file(path).map(|s| s.to_string())
 }
 
 /// The engine's secret-path policy, for tree mode and the MCP tools (#227).
@@ -637,14 +637,14 @@ fn withheld_paths(py: Python<'_>, root_dir: &str, rel_paths: Vec<String>) -> Vec
 /// shapes were replaced, and which.
 #[pyfunction]
 fn sanitize_text(text: &str) -> (String, usize, Vec<&'static str>) {
-    let (clean, r) = crate::sanitize::sanitize(text);
+    let (clean, r) = diffctx_base::sanitize::sanitize(text);
     (clean, r.count, r.categories)
 }
 
 #[pyfunction]
 fn count_tokens(py: Python<'_>, text: &str) -> PyResult<u32> {
     let owned = text.to_string();
-    py.detach(move || crate::tokenizer::try_count_tokens(&owned))
+    py.detach(move || diffctx_base::tokenizer::try_count_tokens(&owned))
         .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
 }
 
@@ -655,12 +655,12 @@ use rustc_hash::{FxHashMap as RsFxHashMap, FxHashSet as RsFxHashSet};
 use crate::analytics;
 use crate::graph_export;
 use crate::project_graph;
-use crate::types::EdgeCategory;
+use diffctx_base::types::EdgeCategory;
 
 #[pyclass]
 pub struct PyProjectGraph {
     inner: project_graph::ProjectGraph,
-    fragment_map: RsFxHashMap<crate::types::FragmentId, crate::types::Fragment>,
+    fragment_map: RsFxHashMap<diffctx_base::types::FragmentId, diffctx_base::types::Fragment>,
 }
 
 impl PyProjectGraph {

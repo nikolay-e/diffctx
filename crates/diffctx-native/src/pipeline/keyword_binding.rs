@@ -12,7 +12,7 @@ use tree_sitter::Node;
 
 use crate::facts::{BlobFacts, Fact, Import, LocalKind, Scope};
 use crate::resource::RunContext;
-use crate::types::Fragment;
+use diffctx_base::types::Fragment;
 
 /// What a call writes before its parentheses: `a.b.f` is `f` qualified by `a.b`,
 /// and a receiver that is no plain name (`make().f`) has no qualifier to read.
@@ -122,12 +122,13 @@ pub(crate) fn parameter_owners<'f>(
     name: &str,
     run: &RunContext,
 ) -> Vec<&'f Fragment> {
-    let python = |path: &str| crate::languages::get_language_for_file(path) == Some("python");
+    let python =
+        |path: &str| diffctx_base::languages::get_language_for_file(path) == Some("python");
     let mut facts: BTreeMap<&str, Option<BlobFacts>> = BTreeMap::new();
     let mut owners_named: BTreeMap<String, Vec<&'f Fragment>> = BTreeMap::new();
     for fragment in fragments
         .iter()
-        .filter(|f| f.kind == crate::types::FragmentKind::Function && python(f.path()))
+        .filter(|f| f.kind == diffctx_base::types::FragmentKind::Function && python(f.path()))
     {
         let Some(callee) = fragment
             .symbol_name

@@ -9,8 +9,8 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::mode::PipelineConfig;
 use crate::scoring::ScoringResult;
-use crate::types::{Fragment, FragmentId};
 use crate::utility::InformationNeed;
+use diffctx_base::types::{Fragment, FragmentId};
 
 /// Per-instance heavy-phase outputs cached for reuse across many
 /// (`tau`, `core_budget_fraction`) selection cells. The selection /
@@ -86,7 +86,7 @@ pub struct ScoredState {
     pub analysed_range: Option<String>,
     /// The diff's hunks with their removed and added lines: whether a change
     /// is layout only, what it removed, where its lines are.
-    pub hunk_texts: Vec<crate::changed_lines::HunkText>,
+    pub hunk_texts: Vec<diffctx_base::changed_lines::HunkText>,
     /// See `ScoredFragments::changed_lines`.
     pub changed_lines: FxHashMap<FragmentId, f64>,
     /// The pathspecs that narrow the run (`paths`, or the subtree it was asked
@@ -181,7 +181,7 @@ impl AnswerScope {
         if self.paths.contains(display_path) {
             return true;
         }
-        let ext = crate::languages::file_ext(Path::new(display_path));
+        let ext = diffctx_base::languages::file_ext(Path::new(display_path));
         if self.stems.is_empty()
             || !crate::config::extensions::CODE_EXTENSIONS.contains(ext.as_str())
         {

@@ -5,7 +5,7 @@ use regex::Regex;
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::config::edge_weights::KUBERNETES;
-use crate::types::{Fragment, FragmentId};
+use diffctx_base::types::{Fragment, FragmentId};
 
 use super::super::EdgeDict;
 use super::super::base::{self, EdgeBuilder, add_edge};
@@ -82,7 +82,7 @@ static K8S_KINDS: Lazy<FxHashSet<&str>> = Lazy::new(|| {
 static WORKLOAD_KINDS: Lazy<FxHashSet<&str>> =
     Lazy::new(|| base::kw("Pod Deployment StatefulSet DaemonSet ReplicaSet Job CronJob"));
 fn is_yaml_file(path: &Path) -> bool {
-    let ext = crate::languages::file_ext(path);
+    let ext = diffctx_base::languages::file_ext(path);
     YAML_EXTS.contains(ext.as_str())
 }
 
@@ -698,8 +698,8 @@ mod tests {
     fn yaml_frag(path: &str, start: u32, body: &str) -> Fragment {
         let end = start + body.lines().count().max(1) as u32 - 1;
         Fragment {
-            id: crate::types::FragmentId::new(std::sync::Arc::from(path), start, end),
-            kind: crate::types::FragmentKind::Chunk,
+            id: diffctx_base::types::FragmentId::new(std::sync::Arc::from(path), start, end),
+            kind: diffctx_base::types::FragmentKind::Chunk,
             content: std::sync::Arc::from(body),
             identifiers: FxHashSet::default(),
             token_count: body.len() as u32,

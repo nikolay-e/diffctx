@@ -7,8 +7,8 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use crate::config::extensions::CODE_EXTENSIONS;
 use crate::config::filtering::FILTERING;
 use crate::graph::Graph;
-use crate::languages::file_ext;
-use crate::types::{DiffHunk, EdgeCategory, Fragment, FragmentId, FragmentKind};
+use diffctx_base::languages::file_ext;
+use diffctx_base::types::{DiffHunk, EdgeCategory, Fragment, FragmentId, FragmentKind};
 
 fn fragment_hunk_gap(frag_start: u32, frag_end: u32, hunk_start: u32, hunk_end: u32) -> u32 {
     if frag_end < hunk_start {
@@ -326,7 +326,7 @@ pub(crate) fn cap_context_fragments(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::FragmentKind;
+    use diffctx_base::types::FragmentKind;
     use std::sync::Arc;
 
     fn frag(path: &str, start: u32, end: u32) -> Fragment {

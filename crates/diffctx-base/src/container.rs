@@ -2,10 +2,7 @@ use crate::types::{Fragment, FragmentId, FragmentKind};
 
 /// The fragment itself when it is a named container, else the smallest
 /// named container in the same file that encloses it.
-pub(crate) fn named_container_of<'a>(
-    core: &'a Fragment,
-    all: &'a [Fragment],
-) -> Option<&'a Fragment> {
+pub fn named_container_of<'a>(core: &'a Fragment, all: &'a [Fragment]) -> Option<&'a Fragment> {
     let is_named = |f: &Fragment| f.kind.is_definition_kind() && f.symbol_name.is_some();
     if is_named(core) {
         return Some(core);
@@ -30,7 +27,7 @@ pub(crate) fn named_container_of<'a>(
 /// Of fragments nested in one another (a method and its impl, a function
 /// and its enclosing class), the innermost is the one that says where. One
 /// pass, not a pair test: 60 000 changed definitions made 3.6e9 (gh#619).
-pub(crate) fn innermost<'a>(mut frags: Vec<&'a Fragment>) -> Vec<&'a Fragment> {
+pub fn innermost<'a>(mut frags: Vec<&'a Fragment>) -> Vec<&'a Fragment> {
     frags.sort_by(|a, b| a.id.cmp(&b.id));
     // Sorted by path, start, end: what a fragment holds starts later in its
     // file (`after`, their least end), or at its start and first there.
@@ -60,7 +57,7 @@ pub(crate) fn innermost<'a>(mut frags: Vec<&'a Fragment>) -> Vec<&'a Fragment> {
         .collect()
 }
 
-pub(crate) fn within(id: &FragmentId, outer: &Fragment) -> bool {
+pub fn within(id: &FragmentId, outer: &Fragment) -> bool {
     id.path.as_ref() == outer.path()
         && id.start_line >= outer.start_line()
         && id.end_line <= outer.end_line()

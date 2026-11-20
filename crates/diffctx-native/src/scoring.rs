@@ -15,7 +15,7 @@ use crate::filtering;
 use crate::graph::{self, Graph};
 use crate::mode::{PipelineConfig, ScoringMode};
 use crate::ppr::personalized_pagerank;
-use crate::types::{DiffHunk, Fragment, FragmentId, extract_identifier_list};
+use diffctx_base::types::{DiffHunk, Fragment, FragmentId, extract_identifier_list};
 
 /// Per-file naming admission (#65) is the default since the v5 cycle:
 /// screening (12-cell grid), calibration + held-out validation, and the
@@ -885,7 +885,7 @@ impl ScoringStrategy for PitFusionScoring {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::FragmentKind;
+    use diffctx_base::types::FragmentKind;
 
     fn fid(path: &str, start: u32) -> FragmentId {
         FragmentId::new(Arc::from(path), start, start + 4)

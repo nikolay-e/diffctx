@@ -27,7 +27,7 @@ pub(crate) fn diffctx() -> Command {
         Some(test) if test != "main" => format!("{suite}::{test}"),
         _ => suite.to_string(),
     };
-    cmd.env(_diffctx::profile::TAG_ENV, tag);
+    cmd.env(diffctx_base::profile::TAG_ENV, tag);
     cmd
 }
 

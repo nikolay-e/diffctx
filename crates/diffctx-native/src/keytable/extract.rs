@@ -9,8 +9,8 @@ use regex::Regex;
 use rustc_hash::FxHashSet;
 
 use super::tech::{kafka_property, property_keys};
-use crate::canon::canon_key;
 use crate::paths::normalize_lexical;
+use diffctx_base::canon::canon_key;
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, PartialOrd, Ord)]
 pub(crate) enum Kind {

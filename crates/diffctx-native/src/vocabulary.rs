@@ -128,7 +128,7 @@ pub fn is_precise(language: &str, relation: &str) -> bool {
 
 /// The cell language a file's definitions belong to: the corpus directories.
 fn cell_language(path: &str) -> &'static str {
-    match crate::languages::get_language_for_file(path) {
+    match diffctx_base::languages::get_language_for_file(path) {
         Some("python") => "python",
         Some("typescript" | "tsx" | "javascript" | "jsx") => "typescript",
         Some("rust") => "rust",
@@ -197,10 +197,11 @@ mod tests {
 
     #[test]
     fn every_name_is_a_language_the_engine_detects_or_an_extension_it_does_not() {
-        let detected: std::collections::BTreeSet<&str> = crate::languages::EXTENSION_TO_LANGUAGE
-            .values()
-            .copied()
-            .collect();
+        let detected: std::collections::BTreeSet<&str> =
+            diffctx_base::languages::EXTENSION_TO_LANGUAGE
+                .values()
+                .copied()
+                .collect();
         for (_, label, names) in TIERS {
             for name in *names {
                 assert!(

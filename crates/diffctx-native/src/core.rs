@@ -1,6 +1,6 @@
 use rustc_hash::{FxHashMap, FxHashSet};
 
-use crate::types::{DiffHunk, Fragment, FragmentId, FragmentKind};
+use diffctx_base::types::{DiffHunk, Fragment, FragmentId, FragmentKind};
 
 fn kind_priority(kind: FragmentKind) -> u8 {
     if kind.is_semantic() { 0 } else { 1 }

@@ -15,7 +15,7 @@ use std::sync::Arc;
 use rustc_hash::FxHashMap;
 
 use crate::source::Source;
-use crate::types::{Fragment, FragmentId, FragmentKind};
+use diffctx_base::types::{Fragment, FragmentId, FragmentKind};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Reader {
@@ -140,7 +140,7 @@ pub(crate) fn overlay_definitions(fragments: &mut Vec<Fragment>, source: &Source
             fragments.push(Fragment {
                 id,
                 kind,
-                identifiers: crate::types::extract_identifiers(
+                identifiers: diffctx_base::types::extract_identifiers(
                     &content,
                     crate::config::tokenization::TOKENIZATION.fragment_min_identifier_length,
                 ),

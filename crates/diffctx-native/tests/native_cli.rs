@@ -708,7 +708,7 @@ fn the_written_artifact_stays_within_the_budget_in_both_formats() {
             );
             assert_eq!(out.status.code(), Some(0), "{format} at {budget}");
             let text = String::from_utf8(out.stdout).expect("utf-8");
-            let tokens = _diffctx::tokenizer::count_tokens(&text);
+            let tokens = diffctx_base::tokenizer::count_tokens(&text);
             let cap: u32 = budget.parse().expect("budget");
             assert!(
                 tokens <= cap,
@@ -1343,7 +1343,7 @@ fn a_locate_answer_fits_its_budget() {
     );
     let doc: serde_json::Value = serde_json::from_slice(&out.stdout).expect("json");
     // The bytes the command prints, newline included: what the budget charges.
-    let tokens = _diffctx::tokenizer::count_tokens(&String::from_utf8_lossy(&out.stdout));
+    let tokens = diffctx_base::tokenizer::count_tokens(&String::from_utf8_lossy(&out.stdout));
     assert!(
         tokens <= 2000,
         "locate answer is {tokens} tokens for --budget 2000"

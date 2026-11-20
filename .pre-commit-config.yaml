@@ -285,9 +285,9 @@ repos:
       - id: cargo-fmt
         name: cargo fmt (Rust formatting)
         language: system
-        entry: bash -c 'cd crates/diffctx-native && cargo fmt -- --check'
+        entry: bash -c 'cargo fmt --all -- --check'
         pass_filenames: false
-        files: ^(Cargo\.(toml|lock)|crates/diffctx-native/)
+        files: ^(Cargo\.(toml|lock)|crates/)
         types: [file]
 
       - id: cargo-clippy
@@ -297,10 +297,9 @@ repos:
         # can never fail. --all-targets: --lib alone left the standalone binary
         # and the integration tests unlinted.
         entry: >-
-          bash -c 'set -o pipefail; cd crates/diffctx-native &&
-          cargo clippy --release --all-targets 2>&1 | tail -5'
+          bash -c 'set -o pipefail; cargo clippy --release --workspace --all-targets 2>&1 | tail -5'
         pass_filenames: false
-        files: ^(Cargo\.(toml|lock)|crates/diffctx-native/)
+        files: ^(Cargo\.(toml|lock)|crates/)
         types: [file]
 
       - id: cargo-test
@@ -315,7 +314,7 @@ repos:
         # samples the selection corpus only: impact and symbol cases always run
         # whole, so a red one cannot land behind the sample. Case edits under
         # tests/cases must run it too, or a case lands with no run.
-        files: ^(Cargo\.(toml|lock)|crates/diffctx-native/|tests/cases/)
+        files: ^(Cargo\.(toml|lock)|crates/|tests/cases/)
         types: [file]
 
       - id: cargo-audit
@@ -333,7 +332,7 @@ repos:
           cargo audit; else
           echo "cargo-audit not installed locally - skipping (ci.yml gates this)"; fi'
         pass_filenames: false
-        files: ^(Cargo\.(toml|lock)|crates/diffctx-native/Cargo\.toml)$
+        files: ^(Cargo\.(toml|lock)|crates/[^/]+/Cargo\.toml)$
         types: [file]
 
   # ============================================================================

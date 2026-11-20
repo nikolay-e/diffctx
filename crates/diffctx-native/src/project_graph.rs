@@ -9,7 +9,7 @@ use crate::config::limits::LIMITS;
 use crate::edges;
 use crate::fragmentation::process_files_for_fragments;
 use crate::graph::{self, Graph};
-use crate::types::{Fragment, FragmentId};
+use diffctx_base::types::{Fragment, FragmentId};
 
 pub(crate) struct ProjectGraph {
     pub fragments: Vec<Fragment>,

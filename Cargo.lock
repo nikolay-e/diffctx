@@ -241,6 +241,7 @@ dependencies = [
  "anyhow",
  "brokk-tree-sitter-kotlin",
  "clap",
+ "diffctx-base",
  "dunce",
  "glob",
  "libc",
@@ -303,6 +304,23 @@ dependencies = [
  "tree-sitter-zig",
  "wait-timeout",
  "walkdir",
+]
+
+[[package]]
+name = "diffctx-base"
+version = "2.0.0-dev.0"
+dependencies = [
+ "libc",
+ "once_cell",
+ "regex",
+ "rustc-hash",
+ "schemars",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "thiserror",
+ "tiktoken-rs",
+ "toml",
 ]
 
 [[package]]

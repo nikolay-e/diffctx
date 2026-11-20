@@ -175,6 +175,36 @@ jobs:
         run: cargo audit
 
   # ============================================================================
+  # `cargo deny check`: licenses and sources for the workspace (deny.toml), and the
+  # base crate's ban on grammars and Python bindings (crates/diffctx-base/deny.toml).
+  # The advisories run here too, beside cargo-audit above: deny's default is more
+  # lenient on unmaintained crates, so the audit stays until a deny run has been
+  # green on main for a release.
+  # ============================================================================
+  cargo-deny:
+    name: Rust licenses, sources and layer bans
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          toolchain: "1.99.1"
+
+      - name: Install cargo-deny
+        run: cargo install cargo-deny --locked --version 0.20.2
+
+      - name: Check the workspace
+        run: cargo deny check
+
+      - name: Check the base crate's bans
+        working-directory: crates/diffctx-base
+        run: cargo deny check bans
+
+  # ============================================================================
   # Cargo.toml splits the tree-sitter grammars into lang-core/lang-extra, but
   # only the default (both) feature set was ever compiled. Under lang-core
   # alone every lang-extra LANG_CONFIGS entry resolves to no grammar and
@@ -243,9 +273,10 @@ jobs:
           key: cargo-publish-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
           restore-keys: cargo-publish-${{ runner.os }}-
 
+      # --workspace: diffctx asks the registry for diffctx-base, which is not
+      # there until the release publishes it; cargo verifies the two together.
       - name: Package and verify
-        working-directory: crates/diffctx-native
-        run: cargo publish --dry-run --locked
+        run: cargo publish --workspace --dry-run --locked
 
   # ============================================================================
   # Docker image build. Gated here rather than only at release time: cd.yml's
@@ -286,7 +317,7 @@ jobs:
       # test-only push. The fixture mirrors cd.yml's publish-image smoke.
       - name: Smoke the image on a real two-commit diff
         run: |
-          crate_version=$(grep -m1 '^version = ' crates/diffctx-native/Cargo.toml | cut -d'"' -f2)
+          crate_version=$(grep -m1 '^version = ' Cargo.toml | cut -d'"' -f2)
           docker run --rm diffctx:ci --version | grep -qx "diffctx ${crate_version}"
           SMOKE=$(mktemp -d)
           cd "$SMOKE"

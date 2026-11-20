@@ -2,7 +2,7 @@ use once_cell::sync::Lazy;
 use rustc_hash::FxHashSet;
 
 use crate::config::extensions::{CODE_EXTENSIONS, DOC_EXTENSIONS};
-use crate::languages::file_ext;
+use diffctx_base::languages::file_ext;
 
 fn set_from_list(list: &str) -> FxHashSet<String> {
     list.split_ascii_whitespace().map(str::to_string).collect()

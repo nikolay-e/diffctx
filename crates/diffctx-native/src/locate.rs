@@ -10,7 +10,7 @@ use crate::run_provenance::state::{
     ScoredState, SelectionOutcome, answer_paths, fragmentless_changed_files, incoming_attribution,
     seed_hops,
 };
-use crate::types::{Fragment, FragmentId};
+use diffctx_base::types::{Fragment, FragmentId};
 
 pub const LOCATE_SCHEMA: &str = "diffctx.locate.v2";
 
@@ -47,7 +47,7 @@ pub struct LocateOutput {
     /// Present only when the sanitizer replaced a credential-shaped string in
     /// a commit message, the one free text locate prints.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub redactions: Option<crate::sanitize::Redactions>,
+    pub redactions: Option<diffctx_base::sanitize::Redactions>,
 }
 
 /// The overflow list is a pointer to what was skipped, not a second selection.
@@ -193,7 +193,7 @@ impl LocateOutput {
             return;
         }
         let cost = |o: &Self| {
-            crate::tokenizer::count_tokens(&format!(
+            diffctx_base::tokenizer::count_tokens(&format!(
                 "{}\n",
                 serde_json::to_string(o).unwrap_or_default()
             ))
@@ -202,7 +202,7 @@ impl LocateOutput {
         if cost(self) <= budget {
             return;
         }
-        crate::fit::shed_to_fit(self, budget, &cost);
+        diffctx_base::fit::shed_to_fit(self, budget, &cost);
         // The least the answer can say may outgrow the budget: said, not cut into.
         let least = cost(self);
         if least > budget {
@@ -211,7 +211,7 @@ impl LocateOutput {
     }
 }
 
-impl crate::fit::Shed for LocateOutput {
+impl diffctx_base::fit::Shed for LocateOutput {
     /// A listed overflow entry; then the last context item; then a changed file's
     /// second and later items, the first item of every changed file staying. An
     /// item is counted in `overflow` and the cut is recorded as a limit.
@@ -278,9 +278,9 @@ const CONFIG_EXTENSIONS: &[&str] = &[
     "properties",
 ];
 
-fn group_of(path: &str, kind: crate::types::FragmentKind) -> Option<&'static str> {
-    use crate::types::FragmentKind as K;
-    if crate::testfiles::is_test_path(Path::new(path)) {
+fn group_of(path: &str, kind: diffctx_base::types::FragmentKind) -> Option<&'static str> {
+    use diffctx_base::types::FragmentKind as K;
+    if diffctx_base::testfiles::is_test_path(Path::new(path)) {
         return Some("test");
     }
     if matches!(
@@ -337,7 +337,7 @@ fn reasons_for(
     hops: Option<u32>,
     attribution: Option<&Vec<(String, String, f64)>>,
 ) -> Vec<Reason> {
-    if crate::types::carries_change(frag, &state.core_ids, stand_in_ids) {
+    if diffctx_base::types::carries_change(frag, &state.core_ids, stand_in_ids) {
         return vec![Reason::Changed];
     }
     let mut reasons: Vec<Reason> = Vec::new();
@@ -564,7 +564,7 @@ pub fn build_locate(state: &ScoredState, outcome: &SelectionOutcome) -> LocateOu
         .iter()
         .map(|frag| {
             let is_changed =
-                crate::types::carries_change(frag, &state.core_ids, &outcome.stand_in_ids);
+                diffctx_base::types::carries_change(frag, &state.core_ids, &outcome.stand_in_ids);
             let path = rel_path(state, frag.id.path.as_ref());
             let group = group_of(&path, frag.kind);
             LocateItem {
@@ -590,9 +590,9 @@ pub fn build_locate(state: &ScoredState, outcome: &SelectionOutcome) -> LocateOu
         })
         .collect();
 
-    let mut redactions = crate::sanitize::Redactions::default();
+    let mut redactions = diffctx_base::sanitize::Redactions::default();
     let mut sanitized = |message: &String| {
-        let (clean, r) = crate::sanitize::sanitize(message);
+        let (clean, r) = diffctx_base::sanitize::sanitize(message);
         redactions.merge(r);
         clean
     };
@@ -660,10 +660,10 @@ pub fn locate_schema() -> serde_json::Value {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::FragmentKind;
+    use diffctx_base::types::FragmentKind;
 
     /// locate carried its own test-file rule until it was delegated to
-    /// `crate::testfiles`. It lowercased the path first, so every CamelCase
+    /// `diffctx_base::testfiles`. It lowercased the path first, so every CamelCase
     /// convention was invisible and `summary.tests` in the blast-radius view
     /// (#135) undercounted. This repository's own tests are all `test_*.py`
     /// under `tests/` — a shape both rules agree on — so the divergence only
@@ -750,7 +750,10 @@ mod tests {
     }
 
     fn cost(output: &LocateOutput) -> u32 {
-        crate::tokenizer::count_tokens(&format!("{}\n", serde_json::to_string(output).unwrap()))
+        diffctx_base::tokenizer::count_tokens(&format!(
+            "{}\n",
+            serde_json::to_string(output).unwrap()
+        ))
     }
 
     /// The overflow is counted whether or not it is listed; the entries come only

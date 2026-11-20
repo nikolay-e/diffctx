@@ -4,7 +4,7 @@
 // own printing is the door-parity suite's.
 
 use _diffctx::delivery::{Delivery, EXIT_EMPTY_DIFF, Mode, Note, Profile, Request, deliver};
-use _diffctx::tokenizer::count_tokens;
+use diffctx_base::tokenizer::count_tokens;
 
 mod support;
 use support::repo;

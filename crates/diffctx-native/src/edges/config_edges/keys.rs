@@ -10,9 +10,9 @@ use rustc_hash::FxHashSet;
 use super::super::EdgeDict;
 use super::super::base::{EdgeBuilder, add_edge};
 use crate::keytable::{Table, related_files};
-use crate::types::Fragment;
+use diffctx_base::types::Fragment;
 #[cfg(test)]
-use crate::types::FragmentId;
+use diffctx_base::types::FragmentId;
 
 pub(super) struct KeyTableEdgeBuilder;
 
@@ -137,7 +137,7 @@ mod tests {
     }
 
     fn discovered_with(diff: &str, changed: &[&str], files: &[(&str, &str)]) -> Vec<String> {
-        let lines = crate::changed_lines::ChangedLines::from_diff(diff);
+        let lines = diffctx_base::changed_lines::ChangedLines::from_diff(diff);
         crate::resource::with_changed_lines(Some(std::sync::Arc::new(lines)), || {
             discovered(changed, files)
         })
@@ -309,8 +309,8 @@ mod tests {
             .iter()
             .flat_map(|(p, c)| crate::parsers::fragment_file(std::sync::Arc::from(*p), c))
             .collect();
-        let lines =
-            diff.map(|d| std::sync::Arc::new(crate::changed_lines::ChangedLines::from_diff(d)));
+        let lines = diff
+            .map(|d| std::sync::Arc::new(diffctx_base::changed_lines::ChangedLines::from_diff(d)));
         crate::resource::with_changed_lines(lines, || {
             KeyTableEdgeBuilder.build_deciding(&fragments, None).1
         })
@@ -380,7 +380,7 @@ mod tests {
             "diff --git a/{APPLICATION} b/{APPLICATION}\n--- a/{APPLICATION}\n+++ b/{APPLICATION}\n@@ -{},0 +{line} @@\n+{added}\n",
             line - 1
         );
-        let hunks = [crate::types::DiffHunk {
+        let hunks = [diffctx_base::types::DiffHunk {
             path: std::sync::Arc::from(APPLICATION),
             new_start: line,
             new_len: 1,
@@ -388,7 +388,8 @@ mod tests {
             old_len: 0,
         }];
         let core = crate::core::identify_core_fragments(&hunks, &fragments);
-        let lines = std::sync::Arc::new(crate::changed_lines::ChangedLines::from_diff(&diff));
+        let lines =
+            std::sync::Arc::new(diffctx_base::changed_lines::ChangedLines::from_diff(&diff));
         let edges = crate::resource::with_changed_lines(Some(lines), || {
             KeyTableEdgeBuilder.build(&fragments, None)
         });

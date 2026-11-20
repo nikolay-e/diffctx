@@ -5,7 +5,7 @@ use regex::Regex;
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::config::weights::EDGE_WEIGHTS;
-use crate::types::Fragment;
+use diffctx_base::types::Fragment;
 
 use super::super::EdgeDict;
 use super::super::base::{self, EdgeBuilder, add_edge, discover_by_refs};
@@ -15,7 +15,7 @@ fn is_prisma_file(path: &Path) -> bool {
 }
 
 fn is_prisma_consumer(path: &Path) -> bool {
-    let ext = crate::languages::file_ext(path);
+    let ext = diffctx_base::languages::file_ext(path);
     matches!(ext.as_str(), ".ts" | ".js" | ".tsx" | ".jsx")
 }
 

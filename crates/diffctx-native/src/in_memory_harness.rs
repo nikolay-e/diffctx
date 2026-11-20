@@ -10,7 +10,7 @@ use crate::config::tokenization::TOKENIZATION;
 use crate::mode::{PipelineConfig, ScoringMode};
 use crate::parsers::fragment_file;
 use crate::render::{DiffContextOutput, build_diff_context_output};
-use crate::types::{DiffHunk, Fragment, FragmentId};
+use diffctx_base::types::{DiffHunk, Fragment, FragmentId};
 
 pub struct MemoryRepo {
     pub name: String,
@@ -178,7 +178,7 @@ pub struct TypedKeyLink {
 pub fn typed_key_links(repo: &MemoryRepo) -> Vec<TypedKeyLink> {
     let fragments = final_state_fragments(repo);
     let run = crate::resource::RunContext::unbounded();
-    run.set_changed_lines(crate::changed_lines::ChangedLines::from_diff(
+    run.set_changed_lines(diffctx_base::changed_lines::ChangedLines::from_diff(
         &compute_memory_diff_text(&repo.initial_files, &repo.changed_files),
     ));
     let _in_run = run.enter();
@@ -227,7 +227,9 @@ pub fn build_diff_context_in_memory(
     let mut config = PipelineConfig::from_mode(scoring_mode);
     config.ppr_alpha = alpha;
     let run = crate::resource::RunContext::unbounded();
-    run.set_changed_lines(crate::changed_lines::ChangedLines::from_diff(&diff_text));
+    run.set_changed_lines(diffctx_base::changed_lines::ChangedLines::from_diff(
+        &diff_text,
+    ));
     let _in_run = run.enter();
 
     // The product's discovery ensemble — structural, test-file, BM25 top-k —
@@ -235,10 +237,12 @@ pub fn build_diff_context_in_memory(
     // strategy alone, so the corpus measured a narrower universe than the
     // one shipped (#232): a test file or a lexical neighbour the product
     // would have offered the selector never reached the oracle here.
-    let expansion_concepts: FxHashSet<String> =
-        crate::types::extract_identifiers(&diff_text, TOKENIZATION.query_min_identifier_length)
-            .into_iter()
-            .collect();
+    let expansion_concepts: FxHashSet<String> = diffctx_base::types::extract_identifiers(
+        &diff_text,
+        TOKENIZATION.query_min_identifier_length,
+    )
+    .into_iter()
+    .collect();
     let tree = TempTree::write(&all_files);
     let tree_root = tree.as_ref().map(|t| t.root.clone());
     let discovery_ctx = crate::discovery::DiscoveryContext {
@@ -317,7 +321,7 @@ pub fn build_diff_context_in_memory(
     let dummy_root = Path::new(".");
     let mut changed_files: Vec<PathBuf> = changed_paths.iter().map(PathBuf::from).collect();
     changed_files.sort();
-    let mut hunk_texts = crate::changed_lines::hunk_texts(&diff_text);
+    let mut hunk_texts = diffctx_base::changed_lines::hunk_texts(&diff_text);
     for runs in hunk_texts.chunk_by_mut(|a, b| a.path == b.path) {
         let text = all_files.get(runs[0].path.as_str()).map(String::as_str);
         crate::change_class::settle_layout(runs, text, &|| run.check());

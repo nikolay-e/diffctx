@@ -39,9 +39,9 @@ use std::time::{Duration, Instant, SystemTime};
 
 use crate::config::limits::{DEFAULT_PPR_ALPHA, DEFAULT_SCORING};
 use crate::impact::AUTOMATIC_TOKEN_CAP;
-use crate::languages::file_ext;
 use crate::mode::ScoringMode;
 use crate::snapshot as snap;
+use diffctx_base::languages::file_ext;
 use intent::{Intent, Search, before_glob, is_absolute_dir};
 
 /// A reviewed content hash stays reviewed this long. Long enough for a
@@ -1613,7 +1613,7 @@ fn prepare(
     payload: &serde_json::Value,
     trace: &mut Trace,
 ) -> Result<Prepared, Silence> {
-    let _phase = crate::profile::phase("hook.prepare");
+    let _phase = diffctx_base::profile::phase("hook.prepare");
     let command = payload["tool_input"]["command"]
         .as_str()
         .ok_or("no-trigger")?;
@@ -1667,7 +1667,7 @@ fn prepare_landed(
     command: &str,
     trace: &mut Trace,
 ) -> Result<Vec<Prepared>, Silence> {
-    let _phase = crate::profile::phase("hook.prepare");
+    let _phase = diffctx_base::profile::phase("hook.prepare");
     let key = before_key(payload, command, trace.session.as_deref());
     let text = seen_headline(&key, SEEN_TTL).ok_or("no-record")?;
     let record: Record = serde_json::from_str(&text).map_err(|_| "error:record")?;
@@ -1698,7 +1698,7 @@ fn record_before(
     command: &str,
     trace: &mut Trace,
 ) -> Result<(), Silence> {
-    let _phase = crate::profile::phase("hook.record");
+    let _phase = diffctx_base::profile::phase("hook.record");
     let cwd = payload_cwd(payload).ok_or("not-git")?;
     if !cwd.is_dir() {
         return Err("not-git");
@@ -1710,7 +1710,7 @@ fn record_before(
     };
     // The stat listing is one git call of its own: it runs beside the refs.
     let repos = std::thread::scope(|scope| {
-        let stamped = scope.spawn(crate::profile::carry(|| {
+        let stamped = scope.spawn(diffctx_base::profile::carry(|| {
             bracket_before(payload, &home.work_tree);
         }));
         let repos = repos_before(&home);
@@ -2306,7 +2306,7 @@ fn bracket_ids(payload: &serde_json::Value) -> Option<(&str, &str)> {
 
 /// The `PreToolUse` of a Bash call leaves what its checkout holds.
 fn bracket_before(payload: &serde_json::Value, root: &Path) {
-    let _phase = crate::profile::phase("hook.bracket");
+    let _phase = diffctx_base::profile::phase("hook.bracket");
     let Some((session, id)) = bracket_ids(payload) else {
         return;
     };
@@ -3073,7 +3073,7 @@ fn edited_definitions(
     within: Option<&[String]>,
     run: &crate::resource::RunContext,
 ) -> Result<Vec<String>, Silence> {
-    let _phase = crate::profile::phase("hook.edited_definitions");
+    let _phase = diffctx_base::profile::phase("hook.edited_definitions");
     // The pending change as impact reads it, untracked files included: a
     // name defined only in a new file is still the change's (#448).
     let stopped = |e: snap::SnapshotError| {
@@ -3112,7 +3112,7 @@ fn edited_definitions(
     );
     let mut names = Vec::new();
     for hunk in &hunks {
-        let around: Vec<&crate::types::Fragment> = fragments
+        let around: Vec<&diffctx_base::types::Fragment> = fragments
             .iter()
             .filter(|f| {
                 f.path() == &*hunk.path
@@ -3620,7 +3620,7 @@ fn one_symbol_answer(
     let lead = format!(
         "You searched for `{name}`; diffctx resolved it{elsewhere} (`diffctx . --symbol {name} -f md` gives the whole answer):\n"
     );
-    let room = SYMBOL_TOKEN_CAP.saturating_sub(crate::tokenizer::count_tokens(&lead));
+    let room = SYMBOL_TOKEN_CAP.saturating_sub(diffctx_base::tokenizer::count_tokens(&lead));
     let text = crate::impact::render_automatic(&mut output, room);
     Ok(format!("{lead}{text}"))
 }
@@ -3665,7 +3665,7 @@ fn within_budget<T: Send + 'static>(
     }
     let engine_secs = (left.saturating_mul(PIPELINE_SECS) / secs).max(1);
     let (tx, rx) = std::sync::mpsc::channel();
-    std::thread::spawn(crate::profile::carry(move || {
+    std::thread::spawn(diffctx_base::profile::carry(move || {
         let _ = tx.send(work(engine_secs));
     }));
     for wait in [left, TAIL_GRACE_SECS] {
@@ -4357,7 +4357,7 @@ fn sweep_seen(seen: &Path) {
 /// The hook's answer, or `None` for silence; every failure path is silence,
 /// and every run leaves its line in the hook log.
 pub fn respond_within_deadline(event: Event, stdin_json: String, gate: bool) -> Option<String> {
-    let _run = crate::profile::run("hook");
+    let _run = diffctx_base::profile::run("hook");
     let started = Instant::now();
     let mut trace = Trace::default();
     // The git calls that pick the range run on this thread before any

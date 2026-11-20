@@ -32,9 +32,9 @@ use super::{
     Cells, Fragment, FragmentId, FragmentKind, Link, MAX_TEST_HOPS, ScoredState, TestLink,
     base_symbol, cell_caller, lifted_caller, read_or_note, rel, spelling_files,
 };
-use crate::testfiles::{DeclaredTests, naming_links};
 use crate::tokens::Names;
 use crate::vocabulary::family::Group;
+use diffctx_base::testfiles::{DeclaredTests, naming_links};
 
 /// What a use of a definition leads to one hop up: the fragments that hold it,
 /// and a test file whose own code does with no fragment to name it.
@@ -127,7 +127,7 @@ impl<'a> TestsReach<'a> {
         let named: FxHashSet<String> = naming_links(&listed)
             .into_iter()
             .filter(|(test, source)| {
-                crate::testfiles::is_test_path(Path::new(test))
+                diffctx_base::testfiles::is_test_path(Path::new(test))
                     && !read_by_a_cell(source)
                     && state.run.check()
             })
@@ -203,7 +203,8 @@ impl<'a> TestsReach<'a> {
             .all_fragments
             .iter()
             .filter(|f| {
-                crate::testfiles::is_test_path(Path::new(f.path())) || inline_tests.contains(&f.id)
+                diffctx_base::testfiles::is_test_path(Path::new(f.path()))
+                    || inline_tests.contains(&f.id)
             })
             .collect();
         let unread: Vec<String> = state
@@ -289,7 +290,8 @@ impl<'a> TestsReach<'a> {
     }
 
     pub(super) fn is_test(&self, f: &Fragment) -> bool {
-        crate::testfiles::is_test_path(Path::new(f.path())) || self.inline_tests.contains(&f.id)
+        diffctx_base::testfiles::is_test_path(Path::new(f.path()))
+            || self.inline_tests.contains(&f.id)
     }
 
     /// The cell that reads the file of `f`, with the path the answer prints.
@@ -702,7 +704,7 @@ impl<'a> TestsReach<'a> {
                         .flat_map(|held| self.up(held, state, link).fragments)
                         .collect();
                 }
-                crate::profile::count("impact.tests.asserted", reached.len() as u64);
+                diffctx_base::profile::count("impact.tests.asserted", reached.len() as u64);
                 reached
             })
             .contains(&f.id)
@@ -812,8 +814,8 @@ fn in_source_scopes(
     shown: &str,
 ) -> Vec<(u32, u32)> {
     let path = Path::new(shown);
-    let markers = crate::testfiles::in_source_markers(path);
-    if markers.is_empty() || crate::testfiles::is_test_path(path) {
+    let markers = diffctx_base::testfiles::in_source_markers(path);
+    if markers.is_empty() || diffctx_base::testfiles::is_test_path(path) {
         return Vec::new();
     }
     let names = Names::new(markers.iter().copied());
@@ -828,7 +830,7 @@ fn in_source_scopes(
         .source()
         .read_to_string(Path::new(spelled))
         .map_or_else(Vec::new, |text| {
-            crate::testfiles::in_source_test_scopes(path, &text)
+            diffctx_base::testfiles::in_source_test_scopes(path, &text)
         })
 }
 
