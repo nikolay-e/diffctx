@@ -20,7 +20,7 @@ use diffctx_base::container::{innermost, within};
 
 use diffctx_base::types::{Fragment, FragmentId, FragmentKind};
 
-use diffctx_facts::facts::{EntryKind, framework};
+use diffctx_facts::facts::framework;
 
 use diffctx_facts::parsers::code_text;
 
@@ -28,45 +28,39 @@ use diffctx_occurrence::tokens::occurrence::Standing;
 
 use diffctx_resolve::vocabulary;
 
-use super::mentions::{named_by_path, stale_references, twin_references};
-
 use super::tests_reach::TestsReach;
 
-use super::IMPACT_TOKEN_CAP;
 use super::MAX_BLAMED_SYMBOLS;
-use super::MAX_CONTRACTS;
 use super::MAX_DEFINITIONS;
 use super::callers::{
     Receiver, binds_locally, extension, first_naming_line, is_code_file, is_import_block,
     is_member, mentions, module_aliases, references_module,
 };
 use super::cells::{
-    FINDING_WEIGHT, KEY_MATCH, REEXPORT, Reach, cell_caller, cell_row, cell_symbol, cell_unknown,
+    FINDING_WEIGHT, KEY_MATCH, REEXPORT, Reach, cell_caller, cell_row, cell_unknown,
     held_has_users, lifted_caller, owned_by_a_nested_definition, reach_of,
 };
 use super::changes::{
-    changed_rels, commits_touching, head_of, is_public, is_schema_file, layout_files, lines_of,
-    moved_verbatim, names_of, rel, same_runtime, signature_changed, spelling_files,
-    tool_contract_changed, unread_namers, without_decorators,
+    commits_touching, is_public, lines_of, moved_verbatim, names_of, rel, same_runtime,
+    signature_changed, spelling_files, tool_contract_changed, without_decorators,
 };
-use super::coverage::{absence, search_coverage, uncovered_symbol, unfinished_symbol};
-use super::deliver::{proves_empty, relation_rank};
+use super::coverage::{absence, search_coverage};
 use super::dispatch::{base_symbol, dispatch_route, enclosing_class, merge_by_symbol};
 use super::entry::{
     Entered, compatible_extension, entered_by, http_handler_base, is_program_main,
     is_pytest_fixture,
 };
-use super::key_search::{key_references, read_by_collection};
 use super::output::{Caller, ChangedSymbol, Contract, ImpactOutput, UnanalysedFile, Unknown};
-use super::removed::{dead_modules, removed_definitions, removed_route};
-use super::symbol::directory_name;
 use super::unanalysed::{
-    MAX_OUTSIDE_RUNS, MAX_UNTRACED_NAMERS, OUTSIDE_DEFINITIONS, callable_by_name, left_words,
-    nameless_changes, outside_definitions, searched_as_text, spelled_name, unaccounted_rows,
-    unanalysed_files,
+    MAX_UNTRACED_NAMERS, callable_by_name, left_words, searched_as_text, spelled_name,
+    unaccounted_rows,
 };
 
+mod apart;
 mod context;
+mod gaps;
+mod range;
+mod removals;
 mod targets;
 
 use context::{Findings, Impact};
@@ -103,27 +97,18 @@ pub fn build_impact(
     };
     let cx = Impact::open(state, &cells, tests, diff_range, query, deadline);
     let mut found = Findings::default();
+    let t = targets::read(&cx, &mut found);
     let Targets {
         cores,
         cell_defs,
-        cell_apart,
-        cell_removed,
-        mut cell_untracked,
-        cell_unread,
-        cell_lost,
         bordering,
-        held,
         untraced,
-    } = targets::read(&cx, &mut found);
+        ..
+    } = &t;
     drop(setup);
     let (state, cells, tests, by_id, files) = (cx.state, cx.cells, &cx.tests, &cx.by_id, &cx.files);
-    let (definitions, defined_in, analysed, bounds, base_texts) = (
-        &cx.definitions,
-        &cx.defined_in,
-        cx.analysed,
-        &cx.bounds,
-        &cx.base_texts,
-    );
+    let (definitions, defined_in, bounds, base_texts) =
+        (&cx.definitions, &cx.defined_in, &cx.bounds, &cx.base_texts);
     let in_a_hunk = |id: &FragmentId| cx.in_a_hunk(id);
     let hunks_in = |core: &Fragment| cx.hunks_in(core);
     let core_place = |core: &Fragment| cx.core_place(core);
@@ -132,7 +117,6 @@ pub fn build_impact(
     let registration = |f: &Fragment| cx.registration(f);
     let is_tool = |f: &Fragment| cx.is_tool(f);
     let link = |user: &Fragment, used: &Fragment| cx.link(user, used);
-    let reaches_file = |test: &Fragment, caller: &Fragment| cx.reaches_file(test, caller);
     let test_links = |frag, core: Option<&Fragment>| cx.test_links(frag, core);
     // A queried name has no diff: a call from elsewhere in its own file is a
     // caller like any other.
@@ -142,7 +126,7 @@ pub fn build_impact(
     };
     diffctx_base::profile::count("impact.cores", cores.len() as u64);
     let stopped_early = !state.run.stops().is_empty();
-    let mut unreached: Vec<&Fragment> = cell_lost;
+    let mut unreached: Vec<&Fragment> = t.cell_lost.clone();
     let callers = diffctx_base::profile::phase("impact.callers");
     for (i, core) in cores.iter().enumerate() {
         // Past the deadline the symbols already answered are the answer:
@@ -1075,590 +1059,16 @@ pub fn build_impact(
         });
     }
     drop(callers);
-    cell_untracked.sort_by(|a, b| (a.path(), a.start_line()).cmp(&(b.path(), b.start_line())));
-    cell_untracked.dedup_by(|a, b| a.path() == b.path() && a.start_line() == b.start_line());
-    for core in cell_untracked {
-        let name = core.symbol_name.as_deref().map_or("", base_symbol);
-        found.changed.push(ChangedSymbol {
-            unresolved: Some(Unknown::Untracked {
-                name: name.to_string(),
-            }),
-            ..ChangedSymbol::bare(
-                rel(state, core.path()),
-                Some(name.to_string()),
-                lines_of(&core.id),
-                "variable",
-                decide::coverage::Coverages::partial(decide::gap::Gap::NotTraced),
-            )
-        });
-    }
-    // A name asked for that no cell read a definition of, in a group whose file
-    // was lost where the name is spelled: the loss is the answer, not an empty one.
-    if let Some(asked) = query.filter(|_| {
-        cell_defs.is_empty()
-            && cell_apart.is_empty()
-            && cell_removed.is_empty()
-            && cell_unread.is_empty()
-            && cores.is_empty()
-    }) {
-        let name = asked.rsplit(':').next().unwrap_or(asked);
-        for (path, reason) in cells.iter().flat_map(|cell| cell.lost_namers(name)) {
-            found.changed.push(uncovered_symbol(
-                path.as_str().to_string(),
-                name,
-                String::new(),
-                "function".to_string(),
-                reason,
-            ));
-        }
-    }
-    for (core, reason) in cell_unread {
-        found.changed.push(uncovered_symbol(
-            rel(state, core.path()),
-            core.symbol_name.as_deref().map_or("", base_symbol),
-            lines_of(&core.id),
-            format!("{:?}", core.kind).to_lowercase(),
-            reason,
-        ));
-    }
-    // The definition has no fragment of its own (a one-line class holds its
-    // method on its own lines), but each use sits in one: the caller's row is
-    // that fragment's, with the test links it has. A fragment that names no
-    // definition (a Dockerfile or a Terraform module cut as one chunk) holds the
-    // line but not the caller: the resolver's row names the stage or the block.
-    let in_fragment = |row: Caller| -> Caller {
-        let Some(frag) = row.sites.first().and_then(|&site| {
-            let frags = files
-                .fragments
-                .get(diffctx_base::paths::join_native(&state.root_dir, &row.path).as_str())?;
-            cell_caller(frags, site).map(|f| lifted_caller(frags, f))
-        }) else {
-            return row;
-        };
-        let found = test_links(frag, None);
-        let (symbol, lines) = match &frag.symbol_name {
-            Some(name) => (Some(name.clone()), lines_of(&frag.id)),
-            None => (row.symbol.clone(), row.lines.clone()),
-        };
-        Caller {
-            symbol,
-            lines,
-            tests: found.tests,
-            registered_by: found.registered_by,
-            file_tested: found.file_tested,
-            unread_test: found.unread_test,
-            tests_open: found.tests_open,
-            tests_partial: found.tests_partial,
-            ..row
-        }
-    };
-    let mut traced_apart = 0u64;
-    let mut apart_unreached: Vec<&decide::changed::Changed> = Vec::new();
-    for entry in &cell_apart {
-        let Some(cell) = cells.of(&entry.file) else {
-            continue;
-        };
-        // The facts' hash can miss what the syntax changed (the default of a promoted
-        // constructor property): the claim stands unless a hunk of its lines is not layout.
-        let contradicted = state.hunk_texts.iter().any(|h| {
-            let (a, b) = h.new_range();
-            h.path == entry.file && !h.layout && entry.lines.0 <= b && entry.lines.1 >= a
-        });
-        if query.is_none()
-            && !contradicted
-            && matches!(
-                entry.how,
-                decide::changed::How::Edited { layout_only: true }
-            )
-        {
-            found.layout_only.push(place(
-                &entry.file,
-                Some(entry.name.as_str()).filter(|_| entry.symbol().is_some()),
-                &format!("{}-{}", entry.lines.0, entry.lines.1),
-            ));
-            continue;
-        }
-        // Past the deadline a definition is named as never searched, as the
-        // loop over the fragments does for its own.
-        if !state.run.check() {
-            apart_unreached.push(entry);
-            continue;
-        }
-        traced_apart += 1;
-        let verdict = cell.verdict(entry);
-        let mut sym = cell_symbol(entry, &verdict, format!("{:?}", entry.kind).to_lowercase());
-        let rows = std::mem::take(&mut sym.callers);
-        sym.callers = merge_by_symbol(rows.into_iter().map(in_fragment).collect());
-        sym.callers.sort_by_key(|c| relation_rank(c.relation));
-        untraced.name_literals(&mut sym, entry, &verdict);
-        untraced.name_text(&mut sym, &entry.name, verdict.names_quoted());
-        let callerless = query.is_none()
-            && sym.callers.is_empty()
-            && sym.also_changed.is_empty()
-            && sym.possibly_also_changed.is_empty();
-        if callerless && verdict.complete() && held_has_users(cell, entry) {
-            continue;
-        }
-        found.traced_definitions += 1;
-        found.traced_names.push(entry.name.clone());
-        // A definition with no fragment has no test link computed: with tests in
-        // view it keeps its row, which claims none; the list that says "no static
-        // test link" is for the answer that has no tests to say it against.
-        let named = place(&sym.path, sym.symbol.as_deref(), &sym.lines);
-        let in_a_test_file = tests.is_test_file(&sym.path);
-        let witness = sym.coverage.all().witness();
-        match witness.filter(|_| callerless && verdict.complete()) {
-            Some(_) if in_a_test_file => {
-                found
-                    .entry_unlisted
-                    .push(format!("{named} \u{2014} test (run by the test runner)"));
-            }
-            Some(complete) if !tests.any() => {
-                found.untested_unlisted.push(absence(named, complete))
-            }
-            _ => found.changed.push(sym),
-        }
-    }
-    diffctx_base::profile::count("impact.traced_apart", traced_apart);
-    {
-        let stops = state.run.stops();
-        for entry in apart_unreached {
-            found.changed.push(unfinished_symbol(
-                entry.file.clone(),
-                entry.symbol(),
-                format!("{}-{}", entry.lines.0, entry.lines.1),
-                format!("{:?}", entry.kind).to_lowercase(),
-                &stops,
-            ));
-        }
-        for core in unreached {
-            let hunks = hunks_in(core);
-            let skipped = query.is_none()
-                && (bordering.contains(&core.id)
-                    || (!hunks.is_empty()
-                        && hunks
-                            .iter()
-                            .all(|h| h.layout || moved_verbatim(h, &state.hunk_texts))));
-            if !skipped {
-                found.changed.push(unfinished_symbol(
-                    rel(state, core.path()),
-                    core.symbol_name.clone(),
-                    lines_of(&core.id),
-                    format!("{:?}", core.kind).to_lowercase(),
-                    &stops,
-                ));
-            }
-        }
-        // A run already stopped when the callers phase began may have lost
-        // fragments before it: a changed code file with no definition in
-        // view is not known to have none. A file renamed byte for byte or only
-        // relaid changed none.
-        if stopped_early && query.is_none() {
-            let covered: FxHashSet<String> = cores.iter().map(|c| rel(state, c.path())).collect();
-            let unseen = layout_files(state);
-            for path in changed_rels(state)
-                .filter(|p| is_code_file(p) && !covered.contains(p) && !unseen.contains(p.as_str()))
-            {
-                found.changed.push(unfinished_symbol(
-                    path,
-                    None,
-                    String::new(),
-                    "file".to_string(),
-                    &stops,
-                ));
-            }
-        }
-    }
-    let removed = diffctx_base::profile::phase("impact.removed");
-    if query.is_none() && state.run.check() {
-        let mut defined: FxHashMap<&str, FxHashSet<String>> = FxHashMap::default();
-        for (n, p) in defined_in {
-            defined.entry(n.as_str()).or_default().insert(rel(state, p));
-        }
-        let head_rev = head_of(analysed);
-        // The facts layer answers for the files of the cells' languages
-        // (`cell_removed`).
-        let read_off_facts = |path: &str| cells.of(path).is_some();
-        let mut listed_alone: FxHashSet<(String, String)> = FxHashSet::default();
-        let mut from_facts: Vec<(ChangedSymbol, Option<Contract>)> = Vec::new();
-        // A removed name is listed with its readers, or with what could not be
-        // told, or alone (#699). A removed public definition is a contract that
-        // moved, listed or not.
-        from_facts.extend(cell_removed.iter().filter_map(|entry| {
-            let verdict = cells.of(&entry.file)?.verdict(entry);
-            let mut sym = cell_symbol(entry, &verdict, "removed".to_string());
-            untraced.name_removed(&mut sym, entry, &verdict);
-            // A removed override was reached through the member it overrode: the
-            // answer names that route, whatever else it could not tell.
-            if let Some(via) = verdict.overridden_via() {
-                if matches!(sym.unresolved, None | Some(Unknown::Uncovered { .. })) {
-                    sym.unresolved = Some(Unknown::Overridable {
-                        via: via.to_string(),
-                    });
-                }
-            }
-            // A removed route handler is reached over HTTP by clients no model
-            // traces: a test that requests the route is one of them.
-            if sym.unresolved.is_none() {
-                let cell = cells.of(&entry.file)?;
-                let name = base_symbol(&entry.name);
-                let route = cell
-                    .removed_entries_at(&entry.file, name, entry.lines)
-                    .into_iter()
-                    .find(|(kind, _)| *kind == EntryKind::Route);
-                if let Some((_, route)) = route {
-                    sym.unresolved = Some(removed_route(
-                        state,
-                        analysed,
-                        &|path| tests.is_test_file(path),
-                        &route,
-                    ));
-                    sym.coverage =
-                        decide::coverage::Coverages::partial(decide::gap::Gap::NotTraced);
-                }
-            }
-            // Every removed definition of a cell language is reported, private ones
-            // too: with the readers the head still has, or as one nothing references.
-            listed_alone.insert((sym.path.clone(), entry.display_name()));
-            let contract = entry.public.then(|| Contract {
-                path: sym.path.clone(),
-                symbol: entry.symbol(),
-                kind: "removed_api",
-            });
-            Some((sym, contract))
-        }));
-        for (sym, contract) in removed_definitions(
-            state,
-            &defined,
-            head_rev.as_deref(),
-            &in_a_hunk,
-            &read_off_facts,
-        )
-        .into_iter()
-        .chain(from_facts)
-        {
-            let mut sym = sym;
-            // A caller of a removed definition is tested the way any caller
-            // is: a test that reaches it, or the test file it sits in (#413).
-            for c in &mut sym.callers {
-                let Some(site) = c.sites.first().copied() else {
-                    continue;
-                };
-                let Some(frag) = state
-                    .all_fragments
-                    .iter()
-                    .filter(|f| {
-                        f.symbol_name == c.symbol
-                            && f.start_line() <= site
-                            && f.end_line() >= site
-                            && rel(state, f.path()) == c.path
-                    })
-                    .min_by_key(|f| f.line_count())
-                else {
-                    continue;
-                };
-                let tested = tests.tested_by(frag, state, &by_id, &link);
-                c.file_tested = tested.is_empty() && tests.file_tested(frag, &reaches_file);
-                c.tests_open = tested.is_empty() && tests.open_above(frag, &link, true);
-                c.tests_partial =
-                    !tested.is_empty() && tests.nearest_only(frag, state, &by_id, &link);
-                c.tests = tested;
-            }
-            if let Some(c) =
-                contract.filter(|c| !diffctx_base::testfiles::is_test_path(Path::new(&c.path)))
-            {
-                found.contracts.push(c);
-            }
-            // Unresolved is an answer too: dropped, it read as no caller.
-            let alone = sym
-                .symbol
-                .as_ref()
-                .is_some_and(|name| listed_alone.contains(&(sym.path.clone(), name.clone())));
-            if !sym.callers.is_empty() || sym.unresolved.is_some() || alone {
-                found.changed.push(sym);
-            }
-        }
-    }
-    drop(removed);
-    let Findings {
-        mut changed,
-        mut contracts,
-        mut public_api,
-        untested_definitions,
-        untested_unlisted,
-        untested_called_in_diff,
-        entry_unlisted,
-        layout_only,
-        traced_definitions,
-        traced_names,
-    } = found;
-    // Symbols with something to say first: callers, then commit overlap.
-    changed.sort_by(|a, b| {
-        b.callers
-            .len()
-            .cmp(&a.callers.len())
-            .then_with(|| b.commits.cmp(&a.commits))
-            .then_with(|| a.path.cmp(&b.path))
-            .then_with(|| a.lines.cmp(&b.lines))
-    });
-
-    let changed_files: Vec<String> = changed_rels(state).collect();
-    let layout_files = layout_files(state);
-    // A queried symbol changes nothing: the file holding its definition is
-    // no contract that moved.
-    for path in changed_files.iter().filter(|_| query.is_none()) {
-        if is_schema_file(path) && !layout_files.contains(path.as_str()) {
-            contracts.push(Contract {
-                path: path.clone(),
-                symbol: None,
-                kind: "schema",
-            });
-        }
-    }
-
-    public_api.sort_by(|a, b| a.0.cmp(&b.0).then_with(|| a.1.path.cmp(&b.1.path)));
-    contracts.extend(public_api.into_iter().map(|(_, c)| c));
-    let contracts_omitted = contracts.len().saturating_sub(MAX_CONTRACTS);
-    contracts.truncate(MAX_CONTRACTS);
-    // Pack's rule, not a list of our own: a run-wide stop, or a per-file
-    // limit on a changed file. The graph's per-node cap is routine and stays
-    // out; the callers it cut an edge from are recovered per definition.
-    let changed_set: FxHashSet<&str> = changed_files.iter().map(String::as_str).collect();
-    let untracked: FxHashSet<String> = state
-        .untracked_files
-        .iter()
-        .map(|p| rel(state, &p.to_string_lossy()))
-        .collect();
-    let (stale, stale_omitted) = if query.is_none() {
-        let _stale = diffctx_base::profile::phase("impact.stale_paths");
-        stale_references(state, &cells, analysed)
-    } else {
-        (Vec::new(), 0)
-    };
-    let (deleted_modules, changed) = if query.is_none() {
-        dead_modules(state, &cells, changed, &stale)
-    } else {
-        (Vec::new(), changed)
-    };
-    let (named_by, named_by_path_omitted) = {
-        let _named = diffctx_base::profile::phase("impact.named_by");
-        let (mut named, omitted) = named_by_path(state, &cells, analysed);
-        if query.is_none() {
-            let by_module = untraced.module_refs(state, &cores, &named);
-            named.extend(by_module);
-            named.extend(twin_references(state, &cores));
-        }
-        (named, omitted)
-    };
-    let (collection_reads, collection_reads_omitted) = if query.is_none() {
-        read_by_collection(state, analysed)
-    } else {
-        (Vec::new(), 0)
-    };
-    let nameless = if query.is_none() {
-        nameless_changes(state, &cells, &held)
-    } else {
-        Vec::new()
-    };
-    let (mut unanalysed, cell_read_configs, consumed_outside, lost_configs) = if query.is_none() {
-        // A file the run did not analyse whole has its own reason, which already
-        // says its effect is unknown: it is never listed twice. The rest come
-        // first, so that the cap on the list keeps them.
-        let mut others = unanalysed_files(state, &changed_files);
-        // A base side over the size cap is never parsed: its removals go unread,
-        // and the file is named at the path the answer reports (the head's, for
-        // a rename), whether it changed, was renamed or was deleted.
-        let old_path_of: FxHashMap<&str, &str> = state
-            .renamed_files
-            .iter()
-            .map(|(old, new)| (new.as_str(), old.as_str()))
-            .collect();
-        let sides = changed_files
-            .iter()
-            .map(|p| {
-                (
-                    old_path_of.get(p.as_str()).copied().unwrap_or(p.as_str()),
-                    p.as_str(),
-                )
-            })
-            .chain(state.deleted_files.iter().map(|p| (p.as_str(), p.as_str())));
-        for (old, new) in sides {
-            let over = |path: &str| {
-                cells.reading(path).and_then(|cell| cell.loss_about(path))
-                    == Some(decide::gap::Reason::TooLarge)
-            };
-            if (over(old) || over(new)) && !others.iter().any(|f| f.path == new) {
-                others.push(UnanalysedFile::new(
-                    new.to_string(),
-                    "too_large",
-                    Vec::new(),
-                ));
-            }
-        }
-        // A changed file a cell read whole is traced: what it holds outside every
-        // definition is `outside_definitions`, and nothing else of it is untraced.
-        // What the code reads of its keys is no cell's answer yet: the key search
-        // still runs for it, as it did before the cell read it.
-        let cell_read: Vec<String> = others
-            .iter()
-            .filter(|f| {
-                f.reason == "content_untraced"
-                    && cells.of(&f.path).is_some_and(|cell| cell.is_bound(&f.path))
-            })
-            .map(|f| f.path.clone())
-            .collect();
-        // The cell traces what is inside the files; what builds or applies them
-        // lies outside, and a mention or a reader in another file is all that
-        // reaches it. Such a file is a gap again unless one is found below.
-        let consumed_outside: Vec<UnanalysedFile> = others
-            .iter()
-            .filter(|f| {
-                cell_read.contains(&f.path)
-                    && cells
-                        .of(&f.path)
-                        .is_some_and(decide::cell::Cell::consumed_outside)
-            })
-            .cloned()
-            .collect();
-        others.retain(|f| !cell_read.contains(&f.path));
-        // A file its cell lost, in part or whole, is not made traced by the key
-        // search that still runs for it: its loss is what the answer says of it.
-        let mut lost_configs: Vec<String> = Vec::new();
-        for f in &mut others {
-            let lost = (f.reason == "content_untraced")
-                .then(|| {
-                    cells
-                        .reading(&f.path)
-                        .and_then(|cell| cell.loss_about(&f.path))
-                })
-                .flatten();
-            if let Some(reason) = lost {
-                f.reason = reason.row_reason();
-                lost_configs.push(f.path.clone());
-            }
-        }
-        let mut all: Vec<UnanalysedFile> = outside_definitions(&cells)
-            .into_iter()
-            .filter(|o| !others.iter().any(|f| f.path == o.path))
-            .collect();
-        all.extend(others);
-        for n in &nameless {
-            if !all.iter().any(|f| f.path == n.path) {
-                all.push(UnanalysedFile {
-                    language: diffctx_base::languages::get_language_for_file(&n.path),
-                    path: n.path.clone(),
-                    reason: OUTSIDE_DEFINITIONS,
-                    lines: n
-                        .runs
-                        .iter()
-                        .take(MAX_OUTSIDE_RUNS)
-                        .flat_map(|&(first, last)| [first, last])
-                        .collect(),
-                });
-            }
-        }
-        (all, cell_read, consumed_outside, lost_configs)
-    } else {
-        (Vec::new(), Vec::new(), Vec::new(), Vec::new())
-    };
-    let mut named_by = named_by;
-    let (key_searches, key_files_unsearched, named_by_key_omitted) = {
-        let untraced: Vec<String> = unanalysed
-            .iter()
-            .filter(|f| f.reason == "content_untraced")
-            .map(|f| f.path.clone())
-            .chain(cell_read_configs)
-            .chain(lost_configs.iter().cloned())
-            .chain(nameless.iter().map(|n| n.path.clone()))
-            .chain(changed_files.iter().filter(|p| is_schema_file(p)).cloned())
-            .collect();
-        let (refs, omitted, searches, unsearched, unread) =
-            key_references(state, &cells, &untraced, &nameless);
-        unanalysed.extend(unread);
-        // A search of the names a nameless change touches is no trace of it.
-        unanalysed.retain(|f| {
-            lost_configs.contains(&f.path)
-                || nameless.iter().any(|n| n.path == f.path)
-                || !searches.iter().any(|k| k.path == f.path)
-        });
-        named_by.extend(refs);
-        (searches, unsearched, omitted)
-    };
-    // A config or a Dockerfile nothing names stays a gap: its builds are not
-    // traced, and a clean zero would claim they are.
-    for file in consumed_outside {
-        let read = named_by.iter().any(|r| r.target == file.path)
-            || changed
-                .iter()
-                .any(|c| c.path == file.path && c.callers.iter().any(|k| k.path != file.path));
-        if !read {
-            unanalysed.push(file);
-        }
-    }
-    // Read after the last phase that can stop: a deadline the stale-reference
-    // search hit was missing from an answer that had dropped its lines. A
-    // changed file outside code holds no definition and calls nothing: one
-    // over the cap is named in `unanalysed`, and no caller is missing for it
-    // (#626).
-    let (mut limits, _, _) = diffctx_snapshot::resource::classify_limits(&state.run, &[], &|p| {
-        changed_set.contains(p) && (is_code_file(p) || Path::new(p).extension().is_none())
-    });
-    // A changed file cut to the fragment cap keeps every fragment the diff
-    // touched: pack loses context there, impact loses no changed definition,
-    // and the cap fires on most large files (#306).
-    limits.retain(|r| *r != diffctx_snapshot::resource::LimitReason::FragmentLimit);
-    // A symbol lookup reads the files naming the symbol itself.
-    let outside_scope_files = if query.is_none() {
-        unread_namers(state, analysed, traced_names)
-    } else {
-        0
-    };
-    let mut output = ImpactOutput {
-        name: directory_name(&state.root_dir),
-        range: diff_range.map(str::to_string),
-        index_tree: state.index_tree.clone(),
-        symbol: query.map(str::to_string),
-        untracked_files: changed_files
-            .iter()
-            .filter(|f| untracked.contains(f.as_str()))
-            .cloned()
-            .collect(),
-        changed_files: changed_files
-            .into_iter()
-            .filter(|f| !untracked.contains(f.as_str()))
-            .collect(),
-        deleted_files: state.deleted_files.clone(),
-        stale_references: stale,
-        stale_references_omitted: stale_omitted,
-        deleted_modules,
-        named_by,
-        named_by_path_omitted,
-        named_by_key_omitted,
-        key_searches,
-        key_files_unsearched,
-        collection_reads,
-        collection_reads_omitted,
-        commit_count: state.commit_count,
-        changed,
-        contracts,
-        contracts_omitted,
-        limits,
-        tests_known: tests.any(),
-        untested_definitions,
-        untested_unlisted,
-        untested_called_in_diff,
-        entry_unlisted,
-        layout_only,
-        lockfile_changes: state.lockfile_changes.clone(),
-        traced_definitions,
-        withheld_files: state.policy_excluded_count + state.run.withheld_count(),
-        outside_scope_files,
-        unread_directories: state.run.source().unread_directories(),
-        unanalysed_files: unanalysed,
-        run: Some(state.run.clone()),
-        cap: IMPACT_TOKEN_CAP,
-        ..ImpactOutput::default()
-    };
-    output.empty = proves_empty(&output);
-    output
+    gaps::unread(&cx, &t, &mut found);
+    let apart_unreached = apart::trace(&cx, &t, &mut found);
+    gaps::unfinished(
+        &cx,
+        &t,
+        apart_unreached,
+        unreached,
+        stopped_early,
+        &mut found,
+    );
+    removals::read(&cx, &t, &mut found);
+    range::findings(&cx, &t, found)
 }
