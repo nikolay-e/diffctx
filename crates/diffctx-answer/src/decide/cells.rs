@@ -263,6 +263,28 @@ impl Cells {
             .map_or_else(Vec::new, |cell| cell.imports_at(rel))
     }
 
+    /// The text of `rel` at the head, read from the snapshot the cells read.
+    pub(crate) fn head_text(&self, state: &ScoredState, rel: &str) -> Option<String> {
+        if self.cells.is_empty() {
+            self.bare(state)?;
+        }
+        let ctx = match (self.cells.first(), self.bare.get()) {
+            (Some(cell), _) => &cell.ctx,
+            (None, Some(Some(bare))) => &bare.ctx,
+            _ => return None,
+        };
+        let Ok(path) = RepoPath::new(rel) else {
+            return None;
+        };
+        match ctx.head.read(&path) {
+            Ok(bytes) => bytes.map(|bytes| String::from_utf8_lossy(&bytes).into_owned()),
+            Err(_) => {
+                state.run.note(LimitReason::ReadFailed);
+                None
+            }
+        }
+    }
+
     /// Whether a head file of a cell language may import a module by a name it
     /// computes (`importlib.import_module(name)`, `import(path)`, `require(path)`),
     /// which no importer search can see: some file holds a `ComputedImport` fact, or
