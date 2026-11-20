@@ -16,14 +16,15 @@ use crate::answer::v2::GuardState;
 use crate::answer::{Answer, RenderCtx};
 use crate::decide::{self, Cells, Effect};
 use crate::run_provenance::state::ScoredState;
-use crate::tokens::Names;
-use crate::tokens::occurrence::{Hedge, Reason};
-use crate::vocabulary;
 use diffctx_base::container::{innermost, named_container_of, within};
+use diffctx_base::languages::runtime_of;
 use diffctx_base::types::{Fragment, FragmentId, FragmentKind};
 use diffctx_facts::facts::{EntryKind, framework};
 use diffctx_facts::parsers::code_text;
 use diffctx_facts::parsers::embedded::names_word;
+use diffctx_occurrence::tokens::Names;
+use diffctx_occurrence::tokens::occurrence::{Hedge, Reason, Standing};
+use diffctx_resolve::vocabulary;
 
 mod keys;
 mod mentions;
@@ -1026,7 +1027,7 @@ impl Files<'_> {
     /// spelling them.
     fn spells(&self, path: &str, words: &[&str]) -> bool {
         let shown = rel(self.state, path);
-        let Some(group) = crate::vocabulary::family::Group::of_name(&shown) else {
+        let Some(group) = diffctx_resolve::vocabulary::family::Group::of_name(&shown) else {
             return true;
         };
         let Some(tokens) = self.cells.group_tokens(self.state, group) else {
@@ -1473,12 +1474,12 @@ struct UntracedNamers {
 struct UnreadFiles {
     /// The groups of the scripts, templates and configs that can run a name: no document,
     /// data dump or manifest.
-    text: FxHashSet<Option<crate::vocabulary::family::Group>>,
+    text: FxHashSet<Option<diffctx_resolve::vocabulary::family::Group>>,
     /// The groups of the code no cell reads.
-    code: FxHashSet<Option<crate::vocabulary::family::Group>>,
+    code: FxHashSet<Option<diffctx_resolve::vocabulary::family::Group>>,
     /// The files of the groups whose cell leaves a region of a file unread (a C macro
     /// body, a shell command word), by group.
-    hiding: FxHashMap<crate::vocabulary::family::Group, Vec<String>>,
+    hiding: FxHashMap<diffctx_resolve::vocabulary::family::Group, Vec<String>>,
 }
 
 impl UnreadFiles {
@@ -1501,15 +1502,15 @@ impl UnreadFiles {
                 if reads_a_name(path) && !holds_no_command(path) {
                     unread
                         .text
-                        .insert(crate::vocabulary::family::Group::of_name(path));
+                        .insert(diffctx_resolve::vocabulary::family::Group::of_name(path));
                 }
             } else if unread_code(path) {
                 unread
                     .code
-                    .insert(crate::vocabulary::family::Group::of_name(path));
+                    .insert(diffctx_resolve::vocabulary::family::Group::of_name(path));
             }
             if let Some(group) =
-                crate::vocabulary::family::Group::of_name(path).filter(hides_a_region)
+                diffctx_resolve::vocabulary::family::Group::of_name(path).filter(hides_a_region)
             {
                 unread.hiding.entry(group).or_default().push(path.clone());
             }
@@ -1519,7 +1520,7 @@ impl UnreadFiles {
 
     /// Whether a file this definition's cell did not read could spell its name: one of
     /// its own group is read by its cell, so only a file of another group counts.
-    fn could_spell(&self, own: Option<crate::vocabulary::family::Group>) -> bool {
+    fn could_spell(&self, own: Option<diffctx_resolve::vocabulary::family::Group>) -> bool {
         self.text.iter().any(|group| own.is_none() || *group != own)
             || self.code.iter().any(|group| *group != own)
     }
@@ -1527,15 +1528,19 @@ impl UnreadFiles {
     /// Whether a sibling of `path` in a group whose cell leaves a region of a file unread
     /// could spell a removed name there: the account of a removed name looks only where
     /// the base resolved it, while a live definition's account reads its whole group.
-    fn hides_beside(&self, own: Option<crate::vocabulary::family::Group>, path: &str) -> bool {
+    fn hides_beside(
+        &self,
+        own: Option<diffctx_resolve::vocabulary::family::Group>,
+        path: &str,
+    ) -> bool {
         own.and_then(|group| self.hiding.get(&group))
             .is_some_and(|files| files.iter().any(|f| f != path))
     }
 }
 
 /// A group whose cell reads a file's definitions and calls but not all of its text.
-fn hides_a_region(group: &crate::vocabulary::family::Group) -> bool {
-    use crate::vocabulary::family::{Family, Group};
+fn hides_a_region(group: &diffctx_resolve::vocabulary::family::Group) -> bool {
+    use diffctx_resolve::vocabulary::family::{Family, Group};
     matches!(
         group,
         Group::Native | Group::Family(Family::C | Family::Shell)
@@ -1615,7 +1620,7 @@ fn callable_by_name(path: &str) -> bool {
 /// A shell script runs a program of any language by its bare name, and its cell
 /// binds none.
 fn unread_code(path: &str) -> bool {
-    use crate::vocabulary::family::{Family, Group};
+    use diffctx_resolve::vocabulary::family::{Family, Group};
     is_code_file(path)
         && match Group::of_name(path) {
             None | Some(Group::Language(_) | Group::Family(Family::Swift | Family::Shell)) => true,
@@ -1628,14 +1633,15 @@ fn unread_code(path: &str) -> bool {
 
 /// Code of a language no cell of `own`'s language binds to it: a shell script
 /// runs a program of any language by its bare name.
-fn foreign_code(path: &str, own: Option<crate::vocabulary::family::Group>) -> bool {
-    unread_code(path) && crate::vocabulary::family::Group::of_name(path) != own
+fn foreign_code(path: &str, own: Option<diffctx_resolve::vocabulary::family::Group>) -> bool {
+    unread_code(path) && diffctx_resolve::vocabulary::family::Group::of_name(path) != own
 }
 
 /// A file that may spell a definition of `own`'s group where no cell accounts for
 /// the spelling: text the definition's own cell does not read, or foreign code.
-fn unaccounted_reader(path: &str, own: Option<crate::vocabulary::family::Group>) -> bool {
-    let read_by_own = own.is_some() && crate::vocabulary::family::Group::of_name(path) == own;
+fn unaccounted_reader(path: &str, own: Option<diffctx_resolve::vocabulary::family::Group>) -> bool {
+    let read_by_own =
+        own.is_some() && diffctx_resolve::vocabulary::family::Group::of_name(path) == own;
     (!is_code_file(path) && !read_by_own) || foreign_code(path, own)
 }
 
@@ -1811,7 +1817,7 @@ impl UntracedNamers {
         verdict: &decide::Verdict,
     ) {
         let mut spelled = self.literal_spellings(sym, def, verdict);
-        let own = crate::vocabulary::family::Group::of_name(&sym.path);
+        let own = diffctx_resolve::vocabulary::family::Group::of_name(&sym.path);
         let Some(word) = spelled_word(def) else {
             Self::disclose(sym, spelled);
             return;
@@ -1899,7 +1905,7 @@ impl UntracedNamers {
         if !nothing_known {
             return;
         }
-        let own = crate::vocabulary::family::Group::of_name(&sym.path);
+        let own = diffctx_resolve::vocabulary::family::Group::of_name(&sym.path);
         let named: Vec<UnanalysedFile> = self
             .naming(literal_base(name), |p| unaccounted_reader(p, own))
             .into_iter()
@@ -1957,13 +1963,13 @@ impl UntracedNamers {
         left: impl Iterator<Item = &'a str>,
         linked: bool,
     ) -> Vec<UnanalysedFile> {
-        let own = crate::vocabulary::family::Group::of_name(&rel(state, core.path()));
+        let own = diffctx_resolve::vocabulary::family::Group::of_name(&rel(state, core.path()));
         let mut files: Vec<UnanalysedFile> = Vec::new();
         for name in spelled_name(core).into_iter().chain(left) {
             let named = self.named_in(name, |p| {
                 !is_code_file(p)
                     || ((linked || unread_code(p))
-                        && crate::vocabulary::family::Group::of_name(p) != own)
+                        && diffctx_resolve::vocabulary::family::Group::of_name(p) != own)
             });
             for (path, line) in named {
                 if !files.iter().any(|f| f.path == path) {
@@ -2063,7 +2069,7 @@ fn unaccounted_rows(verdict: &decide::Verdict, own: &str) -> Vec<UnanalysedFile>
 /// answer prints it: what the token index holds, whatever a builder linked. A file
 /// of no group, or a group the run could not read, has none.
 fn spelling_files(state: &ScoredState, cells: &Cells, file: &str, names: &[String]) -> Vec<String> {
-    let Some(tokens) = crate::vocabulary::family::Group::of_name(file)
+    let Some(tokens) = diffctx_resolve::vocabulary::family::Group::of_name(file)
         .and_then(|group| cells.group_tokens(state, group))
     else {
         return Vec::new();
@@ -2086,23 +2092,6 @@ fn names_of(symbol: &str) -> Vec<String> {
         names.push(last.to_string());
     }
     names
-}
-
-/// The runtime a language runs in, for the languages that call across
-/// their own boundary: JVM languages call each other, JavaScript runs the
-/// HTML and single-file components that embed it, Swift, Objective-C, C and
-/// C++ bridge and link. Anything else is its own runtime.
-pub(crate) fn runtime_of(path: &str) -> String {
-    let language = diffctx_base::languages::get_language_for_file(path).unwrap_or("");
-    match language {
-        "java" | "kotlin" | "scala" | "groovy" | "clojure" => "jvm",
-        "javascript" | "typescript" | "tsx" | "jsx" | "html" | "svelte" | "vue" => "js",
-        "python" | "cython" => "python",
-        "csharp" | "c_sharp" | "fsharp" => "dotnet",
-        "swift" | "objectivec" | "c" | "cpp" => "native",
-        other => other,
-    }
-    .to_string()
 }
 
 /// No runtime crosses from one to the other: a Kotlin test cannot run a
@@ -3262,7 +3251,7 @@ const KEY_MATCH: &str = "key_match";
 /// What the cell states of the uses one caller makes of a changed definition.
 #[derive(Clone)]
 struct Reach {
-    standing: decide::Standing,
+    standing: Standing,
     relation: &'static str,
     kind: Option<vocabulary::RelationKind>,
     /// The rule of the folding table that says the change cannot have affected
@@ -3275,15 +3264,15 @@ struct Reach {
 impl Reach {
     fn evidence(&self) -> &'static str {
         match self.standing {
-            decide::Standing::Resolved => "resolved",
-            decide::Standing::Candidate(_) => "candidate",
+            Standing::Resolved => "resolved",
+            Standing::Candidate(_) => "candidate",
         }
     }
 
     fn reason(&self) -> Option<&'static str> {
         match self.standing {
-            decide::Standing::Candidate(reason) => Some(reason),
-            decide::Standing::Resolved => None,
+            Standing::Candidate(reason) => Some(reason),
+            Standing::Resolved => None,
         }
     }
 
@@ -3298,7 +3287,7 @@ impl Reach {
 }
 
 fn reach_of(u: &decide::Use) -> Reach {
-    use crate::resolve::Relation as Uses;
+    use diffctx_resolve::resolve::Relation as Uses;
     Reach {
         standing: u.standing,
         relation: match u.relation {
@@ -3353,7 +3342,7 @@ const REEXPORT: &str = "reexport";
 /// script the fragmenter did not cut, or a file past its fragment cap.
 fn cell_row(u: &decide::Use) -> Caller {
     let reach = reach_of(u);
-    let reexport = u.relation == crate::resolve::Relation::Reexports;
+    let reexport = u.relation == diffctx_resolve::resolve::Relation::Reexports;
     let within = match &u.scope {
         diffctx_facts::facts::Scope::Def(local) => Some(local.clone()),
         _ => None,
@@ -3405,7 +3394,7 @@ fn cell_symbol(def: &decide::Changed, verdict: &decide::Verdict, kind: String) -
     let users = |resolved: bool| -> Vec<String> {
         verdict
             .also_changed()
-            .filter(|u| (u.standing == decide::Standing::Resolved) == resolved)
+            .filter(|u| (u.standing == Standing::Resolved) == resolved)
             .map(|u| place(&u.file, None, &u.line.to_string()))
             .collect()
     };
@@ -3960,7 +3949,7 @@ pub fn build_impact(
             tracing::debug!(
                 "impact {}: the cell claims {:?}",
                 core.symbol_name.as_deref().unwrap_or("?"),
-                v.claim(crate::resolve::Relation::Calls)
+                v.claim(diffctx_resolve::resolve::Relation::Calls)
             );
         }
         // A formatter run or a comment changes nothing a caller sees (#370),
@@ -4135,7 +4124,7 @@ pub fn build_impact(
         // Uses on lines no fragment owns keep the resolver's own row.
         let mut loose: Vec<Caller> = Vec::new();
         for u in verdict.iter().flat_map(|v| v.uses.iter()) {
-            if u.relation == crate::resolve::Relation::Reexports && !u.also_changed {
+            if u.relation == diffctx_resolve::resolve::Relation::Reexports && !u.also_changed {
                 loose.push(cell_row(u));
                 continue;
             }
@@ -4149,7 +4138,7 @@ pub fn build_impact(
             let frag = owner.filter(|frag| !owned_by_a_nested_definition(frag, u));
             if u.also_changed {
                 called_in_diff = true;
-                let users = if u.standing == decide::Standing::Resolved {
+                let users = if u.standing == Standing::Resolved {
                     &mut also_changed
                 } else {
                     &mut possibly_also_changed
@@ -4192,7 +4181,7 @@ pub fn build_impact(
                     frag,
                     FINDING_WEIGHT,
                     Some(Reach {
-                        standing: decide::Standing::Resolved,
+                        standing: Standing::Resolved,
                         relation: "reference",
                         kind: None,
                         fold: None,
@@ -4224,7 +4213,7 @@ pub fn build_impact(
                         frag,
                         FINDING_WEIGHT,
                         Some(Reach {
-                            standing: decide::Standing::Candidate(KEY_MATCH),
+                            standing: Standing::Candidate(KEY_MATCH),
                             relation: "reference",
                             kind: Some(vocabulary::RelationKind::Reads),
                             fold: None,
@@ -4251,8 +4240,8 @@ pub fn build_impact(
                     *w = w.max(weight);
                     match (known.as_mut(), found) {
                         (Some(k), Some(f)) => {
-                            if f.standing == decide::Standing::Resolved {
-                                k.standing = decide::Standing::Resolved;
+                            if f.standing == Standing::Resolved {
+                                k.standing = Standing::Resolved;
                             }
                             // Two rows of different fold stay as listed as the
                             // one the table does not fold.
@@ -4719,12 +4708,9 @@ pub fn build_impact(
             && callable_by_name(core.path())
             && spelled_name(core).is_some_and(|n| !searched_as_text(n))
             && (verdict.as_ref().is_some_and(decide::Verdict::names_quoted)
-                || untraced
-                    .unread
-                    .could_spell(crate::vocabulary::family::Group::of_name(&rel(
-                        state,
-                        core.path(),
-                    ))));
+                || untraced.unread.could_spell(
+                    diffctx_resolve::vocabulary::family::Group::of_name(&rel(state, core.path())),
+                ));
         let coverage = search_coverage(verdict.as_ref(), unresolved.as_ref(), outside)
             .with(unsearched.then_some(decide::Gap::NameUnsearched));
         // No test found is an absence only from a closed search: the callers

@@ -128,6 +128,17 @@ impl Relation {
     }
 }
 
+/// The relations of a use: the ones a change to a definition reaches its readers
+/// and callers through (`Relation::uses`).
+pub const USES: [Relation; 6] = [
+    Relation::Calls,
+    Relation::Instantiates,
+    Relation::Overrides,
+    Relation::Reads,
+    Relation::Writes,
+    Relation::PassesAsValue,
+];
+
 fn plain_relation(use_kind: UseKind) -> Relation {
     match use_kind {
         UseKind::Call | UseKind::Decorate => Relation::Calls,

@@ -2,7 +2,7 @@
 //! reproduces, the relation kinds the case schema names, the cells made precise, and
 //! the families of languages one resolver reads (`family`).
 
-pub(crate) mod family;
+pub mod family;
 
 /// How far an answer about a language is promised (T5). Tier 1 is the
 /// declared set whose definitions, callers and test reach are being made
@@ -151,7 +151,7 @@ fn cell_language(path: &str) -> &'static str {
 
 /// The schema v1 kind of a use a resolver found: construction is
 /// `instantiates`, never `calls`, and a name in a type position is `type_use`.
-pub(crate) const fn kind_of_use(relation: crate::resolve::Relation) -> RelationKind {
+pub const fn kind_of_use(relation: crate::resolve::Relation) -> RelationKind {
     use crate::resolve::Relation as Use;
     match relation {
         Use::Calls => RelationKind::Calls,
@@ -169,7 +169,7 @@ pub(crate) const fn kind_of_use(relation: crate::resolve::Relation) -> RelationK
 /// The kind a caller row of a definition in `path` states: the use's, when
 /// the (language, relation) cell is `Precise`; no other cell says which kind
 /// of "called from" a row is.
-pub(crate) fn stated_kind_of(path: &str, kind: RelationKind) -> Option<&'static str> {
+pub fn stated_kind_of(path: &str, kind: RelationKind) -> Option<&'static str> {
     stated_kind_by(is_precise, path, kind)
 }
 

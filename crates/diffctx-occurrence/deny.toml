@@ -1,0 +1,7 @@
+# The resolvers and the accounting carry no Python bindings, directly or through anything they pull in.
+# ci.yml runs `cargo deny check bans` from this directory, which scopes the graph to this crate;
+# the advisories, licenses and sources run once for the workspace from the root deny.toml.
+[bans]
+deny = [
+    { crate = "pyo3", reason = "this layer carries no Python bindings" },
+]

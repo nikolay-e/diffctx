@@ -18,8 +18,8 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, OnceLock};
 
-use crate::vocabulary::family::Group;
 use diffctx_facts::facts::{FactsCache, expired};
+use diffctx_resolve::vocabulary::family::Group;
 use diffctx_snapshot::snapshot::{
     AnalysisContext, Listing, Oid, RepoPath, Result, RunBudget, SnapshotReader,
 };

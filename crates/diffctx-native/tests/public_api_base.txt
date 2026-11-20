@@ -54,6 +54,7 @@ languages::EXTENSION_TO_LANGUAGE static Lazy<FxHashMap<&'static str, &'static st
 languages::FILENAME_TO_LANGUAGE static Lazy<FxHashMap<&'static str, &'static str>>
 languages::file_ext fn (path: &Path) -> String
 languages::get_language_for_file fn (path: &str) -> Option<&'static str>
+languages::runtime_of fn (path: &str) -> String
 languages::sniff_language fn (path: &str, content: &str) -> Option<&'static str>
 paths mod
 paths::contains_lexically fn (relative: &Path) -> bool

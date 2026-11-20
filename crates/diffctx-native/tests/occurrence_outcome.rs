@@ -8,15 +8,16 @@ mod snapshot_fixture;
 
 use std::sync::Arc;
 
-use _diffctx::occurrence::{
-    Basis, Entry, FileOutcomes, Outcome, Reason, View, Witness, admitted, counts_against, outcomes,
+use diffctx_facts::facts::{DefKind, FactsCache, FileFacts, Lexical, facts_of};
+use diffctx_occurrence::tokens::occurrence::{
+    Account, Basis, Entry, FileOutcomes, Outcome, Reason, View, Witness, admitted, counts_against,
+    outcomes,
 };
-use _diffctx::resolve::{
+use diffctx_resolve::resolve::{
     Binding, CResolver, CandidateReason, Definition, Evidence, EvidenceKind, GoResolver,
     JavaResolver, KotlinResolver, PhpResolver, PythonResolver, Relation, Resolution, RustResolver,
     ShellResolver, TypeScriptResolver, UnresolvedReason,
 };
-use diffctx_facts::facts::{DefKind, FactsCache, FileFacts, Lexical, facts_of};
 use diffctx_snapshot::snapshot::{AnalysisContext, RangeSpec, RepoPath, RunBudget, Side, SideTag};
 use snapshot_fixture::Repo;
 
@@ -303,6 +304,20 @@ fn a_local_variable_site_is_the_declaration_of_another_binding() {
         matches!(on(&found, 3).outcome, Outcome::NotOurs(Witness::Local(_))),
         "{found:#?}"
     );
+}
+
+#[test]
+fn a_not_ours_occurrence_stands_in_the_way_of_nothing() {
+    let world = snapshot(&[
+        ("lib.py", LIB_F),
+        ("app.py", "def g():\n    f = 2\n    return f\n"),
+    ]);
+    let subject = world.def("lib.py", "f");
+    let found = world.outcomes(subject, "app.py", &["f"]);
+    assert_eq!(on(&found, 3).outcome.as_str(), "not_ours", "{found:#?}");
+    let mut account = Account::new(subject.key.clone(), Relation::Calls, SideTag::Head);
+    account.entries = found.entries;
+    assert!(account.verdict().is_complete(), "{account:#?}");
 }
 
 #[test]

@@ -36,7 +36,7 @@ fn violations(source: &str, reach: usize) -> Vec<String> {
 
 #[test]
 fn the_resolver_uses_only_the_snapshot_and_facts_modules() {
-    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("src/resolve");
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../diffctx-resolve/src/resolve");
     let mut files = 0;
     let mut reaches = Vec::new();
     for entry in WalkDir::new(&root) {

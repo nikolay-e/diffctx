@@ -3,10 +3,10 @@
 use std::path::Path;
 
 use crate::tokens::occurrence::Implicit;
-use crate::vocabulary::family::Family;
 use diffctx_base::testfiles::is_test_path;
 use diffctx_facts::facts::lang::shell::SHEBANG;
 use diffctx_facts::facts::{Def, EntryKind, Fact, FileFacts, Scope, UseKind};
+use diffctx_resolve::vocabulary::family::Family;
 
 /// What `decide` already knows of a definition: `dispatched` is `dispatched_via`,
 /// `consumed_outside` is `consumed_outside` of its family, `root_module` that its

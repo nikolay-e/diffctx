@@ -40,7 +40,7 @@ listed case that starts passing also fails) are in `CONTRIBUTING.md`.
   docs, `server.json`, npm, Scoop, `CITATION.cff`) stays on the last release
   until a release moves it.
 - Language tiers are the table in the README and in
-  `crates/diffctx-native/src/vocabulary.rs`; Tier 3 is "not modelled" and never
+  `crates/diffctx-resolve/src/vocabulary.rs`; Tier 3 is "not modelled" and never
   claims an absence.
 
 ## Product size is a ratchet

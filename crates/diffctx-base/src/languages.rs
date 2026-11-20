@@ -319,6 +319,23 @@ fn shebang_language(content: &str) -> Option<&'static str> {
     }
 }
 
+/// The runtime a language runs in, for the languages that call across
+/// their own boundary: JVM languages call each other, JavaScript runs the
+/// HTML and single-file components that embed it, Swift, Objective-C, C and
+/// C++ bridge and link. Anything else is its own runtime.
+pub fn runtime_of(path: &str) -> String {
+    let language = get_language_for_file(path).unwrap_or("");
+    match language {
+        "java" | "kotlin" | "scala" | "groovy" | "clojure" => "jvm",
+        "javascript" | "typescript" | "tsx" | "jsx" | "html" | "svelte" | "vue" => "js",
+        "python" | "cython" => "python",
+        "csharp" | "c_sharp" | "fsharp" => "dotnet",
+        "swift" | "objectivec" | "c" | "cpp" => "native",
+        other => other,
+    }
+    .to_string()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

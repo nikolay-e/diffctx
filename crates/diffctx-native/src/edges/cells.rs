@@ -17,8 +17,6 @@ use std::sync::Arc;
 
 use rustc_hash::{FxHashMap, FxHashSet};
 
-use crate::resolve::{Binding, Relation, Resolution, UnresolvedReason};
-use crate::vocabulary::family::{self, Family, HeadFamily};
 use diffctx_base::types::{Fragment, FragmentId};
 use diffctx_config::config::edge_weights::{
     C_FAMILY_SEMANTIC, CELL_EDGES, CellEdgeWeights, DOCKER, GO_SEMANTIC, HELM, JAVASCRIPT_SEMANTIC,
@@ -26,6 +24,8 @@ use diffctx_config::config::edge_weights::{
 };
 use diffctx_config::config::weights::{EDGE_WEIGHTS, EdgeWeightConfig, LANG_WEIGHTS};
 use diffctx_facts::facts::{DefKey, Language};
+use diffctx_resolve::resolve::{Binding, Relation, Resolution, UnresolvedReason};
+use diffctx_resolve::vocabulary::family::{self, Family, HeadFamily};
 use diffctx_snapshot::resource::{LimitReason, current_source, note_current};
 use diffctx_snapshot::snapshot::RepoPath;
 
