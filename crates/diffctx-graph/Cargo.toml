@@ -31,6 +31,8 @@ tracing.workspace = true
 
 [dev-dependencies]
 diffctx-base = { workspace = true, features = ["test-support"] }
+# Its tests parse sources; the workspace dependency turns the grammars off for a crate tested alone.
+diffctx-facts = { workspace = true, features = ["lang-core", "lang-extra"] }
 tempfile.workspace = true
 
 # The token fingerprint digests the sources of the workspace path dependencies, read
