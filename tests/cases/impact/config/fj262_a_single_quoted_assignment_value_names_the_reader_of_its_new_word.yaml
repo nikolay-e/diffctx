@@ -1,0 +1,21 @@
+name: fj262_a_single_quoted_assignment_value_names_the_reader_of_its_new_word
+mode: impact
+source: fj#262
+issue_state: open
+tags: [config, env, textual, quoted]
+repo:
+  initial_files:
+    deploy/worker.env: |
+      QUEUE_NAME=exports
+      WORKER_FLAGS='--retry --profile nightlybatch'
+    cron/rebuild.sh: |
+      #!/bin/sh
+      exec worker --profile weeklybatch --rebuild
+  changed_files:
+    deploy/worker.env: |
+      QUEUE_NAME=exports
+      WORKER_FLAGS='--retry --profile weeklybatch'
+expect:
+  exact: false
+  relations:
+    - {from: cron/rebuild.sh, to: deploy/worker.env, kind: references_path, resolution: candidate, site: 2}
