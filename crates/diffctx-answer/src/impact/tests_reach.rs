@@ -225,9 +225,8 @@ impl<'a> TestsReach<'a> {
             .iter()
             .map(|(path, shown)| (shown.as_str(), *path))
             .collect();
-        let runs = runs::all(state, cells, diff_range, &spelled, &declared);
+        let (runs, asserted) = runs::all(state, cells, diff_range, &spelled, &declared);
         let doctests = runs::doctest_runs(state);
-        let asserted = runs::literal_runs(state, diff_range, &declared);
         let repo_tests = test_fragments.is_empty()
             && named.is_empty()
             && runs.is_empty()
