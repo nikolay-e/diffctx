@@ -161,7 +161,16 @@ class TestTheReleaseWritesTheTreeSurfaces:
             before, after = lines(PROJECT_ROOT, surface), lines(tmp_path, surface)
             assert len(before) == len(after), surface
             changed = [new for old, new in zip(before, after, strict=True) if old != new]
-            assert len(changed) <= (2 if surface.startswith("Cargo") else 1), (surface, changed)
+            if surface.startswith("Cargo"):
+                assert len(changed) == 1 + len(tree_version.INTERNAL_CRATES), (surface, changed)
+            else:
+                assert len(changed) <= 1, (surface, changed)
+        cargo_toml, cargo_lock = lines(tmp_path, "Cargo.toml"), lines(tmp_path, "Cargo.lock")
+        for crate in tree_version.INTERNAL_CRATES:
+            dependency = next(line for line in cargo_toml if line.startswith(f"{crate} = {{"))
+            assert 'version = "7.8.9-dev.3"' in dependency, crate
+            entry = cargo_lock.index(f'name = "{crate}"')
+            assert cargo_lock[entry + 1] == 'version = "7.8.9-dev.3"', crate
         assert 'version = "7.8.9.dev3"' in lines(tmp_path, "pyproject.toml")
         assert 'version = "7.8.9-dev.3"' in lines(tmp_path, "Cargo.toml")
         assert '__version__ = "7.8.9.dev3"' in lines(tmp_path, "src/diffctx/version.py")
