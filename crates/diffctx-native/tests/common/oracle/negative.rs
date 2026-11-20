@@ -332,6 +332,33 @@ fn a_partial_of_a_missing_definition_is_a_failure() -> Result<(), Failed> {
     Ok(())
 }
 
+/// A caller line of the text needs a resolved row behind it, whatever its verb: an
+/// implementation row is "implemented by", and such a line naming a file the JSON
+/// has no row for fails as a "called from" line does.
+fn a_text_line_needs_a_row_whatever_its_verb() -> Result<(), Failed> {
+    let case = case::parse(CHARGE_CALLS_TOTAL, "negative", Mode::Impact).map_err(Failed::from)?;
+    let compiled = case.expect.compile().map_err(Failed::from)?;
+    let rows = answer(&json!([charge("resolved", "call", None)]));
+    for (path, fails) in [("shop/checkout.py", false), ("shop/other.py", true)] {
+        let mut found = extract(&rows).map_err(Failed::from)?;
+        found.markdown = Some(format!(
+            "diffctx impact for HEAD~1..HEAD: 1 changed file(s), 1 caller(s) outside the diff\n\
+             - shop/pricing.py::total (1-2)\n  - implemented by {path}::charge (4-6)\n"
+        ));
+        let named = judge("negative", &case, &compiled, "python", &found)
+            .0
+            .iter()
+            .any(|f| f.contains("as a caller"));
+        if named != fails {
+            return Err(Failed::from(format!(
+                "`implemented by {path}`: expected the line {}",
+                if fails { "to fail" } else { "to pass" }
+            )));
+        }
+    }
+    Ok(())
+}
+
 /// A4: while an answer states no kind, code kinds are compared on (from, to,
 /// resolution) alone.
 fn a4_kind_is_loose_but_the_rest_is_not() -> Result<(), Failed> {
@@ -693,7 +720,7 @@ fn a_site_has_one_standing() -> Result<(), Failed> {
 }
 
 pub(crate) fn trials() -> Vec<Trial> {
-    let rules: [(&str, fn() -> Result<(), Failed>); 15] = [
+    let rules: [(&str, fn() -> Result<(), Failed>); 16] = [
         (
             "a1_a_named_test_function_needs_the_answer_to_name_it",
             a1_a_named_test_function_needs_the_answer_to_name_it,
@@ -741,6 +768,10 @@ pub(crate) fn trials() -> Vec<Trial> {
         (
             "a_partial_of_a_missing_definition_is_a_failure",
             a_partial_of_a_missing_definition_is_a_failure,
+        ),
+        (
+            "a_text_line_needs_a_row_whatever_its_verb",
+            a_text_line_needs_a_row_whatever_its_verb,
         ),
     ];
     rules
