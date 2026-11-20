@@ -31,6 +31,8 @@ lang-extra = ["diffctx-facts/lang-extra"]
 
 [dependencies]
 diffctx-base.workspace = true
+diffctx-occurrence.workspace = true
+diffctx-resolve.workspace = true
 diffctx-facts.workspace = true
 diffctx-config.workspace = true
 diffctx-snapshot.workspace = true
@@ -44,7 +46,7 @@ serde_json.workspace = true
 serde_yaml.workspace = true
 # Config files read as facts, not text (#328): TOML values and sections.
 toml.workspace = true
-anyhow = "1"
+anyhow.workspace = true
 tracing.workspace = true
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 regex.workspace = true

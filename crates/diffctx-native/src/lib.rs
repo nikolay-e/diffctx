@@ -11,15 +11,12 @@ pub mod in_memory_harness;
 pub(crate) mod decide;
 pub(crate) mod fold;
 pub(crate) mod fragmentation;
-pub(crate) mod tokens;
 
 // Graph: relationships between fragments.
 pub(crate) mod edges;
 pub(crate) mod graph;
 pub(crate) mod keytable;
 pub(crate) mod provenance;
-pub mod resolve;
-pub use tokens::occurrence;
 
 // Ranking: relevance of each candidate to the change.
 pub(crate) mod core;
@@ -49,8 +46,6 @@ pub mod pipeline;
 pub mod run_provenance;
 #[cfg(test)]
 pub(crate) mod test_rng;
-mod vocabulary;
-pub use vocabulary::{RelationKind, is_precise};
 
 // `diffctx graph`: a side feature reachable only through the Python bindings.
 #[cfg(feature = "python")]

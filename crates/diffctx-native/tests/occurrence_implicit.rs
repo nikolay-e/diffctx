@@ -7,7 +7,6 @@
 
 use std::sync::Arc;
 
-use _diffctx::occurrence::{Implicit, Known, implicit_kinds};
 use diffctx_facts::facts::lang::c::{CExtractor, CppExtractor};
 use diffctx_facts::facts::lang::go::GoExtractor;
 use diffctx_facts::facts::lang::java::JavaExtractor;
@@ -20,6 +19,7 @@ use diffctx_facts::facts::lang::sql::SqlExtractor;
 use diffctx_facts::facts::lang::terraform::TerraformExtractor;
 use diffctx_facts::facts::lang::typescript::TypeScript;
 use diffctx_facts::facts::{Extractor, FileFacts, ModulePath, ProjectId};
+use diffctx_occurrence::tokens::occurrence::{Implicit, Known, implicit_kinds};
 use diffctx_snapshot::snapshot::{RepoPath, RunBudget};
 
 fn kinds_in(

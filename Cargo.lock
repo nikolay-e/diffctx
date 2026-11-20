@@ -244,6 +244,8 @@ dependencies = [
  "diffctx-base",
  "diffctx-config",
  "diffctx-facts",
+ "diffctx-occurrence",
+ "diffctx-resolve",
  "diffctx-snapshot",
  "dunce",
  "glob",
@@ -387,6 +389,29 @@ dependencies = [
  "tree-sitter-typescript",
  "tree-sitter-yaml",
  "tree-sitter-zig",
+]
+
+[[package]]
+name = "diffctx-occurrence"
+version = "2.0.0-dev.0"
+dependencies = [
+ "diffctx-base",
+ "diffctx-facts",
+ "diffctx-resolve",
+ "diffctx-snapshot",
+ "serde_json",
+]
+
+[[package]]
+name = "diffctx-resolve"
+version = "2.0.0-dev.0"
+dependencies = [
+ "anyhow",
+ "diffctx-base",
+ "diffctx-config",
+ "diffctx-facts",
+ "diffctx-snapshot",
+ "serde_json",
 ]
 
 [[package]]

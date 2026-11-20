@@ -5,6 +5,7 @@
 
 use std::cell::OnceCell;
 use std::collections::{HashMap, HashSet};
+use std::fmt::Display;
 use std::fs::{File, OpenOptions};
 use std::io::Write;
 use std::sync::Arc;
@@ -16,11 +17,10 @@ use super::{
     Reason, Unread, ValuePlace, Verdict, View, Witness, admitted, callee_of, close_aliases,
     counts_against, entered, implicit_kinds, outcomes, value_use,
 };
-use crate::decide::{Gap, USES, Use};
-use crate::resolve::{Definition, Relation, UnresolvedReason};
 use crate::tokens::{Names, TokenIndex};
-use crate::vocabulary::family::{Family, Group};
 use diffctx_facts::facts::{DefKind, FactsCache, FileFacts, Name, facts_of};
+use diffctx_resolve::resolve::{Definition, Relation, USES, UnresolvedReason};
+use diffctx_resolve::vocabulary::family::{Family, Group};
 use diffctx_snapshot::snapshot::{AnalysisContext, Loss, RepoPath, SideTag};
 
 const ENV: &str = "DIFFCTX_DEBUG_OCCURRENCES";
@@ -61,7 +61,7 @@ pub struct Shadow<'a> {
     /// The reference names of the definition.
     pub names: &'a [String],
     /// What else stands in the way of every relation of use: the run's gaps.
-    pub gaps: &'a [Gap],
+    pub gaps: &'a [&'a dyn Display],
     /// The changed definitions nested in this one, and whether every one is whole
     /// and unused (only asked for when the lines are written).
     pub held: usize,
@@ -79,11 +79,6 @@ pub struct Accounted {
     pub unused: bool,
     /// Every relation is complete and so is what the definition holds.
     pub whole: bool,
-    /// The lines that still spell what the range removed, at the places the base
-    /// resolved a use to it: its callers whatever they land on now.
-    pub callers: Vec<Use>,
-    /// One of them is at a place the base resolved a use to what the range removed.
-    pub stranded: bool,
     /// The lines, at the head, whose quoted spelling resolved to another definition: a
     /// literal on one of them is that use, not a mention the cell could not read.
     pub elsewhere: HashSet<(RepoPath, u32)>,
@@ -144,7 +139,7 @@ impl Shadow<'_> {
             .iter()
             .filter(|relation| !USES.contains(relation))
             .map(|relation| (*relation, &[][..]));
-        let pairs: Vec<(Relation, &[Gap])> = (USES.iter())
+        let pairs: Vec<(Relation, &[&dyn Display])> = (USES.iter())
             .map(|relation| (*relation, self.gaps))
             .chain(unanswered)
             .collect();
@@ -180,7 +175,6 @@ impl Shadow<'_> {
                 listing,
                 read: &|path: &RepoPath| self.ctx.head.read(path).ok().flatten(),
                 bounds,
-                gaps: self.gaps,
             });
             ledger.finish(found.entries.len() - matched);
         }
@@ -263,7 +257,7 @@ impl Shadow<'_> {
                 continue;
             }
             let reasons: Vec<String> = match &verdict {
-                Verdict::Complete => Vec::new(),
+                Verdict::Complete(_) => Vec::new(),
                 Verdict::Partial(stuck) => stuck.iter().map(ToString::to_string).collect(),
             };
             let gaps: Vec<String> = gaps.iter().map(ToString::to_string).collect();
@@ -295,8 +289,6 @@ impl Shadow<'_> {
             hedges,
             unused,
             whole,
-            callers: Vec::new(),
-            stranded: false,
             quoted: found.quoted,
             elsewhere: if side == SideTag::Head {
                 found.elsewhere
@@ -445,7 +437,7 @@ impl Shadow<'_> {
     /// (`python - <<EOF`, `node -e`), each at its command: nothing reads that code,
     /// so the use is a candidate (#427).
     fn embedded_uses(&self, definition: &Definition) -> Vec<Entry> {
-        let runtime = crate::impact::runtime_of(definition.file.as_str());
+        let runtime = diffctx_base::languages::runtime_of(definition.file.as_str());
         if !matches!(runtime.as_str(), "python" | "js") {
             return Vec::new();
         }

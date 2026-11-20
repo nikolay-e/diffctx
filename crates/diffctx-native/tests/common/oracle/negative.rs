@@ -521,7 +521,7 @@ fn the_engines_kinds_the_harnesss_and_the_schemas_are_one_vocabulary() -> Result
         .and_then(|rest| rest.split("- `resolution`").next())
         .ok_or_else(|| Failed::from("SCHEMA.md no longer lists the `kind` values"))?;
     let mut wrong = Vec::new();
-    for engine in _diffctx::RelationKind::ALL {
+    for engine in diffctx_resolve::vocabulary::RelationKind::ALL {
         let name = engine.name();
         if Kind::parse(name).is_none_or(|k| k.name() != name) {
             wrong.push(format!("the harness does not know the engine's `{name}`"));
@@ -532,7 +532,7 @@ fn the_engines_kinds_the_harnesss_and_the_schemas_are_one_vocabulary() -> Result
     }
     for harness in Kind::ALL {
         let name = harness.name();
-        if _diffctx::RelationKind::parse(name).is_none_or(|k| k.name() != name) {
+        if diffctx_resolve::vocabulary::RelationKind::parse(name).is_none_or(|k| k.name() != name) {
             wrong.push(format!("the engine does not know the harness's `{name}`"));
         }
     }

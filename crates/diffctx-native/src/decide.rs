@@ -18,7 +18,7 @@
 //! An absence is never a default. [`Complete`] is the witness that the search for
 //! a definition's uses left nothing unread, and [`Coverage::close`] is the one place
 //! that makes it: from the gaps the search found and, for a definition, from the
-//! occurrence account of its names ([`crate::tokens::occurrence::Account`]): every
+//! occurrence account of its names ([`diffctx_occurrence::tokens::occurrence::Account`]): every
 //! occurrence in the files of its interaction group ([`Group`]) is explained.
 //! An absence claim ([`Claim::Absent`]) or an exact count ([`Count::Exact`]) holds
 //! the witness. Every other outcome names its [`Gap`]. A failed read is an `Err`
@@ -37,21 +37,22 @@ use std::sync::Arc;
 use anyhow::Result;
 
 use crate::fold::{self, Basis, Rule};
-use crate::resolve::{
-    Binding, CandidateReason, Definition, EvidenceKind, Relation, Resolution, UnresolvedReason,
-};
 use crate::run_provenance::state::ScoredState;
-use crate::tokens::occurrence::debug::{Accounted, Shadow, Written, sink};
-use crate::tokens::occurrence::{
-    Hedge, Implicit, Index, Known, Reason as OccurrenceReason, ValuePlace, View,
-};
-use crate::tokens::{GroupTokens, Names, TokenIndex};
-use crate::vocabulary::family::{Family, Group, Resolver, context_in};
 use diffctx_facts::facts::{
     Def, DefChange, DefKey, DefKind, Delta, Disambig, EntryKind, Export, Fact, FactsCache,
     FileFacts, Framework, HeldAs, Language, ModulePath, Name, Origin, ProjectId, Scope,
     SemanticDef, Visibility, facts_of, holds_data, members_of, semantic_changes,
 };
+use diffctx_occurrence::tokens::occurrence::debug::{Shadow, Written, sink};
+use diffctx_occurrence::tokens::occurrence::{
+    Hedge, Implicit, Index, Known, Reason as OccurrenceReason, Standing, ValuePlace, View,
+};
+use diffctx_occurrence::tokens::{GroupTokens, Names, TokenIndex};
+use diffctx_resolve::resolve::{
+    Binding, CandidateReason, Definition, EvidenceKind, Relation, Resolution, USES,
+    UnresolvedReason,
+};
+use diffctx_resolve::vocabulary::family::{Family, Group, Resolver, context_in};
 use diffctx_snapshot::resource::LimitReason;
 use diffctx_snapshot::snapshot::{
     AnalysisContext, ChangeKind, Loss, NotAnalysedReason, RepoPath, SideTag,
@@ -714,17 +715,6 @@ impl Coverages {
     }
 }
 
-/// The relations of a use: the ones a change to a definition reaches its readers
-/// and callers through (`Relation::uses`).
-pub(crate) const USES: [Relation; 6] = [
-    Relation::Calls,
-    Relation::Instantiates,
-    Relation::Overrides,
-    Relation::Reads,
-    Relation::Writes,
-    Relation::PassesAsValue,
-];
-
 /// What a statement about a definition's uses may be.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 #[allow(
@@ -741,16 +731,10 @@ pub(crate) enum Claim {
     Absent(Complete),
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum Standing {
-    Resolved,
-    Candidate(&'static str),
-}
-
 /// One use of a definition: the line, how it uses it, and how sure the
 /// resolver is. `scope` names who owns the line.
 #[derive(Clone, Debug)]
-pub struct Use {
+pub(crate) struct Use {
     pub file: String,
     pub line: u32,
     /// The bytes of the name at the line, in the file as the resolver read it.
@@ -767,6 +751,25 @@ pub struct Use {
     pub sharing: usize,
 }
 
+/// What the occurrence accounting of a changed definition found, with what only the
+/// answer knows: the callers of what the range removed and whether any of them is
+/// stranded.
+pub(crate) struct Accounting {
+    hedges: Vec<(Relation, Hedge)>,
+    unused: bool,
+    whole: bool,
+    /// The lines that still spell what the range removed, at the places the base
+    /// resolved a use to it: its callers whatever they land on now.
+    callers: Vec<Use>,
+    /// One of them is at a place the base resolved a use to what the range removed.
+    stranded: bool,
+    /// The lines, at the head, whose quoted spelling resolved to another definition: a
+    /// literal on one of them is that use, not a mention the cell could not read.
+    elsewhere: HashSet<(RepoPath, u32)>,
+    /// The whole strings that spell a name of the definition and no binding explains.
+    quoted: usize,
+}
+
 /// The uses of a definition and what covered the search for them: the one
 /// coverage of the relations that use it (`Relation::uses`), which is every
 /// relation an absence is claimed for.
@@ -774,7 +777,7 @@ pub(crate) struct Verdict {
     pub uses: Vec<Use>,
     by_relation: [(Relation, Coverage); 6],
     overridden: Option<String>,
-    found: Rc<Accounted>,
+    found: Rc<Accounting>,
     /// What stands in the way of each relation's absence, less the occurrences a
     /// resolved use already settles: a site has one standing, the strongest.
     hedges: Vec<(Relation, Hedge)>,
@@ -1188,7 +1191,7 @@ pub(crate) struct Cell {
     index: OnceCell<Rc<Index>>,
     /// The occurrence account of each changed definition, once per cell: the
     /// answer asks for a definition's verdict from several places.
-    accounted: RefCell<HashMap<DefKey, Rc<Accounted>>>,
+    accounted: RefCell<HashMap<DefKey, Rc<Accounting>>>,
 }
 
 /// The context the cell reads: the range the run analysed, or one snapshot of
@@ -1891,7 +1894,7 @@ impl Cell {
         file: &str,
         name: &str,
         lines: (u32, u32),
-    ) -> Option<&crate::resolve::Definition> {
+    ) -> Option<&diffctx_resolve::resolve::Definition> {
         self.defs_by_file
             .get(file)?
             .iter()
@@ -2292,14 +2295,17 @@ impl Cell {
         }
     }
 
-    fn definition(&self, key: &DefKey) -> Option<&crate::resolve::Definition> {
+    fn definition(&self, key: &DefKey) -> Option<&diffctx_resolve::resolve::Definition> {
         self.defs_by_key
             .get(key)
             .map(|at| &self.head.definitions()[*at])
     }
 
     /// The enclosing class of a member: the definition its container names.
-    fn owner(&self, def: &crate::resolve::Definition) -> Option<&crate::resolve::Definition> {
+    fn owner(
+        &self,
+        def: &diffctx_resolve::resolve::Definition,
+    ) -> Option<&diffctx_resolve::resolve::Definition> {
         let (name, outer) = def.key.local.container.split_last()?;
         self.defs_by_file
             .get(def.file.as_str())?
@@ -2313,7 +2319,7 @@ impl Cell {
     }
 
     /// Whether a function is what holds the definition.
-    fn inside_function(&self, def: &crate::resolve::Definition) -> bool {
+    fn inside_function(&self, def: &diffctx_resolve::resolve::Definition) -> bool {
         let Some((name, outer)) = def.key.local.container.split_last() else {
             return false;
         };
@@ -2330,7 +2336,11 @@ impl Cell {
     }
 
     /// The class at the head that held a member the range removed.
-    fn class_holding(&self, file: &str, key: &DefKey) -> Option<&crate::resolve::Definition> {
+    fn class_holding(
+        &self,
+        file: &str,
+        key: &DefKey,
+    ) -> Option<&diffctx_resolve::resolve::Definition> {
         let (name, outer) = key.local.container.split_last()?;
         self.defs_by_file
             .get(file)?
@@ -2345,14 +2355,14 @@ impl Cell {
 
     fn report_as(
         &self,
-        def: &crate::resolve::Definition,
+        def: &diffctx_resolve::resolve::Definition,
         how: How,
         stale: Vec<DefKey>,
         unpaired: bool,
         holder: bool,
     ) -> Vec<Changed> {
         let mut out = Vec::new();
-        let own = |def: &crate::resolve::Definition, reach| Changed {
+        let own = |def: &diffctx_resolve::resolve::Definition, reach| Changed {
             name: self.shown_name(def.kind, def.key.local.name.as_str(), def.file.as_str()),
             kind: def.kind,
             file: def.file.as_str().to_string(),
@@ -2754,7 +2764,7 @@ impl Cell {
         file: &str,
         name: &str,
         lines: (u32, u32),
-    ) -> Option<&crate::resolve::Definition> {
+    ) -> Option<&diffctx_resolve::resolve::Definition> {
         self.defs_by_file
             .get(file)?
             .iter()
@@ -2906,7 +2916,7 @@ impl Cell {
     /// The occurrence accounting of each definition of `changed`: what stands in the
     /// way of each relation's absence. `gaps` is what else stands in the way of
     /// every relation. Under `DIFFCTX_DEBUG_OCCURRENCES` its lines are written too.
-    fn occurrences(&self, changed: &Changed, gaps: &[Gap]) -> Rc<Accounted> {
+    fn occurrences(&self, changed: &Changed, gaps: &[Gap]) -> Rc<Accounting> {
         let key = changed.key();
         let known = key.and_then(|key| self.accounted.borrow().get(key).cloned());
         if let Some(known) = known {
@@ -2934,7 +2944,7 @@ impl Cell {
         !done.hedges.is_empty()
     }
 
-    fn account_occurrences(&self, changed: &Changed, gaps: &[Gap], write: bool) -> Accounted {
+    fn account_occurrences(&self, changed: &Changed, gaps: &[Gap], write: bool) -> Accounting {
         let mut out = sink().filter(|_| write);
         let files = self.shadow_files.get_or_init(|| {
             let mut files: Vec<FileFacts> = self
@@ -3017,6 +3027,9 @@ impl Cell {
         };
         #[cfg(debug_assertions)]
         let pathspec = |file: &str| within_scope(&self.scope, file);
+        let shown: Vec<&dyn std::fmt::Display> = (gaps.iter())
+            .map(|gap| gap as &dyn std::fmt::Display)
+            .collect();
         let shadow = Shadow {
             ctx: &self.ctx,
             cache: &self.cache,
@@ -3029,14 +3042,17 @@ impl Cell {
             reach: &reach,
             outside: &outside,
             names: &names,
-            gaps,
+            gaps: &shown,
             held: held.len(),
             nested,
             #[cfg(debug_assertions)]
-            identity: write.then(|| crate::tokens::occurrence::identity::Bounds {
-                pathspec: &pathspec,
-                own_file: changed.local.then_some(changed.file.as_str()),
-            }),
+            identity: write.then(
+                || diffctx_occurrence::tokens::occurrence::identity::Bounds {
+                    pathspec: &pathspec,
+                    own_file: changed.local.then_some(changed.file.as_str()),
+                    outside_scope: (gaps.iter()).any(|gap| matches!(gap, Gap::OutsideScope { .. })),
+                },
+            ),
         };
         let heads = changed
             .subjects
@@ -3049,7 +3065,7 @@ impl Cell {
             .filter(|definition| changed.stale.contains(&definition.key))
             .map(|definition| (definition, SideTag::Base));
         let (callers, stranded) = self.stranded_uses(&view, changed);
-        let mut all = Accounted {
+        let mut all = Accounting {
             hedges: Vec::new(),
             unused: true,
             whole: true,
@@ -3320,7 +3336,7 @@ impl Cell {
         uses: &[Use],
     ) -> (
         [(Relation, Coverage); 6],
-        Rc<Accounted>,
+        Rc<Accounting>,
         Vec<(Relation, Hedge)>,
     ) {
         let mut tail = tail;
@@ -3635,7 +3651,7 @@ impl Cell {
     /// The trait a Rust definition belongs to: the one it implements, or the one
     /// that declares it. A PHP trait's method is copied into the class that uses it,
     /// so a call of it is a resolved call, not a dispatch.
-    fn dispatched_via(&self, def: &crate::resolve::Definition) -> Option<String> {
+    fn dispatched_via(&self, def: &diffctx_resolve::resolve::Definition) -> Option<String> {
         // Only a Rust `ImplOf` names a trait a call may dispatch through: a Kotlin
         // one names an extension's receiver, and a call reaches it by its name.
         if self.family != Family::Rust {

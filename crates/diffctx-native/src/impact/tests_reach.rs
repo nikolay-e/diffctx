@@ -32,9 +32,9 @@ use super::{
     Cells, Fragment, FragmentId, FragmentKind, Link, MAX_TEST_HOPS, ScoredState, TestLink,
     base_symbol, cell_caller, lifted_caller, read_or_note, rel, spelling_files,
 };
-use crate::tokens::Names;
-use crate::vocabulary::family::Group;
 use diffctx_base::testfiles::{DeclaredTests, naming_links};
+use diffctx_occurrence::tokens::Names;
+use diffctx_resolve::vocabulary::family::Group;
 
 /// What a use of a definition leads to one hop up: the fragments that hold it,
 /// and a test file whose own code does with no fragment to name it.

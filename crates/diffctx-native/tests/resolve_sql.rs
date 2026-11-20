@@ -4,8 +4,8 @@
 
 mod snapshot_fixture;
 
-use _diffctx::resolve::{Binding, Relation, Resolution, SqlResolver};
 use diffctx_facts::facts::{DefKey, FactsCache, LocalKey, Name};
+use diffctx_resolve::resolve::{Binding, Relation, Resolution, SqlResolver};
 use diffctx_snapshot::snapshot::{AnalysisContext, RangeSpec, RunBudget, Side, SideTag};
 use snapshot_fixture::Repo;
 

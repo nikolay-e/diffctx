@@ -199,7 +199,8 @@ pub(crate) fn says_nobody(doc: &Value, symbol: &str) -> bool {
 // The kinds the engine's `Implicit` names, lowercased, once that type exists:
 // read from the source, so that this suite compiles without it.
 pub(crate) fn engine_implicit_kinds() -> Option<BTreeSet<String>> {
-    let src = Path::new(env!("CARGO_MANIFEST_DIR")).join("src/tokens/occurrence");
+    let src =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../diffctx-occurrence/src/tokens/occurrence");
     for entry in WalkDir::new(src).into_iter().flatten() {
         let Ok(text) = std::fs::read_to_string(entry.path()) else {
             continue;

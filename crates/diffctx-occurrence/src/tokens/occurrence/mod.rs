@@ -17,8 +17,8 @@ mod scanner;
 use std::fmt;
 use std::ops::Range;
 
-use crate::resolve::{CandidateReason, Relation, UnresolvedReason};
 use diffctx_facts::facts::{DefKey, ModulePath, Name, Scope, Span};
+use diffctx_resolve::resolve::{CandidateReason, Relation, UnresolvedReason};
 use diffctx_snapshot::snapshot::{Loss, RepoPath, SideTag};
 
 pub use diffctx_facts::facts::Lexical;
@@ -287,6 +287,14 @@ impl Outcome {
     }
 }
 
+/// How sure the resolver is of a use: bound to the definition, or a candidate with the
+/// reason it is only one.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Standing {
+    Resolved,
+    Candidate(&'static str),
+}
+
 /// A code occurrence with its outcome. A mention a resolver explained is code and
 /// an entry; one nobody explained stays a mention and is counted, never listed.
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -474,7 +482,7 @@ impl Account {
                 .map(|occurrences| Hedge::TooCommon { occurrences }),
         );
         if hedges.is_empty() {
-            Verdict::Complete
+            Verdict::Complete(Proof(()))
         } else {
             Verdict::Partial(hedges)
         }
@@ -540,23 +548,46 @@ impl fmt::Display for Hedge {
     }
 }
 
+/// What a `Complete` verdict carries: only [`Account::verdict`] makes one, because the field is
+/// private to this module tree. Another crate can match `Verdict::Complete(_)` and cannot write it.
+///
+/// ```
+/// use diffctx_occurrence::tokens::occurrence::{Outcome, Verdict};
+///
+/// fn matched(outcome: &Outcome, verdict: &Verdict) -> bool {
+///     matches!(outcome, Outcome::NotOurs(_)) || matches!(verdict, Verdict::Complete(_))
+/// }
+/// ```
+///
+/// ```compile_fail
+/// use diffctx_occurrence::tokens::occurrence::{Proof, Verdict};
+/// let _ = Verdict::Complete(Proof(()));
+/// ```
+///
+/// ```compile_fail
+/// use diffctx_occurrence::tokens::occurrence::Proof;
+/// let _ = Proof::default();
+/// ```
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct Proof(());
+
 /// The shadow verdict of one account.
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub enum Verdict {
-    Complete,
+    Complete(Proof),
     Partial(Vec<Hedge>),
 }
 
 impl Verdict {
     pub const fn as_str(&self) -> &'static str {
         match self {
-            Self::Complete => "complete",
+            Self::Complete(_) => "complete",
             Self::Partial(_) => "partial",
         }
     }
 
     pub const fn is_complete(&self) -> bool {
-        matches!(self, Self::Complete)
+        matches!(self, Self::Complete(_))
     }
 }
 

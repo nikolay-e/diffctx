@@ -1,0 +1,196 @@
+# Every pub item of diffctx-occurrence, as tests/public_api.rs reads it from the crate's src/.
+# A new item is red; so is a line the code no longer has: delete it. The count is capped by
+# public_items.diffctx-occurrence in budget.toml, which only goes down.
+tokens mod
+tokens::GroupTokens struct
+tokens::GroupTokens::files fn (&self) -> &[RepoPath]
+tokens::GroupTokens::spelling fn (&self, names: &Names) -> Vec<u32>
+tokens::GroupTokens::spells fn (&self, path: &str, names: &Names) -> Option<bool>
+tokens::GroupTokens::unread fn (&self) -> &[u32]
+tokens::Names struct
+tokens::Names::new fn <'a>(names: impl IntoIterator<Item = &'a str>) -> Self
+tokens::TokenIndex struct derive(Default)
+tokens::TokenIndex::bind fn (&self, ctx: &AnalysisContext, cache: &FactsCache) -> Result<()>
+tokens::TokenIndex::group fn (&self, group: Group) -> Arc<GroupTokens>
+tokens::occurrence mod
+tokens::occurrence use alias::{callee_of, close_aliases, value_use}
+tokens::occurrence use diffctx_facts::facts::Lexical
+tokens::occurrence use implicit::{Known, entered, implicit_kinds}
+tokens::occurrence use outcome::{FileOutcomes, Index, View, admitted, counts_against, outcomes}
+tokens::occurrence use scanner::{Case, Scan, scan}
+tokens::occurrence::Account struct derive(Clone, Debug, Eq, PartialEq)
+tokens::occurrence::Account.admits_calls field bool
+tokens::occurrence::Account.alias_bound field Option<AliasBound>
+tokens::occurrence::Account.consumed_by_reading field bool
+tokens::occurrence::Account.definition field DefKey
+tokens::occurrence::Account.entries field Vec<Entry>
+tokens::occurrence::Account.files field usize
+tokens::occurrence::Account.implicit field Vec<Implicit>
+tokens::occurrence::Account.mentions field usize
+tokens::occurrence::Account.relation field Relation
+tokens::occurrence::Account.side field SideTag
+tokens::occurrence::Account.too_common field Option<usize>
+tokens::occurrence::Account.unread field Vec<Unread>
+tokens::occurrence::Account::new fn (definition: DefKey, relation: Relation, side: SideTag) -> Self
+tokens::occurrence::Account::verdict fn (&self) -> Verdict
+tokens::occurrence::Alias struct derive(Clone, Debug, Eq, PartialEq)
+tokens::occurrence::Alias.hops field usize
+tokens::occurrence::Alias.name field Name
+tokens::occurrence::Alias.scope field AliasScope
+tokens::occurrence::AliasBound struct derive(Clone, Copy, Debug, Eq, PartialEq)
+tokens::occurrence::AliasBound.hops field usize
+tokens::occurrence::AliasBound.names field usize
+tokens::occurrence::AliasBound::exceeded fn (hops: usize, names: usize) -> Option<Self>
+tokens::occurrence::AliasScope enum derive(Clone, Debug, Eq, PartialEq)
+tokens::occurrence::AliasScope::Declared variant Declared(Scope)
+tokens::occurrence::AliasScope::File variant File(RepoPath)
+tokens::occurrence::AliasScope::Importers variant Importers(ModulePath)
+tokens::occurrence::Basis enum derive(Clone, Copy, Debug, Eq, Hash, PartialEq)
+tokens::occurrence::Basis::Assignment variant Assignment
+tokens::occurrence::Basis::DefinitionName variant DefinitionName
+tokens::occurrence::Basis::Destructuring variant Destructuring
+tokens::occurrence::Basis::LocalSite variant LocalSite
+tokens::occurrence::Basis::OwnModule variant OwnModule
+tokens::occurrence::Basis::RenamedExport variant RenamedExport
+tokens::occurrence::Basis::RenamedImport variant RenamedImport
+tokens::occurrence::Basis::Resolved variant Resolved
+tokens::occurrence::Basis::TypeAlias variant TypeAlias
+tokens::occurrence::Basis::Unproven variant Unproven
+tokens::occurrence::Basis::ValuePosition variant ValuePosition
+tokens::occurrence::Basis::Witnessed variant Witnessed
+tokens::occurrence::Basis::as_str fn (self) -> &'static str
+tokens::occurrence::Class enum derive(Clone, Copy, Debug, Eq, Hash, PartialEq)
+tokens::occurrence::Class::Code variant Code
+tokens::occurrence::Class::Mention variant Mention
+tokens::occurrence::Class::as_str fn (self) -> &'static str
+tokens::occurrence::Entry struct derive(Clone, Debug, Eq, PartialEq)
+tokens::occurrence::Entry.basis field Basis
+tokens::occurrence::Entry.occurrence field Occurrence
+tokens::occurrence::Entry.outcome field Outcome
+tokens::occurrence::Entry.passed_to field Option<Name>
+tokens::occurrence::Entry.relation field Option<Relation>
+tokens::occurrence::Entry::basis_str fn (&self) -> &'static str
+tokens::occurrence::Entry::counts_for fn (&self, relation: Relation) -> bool
+tokens::occurrence::Hedge enum derive(Clone, Debug, Eq, PartialEq)
+tokens::occurrence::Hedge impl fmt::Display for Hedge
+tokens::occurrence::Hedge::AliasBound variant AliasBound(AliasBound)
+tokens::occurrence::Hedge::Candidate variant Candidate { file: RepoPath, line: u32, bytes: Range<u32>, reason: Reason, }
+tokens::occurrence::Hedge::Implicit variant Implicit(Implicit)
+tokens::occurrence::Hedge::Leak variant Leak { file: RepoPath, line: u32, place: ValuePlace, callee: Option<Name>, }
+tokens::occurrence::Hedge::TooCommon variant TooCommon { occurrences: usize, }
+tokens::occurrence::Hedge::Unlisted variant Unlisted { occurrences: usize, }
+tokens::occurrence::Hedge::Unread variant Unread { file: RepoPath, loss: Loss, }
+tokens::occurrence::Implicit enum derive(Clone, Copy, Debug, Eq, Hash, PartialEq)
+tokens::occurrence::Implicit::ALL const [Self; 6]
+tokens::occurrence::Implicit::Entry variant Entry
+tokens::occurrence::Implicit::Operator variant Operator
+tokens::occurrence::Implicit::Outside variant Outside
+tokens::occurrence::Implicit::Override variant Override
+tokens::occurrence::Implicit::Protocol variant Protocol
+tokens::occurrence::Implicit::Test variant Test
+tokens::occurrence::Implicit::as_str fn (self) -> &'static str
+tokens::occurrence::MAX_ALIAS_HOPS const usize
+tokens::occurrence::MAX_ALIAS_NAMES const usize
+tokens::occurrence::Occurrence struct derive(Clone, Debug, Eq, PartialEq)
+tokens::occurrence::Occurrence.bytes field Range<u32>
+tokens::occurrence::Occurrence.class field Class
+tokens::occurrence::Occurrence.file field RepoPath
+tokens::occurrence::Occurrence.line field u32
+tokens::occurrence::Outcome enum derive(Clone, Debug, Eq, PartialEq)
+tokens::occurrence::Outcome::Alias variant Alias(Alias)
+tokens::occurrence::Outcome::Candidate variant Candidate(Reason)
+tokens::occurrence::Outcome::Declaration variant Declaration
+tokens::occurrence::Outcome::Leak variant Leak(ValuePlace)
+tokens::occurrence::Outcome::NotOurs variant NotOurs(Witness)
+tokens::occurrence::Outcome::Ours variant Ours
+tokens::occurrence::Outcome::as_str fn (&self) -> &'static str
+tokens::occurrence::Proof struct derive(Clone, Copy, Debug, Eq, PartialEq)
+tokens::occurrence::Reason enum derive(Clone, Copy, Debug, Eq, PartialEq)
+tokens::occurrence::Reason::BasisUnverified variant BasisUnverified
+tokens::occurrence::Reason::Conflict variant Conflict
+tokens::occurrence::Reason::Dispatch variant Dispatch
+tokens::occurrence::Reason::Embedded variant Embedded
+tokens::occurrence::Reason::FileLost variant FileLost
+tokens::occurrence::Reason::OverrideUnproven variant OverrideUnproven
+tokens::occurrence::Reason::Resolver variant Resolver(CandidateReason)
+tokens::occurrence::Reason::Unexplained variant Unexplained
+tokens::occurrence::Reason::Unresolved variant Unresolved(UnresolvedReason)
+tokens::occurrence::Reason::WideBinding variant WideBinding
+tokens::occurrence::Standing enum derive(Clone, Copy, Debug, Eq, PartialEq)
+tokens::occurrence::Standing::Candidate variant Candidate(&'static str)
+tokens::occurrence::Standing::Resolved variant Resolved
+tokens::occurrence::Unread struct derive(Clone, Debug, Eq, PartialEq)
+tokens::occurrence::Unread.file field RepoPath
+tokens::occurrence::Unread.loss field Loss
+tokens::occurrence::ValuePlace enum derive(Clone, Copy, Debug, Eq, Hash, PartialEq)
+tokens::occurrence::ValuePlace::Argument variant Argument
+tokens::occurrence::ValuePlace::Element variant Element
+tokens::occurrence::ValuePlace::Return variant Return
+tokens::occurrence::ValuePlace::Store variant Store
+tokens::occurrence::Verdict enum derive(Clone, Debug, Eq, PartialEq)
+tokens::occurrence::Verdict::Complete variant Complete(Proof)
+tokens::occurrence::Verdict::Partial variant Partial(Vec<Hedge>)
+tokens::occurrence::Verdict::as_str fn (&self) -> &'static str
+tokens::occurrence::Verdict::is_complete fn (&self) -> bool
+tokens::occurrence::Witness enum derive(Clone, Debug, Eq, PartialEq)
+tokens::occurrence::Witness::BareName variant BareName(Vec<Name>)
+tokens::occurrence::Witness::Builtin variant Builtin(RepoPath)
+tokens::occurrence::Witness::CommandWord variant CommandWord(Name)
+tokens::occurrence::Witness::Compound variant Compound(Name)
+tokens::occurrence::Witness::ExternalModule variant ExternalModule(ModulePath)
+tokens::occurrence::Witness::ExternalName variant ExternalName(Name)
+tokens::occurrence::Witness::Keyword variant Keyword(Name)
+tokens::occurrence::Witness::Local variant Local(Span)
+tokens::occurrence::Witness::Manifests variant Manifests(UnresolvedReason, Name)
+tokens::occurrence::Witness::ModulePath variant ModulePath(ModulePath)
+tokens::occurrence::Witness::Namespace variant Namespace(Name)
+tokens::occurrence::Witness::OtherDefinition variant OtherDefinition(DefKey)
+tokens::occurrence::Witness::OtherModule variant OtherModule(RepoPath)
+tokens::occurrence::Witness::OtherProject variant OtherProject(RepoPath)
+tokens::occurrence::Witness::Statement variant Statement(Name)
+tokens::occurrence::Witness::Unreached variant Unreached(RepoPath)
+tokens::occurrence::Witness::as_str fn (&self) -> &'static str
+tokens::occurrence::debug mod
+tokens::occurrence::debug::Accounted struct
+tokens::occurrence::debug::Accounted.elsewhere field HashSet<(RepoPath, u32)>
+tokens::occurrence::debug::Accounted.hedges field Vec<(Relation, Hedge)>
+tokens::occurrence::debug::Accounted.quoted field usize
+tokens::occurrence::debug::Accounted.unused field bool
+tokens::occurrence::debug::Accounted.whole field bool
+tokens::occurrence::debug::Shadow struct
+tokens::occurrence::debug::Shadow.cache field &'a FactsCache
+tokens::occurrence::debug::Shadow.ctx field &'a AnalysisContext
+tokens::occurrence::debug::Shadow.embedded field OnceCell<Vec<Entry>>
+tokens::occurrence::debug::Shadow.family field Family
+tokens::occurrence::debug::Shadow.files field &'a [FileFacts]
+tokens::occurrence::debug::Shadow.gaps field &'a [&'a dyn Display]
+tokens::occurrence::debug::Shadow.held field usize
+tokens::occurrence::debug::Shadow.identity field Option<super::identity::Bounds<'a>>
+tokens::occurrence::debug::Shadow.lost field &'a dyn Fn(&RepoPath) -> Option<Loss>
+tokens::occurrence::debug::Shadow.names field &'a [String]
+tokens::occurrence::debug::Shadow.nested field bool
+tokens::occurrence::debug::Shadow.outside field &'a [RepoPath]
+tokens::occurrence::debug::Shadow.reach field &'a dyn Fn(&str) -> bool
+tokens::occurrence::debug::Shadow.tokens field &'a TokenIndex
+tokens::occurrence::debug::Shadow.view field &'a View<'a>
+tokens::occurrence::debug::Shadow::write fn ( &self, out: Option<&mut File>, written: &mut Written, definition: &Definition, side: SideTag, known: Known, ) -> Accounted
+tokens::occurrence::debug::Written type HashSet<(String, String, Option<&'static str>)>
+tokens::occurrence::debug::sink fn () -> Option<File>
+tokens::occurrence::identity mod
+tokens::occurrence::identity::Bounds struct
+tokens::occurrence::identity::Bounds.outside_scope field bool
+tokens::occurrence::identity::Bounds.own_file field Option<&'a str>
+tokens::occurrence::identity::Bounds.pathspec field &'a dyn Fn(&str) -> bool
+tokens::occurrence::identity::Ledger struct
+tokens::occurrence::identity::Ledger::file fn ( &mut self, name: &Name, file: &FileFacts, text: &[u8], records: &[Entry], mentions: usize, comments: usize, )
+tokens::occurrence::identity::Ledger::finish fn (mut self, extra: usize)
+tokens::occurrence::identity::Ledger::name fn (&mut self, name: &Name, scope: Option<&AliasScope>)
+tokens::occurrence::identity::Ledger::open fn (def: &str, side: &str) -> Option<Self>
+tokens::occurrence::identity::Ledger::universe fn (&mut self, universe: &Universe<'_>)
+tokens::occurrence::identity::Ledger::unread fn (&mut self, name: &Name, path: &RepoPath, text: Option<&[u8]>)
+tokens::occurrence::identity::Universe struct
+tokens::occurrence::identity::Universe.bounds field &'a Bounds<'a>
+tokens::occurrence::identity::Universe.group field &'a [RepoPath]
+tokens::occurrence::identity::Universe.listing field Vec<RepoPath>
+tokens::occurrence::identity::Universe.outside field &'a [RepoPath]
+tokens::occurrence::identity::Universe.read field &'a dyn Fn(&RepoPath) -> Option<Bytes>

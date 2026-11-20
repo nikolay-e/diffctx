@@ -16,17 +16,17 @@ use super::rows::{
 };
 use super::scanner::dollar_joins;
 use super::{
-    Alias, AliasScope, Basis, Case, Class, Entry, Occurrence, Outcome, Reason, Witness, scan,
+    Alias, AliasScope, Basis, Case, Class, Entry, Occurrence, Outcome, Reason, Standing, Witness,
+    scan,
 };
-use crate::decide::Standing;
-use crate::resolve::{
-    Binding, CandidateReason, DYNAMIC, Definition, Relation, Resolution, UnresolvedReason,
-};
-use crate::vocabulary::family::Family;
 use diffctx_facts::facts::{
     Def, DefKey, DefKind, Export, Fact, FileFacts, Import, Language, Local, LocalKind, Name,
     ProjectId, Scope, Span, Star, UseKind,
 };
+use diffctx_resolve::resolve::{
+    Binding, CandidateReason, DYNAMIC, Definition, Relation, Resolution, UnresolvedReason,
+};
+use diffctx_resolve::vocabulary::family::Family;
 use diffctx_snapshot::snapshot::{Loss, RepoPath, WorkspaceModel};
 mod routes;
 

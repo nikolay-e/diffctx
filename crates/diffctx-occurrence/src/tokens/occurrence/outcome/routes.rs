@@ -7,11 +7,11 @@ use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
 use super::{Claim, Reading, encloses};
-use crate::resolve::{Binding, Definition, Relation, Resolution, UnresolvedReason};
 use crate::tokens::occurrence::rows::{CLASSIC_PAGES, DESERIALIZERS, ISOLATED_MODULES, RUNS_CODE};
 use crate::tokens::occurrence::{Reason, Witness};
 use diffctx_base::testfiles::is_test_path;
 use diffctx_facts::facts::{DefKey, Fact, FileFacts, Name, Receiver, Scope, UseKind};
+use diffctx_resolve::resolve::{Binding, Definition, Relation, Resolution, UnresolvedReason};
 use diffctx_snapshot::snapshot::RepoPath;
 use diffctx_snapshot::snapshot::workspace::{Ecosystem, WorkspaceModel};
 
