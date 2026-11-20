@@ -3,9 +3,9 @@ use std::sync::Arc;
 
 use rustc_hash::{FxHashMap, FxHashSet};
 
-use crate::config::analytics::ANALYTICS;
 use crate::graph::Graph;
 use diffctx_base::types::{EdgeCategory, Fragment, FragmentId};
+use diffctx_config::config::analytics::ANALYTICS;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum QuotientLevel {
@@ -87,12 +87,12 @@ pub(crate) struct HotspotEntry {
 // spellings of `relative_path` disagreeing is what made this reachable.
 fn relative_path(path: &str, root: Option<&str>) -> String {
     let Some(root) = root.filter(|r| !r.is_empty()) else {
-        return crate::paths::to_posix_display(std::borrow::Cow::Borrowed(path));
+        return diffctx_base::paths::to_posix_display(std::borrow::Cow::Borrowed(path));
     };
     let p = Path::new(path);
     match p.strip_prefix(Path::new(root)) {
-        Ok(rel) => crate::paths::to_posix_display(rel.to_string_lossy()),
-        Err(_) => crate::paths::to_posix_display(std::borrow::Cow::Borrowed(path)),
+        Ok(rel) => diffctx_base::paths::to_posix_display(rel.to_string_lossy()),
+        Err(_) => diffctx_base::paths::to_posix_display(std::borrow::Cow::Borrowed(path)),
     }
 }
 

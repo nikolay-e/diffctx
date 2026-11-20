@@ -5,7 +5,7 @@
 use std::sync::Arc;
 
 use _diffctx::facts::{BlobFacts, FileFacts, Language, ModulePath, ProjectId};
-use _diffctx::snapshot::{Loss, RepoPath};
+use diffctx_snapshot::snapshot::{Loss, RepoPath};
 
 fn file(outdated_grammar: bool) -> FileFacts {
     let mut blob = BlobFacts::new(Language::Python);

@@ -4,14 +4,14 @@ use std::sync::Arc;
 
 use rustc_hash::{FxHashMap, FxHashSet};
 
-use crate::config::limits::UTILITY;
-use crate::config::selection::selection;
 use crate::utility::needs::InformationNeed;
 use crate::utility::objective::{
     UtilityState, apply_fragment, compute_density, marginal_gain, utility_value,
 };
 use diffctx_base::interval::IntervalIndex;
 use diffctx_base::types::{Fragment, FragmentId, FragmentKind};
+use diffctx_config::config::limits::UTILITY;
+use diffctx_config::config::selection::selection;
 
 const SENTINEL_TOKEN_COUNT: u32 = 1_000_000_000;
 
@@ -705,7 +705,7 @@ fn build_initial_heap(
     for (i, frag) in candidates.iter().enumerate() {
         // Past the deadline the candidates not yet scored stay out: the
         // cores are already placed, and a partial context beats no artifact.
-        if !crate::resource::poll_current_every(i, 64) {
+        if !diffctx_snapshot::resource::poll_current_every(i, 64) {
             break;
         }
         if frag.token_count > 0 {
@@ -910,7 +910,7 @@ fn run_greedy_loop_heap(
     loop {
         while !heap.is_empty() && state.remaining_budget > 0 {
             loop_iters += 1;
-            if !crate::resource::poll_current_every(loop_iters, 16) {
+            if !diffctx_snapshot::resource::poll_current_every(loop_iters, 16) {
                 break;
             }
             let (best_frag, best_density, new_version) = find_best_candidate_heap(
@@ -1653,7 +1653,7 @@ mod tests {
             &rel,
             &[],
             budget,
-            crate::config::limits::DEFAULT_STOPPING_THRESHOLD,
+            diffctx_config::config::limits::DEFAULT_STOPPING_THRESHOLD,
             None,
             None,
             None,
@@ -1684,7 +1684,7 @@ mod tests {
         assert!(
             default_tau.selected.len() < no_tau.selected.len(),
             "tau={} selected {} fragments, same as tau=0.0 — the rule is inert",
-            crate::config::limits::DEFAULT_STOPPING_THRESHOLD,
+            diffctx_config::config::limits::DEFAULT_STOPPING_THRESHOLD,
             default_tau.selected.len()
         );
         assert!(

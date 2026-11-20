@@ -15,10 +15,10 @@ use once_cell::sync::Lazy;
 use regex::Regex;
 use rustc_hash::{FxHashMap, FxHashSet};
 
-use crate::config::edge_weights::PYTHON_SEMANTIC;
-use crate::config::extensions::PYTHON_EXTENSIONS;
-use crate::config::weights::LANG_WEIGHTS;
 use diffctx_base::types::{Fragment, FragmentId};
+use diffctx_config::config::edge_weights::PYTHON_SEMANTIC;
+use diffctx_config::config::extensions::PYTHON_EXTENSIONS;
+use diffctx_config::config::weights::LANG_WEIGHTS;
 
 use super::super::EdgeDict;
 use super::super::base::{self, EdgeBuilder, path_to_module};
@@ -296,7 +296,12 @@ impl EdgeBuilder for PythonEdgeBuilder {
             // the 8-file cap (#196); the between-builders check cannot
             // interrupt a single builder, so poll inside the loop — for the
             // deadline and for the contribution cap alike.
-            if !crate::resource::poll_emissions(i, 256, edges.len() as u64, &mut reported) {
+            if !diffctx_snapshot::resource::poll_emissions(
+                i,
+                256,
+                edges.len() as u64,
+                &mut reported,
+            ) {
                 break;
             }
             let self_defs = frag_defines.get(&f.id).cloned().unwrap_or_default();

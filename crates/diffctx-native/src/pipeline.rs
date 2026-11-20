@@ -9,32 +9,32 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::answer::envelope::Inventory;
 use crate::answer::v2::Listing;
-use crate::candidate_files;
-use crate::config::budget::BUDGET;
-use crate::config::graph_filtering::GRAPH_FILTERING;
-use crate::config::limits::LIMITS;
-use crate::config::tokenization::TOKENIZATION;
 use crate::core::{compute_changed_lines, compute_seed_weights, identify_core_fragments};
 use crate::discovery::{
     BM25Discovery, DefaultDiscovery, DiscoveryContext, DiscoveryStrategy, EnsembleDiscovery,
     ReverseReferenceDiscovery, TestFileDiscovery,
 };
 use crate::fragmentation::process_files_for_fragments;
-use crate::mode::{PipelineConfig, ScoringMode};
-use crate::paths::is_lockfile_path;
 use crate::postpass;
 use crate::render::{self, DiffContextOutput};
 use crate::run_provenance::state::{
     HeavyLatencyMs, ScoredState, SelectionOutcome, answer_paths, fragmentless_changed_files,
 };
 use crate::scoring::{ScoringResult, create_scoring_strategy};
-use crate::signatures::generate_signature_variants;
-use crate::snapshot;
-use crate::source::{Admitted, Source, Why};
 use crate::utility::InformationNeed;
-use crate::{diff_parse, grep};
+use diffctx_base::paths::is_lockfile_path;
 use diffctx_base::tokenizer::count_tokens;
 use diffctx_base::types::{Fragment, FragmentId, unquote_c_style};
+use diffctx_config::config::budget::BUDGET;
+use diffctx_config::config::graph_filtering::GRAPH_FILTERING;
+use diffctx_config::config::limits::LIMITS;
+use diffctx_config::config::tokenization::TOKENIZATION;
+use diffctx_config::mode::{PipelineConfig, ScoringMode};
+use diffctx_config::signatures::generate_signature_variants;
+use diffctx_snapshot::candidate_files;
+use diffctx_snapshot::snapshot;
+use diffctx_snapshot::source::{Admitted, Source, Why};
+use diffctx_snapshot::{diff_parse, grep};
 
 mod keyword_binding;
 
@@ -108,7 +108,7 @@ pub fn build_diff_context_locate(
             select_ms: 0.0,
             stand_in_ids: FxHashSet::default(),
             budget_requested: budget_tokens,
-            tau: tau.unwrap_or(crate::config::limits::DEFAULT_STOPPING_THRESHOLD),
+            tau: tau.unwrap_or(diffctx_config::config::limits::DEFAULT_STOPPING_THRESHOLD),
             gated: false,
             limit_reasons: Vec::new(),
             commit_messages: state.commit_messages.clone(),
@@ -164,7 +164,7 @@ pub fn build_diff_context_impact(
 /// force-push): the same run, with no range text to read again.
 pub fn build_range_impact(
     root_dir: &Path,
-    range: crate::snapshot::RangeSpec,
+    range: diffctx_snapshot::snapshot::RangeSpec,
     paths: &[String],
     alpha: f64,
     scoring_mode: ScoringMode,
@@ -267,7 +267,7 @@ fn sibling_locals(
     root_dir: &Path,
     query: &str,
     paths: &[String],
-    run: &crate::resource::RunContext,
+    run: &diffctx_snapshot::resource::RunContext,
 ) -> Vec<crate::impact::LocalOf> {
     let Some((None, segments)) = crate::impact::parse_symbol_query(query) else {
         return Vec::new();
@@ -365,7 +365,7 @@ pub(crate) fn collect_hunks_with_untracked(
     pathspec: &[String],
     is_working_tree_diff: bool,
     source: &Source,
-    run: Option<&crate::resource::RunContext>,
+    run: Option<&diffctx_snapshot::resource::RunContext>,
 ) -> Result<(Vec<diffctx_base::types::DiffHunk>, Vec<PathBuf>)> {
     let mut hunks = diff_parse::parse_diff(root_dir, diff_range, pathspec)?;
     if !is_working_tree_diff {
@@ -378,7 +378,7 @@ pub(crate) fn collect_hunks_with_untracked(
     // its canonicalising form: `evil -> /etc/shadow` is lexically inside the
     // root and would otherwise be line-counted and then fragmented out of the
     // file it points at.
-    let within = crate::paths::Containment::new(root_dir);
+    let within = diffctx_snapshot::source::Containment::new(root_dir);
     untracked_files.retain(|f| within.contains(f));
     // An untracked binary — a local database, a build artefact — is no
     // source change: counted, it inflated every "N changed file(s)" with
@@ -409,15 +409,17 @@ pub(crate) fn collect_hunks_with_untracked(
 /// and stays an error, as an interruption does outside a run (`--full` has
 /// no partial form). Swallowed, either one read as "nothing changed" (#408).
 fn unless_cut_short<T: Default>(
-    run: Option<&crate::resource::RunContext>,
+    run: Option<&diffctx_snapshot::resource::RunContext>,
     answer: snapshot::Result<T>,
 ) -> Result<T> {
     match (answer, run) {
         (Ok(answer), _) => Ok(answer),
         (Err(e), Some(run)) if e.is_interruption() => {
             run.note(match e {
-                snapshot::SnapshotError::Cancelled => crate::resource::LimitReason::Cancelled,
-                _ => crate::resource::LimitReason::Deadline,
+                snapshot::SnapshotError::Cancelled => {
+                    diffctx_snapshot::resource::LimitReason::Cancelled
+                }
+                _ => diffctx_snapshot::resource::LimitReason::Deadline,
             });
             Ok(T::default())
         }
@@ -505,7 +507,7 @@ fn hunkless_changed_files(
     diff_range: Option<&str>,
     pathspec: &[String],
     untracked_files: Vec<PathBuf>,
-    run: Option<&crate::resource::RunContext>,
+    run: Option<&diffctx_snapshot::resource::RunContext>,
 ) -> Result<Vec<PathBuf>> {
     let names = unless_cut_short(run, diff_parse::diff_names(root_dir, diff_range, pathspec))?;
     let excluded = gone_at_head(root_dir, &names);
@@ -528,7 +530,7 @@ fn resolve_change_set(
     staged: Option<&snapshot::StagedSnapshot>,
     pathspec: &[String],
     is_working_tree_diff: bool,
-    run: &crate::resource::RunContext,
+    run: &diffctx_snapshot::resource::RunContext,
     t_entry: Instant,
 ) -> Result<ChangeSet> {
     let source = run.source();
@@ -705,7 +707,7 @@ fn resolve_change_set(
 pub enum Anchor<'a> {
     Diff(Option<&'a str>),
     /// A range already resolved to ids by its caller.
-    Range(crate::snapshot::RangeSpec),
+    Range(diffctx_snapshot::snapshot::RangeSpec),
     Symbol(&'a str),
 }
 
@@ -762,7 +764,7 @@ fn unanalysed_namers(
     root_dir: &Path,
     files: &[PathBuf],
     fragments: &[Fragment],
-    run: &crate::resource::RunContext,
+    run: &diffctx_snapshot::resource::RunContext,
 ) -> Vec<crate::impact::UnanalysedFile> {
     let source = run.source();
     let mut unread = Vec::new();
@@ -833,7 +835,7 @@ fn shadowed_definitions<'f>(
     found: &[&Fragment],
     name: &str,
     container: &str,
-    run: &crate::resource::RunContext,
+    run: &diffctx_snapshot::resource::RunContext,
 ) -> Vec<&'f Fragment> {
     use crate::facts::Fact;
     let mut stand_ins: Vec<&Fragment> = Vec::new();
@@ -897,7 +899,11 @@ fn shadowed_definitions<'f>(
 
 /// A fragment the fragmenter named `name` that the facts hold as a local of
 /// a definition and as no definition.
-fn is_local_fragment(fragment: &Fragment, name: &str, run: &crate::resource::RunContext) -> bool {
+fn is_local_fragment(
+    fragment: &Fragment,
+    name: &str,
+    run: &diffctx_snapshot::resource::RunContext,
+) -> bool {
     use crate::facts::{Fact, LocalKind};
     let Some(text) = run.source().read_to_string(Path::new(fragment.path())) else {
         return false;
@@ -1010,7 +1016,7 @@ fn local_uses(
     root_dir: &Path,
     files: &[PathBuf],
     name: &str,
-    run: &crate::resource::RunContext,
+    run: &diffctx_snapshot::resource::RunContext,
 ) -> Vec<crate::impact::LocalOf> {
     use crate::facts::{Fact, LocalKind, Receiver};
     let mut found: Vec<crate::impact::LocalOf> = Vec::new();
@@ -1018,7 +1024,7 @@ fn local_uses(
         let Some(text) = run.source().read_to_string(file) else {
             continue;
         };
-        let display = crate::paths::display_rel_or_abs(root_dir, file);
+        let display = diffctx_base::paths::display_rel_or_abs(root_dir, file);
         let Some(blob) = crate::facts::local_facts(&display, &text) else {
             continue;
         };
@@ -1125,7 +1131,7 @@ fn resolve_symbol_change_set(
     root_dir: &Path,
     scope: &[String],
     query: &str,
-    run: &crate::resource::RunContext,
+    run: &diffctx_snapshot::resource::RunContext,
     t_entry: Instant,
 ) -> Result<ChangeSet> {
     let Some((path, segments)) = crate::impact::parse_symbol_query(query) else {
@@ -1139,7 +1145,7 @@ fn resolve_symbol_change_set(
     // `diffctx sub/ --symbol x.py:f` stays inside `sub/` (#410).
     let pathspec: Vec<String> = match path {
         Some(p) => {
-            let p = crate::paths::to_posix_display(std::borrow::Cow::Borrowed(p));
+            let p = diffctx_base::paths::to_posix_display(std::borrow::Cow::Borrowed(p));
             if scope.is_empty() {
                 vec![p]
             } else {
@@ -1183,7 +1189,7 @@ fn resolve_symbol_change_set(
                 .collect();
         files.sort_by_key(|f| !declaring.contains(f));
         files.truncate(MAX_SYMBOL_FILES);
-        run.note(crate::resource::LimitReason::CandidateLimit);
+        run.note(diffctx_snapshot::resource::LimitReason::CandidateLimit);
     }
 
     let mut seen: FxHashSet<FragmentId> = FxHashSet::default();
@@ -1228,7 +1234,10 @@ fn resolve_symbol_change_set(
             return None;
         }
         let text = run.source().read_to_string(Path::new(def.path()))?;
-        let blob = KotlinExtractor.extract(text.as_bytes(), &crate::snapshot::RunBudget::default());
+        let blob = KotlinExtractor.extract(
+            text.as_bytes(),
+            &diffctx_snapshot::snapshot::RunBudget::default(),
+        );
         let (name, line) = (def.symbol_name.as_deref()?, def.start_line());
         let decl = blob
             .facts
@@ -1358,7 +1367,7 @@ fn resolve_symbol_change_set(
                     &run.source(),
                     lines,
                     unread_files,
-                    crate::resource::classify_limits(run, &[], &|_| false).0,
+                    diffctx_snapshot::resource::classify_limits(run, &[], &|_| false).0,
                 )
             });
         return Err(SymbolQueryError {
@@ -1386,7 +1395,7 @@ fn resolve_symbol_change_set(
             old_start: start,
             old_len: len,
         });
-        let display = crate::paths::display_rel_or_abs(root_dir, Path::new(def.path()));
+        let display = diffctx_base::paths::display_rel_or_abs(root_dir, Path::new(def.path()));
         let _ = write!(
             diff_text,
             "diff --git a/{display} b/{display}\n--- a/{display}\n+++ b/{display}\n@@ -{start},{len} +{start},{len} @@\n"
@@ -1431,10 +1440,10 @@ fn resolve_scope(root_dir: &Path, paths: &[String]) -> Result<(PathBuf, Vec<Stri
                 let canon = dunce::canonicalize(given).unwrap_or_else(|_| given.to_path_buf());
                 canon
                     .strip_prefix(&repo_root)
-                    .map(|r| crate::paths::to_posix_display(r.to_string_lossy()))
+                    .map(|r| diffctx_base::paths::to_posix_display(r.to_string_lossy()))
                     .map_err(|_| snapshot::SnapshotError::InvalidPath(p.clone()))?
             } else {
-                crate::paths::to_posix_display(std::borrow::Cow::Borrowed(p.as_str()))
+                diffctx_base::paths::to_posix_display(std::borrow::Cow::Borrowed(p.as_str()))
             };
             let rel = rel.trim_end_matches('/').to_string();
             if rel.is_empty() || rel == "." {
@@ -1448,7 +1457,7 @@ fn resolve_scope(root_dir: &Path, paths: &[String]) -> Result<(PathBuf, Vec<Stri
     let subtree = requested
         .strip_prefix(&repo_root)
         .ok()
-        .map(|r| crate::paths::to_posix_display(r.to_string_lossy()))
+        .map(|r| diffctx_base::paths::to_posix_display(r.to_string_lossy()))
         .filter(|r| !r.is_empty());
     Ok((repo_root, subtree.into_iter().collect()))
 }
@@ -1478,20 +1487,20 @@ fn resolve_anchor(
     root_dir: &Path,
     anchor: Anchor<'_>,
     scope: &[String],
-    run: &crate::resource::RunContext,
+    run: &diffctx_snapshot::resource::RunContext,
     t_entry: Instant,
 ) -> Result<(Option<String>, Option<snapshot::StagedSnapshot>, ChangeSet)> {
     let (opened, symbol) = match anchor {
         Anchor::Diff(diff_range) => (
-            crate::source::Analysis::open(root_dir, diff_range, run),
+            diffctx_snapshot::source::Analysis::open(root_dir, diff_range, run),
             None,
         ),
         Anchor::Range(range) => (
-            crate::source::Analysis::open_range(root_dir, range, run),
+            diffctx_snapshot::source::Analysis::open_range(root_dir, range, run),
             None,
         ),
         Anchor::Symbol(query) => (
-            crate::source::Analysis::at_working_tree(root_dir, run),
+            diffctx_snapshot::source::Analysis::at_working_tree(root_dir, run),
             Some(query),
         ),
     };
@@ -1502,7 +1511,7 @@ fn resolve_anchor(
         // that names the limit, never a clean tree (a `--symbol` run
         // included: no definition was looked for, none is absent).
         Err(e) if e.is_interruption() => {
-            run.note(crate::resource::reason_for(&e));
+            run.note(diffctx_snapshot::resource::reason_for(&e));
             return Ok((
                 None,
                 None,
@@ -1560,7 +1569,7 @@ pub fn compute_scored_state_anchored(
     crate::effective_config::enforce_strict_env()?;
     diffctx_base::tokenizer::warm();
     snapshot::set_git_timeout(timeout);
-    let run = crate::resource::RunContext::for_run(timeout);
+    let run = diffctx_snapshot::resource::RunContext::for_run(timeout);
     let _in_run = run.enter();
     let (root_dir, scope) = resolve_scope(root_dir, paths)?;
     // `!(a > 0 && a < 1)` rather than `a <= 0 || a >= 1`: every comparison
@@ -1668,7 +1677,7 @@ pub fn compute_scored_state_anchored(
     };
     if all_candidate_files.len() > run.budget().max_candidate_files {
         all_candidate_files.truncate(run.budget().max_candidate_files);
-        run.note(crate::resource::LimitReason::CandidateLimit);
+        run.note(diffctx_snapshot::resource::LimitReason::CandidateLimit);
     }
     run.record_usage(|u| u.candidate_files = all_candidate_files.len() as u64);
 
@@ -1753,7 +1762,7 @@ pub fn compute_scored_state_anchored(
     // The walk, the cache and every strategy end at the deadline: whatever
     // stopped them, the universe the selection saw was cut short.
     if run.tripped() {
-        run.note(crate::resource::LimitReason::DiscoveryTruncated);
+        run.note(diffctx_snapshot::resource::LimitReason::DiscoveryTruncated);
     }
 
     let t_discovery = Instant::now();
@@ -1805,7 +1814,7 @@ pub fn compute_scored_state_anchored(
     let t_done = Instant::now();
 
     if scoring_result.graph.cap_stats.edges_dropped_by_cap > 0 {
-        run.note(crate::resource::LimitReason::EdgeLimit);
+        run.note(diffctx_snapshot::resource::LimitReason::EdgeLimit);
     }
 
     let graph_build_ms = scoring_result.graph_build_ms;
@@ -1901,7 +1910,7 @@ const MAX_COMMIT_MESSAGE_CHARS: usize = 2_000;
 fn settle_layout(
     root_dir: &Path,
     hunk_texts: &mut [diffctx_base::changed_lines::HunkText],
-    run: &crate::resource::RunContext,
+    run: &diffctx_snapshot::resource::RunContext,
 ) {
     let source = run.source();
     let mut files: Vec<&mut [diffctx_base::changed_lines::HunkText]> =
@@ -1961,7 +1970,7 @@ pub(crate) fn classify_changes(
     changed_files
         .iter()
         .map(|path| {
-            let display = crate::paths::display_rel_or_abs(root_dir, path);
+            let display = diffctx_base::paths::display_rel_or_abs(root_dir, path);
             let key = path.to_string_lossy();
             let file_hunks: Vec<&diffctx_base::types::DiffHunk> = hunks
                 .iter()
@@ -2009,7 +2018,7 @@ pub fn score_from_fragments(
     config: &PipelineConfig,
     repo_root: Option<&Path>,
     discovered_paths: &FxHashSet<Arc<str>>,
-    run: &crate::resource::RunContext,
+    run: &diffctx_snapshot::resource::RunContext,
 ) -> ScoredFragments {
     let t0 = Instant::now();
     assign_token_counts(&mut all_fragments);
@@ -2051,7 +2060,7 @@ pub fn score_from_fragments(
                 .then_with(|| a.symbol.cmp(&b.symbol))
         });
         needs.truncate(run.budget().max_needs);
-        run.note(crate::resource::LimitReason::NeedLimit);
+        run.note(diffctx_snapshot::resource::LimitReason::NeedLimit);
     }
 
     ScoredFragments {
@@ -2124,7 +2133,7 @@ pub(crate) fn evidence_tier(repo_path: &str, class: crate::change_class::ChangeC
         ChangeClass::Generated => 4,
         ChangeClass::Mechanical | ChangeClass::Layout => 3,
         _ if diffctx_base::testfiles::is_test_path(path) => 1,
-        _ if crate::config::extensions::CONFIG_EXTENSIONS.contains(ext.as_str())
+        _ if diffctx_config::config::extensions::CONFIG_EXTENSIONS.contains(ext.as_str())
             || matches!(ext.as_str(), ".md" | ".rst" | ".txt" | ".adoc") =>
         {
             2
@@ -2155,7 +2164,7 @@ pub fn select_and_postpass(
     core_ids: &FxHashSet<FragmentId>,
     needs: &[InformationNeed],
     core_excerpts: &FxHashMap<FragmentId, Fragment>,
-    objective: crate::mode::ObjectiveMode,
+    objective: diffctx_config::mode::ObjectiveMode,
     effective_budget: u32,
     tau: Option<f64>,
     evidence_priority: &FxHashMap<Arc<str>, u8>,
@@ -2171,8 +2180,8 @@ pub fn select_and_postpass(
     let ungated = scoring_result.admissible_files.is_none();
     let tau = match tau {
         Some(requested) => requested,
-        None if ungated => crate::config::limits::UNGATED_STOPPING_THRESHOLD,
-        None => crate::config::limits::DEFAULT_STOPPING_THRESHOLD,
+        None if ungated => diffctx_config::config::limits::UNGATED_STOPPING_THRESHOLD,
+        None => diffctx_config::config::limits::DEFAULT_STOPPING_THRESHOLD,
     };
     tracing::info!(
         "diffctx: selection gate={} tau={:.4}",
@@ -2182,13 +2191,13 @@ pub fn select_and_postpass(
     let trace = std::env::var_os("DIFFCTX_TRACE_BUILDERS").is_some();
     let t_stage = Instant::now();
     let selection_result = match objective {
-        crate::mode::ObjectiveMode::BoltzmannModular => {
+        diffctx_config::mode::ObjectiveMode::BoltzmannModular => {
             let beta = crate::utility::calibrate_beta(
                 &scoring_result.filtered_fragments,
                 core_ids,
                 &scoring_result.rel_scores,
                 effective_budget,
-                crate::config::selection::boltzmann().calibration_tolerance,
+                diffctx_config::config::selection::boltzmann().calibration_tolerance,
             );
             tracing::debug!("diffctx: boltzmann beta calibrated to {:.6e}", beta);
             crate::utility::boltzmann_select(
@@ -2199,7 +2208,7 @@ pub fn select_and_postpass(
                 beta,
             )
         }
-        crate::mode::ObjectiveMode::Submodular => {
+        diffctx_config::mode::ObjectiveMode::Submodular => {
             let file_importance =
                 crate::utility::compute_file_importance(&scoring_result.filtered_fragments);
             crate::select::lazy_greedy_select(
@@ -2275,7 +2284,7 @@ pub fn envelope_tokens_of(state: &ScoredState) -> u32 {
     let mut listed: Vec<String> = state
         .changed_files
         .iter()
-        .map(|p| crate::paths::display_rel_or_abs(&state.root_dir, p))
+        .map(|p| diffctx_base::paths::display_rel_or_abs(&state.root_dir, p))
         .collect();
     listed.extend(state.deleted_files.iter().cloned());
     listed.extend(state.lockfile_changes.iter().cloned());
@@ -2404,7 +2413,7 @@ pub fn run_selection(
         let key = p.to_string_lossy();
         fragmented.contains(key.as_ref()) && !represented.contains(key.as_ref())
     }) {
-        limit_reasons.push(crate::resource::LimitReason::EvidenceBudgetExceeded);
+        limit_reasons.push(diffctx_snapshot::resource::LimitReason::EvidenceBudgetExceeded);
     }
 
     let select_ms = t_start.elapsed().as_secs_f64() * 1000.0;
@@ -2474,7 +2483,7 @@ pub fn select_with_params(
         changed_files: state
             .changed_files
             .iter()
-            .map(|p| crate::paths::display_rel_or_abs(&state.root_dir, p))
+            .map(|p| diffctx_base::paths::display_rel_or_abs(&state.root_dir, p))
             .collect(),
         deleted_files: state.deleted_files.clone(),
         renamed_files: state.renamed_files.clone(),
@@ -2534,16 +2543,18 @@ pub fn select_with_params(
     output.fit = Some(fit);
     let mut limits = selection_limits;
     if output.redactions.is_some() {
-        limits.push(crate::resource::LimitReason::SanitizationRedaction);
+        limits.push(diffctx_snapshot::resource::LimitReason::SanitizationRedaction);
     }
     let about = answer_paths(state, selected.iter());
     output.coverage =
-        crate::resource::CoverageReport::build(&state.run, &limits, &|p| about.contains(p));
+        diffctx_snapshot::resource::CoverageReport::build(&state.run, &limits, &|p| {
+            about.contains(p)
+        });
     output
 }
 
 pub(crate) fn rel_path_string(root_dir: &Path, path: &Path) -> Option<String> {
-    crate::paths::display_rel(root_dir, path)
+    diffctx_base::paths::display_rel(root_dir, path)
 }
 
 /// Whether a file may be shown: not secret by name, not inside git's own
@@ -2560,7 +2571,7 @@ pub(crate) fn is_withheld(root_dir: &Path, source: &Source, path: &Path) -> bool
 /// Whether `path` is inside a repository, asked of git once per run: `Err`
 /// when git could not answer, which is no verdict on the directory.
 fn is_git_repo(path: &Path) -> snapshot::Result<bool> {
-    crate::resource::memoized("is_git_repo", path, || snapshot::is_git_repo(path))
+    diffctx_snapshot::resource::memoized("is_git_repo", path, || snapshot::is_git_repo(path))
 }
 
 /// Which of `rel_paths` (repo-root-relative) the engine withholds — the
@@ -2569,12 +2580,12 @@ fn is_git_repo(path: &Path) -> snapshot::Result<bool> {
 /// secret names still apply; a repository whose policy cannot be read
 /// withholds everything rather than publish what it asked to keep out.
 pub fn withheld_paths(root_dir: &Path, rel_paths: &[String]) -> Vec<String> {
-    let run = crate::resource::RunContext::unbounded();
-    match crate::source::Analysis::at_working_tree(root_dir, &run) {
+    let run = diffctx_snapshot::resource::RunContext::unbounded();
+    match diffctx_snapshot::source::Analysis::at_working_tree(root_dir, &run) {
         Ok(analysis) => analysis.head().withheld_among(rel_paths),
         Err(_) if !is_git_repo(root_dir).unwrap_or(true) => rel_paths
             .iter()
-            .filter(|rel| crate::source::is_secret_path(Path::new(rel)))
+            .filter(|rel| diffctx_snapshot::source::is_secret_path(Path::new(rel)))
             .cloned()
             .collect(),
         Err(e) => {
@@ -2601,8 +2612,8 @@ pub fn raw_diff_text(
 ) -> Result<(String, diffctx_base::sanitize::Redactions)> {
     snapshot::set_git_timeout(timeout);
     let (root_dir, scope) = resolve_scope(root_dir, paths)?;
-    let run = crate::resource::RunContext::for_run(timeout);
-    let analysis = crate::source::Analysis::open(&root_dir, diff_range, &run)?;
+    let run = diffctx_snapshot::resource::RunContext::for_run(timeout);
+    let analysis = diffctx_snapshot::source::Analysis::open(&root_dir, diff_range, &run)?;
     let diff_text = diff_parse::get_diff_text(&root_dir, analysis.range(), &scope)?;
     let mut disclosable = keep_disclosable_sections(&root_dir, &analysis.head(), &diff_text);
     let redactions = diffctx_base::sanitize::sanitize_in_place(&mut disclosable);
@@ -2782,8 +2793,8 @@ fn build_diff_context_full(
     let (root_dir, scope) = resolve_scope(root_dir, paths)?;
     // Reading the changed files is bounded like every other run: a deadline
     // that cuts it is named, not reported as files over the size cap (#439).
-    let run = crate::resource::RunContext::for_run(timeout);
-    let analysis = crate::source::Analysis::open(&root_dir, diff_range, &run)?;
+    let run = diffctx_snapshot::resource::RunContext::for_run(timeout);
+    let analysis = diffctx_snapshot::source::Analysis::open(&root_dir, diff_range, &run)?;
     let source = analysis.head();
     run.set_source(source.clone());
     let diff_range = analysis.range();
@@ -2875,7 +2886,7 @@ fn build_diff_context_full(
         fragmentless: fragmentless_changed_files(&root_dir, &changed_files, &all_fragments),
         changed_files: changed_files
             .iter()
-            .map(|p| crate::paths::display_rel_or_abs(&root_dir, p))
+            .map(|p| diffctx_base::paths::display_rel_or_abs(&root_dir, p))
             .collect(),
         deleted_files: deleted_display,
         renamed_files: renamed_display,
@@ -2896,8 +2907,9 @@ fn build_diff_context_full(
         &FxHashMap::default(),
         change,
     );
-    output.coverage =
-        crate::resource::CoverageReport::build(&run, &[], &|p| changed_display.contains(p));
+    output.coverage = diffctx_snapshot::resource::CoverageReport::build(&run, &[], &|p| {
+        changed_display.contains(p)
+    });
     Ok(output)
 }
 
@@ -2909,7 +2921,7 @@ fn deletion_rename_displays(
     let mut deleted: Vec<String> = names
         .deleted
         .iter()
-        .map(|p| crate::paths::display_rel_or_abs(root_dir, p))
+        .map(|p| diffctx_base::paths::display_rel_or_abs(root_dir, p))
         .collect();
     deleted.sort();
     let mut renamed = names.rename_pairs();
@@ -2936,7 +2948,7 @@ fn empty_scored_state_with_changes(
     diff_range: Option<&str>,
     pathspec: &[String],
     timeout: u64,
-    run: crate::resource::RunContext,
+    run: diffctx_snapshot::resource::RunContext,
 ) -> Result<ScoredState> {
     let names = unless_cut_short(
         Some(&run),
@@ -2954,7 +2966,7 @@ fn empty_scored_state(
     root_dir: PathBuf,
     diff_range: Option<&str>,
     timeout: u64,
-    run: crate::resource::RunContext,
+    run: diffctx_snapshot::resource::RunContext,
 ) -> Result<ScoredState> {
     let config = PipelineConfig::from_mode(ScoringMode::Ego);
     let effective = crate::effective_config::EffectiveConfigV1::resolve(&config, timeout);
@@ -3041,14 +3053,15 @@ pub(crate) fn empty_output_from_state(state: &ScoredState) -> DiffContextOutput 
         &fragmentless_changed_files(&state.root_dir, &state.changed_files, &state.all_fragments),
     );
     output.provenance = Some(render::provenance_value(&state.provenance.finish(None)));
-    let limits: &[crate::resource::LimitReason] = if output.redactions.is_some() {
-        &[crate::resource::LimitReason::SanitizationRedaction]
+    let limits: &[diffctx_snapshot::resource::LimitReason] = if output.redactions.is_some() {
+        &[diffctx_snapshot::resource::LimitReason::SanitizationRedaction]
     } else {
         &[]
     };
     let about = answer_paths(state, std::iter::empty());
-    output.coverage =
-        crate::resource::CoverageReport::build(&state.run, limits, &|p| about.contains(p));
+    output.coverage = diffctx_snapshot::resource::CoverageReport::build(&state.run, limits, &|p| {
+        about.contains(p)
+    });
     output
 }
 
@@ -3069,7 +3082,7 @@ pub(crate) fn create_discovery(
 
 fn build_file_cache(
     candidate_files: &[PathBuf],
-    run: &crate::resource::RunContext,
+    run: &diffctx_snapshot::resource::RunContext,
 ) -> FxHashMap<PathBuf, String> {
     let source = run.source();
     // Stream files one at a time to avoid materialising all content before the cap.
@@ -3166,7 +3179,7 @@ mod tests {
 
 #[cfg(test)]
 mod secret_path_tests {
-    use crate::source::is_secret_path;
+    use diffctx_snapshot::source::is_secret_path;
     use std::path::Path;
 
     fn secret(p: &str) -> bool {

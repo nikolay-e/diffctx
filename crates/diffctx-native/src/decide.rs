@@ -45,15 +45,17 @@ use crate::fold::{self, Basis, Rule};
 use crate::resolve::{
     Binding, CandidateReason, Definition, EvidenceKind, Relation, Resolution, UnresolvedReason,
 };
-use crate::resource::LimitReason;
 use crate::run_provenance::state::ScoredState;
-use crate::snapshot::{AnalysisContext, ChangeKind, Loss, NotAnalysedReason, RepoPath, SideTag};
 use crate::tokens::occurrence::debug::{Accounted, Shadow, Written, sink};
 use crate::tokens::occurrence::{
     Hedge, Implicit, Index, Known, Reason as OccurrenceReason, ValuePlace, View,
 };
 use crate::tokens::{GroupTokens, Names, TokenIndex};
 use crate::vocabulary::family::{Family, Group, Resolver, context_in};
+use diffctx_snapshot::resource::LimitReason;
+use diffctx_snapshot::snapshot::{
+    AnalysisContext, ChangeKind, Loss, NotAnalysedReason, RepoPath, SideTag,
+};
 
 /// The reasons a candidate row carries in the answer.
 const UNTYPED_RECEIVER: &str = "receiver_unresolved";
@@ -1330,7 +1332,7 @@ impl Cell {
                 }
             }
         };
-        let rel = |p: &std::path::Path| crate::paths::display_rel_or_abs(&state.root_dir, p);
+        let rel = |p: &std::path::Path| diffctx_base::paths::display_rel_or_abs(&state.root_dir, p);
         if symbol {
             return state
                 .all_fragments
@@ -1430,7 +1432,7 @@ impl Cell {
     /// The loss the test knob `DIFFCTX_TEST_LOSS` puts on the n-th file, by path,
     /// of the cell's group.
     fn injected_loss(&self) -> Option<Loss> {
-        let (kind, at) = crate::resource::test_loss()?;
+        let (kind, at) = diffctx_snapshot::resource::test_loss()?;
         let group = self.family.group();
         let Ok(listing) = self.cache.listing(&self.ctx.head) else {
             return None;

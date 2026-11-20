@@ -13,7 +13,7 @@ fn set_from_list(list: &str) -> FxHashSet<String> {
 // lines here. They are unioned into a set, so their order and any duplicate
 // across the old three-way code split are unobservable — which is what makes
 // the move to a flat file bit-equivalent.
-pub(crate) static CODE_STOPWORDS: Lazy<FxHashSet<String>> =
+pub static CODE_STOPWORDS: Lazy<FxHashSet<String>> =
     Lazy::new(|| set_from_list(include_str!("stopwords/code.txt")));
 
 static DOCS_STOPWORDS: Lazy<FxHashSet<String>> =
@@ -36,7 +36,7 @@ fn get_stopwords(profile: &str) -> &FxHashSet<String> {
     }
 }
 
-pub(crate) fn profile_from_path(path: &str) -> &'static str {
+pub fn profile_from_path(path: &str) -> &'static str {
     let p = std::path::Path::new(path);
     let suffix = file_ext(p);
     let name_lower = p
@@ -101,7 +101,7 @@ fn is_reasonable_ident(ident: &str, min_len: usize, profile: &str) -> bool {
     true
 }
 
-pub(crate) fn filter_idents(idents: &[String], min_len: usize, profile: &str) -> Vec<String> {
+pub fn filter_idents(idents: &[String], min_len: usize, profile: &str) -> Vec<String> {
     idents
         .iter()
         .filter(|s| is_reasonable_ident(s, min_len, profile))

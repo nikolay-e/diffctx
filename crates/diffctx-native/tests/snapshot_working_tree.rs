@@ -6,7 +6,7 @@ mod snapshot_fixture;
 
 use std::sync::Arc;
 
-use _diffctx::snapshot::{Admission, Loss, RepoPath, Side, SnapshotError, SnapshotReader};
+use diffctx_snapshot::snapshot::{Admission, Loss, RepoPath, Side, SnapshotError, SnapshotReader};
 use snapshot_fixture::Repo;
 
 fn path(p: &str) -> RepoPath {

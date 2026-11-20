@@ -476,7 +476,7 @@ pub(crate) fn has_extension(path: &str, extension: &str) -> bool {
         .is_some_and(|e| e.eq_ignore_ascii_case(extension))
 }
 
-pub(crate) fn dir_of(path: &str) -> &str {
+pub fn dir_of(path: &str) -> &str {
     path.rsplit_once('/').map_or("", |(dir, _)| dir)
 }
 
@@ -556,7 +556,7 @@ pub(crate) fn expand_members(files: &Files, base: &str, globs: &[String]) -> Vec
         .collect()
 }
 
-pub(crate) fn toml_at<'a>(table: &'a toml::Table, path: &[&str]) -> Option<&'a toml::Value> {
+pub fn toml_at<'a>(table: &'a toml::Table, path: &[&str]) -> Option<&'a toml::Value> {
     let (first, rest) = path.split_first()?;
     let mut value = table.get(*first)?;
     for key in rest {

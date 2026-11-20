@@ -36,7 +36,8 @@ impl EdgeBuilder for KeyTableEdgeBuilder {
         let mut edges = EdgeDict::default();
         let mut reported = 0u64;
         for (n, pair) in table.live_links().into_iter().enumerate() {
-            if !crate::resource::poll_emissions(n, 64, edges.len() as u64, &mut reported) {
+            if !diffctx_snapshot::resource::poll_emissions(n, 64, edges.len() as u64, &mut reported)
+            {
                 break;
             }
             let link = table.link(&pair);
@@ -138,7 +139,7 @@ mod tests {
 
     fn discovered_with(diff: &str, changed: &[&str], files: &[(&str, &str)]) -> Vec<String> {
         let lines = diffctx_base::changed_lines::ChangedLines::from_diff(diff);
-        crate::resource::with_changed_lines(Some(std::sync::Arc::new(lines)), || {
+        diffctx_snapshot::resource::with_changed_lines(Some(std::sync::Arc::new(lines)), || {
             discovered(changed, files)
         })
     }
@@ -311,7 +312,7 @@ mod tests {
             .collect();
         let lines = diff
             .map(|d| std::sync::Arc::new(diffctx_base::changed_lines::ChangedLines::from_diff(d)));
-        crate::resource::with_changed_lines(lines, || {
+        diffctx_snapshot::resource::with_changed_lines(lines, || {
             KeyTableEdgeBuilder.build_deciding(&fragments, None).1
         })
     }
@@ -390,7 +391,7 @@ mod tests {
         let core = crate::core::identify_core_fragments(&hunks, &fragments);
         let lines =
             std::sync::Arc::new(diffctx_base::changed_lines::ChangedLines::from_diff(&diff));
-        let edges = crate::resource::with_changed_lines(Some(lines), || {
+        let edges = diffctx_snapshot::resource::with_changed_lines(Some(lines), || {
             KeyTableEdgeBuilder.build(&fragments, None)
         });
         (edges, core)

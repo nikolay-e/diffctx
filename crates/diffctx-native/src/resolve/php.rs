@@ -46,7 +46,7 @@ use crate::facts::{
     Def, DefKey, DefKind, Fact, FactsCache, FileFacts, ImportKind, Language, Name, Receiver, Ref,
     Scope, Span, UseKind, Visibility, expired,
 };
-use crate::snapshot::{
+use diffctx_snapshot::snapshot::{
     AnalysisContext, Bytes, Loss, RepoPath, Result, SideTag, Stage, WorkspaceModel,
 };
 
@@ -423,7 +423,7 @@ struct RequireRec {
 
 struct FileRec {
     facts: FileFacts,
-    project: Option<crate::snapshot::workspace::ProjectId>,
+    project: Option<diffctx_snapshot::snapshot::workspace::ProjectId>,
     /// The regions of the file, each with the namespace in effect.
     regions: Vec<(Range<u32>, String)>,
     imports: Vec<ImportRec>,

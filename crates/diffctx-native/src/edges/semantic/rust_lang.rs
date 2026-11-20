@@ -7,10 +7,10 @@ use once_cell::sync::Lazy;
 use regex::Regex;
 use rustc_hash::{FxHashMap, FxHashSet};
 
-use crate::config::edge_weights::SEMANTIC_DISCOVERY;
-use crate::config::extensions::RUST_EXTENSIONS;
-use crate::config::weights::EDGE_WEIGHTS;
 use diffctx_base::types::{Fragment, FragmentId};
+use diffctx_config::config::edge_weights::SEMANTIC_DISCOVERY;
+use diffctx_config::config::extensions::RUST_EXTENSIONS;
+use diffctx_config::config::weights::EDGE_WEIGHTS;
 
 use super::super::EdgeDict;
 use super::super::base::{self, EdgeBuilder, add_edge, add_edges_from_ids};
@@ -287,7 +287,12 @@ impl EdgeBuilder for RustEdgeBuilder {
 
         let mut reported = 0u64;
         for (i, rf) in rust_frags.iter().enumerate() {
-            if !crate::resource::poll_emissions(i, 256, edges.len() as u64, &mut reported) {
+            if !diffctx_snapshot::resource::poll_emissions(
+                i,
+                256,
+                edges.len() as u64,
+                &mut reported,
+            ) {
                 break;
             }
             let References {

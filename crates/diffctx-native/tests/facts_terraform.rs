@@ -9,7 +9,7 @@ use _diffctx::facts::lang::terraform::TerraformExtractor;
 use _diffctx::facts::{
     BlobFacts, Def, DefKind, Extractor, Fact, LocalKey, Receiver, Ref, Scope, Visibility,
 };
-use _diffctx::snapshot::{Loss, RunBudget, Stage};
+use diffctx_snapshot::snapshot::{Loss, RunBudget, Stage};
 
 fn extract(source: &str) -> BlobFacts {
     TerraformExtractor.extract(source.as_bytes(), &RunBudget::default())

@@ -3,8 +3,8 @@
 // the one predicate the engine asks of it. Expected answers come from reading
 // the fixtures, never from running diffctx.
 
-use _diffctx::snapshot::workspace::{RootOrigin, WorkspaceModel};
-use _diffctx::snapshot::{AnalysisContext, RunBudget, open, resolve};
+use diffctx_snapshot::snapshot::workspace::{RootOrigin, WorkspaceModel};
+use diffctx_snapshot::snapshot::{AnalysisContext, RunBudget, open, resolve};
 use tempfile::TempDir;
 
 mod support;

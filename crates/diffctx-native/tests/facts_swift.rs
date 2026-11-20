@@ -7,7 +7,7 @@ use _diffctx::facts::{
     BlobFacts, Def, DefKind, Disambig, EntryKind, Extractor, Fact, ImportKind, Language, Receiver,
     Ref, Scope, Star, TypeName, UseKind,
 };
-use _diffctx::snapshot::RunBudget;
+use diffctx_snapshot::snapshot::RunBudget;
 
 fn extract(source: &str) -> BlobFacts {
     SwiftExtractor.extract(source.as_bytes(), &RunBudget::default())

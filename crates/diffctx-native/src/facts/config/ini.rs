@@ -17,7 +17,7 @@
 //! The document is a map of its keys and its sections; a section is a map of its
 //! keys, every value a string.
 
-use crate::snapshot::RunBudget;
+use diffctx_snapshot::snapshot::RunBudget;
 
 use super::Reading;
 use super::syntax::{self, Guard, LineIndex};

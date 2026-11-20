@@ -9,10 +9,10 @@ use once_cell::sync::Lazy;
 use regex::Regex;
 use rustc_hash::{FxHashMap, FxHashSet};
 
-use crate::config::edge_weights::JAVASCRIPT_SEMANTIC;
-use crate::config::extensions::{JS_TS_EXTENSIONS, TYPESCRIPT_EXTENSIONS};
-use crate::config::weights::LANG_WEIGHTS;
 use diffctx_base::types::{Fragment, FragmentId};
+use diffctx_config::config::edge_weights::JAVASCRIPT_SEMANTIC;
+use diffctx_config::config::extensions::{JS_TS_EXTENSIONS, TYPESCRIPT_EXTENSIONS};
+use diffctx_config::config::weights::LANG_WEIGHTS;
 
 use super::super::EdgeDict;
 use super::super::base::{self, EdgeBuilder};
@@ -261,7 +261,7 @@ impl EdgeBuilder for JavaScriptEdgeBuilder {
         if js_changed.is_empty() {
             return vec![];
         }
-        let snapshot = crate::resource::current_source();
+        let snapshot = diffctx_snapshot::resource::current_source();
 
         let changed_set: FxHashSet<PathBuf> = changed.iter().cloned().collect();
         let mut discovered: FxHashSet<PathBuf> = FxHashSet::default();
@@ -283,7 +283,7 @@ impl EdgeBuilder for JavaScriptEdgeBuilder {
                 }
                 if let Some(root) = repo_root {
                     if let Ok(rel) = f.strip_prefix(root) {
-                        let rel_str = crate::paths::to_posix_display(
+                        let rel_str = diffctx_base::paths::to_posix_display(
                             rel.with_extension("").to_string_lossy(),
                         );
                         changed_names.insert(rel_str);

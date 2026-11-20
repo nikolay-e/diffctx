@@ -46,7 +46,7 @@ use crate::facts::{
     Import, ImportKind, Language, Local, LocalKey, LocalKind, ModulePath, Name, Namespace,
     Receiver, Ref, Scope, Star, TypeName, UseKind, Visibility, expired,
 };
-use crate::snapshot::RunBudget;
+use diffctx_snapshot::snapshot::RunBudget;
 
 const MAX_DEPTH: u16 = 256;
 const POLL_EVERY: usize = 256;

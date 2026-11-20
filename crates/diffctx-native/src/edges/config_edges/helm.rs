@@ -4,9 +4,9 @@ use once_cell::sync::Lazy;
 use regex::Regex;
 use rustc_hash::{FxHashMap, FxHashSet};
 
-use crate::config::edge_weights::HELM;
-use crate::source::Source;
 use diffctx_base::types::{Fragment, FragmentId};
+use diffctx_config::config::edge_weights::HELM;
+use diffctx_snapshot::source::Source;
 
 use super::super::EdgeDict;
 use super::super::base::{self, EdgeBuilder, add_edge};
@@ -292,7 +292,7 @@ impl EdgeBuilder for HelmEdgeBuilder {
             return FxHashMap::default();
         }
 
-        let source = crate::resource::current_source();
+        let source = diffctx_snapshot::resource::current_source();
         let mut edges: EdgeDict = FxHashMap::default();
         let values_idx = build_values_index(&source, &values_files);
         let define_defs = build_define_index(&templates);
@@ -326,7 +326,8 @@ impl EdgeBuilder for HelmEdgeBuilder {
         }
 
         let all_helm: Vec<&PathBuf> = templates.iter().chain(values.iter()).copied().collect();
-        let chart_roots = collect_chart_roots(&crate::resource::current_source(), &all_helm);
+        let chart_roots =
+            collect_chart_roots(&diffctx_snapshot::resource::current_source(), &all_helm);
         if chart_roots.is_empty() {
             return vec![];
         }

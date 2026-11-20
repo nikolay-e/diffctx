@@ -3,7 +3,7 @@
 
 use tree_sitter::{Language as TsLanguage, Node as TsNode};
 
-use crate::snapshot::RunBudget;
+use diffctx_snapshot::snapshot::RunBudget;
 
 use super::syntax::{self, Guard};
 use super::tree::{Entry, Key, Node, Scalar, ScalarKind, Value};

@@ -19,7 +19,9 @@ use std::path::{Path, PathBuf};
 
 use _diffctx::facts::{DefKey, FactsCache, LocalKey, Name, Scope, semantic_changes};
 use _diffctx::resolve::{Binding, EvidenceKind, GoResolver, Relation, Resolution};
-use _diffctx::snapshot::{AnalysisContext, RangeSpec, RunBudget, Side, SideTag, working_tree};
+use diffctx_snapshot::snapshot::{
+    AnalysisContext, RangeSpec, RunBudget, Side, SideTag, working_tree,
+};
 use serde::Deserialize;
 use snapshot_fixture::Repo;
 use walkdir::WalkDir;

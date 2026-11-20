@@ -14,12 +14,12 @@ use rayon::prelude::*;
 use rustc_hash::{FxHashMap, FxHashSet};
 use tracing::debug;
 
-use crate::config::limits::read_max_out_edges_per_node;
 use crate::graph::{
     CappedEdges, CompactEdge, EdgeCapStats, RankedCandidate, SourceTopK, SuppressionFactors,
     cap_out_edges_per_source, dedup_compact_edges, intern_fragment_nodes, push_bounded_top_k,
 };
 use diffctx_base::types::{EdgeCategory, FragmentId};
+use diffctx_config::config::limits::read_max_out_edges_per_node;
 
 type EdgeDict = FxHashMap<(FragmentId, FragmentId), f64>;
 
@@ -137,7 +137,7 @@ pub(crate) fn collect_capped_edges(
     fragments: &[Fragment],
     repo_root: Option<&Path>,
     skip_expensive: bool,
-    ctx: &crate::resource::RunContext,
+    ctx: &diffctx_snapshot::resource::RunContext,
 ) -> CappedEdges {
     let mut all_builders: Vec<(&str, Box<dyn EdgeBuilder>)> = Vec::new();
     for cat in builder_categories() {
@@ -159,10 +159,10 @@ fn collect_capped_edges_from(
     all_builders: Vec<(&str, Box<dyn EdgeBuilder>)>,
     fragments: &[Fragment],
     repo_root: Option<&Path>,
-    ctx: &crate::resource::RunContext,
+    ctx: &diffctx_snapshot::resource::RunContext,
 ) -> CappedEdges {
     let (node_to_idx, idx_to_node) = intern_fragment_nodes(fragments);
-    let category_weights = *crate::config::category_weights::CATEGORY_WEIGHTS;
+    let category_weights = *diffctx_config::config::category_weights::CATEGORY_WEIGHTS;
     let builder_meta: Vec<(EdgeCategory, f64)> = all_builders
         .iter()
         .map(|(cat_name, builder)| {
@@ -638,7 +638,7 @@ mod fallback_gate_tests {
             &fragments,
             None,
             false,
-            &crate::resource::RunContext::unbounded(),
+            &diffctx_snapshot::resource::RunContext::unbounded(),
         );
         assert!(
             has_fallback_pair(&capped, "u1.xyz", "u2.xyz"),
@@ -661,7 +661,7 @@ mod fallback_gate_tests {
             std::fs::write(at, content).expect("a file");
         }
         let git = |args: &[&str]| {
-            let out = crate::snapshot::git_command(dir.path())
+            let out = diffctx_snapshot::snapshot::git_command(dir.path())
                 .args(args)
                 .env("GIT_CONFIG_GLOBAL", "/dev/null")
                 .env("GIT_CONFIG_NOSYSTEM", "1")
@@ -723,7 +723,7 @@ mod fallback_gate_tests {
             &fragments,
             None,
             false,
-            &crate::resource::RunContext::unbounded(),
+            &diffctx_snapshot::resource::RunContext::unbounded(),
         );
         let categories = |a: &str, b: &str| -> std::collections::BTreeSet<&'static str> {
             let path = |idx: u32| capped.idx_to_node[idx as usize].path.clone();
@@ -767,7 +767,7 @@ mod fallback_gate_tests {
             &fragments,
             None,
             false,
-            &crate::resource::RunContext::unbounded(),
+            &diffctx_snapshot::resource::RunContext::unbounded(),
         );
         assert!(
             !has_fallback_pair(&capped, "svc/api/.env.example", "svc/worker/.env.example"),
@@ -793,7 +793,7 @@ mod fallback_gate_tests {
                 .iter()
                 .flat_map(|(p, content)| crate::parsers::fragment_file(Arc::from(*p), content))
                 .collect();
-            let ctx = crate::resource::RunContext::unbounded();
+            let ctx = diffctx_snapshot::resource::RunContext::unbounded();
             ctx.set_changed_lines(diffctx_base::changed_lines::ChangedLines::from_diff(diff));
             let capped = collect_capped_edges(&fragments, None, false, &ctx);
             has_fallback_pair(&capped, "svc/app.env", "tools/loadtest.py")
@@ -843,7 +843,7 @@ mod fallback_gate_tests {
             &fragments,
             Some(repository.path()),
             false,
-            &crate::resource::RunContext::unbounded(),
+            &diffctx_snapshot::resource::RunContext::unbounded(),
         );
         assert!(
             !has_fallback_pair(&capped, "proj/a.rb", "proj/e.rb"),
@@ -876,7 +876,7 @@ mod fallback_gate_tests {
             &fragments,
             Some(repository.path()),
             false,
-            &crate::resource::RunContext::unbounded(),
+            &diffctx_snapshot::resource::RunContext::unbounded(),
         );
         let node = |idx: u32| &capped.idx_to_node[idx as usize];
         let name = |idx: u32| {
@@ -995,7 +995,7 @@ mod naming_merge_tests {
             builders,
             &fragments,
             None,
-            &crate::resource::RunContext::unbounded(),
+            &diffctx_snapshot::resource::RunContext::unbounded(),
         );
         assert_eq!(capped.edges.len(), 1, "one merged pair expected");
         capped.edges[0].naming

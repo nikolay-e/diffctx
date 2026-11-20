@@ -176,7 +176,7 @@ jobs:
 
   # ============================================================================
   # `cargo deny check`: licenses and sources for the workspace (deny.toml), and the
-  # base crate's ban on grammars and Python bindings (crates/diffctx-base/deny.toml).
+  # lower crates' ban on grammars and Python bindings (crates/*/deny.toml).
   # The advisories run here too, beside cargo-audit above: deny's default is more
   # lenient on unmaintained crates, so the audit stays until a deny run has been
   # green on main for a release.
@@ -200,9 +200,11 @@ jobs:
       - name: Check the workspace
         run: cargo deny check
 
-      - name: Check the base crate's bans
-        working-directory: crates/diffctx-base
-        run: cargo deny check bans
+      - name: Check the lower crates' bans
+        run: |
+          for crate in diffctx-base diffctx-config diffctx-snapshot; do
+            (cd "crates/${crate}" && cargo deny check bans)
+          done
 
   # ============================================================================
   # Cargo.toml splits the tree-sitter grammars into lang-core/lang-extra, but

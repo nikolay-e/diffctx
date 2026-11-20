@@ -32,7 +32,7 @@ use crate::facts::{
     BlobFacts, Def, DefKind, Extractor, Fact, Hasher, Language, LocalKey, Namespace, Scope, Span,
     Visibility, hash_text,
 };
-use crate::snapshot::{Loss, RunBudget};
+use diffctx_snapshot::snapshot::{Loss, RunBudget};
 
 pub struct ConfigExtractor;
 

@@ -5,7 +5,7 @@
 //! `blob` id, so a file the working tree holds unchanged shares its cache entry
 //! with the commit it came from.
 
-use crate::snapshot::{Oid, SnapshotError};
+use diffctx_snapshot::snapshot::{Oid, SnapshotError};
 
 /// git's id of a blob holding `bytes` (`git hash-object`, no filters).
 pub fn blob_oid(bytes: &[u8]) -> Result<Oid, SnapshotError> {

@@ -28,12 +28,12 @@ use std::path::{Path, PathBuf};
 
 use rustc_hash::{FxHashMap, FxHashSet};
 
-use crate::config::weights::EDGE_WEIGHTS;
-use crate::paths::index_key_of;
-use crate::resource::read_file_cached;
 use diffctx_base::canon::{KeyCache, for_each_name_key};
 use diffctx_base::changed_lines::ChangedLines;
+use diffctx_base::paths::index_key_of;
 use diffctx_base::types::{Fragment, FragmentId};
+use diffctx_config::config::weights::EDGE_WEIGHTS;
+use diffctx_snapshot::resource::read_file_cached;
 
 mod definitions;
 mod extract;
@@ -608,7 +608,7 @@ impl<'a> Table<'a> {
         let mut frags = Vec::with_capacity(paths.len());
         let mut analysed: Vec<(usize, Vec<RawRecord>)> = Vec::new();
         let mut ghosts: Vec<(usize, Vec<RawRecord>)> = Vec::new();
-        let changed = crate::resource::current_changed_lines();
+        let changed = diffctx_snapshot::resource::current_changed_lines();
         for (file, path) in paths.iter().enumerate() {
             let in_file = &by_path[path];
             let representative = in_file
@@ -627,7 +627,7 @@ impl<'a> Table<'a> {
                     .collect(),
                 representative,
             });
-            if !crate::resource::poll_current_every(file, 32) {
+            if !diffctx_snapshot::resource::poll_current_every(file, 32) {
                 break;
             }
             let Some(class) = classify(&rels[file]) else {
@@ -736,7 +736,7 @@ impl<'a> Table<'a> {
         let mut cache = KeyCache::default();
         let mut pairs: FxHashSet<(&str, &str)> = FxHashSet::default();
         for (n, f) in fragments.iter().enumerate() {
-            if !crate::resource::poll_current_every(n, 64) {
+            if !diffctx_snapshot::resource::poll_current_every(n, 64) {
                 break;
             }
             let path = f.path();
@@ -881,7 +881,7 @@ pub(crate) fn counterparts_of_change(
     if lines.is_none() {
         return Vec::new();
     }
-    crate::resource::with_changed_lines(lines, || {
+    diffctx_snapshot::resource::with_changed_lines(lines, || {
         let table = Table::from_fragments(fragments, repo_root);
         let mut out = Vec::new();
         for pair in table.live_links() {
@@ -1028,7 +1028,7 @@ pub(crate) fn build_sites(fragments: &[Fragment], repo_root: Option<&Path>) -> V
     paths.sort_unstable();
     let mut found = Vec::new();
     for (n, path) in paths.into_iter().enumerate() {
-        if !crate::resource::poll_current_every(n, 32) {
+        if !diffctx_snapshot::resource::poll_current_every(n, 32) {
             break;
         }
         let rel = index_key_of(path, repo_root);
@@ -1083,7 +1083,7 @@ pub(crate) fn related_files(
     let is_changed = |file: usize| changed_set.contains(universe[file]);
 
     let removes_something = |rels: &[String], is_changed: &dyn Fn(usize) -> bool| {
-        crate::resource::current_changed_lines().is_some_and(|lines| {
+        diffctx_snapshot::resource::current_changed_lines().is_some_and(|lines| {
             (0..rels.len()).any(|f| is_changed(f) && lines.removed_text(&rels[f]).is_some())
         })
     };
@@ -1096,7 +1096,7 @@ pub(crate) fn related_files(
             if is_changed(file) != pass_changed {
                 continue;
             }
-            if !crate::resource::poll_current_every(file, 16) {
+            if !diffctx_snapshot::resource::poll_current_every(file, 16) {
                 return Vec::new();
             }
             let Some(class) = classify(&rels[file]) else {
@@ -1121,7 +1121,7 @@ pub(crate) fn related_files(
         }
     }
 
-    let lines = crate::resource::current_changed_lines();
+    let lines = diffctx_snapshot::resource::current_changed_lines();
     let mut recs = place(&rels, &analysed, lines.as_deref());
     // What the change removed is gone from the file but not from the
     // tree: the readers and providers of a removed key are the change's.

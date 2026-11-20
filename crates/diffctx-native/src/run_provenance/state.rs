@@ -7,10 +7,10 @@ use std::sync::Arc;
 
 use rustc_hash::{FxHashMap, FxHashSet};
 
-use crate::mode::PipelineConfig;
 use crate::scoring::ScoringResult;
 use crate::utility::InformationNeed;
 use diffctx_base::types::{Fragment, FragmentId};
+use diffctx_config::mode::PipelineConfig;
 
 /// Per-instance heavy-phase outputs cached for reuse across many
 /// (`tau`, `core_budget_fraction`) selection cells. The selection /
@@ -72,7 +72,7 @@ pub struct ScoredState {
     pub provenance: crate::run_provenance::RunProvenance,
     /// The deadline, the resource caps and the log of what limited the run —
     /// read by every renderer for the coverage block.
-    pub run: crate::resource::RunContext,
+    pub run: diffctx_snapshot::resource::RunContext,
     /// The change summary's token cost (#241), computed once here: it depends
     /// on nothing a sweep cell changes, and `select_with_params` re-runs
     /// selection per (tau, cbf) cell against this one state.
@@ -134,7 +134,7 @@ pub struct SelectionOutcome {
     pub gated: bool,
     /// What this selection could not honour — per outcome, not per state,
     /// because one state serves many budgets in a sweep.
-    pub limit_reasons: Vec<crate::resource::LimitReason>,
+    pub limit_reasons: Vec<diffctx_snapshot::resource::LimitReason>,
     /// The range's commit messages as this budget affords them.
     pub commit_messages: Vec<String>,
 }
@@ -161,7 +161,7 @@ pub(crate) fn fragmentless_changed_files(
     changed_files
         .iter()
         .filter(|p| !fragmented.contains(p.to_string_lossy().as_ref()))
-        .map(|p| crate::paths::display_rel_or_abs(root_dir, p))
+        .map(|p| diffctx_base::paths::display_rel_or_abs(root_dir, p))
         .collect()
 }
 
@@ -173,7 +173,7 @@ pub(crate) struct AnswerScope {
     root: PathBuf,
     paths: FxHashSet<String>,
     stems: Vec<String>,
-    source: crate::source::Source,
+    source: diffctx_snapshot::source::Source,
 }
 
 impl AnswerScope {
@@ -183,7 +183,7 @@ impl AnswerScope {
         }
         let ext = diffctx_base::languages::file_ext(Path::new(display_path));
         if self.stems.is_empty()
-            || !crate::config::extensions::CODE_EXTENSIONS.contains(ext.as_str())
+            || !diffctx_config::config::extensions::CODE_EXTENSIONS.contains(ext.as_str())
         {
             return false;
         }
@@ -219,12 +219,10 @@ pub(crate) fn answer_paths<'a>(
         paths: state
             .changed_files
             .iter()
-            .map(|p| crate::paths::display_rel_or_abs(&state.root_dir, p))
-            .chain(
-                selected.map(|f| {
-                    crate::paths::display_rel_or_abs(&state.root_dir, Path::new(f.path()))
-                }),
-            )
+            .map(|p| diffctx_base::paths::display_rel_or_abs(&state.root_dir, p))
+            .chain(selected.map(|f| {
+                diffctx_base::paths::display_rel_or_abs(&state.root_dir, Path::new(f.path()))
+            }))
             .collect(),
         stems,
     }

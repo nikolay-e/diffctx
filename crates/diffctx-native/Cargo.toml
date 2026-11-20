@@ -71,9 +71,11 @@ lang-extra = [
 
 [dependencies]
 diffctx-base.workspace = true
+diffctx-config.workspace = true
+diffctx-snapshot.workspace = true
 mimalloc = { version = "0.1", default-features = false }
 clap = { version = "4", features = ["derive"] }
-dunce = "1"
+dunce.workspace = true
 tree-sitter = "0.25"
 tree-sitter-python = { version = "0.25", optional = true }
 tree-sitter-javascript = { version = "0.25", optional = true }
@@ -121,28 +123,27 @@ tree-sitter-dart = { version = "0.3", optional = true }
 tree-sitter-prisma-io = { version = "1.6", optional = true }
 tree-sitter-svelte-ng = { version = "1.0", optional = true }
 tiktoken-rs.workspace = true
-rayon = "1.10"
+rayon.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 serde_yaml.workspace = true
 # Config files read as facts, not text (#328): TOML values and sections.
 toml.workspace = true
-thiserror.workspace = true
 anyhow = "1"
-tracing = "0.1"
+tracing.workspace = true
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 regex.workspace = true
 once_cell.workspace = true
 rustc-hash.workspace = true
 similar = "3"
 walkdir = "2"
-wait-timeout = "0.2"
 libc.workspace = true
 pyo3 = { version = "0.30", features = ["extension-module", "abi3-py311"], optional = true }
 schemars.workspace = true
 
 [dev-dependencies]
-tempfile = "3"
+diffctx-snapshot = { workspace = true, features = ["test-support"] }
+tempfile.workspace = true
 libtest-mimic = "0.8"
 # Only the diffctx-test example walks case files by pattern; it rode in
 # [dependencies] and shipped in the published crate for nothing.

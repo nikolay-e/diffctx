@@ -7,7 +7,7 @@ mod snapshot_fixture;
 
 use _diffctx::facts::{DefKey, DefKind, FactsCache};
 use _diffctx::resolve::{Binding, ConfigResolver, Relation, Resolution};
-use _diffctx::snapshot::{AnalysisContext, RangeSpec, RunBudget, Side, SideTag};
+use diffctx_snapshot::snapshot::{AnalysisContext, RangeSpec, RunBudget, Side, SideTag};
 use snapshot_fixture::Repo;
 
 struct Fixture {

@@ -450,6 +450,8 @@ jobs:
           listing=$(tar tzf ./repo/dist/*.tar.gz)
           echo "${listing}" | grep -m5 -E 'crates/diffctx-native/src/.*\.rs$'
           echo "${listing}" | grep -m1 -E 'crates/diffctx-base/src/.*\.rs$'
+          echo "${listing}" | grep -m1 -E 'crates/diffctx-snapshot/src/.*\.rs$'
+          echo "${listing}" | grep -m1 -E 'crates/diffctx-config/src/.*\.rs$'
           echo "OK: sdist contains Rust sources"
 
       # The sdist is what every platform without a wheel falls back to, and

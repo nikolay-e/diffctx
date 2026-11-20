@@ -40,7 +40,7 @@ use crate::facts::{
     Def, DefKey, DefKind, Disambig, Fact, FactsCache, FileFacts, ImportKind, Language, LocalKey,
     Name, Receiver, Ref, Scope, Span, Star, UseKind, Visibility, expired,
 };
-use crate::snapshot::{
+use diffctx_snapshot::snapshot::{
     AnalysisContext, Bytes, Loss, RepoPath, Result, SideTag, SnapshotReader, Stage, WorkspaceModel,
 };
 

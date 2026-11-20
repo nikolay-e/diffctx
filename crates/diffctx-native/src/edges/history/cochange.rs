@@ -2,9 +2,9 @@ use std::path::Path;
 
 use rustc_hash::FxHashMap;
 
-use crate::config::limits::COCHANGE;
-use crate::config::weights::EDGE_WEIGHTS;
 use diffctx_base::types::{Fragment, FragmentId};
+use diffctx_config::config::limits::COCHANGE;
+use diffctx_config::config::weights::EDGE_WEIGHTS;
 
 use super::super::EdgeDict;
 use super::super::base::{EdgeBuilder, add_edge};
@@ -16,9 +16,10 @@ impl CochangeEdgeBuilder {
     /// not the range's own commits — under the git timeout; `-z` keeps
     /// non-ASCII paths unquoted (#340).
     fn get_git_log_files(&self, repo_root: &Path) -> Option<Vec<Vec<String>>> {
-        let head = crate::resource::current_head_rev().unwrap_or_else(|| "HEAD".to_string());
+        let head =
+            diffctx_snapshot::resource::current_head_rev().unwrap_or_else(|| "HEAD".to_string());
         let limit = format!("-n{}", COCHANGE.commits_limit);
-        let stdout = crate::snapshot::run_git(
+        let stdout = diffctx_snapshot::snapshot::run_git(
             repo_root,
             &[
                 "log",
@@ -77,9 +78,9 @@ impl CochangeEdgeBuilder {
                 let rel = if p.is_absolute() {
                     p.strip_prefix(repo_root)
                         .ok()
-                        .map(|r| crate::paths::to_posix_display(r.to_string_lossy()))
+                        .map(|r| diffctx_base::paths::to_posix_display(r.to_string_lossy()))
                 } else {
-                    Some(crate::paths::to_posix_display(p.to_string_lossy()))
+                    Some(diffctx_base::paths::to_posix_display(p.to_string_lossy()))
                 };
                 rel.map(|r| (r, id))
             })

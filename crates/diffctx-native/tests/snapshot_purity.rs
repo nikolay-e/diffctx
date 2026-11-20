@@ -4,7 +4,7 @@
 
 mod snapshot_fixture;
 
-use _diffctx::snapshot::{
+use diffctx_snapshot::snapshot::{
     AnalysisContext, Decision, RangeSpec, RepoPath, RunBudget, Side, WithholdReason, resolve,
 };
 use snapshot_fixture::{Repo, names};
@@ -155,7 +155,7 @@ fn a_staged_context_does_not_follow_the_working_tree() {
     let (repo, _) = seeded();
     repo.write("src/staged.py", "STAGED = 1\n");
     repo.git(&["add", "src/staged.py"]);
-    let range = _diffctx::snapshot::staged(&repo.root).expect("range");
+    let range = diffctx_snapshot::snapshot::staged(&repo.root).expect("range");
     let first =
         AnalysisContext::new(repo.root.clone(), range, RunBudget::default()).expect("context");
     repo.write("src/staged.py", "STAGED = 'changed after capture'\n");

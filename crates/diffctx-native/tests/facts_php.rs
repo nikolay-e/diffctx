@@ -6,7 +6,7 @@ use _diffctx::facts::{
     BlobFacts, Def, DefKind, Disambig, EntryKind, Extractor, Fact, Import, ImportKind, LocalKey,
     LocalKind, Namespace, Receiver, Ref, Scope, Visibility,
 };
-use _diffctx::snapshot::{Loss, RunBudget};
+use diffctx_snapshot::snapshot::{Loss, RunBudget};
 
 fn php(source: &str) -> BlobFacts {
     PhpExtractor.extract(source.as_bytes(), &RunBudget::default())

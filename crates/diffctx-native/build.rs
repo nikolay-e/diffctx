@@ -128,15 +128,10 @@ fn main() {
         &facts_dirs.iter().map(String::as_str).collect::<Vec<_>>(),
         lock.as_deref(),
     );
-    let token_dirs = dirs(&["src/stopwords"]);
+    let token_dirs = dirs(&[]);
     let tokens = digest(
         &root,
-        &[
-            "src/token_corpus.rs",
-            "src/config/tokenization.rs",
-            "src/config/bm25.rs",
-            "src/stopwords.rs",
-        ],
+        &["src/token_corpus.rs"],
         &token_dirs.iter().map(String::as_str).collect::<Vec<_>>(),
         None,
     );

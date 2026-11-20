@@ -37,11 +37,11 @@ use rustc_hash::FxHashMap;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant, SystemTime};
 
-use crate::config::limits::{DEFAULT_PPR_ALPHA, DEFAULT_SCORING};
 use crate::impact::AUTOMATIC_TOKEN_CAP;
-use crate::mode::ScoringMode;
-use crate::snapshot as snap;
 use diffctx_base::languages::file_ext;
+use diffctx_config::config::limits::{DEFAULT_PPR_ALPHA, DEFAULT_SCORING};
+use diffctx_config::mode::ScoringMode;
+use diffctx_snapshot::snapshot as snap;
 use intent::{Intent, Search, before_glob, is_absolute_dir};
 
 /// A reviewed content hash stays reviewed this long. Long enough for a
@@ -81,12 +81,13 @@ struct Ceiling {
 }
 
 fn ceiling() -> Result<Ceiling, Silence> {
-    let secs = match std::env::var(crate::resource::TEST_HOOK_CEILING_SECS_ENV) {
+    let secs = match std::env::var(diffctx_snapshot::resource::TEST_HOOK_CEILING_SECS_ENV) {
         Err(std::env::VarError::NotPresent) => Ok(HOOK_DEADLINE_SECS),
         Ok(secs) => secs.parse().map_err(|_| "error:test-ceiling"),
         Err(std::env::VarError::NotUnicode(_)) => Err("error:test-ceiling"),
     }?;
-    let spent = std::env::var(crate::resource::TEST_HOOK_CEILING_EXPIRED_ENV).as_deref() == Ok("1");
+    let spent = std::env::var(diffctx_snapshot::resource::TEST_HOOK_CEILING_EXPIRED_ENV).as_deref()
+        == Ok("1");
     Ok(Ceiling { secs, spent })
 }
 
@@ -2078,7 +2079,10 @@ fn rooted_pathspecs(payload: &serde_json::Value, root: &Path, paths: &[String]) 
         } else {
             Some(format!("{here}/{path}"))
         };
-        match joined.as_deref().and_then(snap::normalize_lexical) {
+        match joined
+            .as_deref()
+            .and_then(diffctx_base::paths::normalize_lexical)
+        {
             Some(rooted_path) if !rooted_path.is_empty() => rooted.push(rooted_path),
             _ => return Vec::new(),
         }
@@ -2726,7 +2730,7 @@ fn range_name(trigger: &Trigger, range: &str) -> Option<String> {
     reason = "the pending text of files the review reads as committed; one that cannot be read is named in the hedge"
 )]
 fn named_in_unread(root: &Path, own: &Owned) -> Option<String> {
-    let run = crate::resource::RunContext::unbounded();
+    let run = diffctx_snapshot::resource::RunContext::unbounded();
     let Ok(names) = edited_definitions(root, Some(&own.files), &run) else {
         return Some(
             "(callers may be missing: the names this session's edits change could not be read, so the changed files read as committed were not checked for them)"
@@ -2788,14 +2792,14 @@ fn stopped_note(
 ) -> String {
     if !output
         .limits
-        .contains(&crate::resource::LimitReason::Deadline)
+        .contains(&diffctx_snapshot::resource::LimitReason::Deadline)
     {
         // A read the engine needed and did not get leaves the callers it
         // lists a lower bound: the answer above says "not determined" for
         // what it never searched, and this says why in a line of its own.
         return if output
             .limits
-            .contains(&crate::resource::LimitReason::ReadFailed)
+            .contains(&diffctx_snapshot::resource::LimitReason::ReadFailed)
         {
             format!(
                 "diffctx could not read part of {range} (read_failed): the callers listed above are a lower bound. `diffctx <repo> --diff {range} --mode impact` repeats the review.\n"
@@ -3024,7 +3028,7 @@ impl Scope {
                 let ext = file_ext(&path);
                 !p.is_empty()
                     && path.is_file()
-                    && crate::config::extensions::DOC_EXTENSIONS.contains(ext.as_str())
+                    && diffctx_config::config::extensions::DOC_EXTENSIONS.contains(ext.as_str())
             })
     }
 
@@ -3071,7 +3075,7 @@ fn search_scope(payload: &serde_json::Value, search: &Searched, root: &Path) -> 
 fn edited_definitions(
     root: &Path,
     within: Option<&[String]>,
-    run: &crate::resource::RunContext,
+    run: &diffctx_snapshot::resource::RunContext,
 ) -> Result<Vec<String>, Silence> {
     let _phase = diffctx_base::profile::phase("hook.edited_definitions");
     // The pending change as impact reads it, untracked files included: a
@@ -3083,7 +3087,8 @@ fn edited_definitions(
             "error:git"
         }
     };
-    let analysis = crate::source::Analysis::at_working_tree(root, run).map_err(stopped)?;
+    let analysis =
+        diffctx_snapshot::source::Analysis::at_working_tree(root, run).map_err(stopped)?;
     run.set_source(analysis.head());
     let (mut hunks, _) = crate::pipeline::collect_hunks_with_untracked(
         root,
@@ -3222,7 +3227,7 @@ fn named_in_scope(
         let bytes = std::fs::read(&path).ok()?;
         let blob = registry
             .get(language)?
-            .extract(&bytes, &crate::snapshot::RunBudget::default());
+            .extract(&bytes, &diffctx_snapshot::snapshot::RunBudget::default());
         if !blob.losses.is_empty() {
             return None;
         }
@@ -3358,7 +3363,8 @@ fn may_edit<'a>(root: &Path, paths: &[String], names: &'a [String]) -> Vec<&'a S
         .iter()
         .filter(|p| !p.ends_with('/'))
         .filter(|p| {
-            !crate::config::extensions::DOC_EXTENSIONS.contains(file_ext(Path::new(p)).as_str())
+            !diffctx_config::config::extensions::DOC_EXTENSIONS
+                .contains(file_ext(Path::new(p)).as_str())
         })
         .cloned()
         .collect();
@@ -3402,7 +3408,11 @@ fn edited_names(root: &Path, identity: &str, started: Instant) -> Result<Vec<Str
     }
     let root = root.to_path_buf();
     let names = within_budget(started, move |secs| {
-        edited_definitions(&root, None, &crate::resource::RunContext::for_run(secs))
+        edited_definitions(
+            &root,
+            None,
+            &diffctx_snapshot::resource::RunContext::for_run(secs),
+        )
     })?;
     mark_seen_with(&key, &names.join("\n"));
     Ok(names)
@@ -3710,7 +3720,7 @@ fn changes_no_code(changes: &snap::ChangeSet) -> bool {
         && changes.gitignored.is_empty()
         && changes.changes.iter().all(|c| {
             matches!(c.kind, snap::ChangeKind::Added | snap::ChangeKind::Modified)
-                && crate::config::extensions::DOC_EXTENSIONS
+                && diffctx_config::config::extensions::DOC_EXTENSIONS
                     .contains(file_ext(Path::new(c.path.as_str())).as_str())
         })
 }
@@ -4334,7 +4344,8 @@ pub fn respond_within_deadline(event: Event, stdin_json: String, gate: bool) -> 
     // The git calls that pick the range run on this thread before any
     // pipeline does; the hook's own context bounds them together.
     let ceiling = ceiling();
-    let hook_run = crate::resource::RunContext::for_run(ceiling.as_ref().map_or(0, |c| c.secs));
+    let hook_run =
+        diffctx_snapshot::resource::RunContext::for_run(ceiling.as_ref().map_or(0, |c| c.secs));
     let _in_hook = hook_run.enter();
     let answer = ceiling.and_then(|_| decide(event, &stdin_json, gate, started, &mut trace));
     let outcome = match &answer {

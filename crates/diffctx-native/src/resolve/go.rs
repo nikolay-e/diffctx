@@ -32,7 +32,7 @@ use crate::facts::{
     Def, DefKey, DefKind, Export, Fact, FactsCache, Import, ImportKind, Language, Name, Receiver,
     Ref, Star, UseKind, Visibility,
 };
-use crate::snapshot::{
+use diffctx_snapshot::snapshot::{
     AnalysisContext, Bytes, Loss, RepoPath, Result, SideTag, SnapshotReader, WorkspaceModel,
 };
 

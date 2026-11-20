@@ -40,7 +40,7 @@ use crate::facts::{
     LocalKind, ModulePath, Name, Namespace, PathMention, Receiver, Ref, Scope, Star, TypeName,
     UseKind, Visibility, expired, hash_text,
 };
-use crate::snapshot::RunBudget;
+use diffctx_snapshot::snapshot::RunBudget;
 
 const MAX_DEPTH: u16 = 256;
 const POLL_EVERY: usize = 256;

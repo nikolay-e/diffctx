@@ -11,7 +11,7 @@ use _diffctx::facts::{
     DefChange, Delta, Disambig, FactsCache, Language, LocalKey, Name, Namespace, Origin, Registry,
     SemanticChangeSet, TypeName, semantic_changes,
 };
-use _diffctx::snapshot::{Loss, RepoPath, RunBudget, SideTag};
+use diffctx_snapshot::snapshot::{Loss, RepoPath, RunBudget, SideTag};
 use facts_fixture::{Toy, key, key_in, key_of, review};
 use snapshot_fixture::Repo;
 
@@ -69,8 +69,8 @@ fn edit(file: &str, before: &str, after: &str) -> View {
 
 fn changes(
     repo: &Repo,
-    base: &_diffctx::snapshot::Oid,
-    head: &_diffctx::snapshot::Oid,
+    base: &diffctx_snapshot::snapshot::Oid,
+    head: &diffctx_snapshot::snapshot::Oid,
 ) -> SemanticChangeSet {
     let toy = Toy::new();
     let ctx = review(repo, base, head);
@@ -78,7 +78,11 @@ fn changes(
     semantic_changes(&ctx, &cache).expect("semantic changes")
 }
 
-fn run(repo: &Repo, base: &_diffctx::snapshot::Oid, head: &_diffctx::snapshot::Oid) -> View {
+fn run(
+    repo: &Repo,
+    base: &diffctx_snapshot::snapshot::Oid,
+    head: &diffctx_snapshot::snapshot::Oid,
+) -> View {
     view(changes(repo, base, head))
 }
 
@@ -491,9 +495,9 @@ fn a_cancelled_run_stops_with_a_named_loss_and_no_claims() {
         cancel: Some(cancel.clone()),
         ..RunBudget::default()
     };
-    let ctx = _diffctx::snapshot::AnalysisContext::new(
+    let ctx = diffctx_snapshot::snapshot::AnalysisContext::new(
         repo.root.clone(),
-        _diffctx::snapshot::RangeSpec::Review { base, head },
+        diffctx_snapshot::snapshot::RangeSpec::Review { base, head },
         budget,
     )
     .expect("context");
@@ -505,7 +509,7 @@ fn a_cancelled_run_stops_with_a_named_loss_and_no_claims() {
     assert_eq!(
         set.losses,
         vec![Loss::Deadline {
-            stage: _diffctx::snapshot::Stage::Extraction
+            stage: diffctx_snapshot::snapshot::Stage::Extraction
         }]
     );
     assert_eq!(toy.calls(), 0);
@@ -586,8 +590,8 @@ fn both_languages() -> Registry {
 
 fn polyglot(
     repo: &Repo,
-    base: &_diffctx::snapshot::Oid,
-    head: &_diffctx::snapshot::Oid,
+    base: &diffctx_snapshot::snapshot::Oid,
+    head: &diffctx_snapshot::snapshot::Oid,
 ) -> SemanticChangeSet {
     let ctx = review(repo, base, head);
     let cache = FactsCache::disabled().with_registry(both_languages());

@@ -2,9 +2,9 @@ use std::path::Path;
 
 use rustc_hash::{FxHashMap, FxHashSet};
 
-use crate::config::edge_weights::TAGS_SEMANTIC;
 use diffctx_base::canon::{KeyCache, for_each_word_key};
 use diffctx_base::types::{Fragment, FragmentId};
+use diffctx_config::config::edge_weights::TAGS_SEMANTIC;
 
 use super::super::EdgeDict;
 use super::super::base::{self, EdgeBuilder};
@@ -47,7 +47,7 @@ impl EdgeBuilder for TagsEdgeBuilder {
             // `self`, `None`, `def`: every code fragment of a language shares
             // them, and a fallback edge on a keyword is noise with weight.
             // Config files keep every word: there the fallback is the link.
-            let code = crate::config::extensions::CODE_EXTENSIONS
+            let code = diffctx_config::config::extensions::CODE_EXTENSIONS
                 .contains(diffctx_base::languages::file_ext(Path::new(path)).as_str());
             let mut keys: FxHashSet<String> = FxHashSet::default();
             for ident in &f.identifiers {

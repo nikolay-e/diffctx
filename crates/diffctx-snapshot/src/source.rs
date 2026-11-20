@@ -29,7 +29,7 @@ pub enum Why {
 
 /// The secret-path floor, which needs no repository: private-key, keystore
 /// and credential files never reach LLM-bound output on any surface (#227).
-pub(crate) fn is_secret_path(path: &Path) -> bool {
+pub fn is_secret_path(path: &Path) -> bool {
     snap::is_secret_path(path)
 }
 
@@ -75,9 +75,9 @@ impl Listing {
     }
 }
 
-pub(crate) fn in_scope(root: &Path, path: &Path, scope: &[String]) -> bool {
+pub fn in_scope(root: &Path, path: &Path, scope: &[String]) -> bool {
     scope.is_empty()
-        || crate::paths::display_rel(root, path).is_some_and(|rel| {
+        || diffctx_base::paths::display_rel(root, path).is_some_and(|rel| {
             scope.iter().any(|s| {
                 let s = s.trim_end_matches('/');
                 rel == s || rel.strip_prefix(s).is_some_and(|r| r.starts_with('/'))
@@ -104,7 +104,7 @@ enum End {
 }
 
 /// One analysis, built once by the door that received the question.
-pub(crate) struct Analysis {
+pub struct Analysis {
     ctx: snap::AnalysisContext,
     root: PathBuf,
     /// The range as `git diff` is asked it: both ends as object ids for a
@@ -127,7 +127,7 @@ impl Analysis {
     /// by the snapshot layer. The staged index is captured here, once, as a
     /// tree, and every current-side byte of the run comes from that tree
     /// whatever the disk or a later `git add` says.
-    pub(crate) fn open(
+    pub fn open(
         root_dir: &Path,
         spec: Option<&str>,
         run: &crate::resource::RunContext,
@@ -142,7 +142,7 @@ impl Analysis {
     /// The analysis of a range its caller already holds as a value: a push
     /// or a force-push the hook read off git's record reaches the engine
     /// as the two ids it measured, never as text to be read again.
-    pub(crate) fn open_range(
+    pub fn open_range(
         root_dir: &Path,
         range: snap::RangeSpec,
         run: &crate::resource::RunContext,
@@ -158,7 +158,7 @@ impl Analysis {
 
     /// The analysis of one snapshot, not of a change: `--symbol`, the project
     /// graph, a question about the checkout as it is.
-    pub(crate) fn at_working_tree(
+    pub fn at_working_tree(
         root_dir: &Path,
         run: &crate::resource::RunContext,
     ) -> snap::Result<Arc<Self>> {
@@ -247,22 +247,22 @@ impl Analysis {
         }))
     }
 
-    pub(crate) fn range(&self) -> Option<&str> {
+    pub fn range(&self) -> Option<&str> {
         self.range.as_deref()
     }
 
-    pub(crate) fn staged(&self) -> Option<&snap::StagedSnapshot> {
+    pub fn staged(&self) -> Option<&snap::StagedSnapshot> {
         self.staged.as_ref()
     }
 
     /// Whether the change's head is the checkout itself, which is where
     /// untracked files belong in the change set.
-    pub(crate) fn is_working_tree_diff(&self) -> bool {
+    pub fn is_working_tree_diff(&self) -> bool {
         self.working_tree_diff
     }
 
     /// The current side.
-    pub(crate) fn head(self: &Arc<Self>) -> Source {
+    pub fn head(self: &Arc<Self>) -> Source {
         Source::over(self, End::Head)
     }
 
@@ -278,7 +278,7 @@ impl Analysis {
     }
 
     fn repo_path(&self, abs: &Path) -> Option<snap::RepoPath> {
-        let rel = crate::paths::display_rel(&self.root, abs)?;
+        let rel = diffctx_base::paths::display_rel(&self.root, abs)?;
         snap::RepoPath::new(&rel).ok()
     }
 
@@ -294,7 +294,7 @@ impl Analysis {
             return Ok(listing.clone());
         }
         let listed = self.reader(end).list()?;
-        let blob = |p: &snap::RepoPath| crate::paths::repo_join(&self.root, &p.to_string());
+        let blob = |p: &snap::RepoPath| diffctx_base::paths::repo_join(&self.root, &p.to_string());
         let listing = Arc::new(Listing {
             blobs: listed
                 .entries
@@ -473,7 +473,7 @@ impl Source {
             .map(|b| &b.path)
             .chain(&listing.too_large)
             .chain(&listing.links)
-            .filter_map(|p| crate::paths::display_rel(root, p))
+            .filter_map(|p| diffctx_base::paths::display_rel(root, p))
             .collect())
     }
 
@@ -584,6 +584,48 @@ fn by_name(name: &str) -> Admitted {
         Admitted::Withheld(Why::Secret)
     } else {
         Admitted::Yes
+    }
+}
+
+/// Whether reading a path stays inside `root`.
+///
+/// The repository is the trust boundary: a tool that reads a stranger's
+/// checkout must not be walked out of it by a symlink the checkout contains.
+/// `~/repo/evil -> /etc/shadow` is one `read_to_string` away from being a
+/// context fragment, and `canonicalize()` on that name returns what it POINTS
+/// AT — which is how an absolute out-of-root path reached the changed-file
+/// list.
+///
+/// This is the READ-time guard, and it answers containment by canonicalising
+/// both sides, so a symlink chain, a `..` segment and a symlinked parent
+/// directory are all caught by one comparison. It therefore requires the path
+/// to exist, which makes it the wrong question for a name git handed us: a
+/// deleted file is by definition gone, and a bare clone has no working tree at
+/// all. Those callers get `contains_lexically` instead — containment and
+/// existence are different questions, and answering the second one where the
+/// first was meant empties both lists.
+///
+/// The path itself is never rewritten: the repo-relative name is what every
+/// downstream layer keys on (fragment ids, ignore rules, the secret policy),
+/// and substituting the link target renames the object mid-pipeline.
+///
+/// One per walk, the root resolved once; every path is still resolved in
+/// full, so the guard is the one each path always had.
+pub struct Containment {
+    root: Option<PathBuf>,
+}
+
+impl Containment {
+    pub fn new(root: &Path) -> Self {
+        Self {
+            root: dunce::canonicalize(root).ok(),
+        }
+    }
+
+    pub fn contains(&self, path: &Path) -> bool {
+        self.root.as_ref().is_some_and(|root| {
+            dunce::canonicalize(path).is_ok_and(|canon| canon.starts_with(root))
+        })
     }
 }
 
@@ -763,5 +805,34 @@ mod tests {
             refused.is_err(),
             "the tips do not descend one from the other"
         );
+    }
+
+    #[test]
+    fn a_symlink_leaving_the_repository_is_not_resolvable_within_it() {
+        let tmp = tempfile::TempDir::new().expect("tempdir");
+        let root = tmp.path().join("repo");
+        let outside = tmp.path().join("outside");
+        std::fs::create_dir_all(&root).expect("root");
+        std::fs::create_dir_all(&outside).expect("outside");
+        std::fs::write(outside.join("secret.txt"), "LEAK\n").expect("write");
+        std::fs::write(root.join("real.txt"), "ok\n").expect("write");
+
+        let within = Containment::new(&root);
+        #[cfg(unix)]
+        {
+            std::os::unix::fs::symlink(outside.join("secret.txt"), root.join("escape.txt"))
+                .expect("symlink");
+            std::os::unix::fs::symlink(&outside, root.join("escape_dir")).expect("symlink dir");
+            std::os::unix::fs::symlink(root.join("real.txt"), root.join("inner_link.txt"))
+                .expect("symlink inside");
+            assert!(!within.contains(&root.join("escape.txt")));
+            // A symlinked *directory* hides the escape one level up: the leaf
+            // is an ordinary file, so only the canonical form catches it.
+            assert!(!within.contains(&root.join("escape_dir").join("secret.txt")));
+            assert!(within.contains(&root.join("inner_link.txt")));
+        }
+        assert!(within.contains(&root.join("real.txt")));
+        assert!(!within.contains(&root.join("missing.txt")));
+        assert!(!within.contains(&outside.join("secret.txt")));
     }
 }

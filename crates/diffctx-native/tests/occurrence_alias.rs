@@ -16,7 +16,7 @@ use _diffctx::occurrence::{
     ValuePlace, close_aliases, scan, value_use,
 };
 use _diffctx::resolve::Relation;
-use _diffctx::snapshot::{RepoPath, RunBudget};
+use diffctx_snapshot::snapshot::{RepoPath, RunBudget};
 
 type Found = Option<(Outcome, Basis)>;
 

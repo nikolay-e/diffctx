@@ -16,7 +16,7 @@ use crate::facts::file::facts_of;
 use crate::facts::ids::Name;
 use crate::facts::language::Language;
 use crate::facts::model::{Def, DefKey, DefKind, LocalKey};
-use crate::snapshot::{
+use diffctx_snapshot::snapshot::{
     AnalysisContext, Change, ChangeKind, Decision, Loss, RepoPath, Result, SideTag, SnapshotError,
     Stage,
 };

@@ -4,8 +4,8 @@ use once_cell::sync::Lazy;
 use regex::Regex;
 use rustc_hash::{FxHashMap, FxHashSet};
 
-use crate::config::edge_weights::CICD;
 use diffctx_base::types::{Fragment, FragmentId};
+use diffctx_config::config::edge_weights::CICD;
 
 use super::super::EdgeDict;
 use super::super::base::{self, EdgeBuilder, FragmentIndex, add_edge, link_by_name};

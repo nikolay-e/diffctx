@@ -24,7 +24,7 @@ use _diffctx::facts::{
     ModulePath, Name, Namespace, ProjectId, Registry, Span, TypeName, Visibility, hash_text,
     hash_tokens,
 };
-use _diffctx::snapshot::{AnalysisContext, Oid, RangeSpec, RunBudget};
+use diffctx_snapshot::snapshot::{AnalysisContext, Oid, RangeSpec, RunBudget};
 
 use crate::snapshot_fixture::Repo;
 

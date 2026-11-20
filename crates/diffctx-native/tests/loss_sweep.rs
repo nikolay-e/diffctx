@@ -18,7 +18,7 @@
 use std::collections::BTreeSet;
 use std::process::Output;
 
-use _diffctx::snapshot::{Loss, NotAnalysedReason, RepoPath, SideTag, Stage};
+use diffctx_snapshot::snapshot::{Loss, NotAnalysedReason, RepoPath, SideTag, Stage};
 use serde_json::Value;
 
 mod support;

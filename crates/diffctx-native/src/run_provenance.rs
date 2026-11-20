@@ -67,7 +67,7 @@ pub struct Provenance {
     pub selection: Option<Selection>,
     /// The caps in force; with the full record only, the hash covers them.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub resource_limits: Option<crate::resource::ResourceBudget>,
+    pub resource_limits: Option<diffctx_snapshot::resource::ResourceBudget>,
 }
 
 /// `DIFFCTX_PROVENANCE=full` puts the whole effective configuration and the
@@ -94,17 +94,17 @@ impl RunProvenance {
     /// the run's deadline ended is no error: the side stays unnamed and the run
     /// notes the limit, so the answer says it is partial and still arrives.
     pub fn new(
-        run: &crate::resource::RunContext,
+        run: &diffctx_snapshot::resource::RunContext,
         root_dir: &Path,
         diff_range: Option<&str>,
         effective_config: EffectiveConfigV1,
-    ) -> crate::snapshot::Result<Self> {
+    ) -> diffctx_snapshot::snapshot::Result<Self> {
         let (base_rev, head_rev) = diff_range
-            .map(crate::snapshot::split_diff_range)
+            .map(diffctx_snapshot::snapshot::split_diff_range)
             .unwrap_or((None, None));
-        let oid = |rev: &str| match crate::snapshot::rev_oid(root_dir, rev) {
+        let oid = |rev: &str| match diffctx_snapshot::snapshot::rev_oid(root_dir, rev) {
             Err(e) if e.is_interruption() => {
-                run.note(crate::resource::reason_for(&e));
+                run.note(diffctx_snapshot::resource::reason_for(&e));
                 Ok(None)
             }
             read => read,

@@ -1,7 +1,7 @@
 //! The facts layer of the 2.0 architecture: what an [`Extractor`] says about a
 //! blob ([`BlobFacts`]), the cache keyed by blob ([`FactsCache`]), the facts of a
 //! file of a snapshot ([`facts_of`]) and what a range did to the definitions
-//! ([`semantic_changes`]). It reads a repository only through `crate::snapshot`
+//! ([`semantic_changes`]). It reads a repository only through `diffctx_snapshot::snapshot`
 //! (`tests/facts_isolation.rs` holds it). `java` and `kotlin` are the one syntax
 //! walk the Kotlin, Java and Swift extractors translate into facts, and the
 //! fragmenter shares; they are held to the layering by no more than that.
@@ -56,10 +56,13 @@ pub use model::{
 pub(crate) fn local_facts(path: &str, text: &str) -> Option<BlobFacts> {
     static REGISTRY: std::sync::OnceLock<Registry> = std::sync::OnceLock::new();
     let name = std::path::Path::new(path).file_name()?.to_str()?;
-    let Ok(name) = crate::snapshot::RepoPath::new(name) else {
+    let Ok(name) = diffctx_snapshot::snapshot::RepoPath::new(name) else {
         return None;
     };
     let language = Language::detect(&name, text.as_bytes())?;
     let extractor = REGISTRY.get_or_init(lang::builtin).get(language)?;
-    Some(extractor.extract(text.as_bytes(), &crate::snapshot::RunBudget::default()))
+    Some(extractor.extract(
+        text.as_bytes(),
+        &diffctx_snapshot::snapshot::RunBudget::default(),
+    ))
 }

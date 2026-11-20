@@ -1,5 +1,5 @@
 use _diffctx::in_memory_harness::{MemoryRepo, build_diff_context_in_memory};
-use _diffctx::mode::ScoringMode;
+use diffctx_config::mode::ScoringMode;
 use rustc_hash::FxHashMap;
 
 #[test]

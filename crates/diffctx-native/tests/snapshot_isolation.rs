@@ -26,7 +26,7 @@ fn violations(source: &str) -> Vec<String> {
 
 #[test]
 fn the_snapshot_module_uses_no_other_module_of_the_crate() {
-    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("src/snapshot");
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../diffctx-snapshot/src/snapshot");
     let mut files = 0;
     let mut reaches = Vec::new();
     for entry in WalkDir::new(&root) {

@@ -230,7 +230,7 @@ fn plain_words(text: &str) -> Vec<String> {
         .filter(|w| {
             w.chars().count() >= 3
                 && w.chars().any(|c| c.is_ascii_alphabetic())
-                && !crate::stopwords::CODE_STOPWORDS.contains(&w.to_lowercase())
+                && !diffctx_config::stopwords::CODE_STOPWORDS.contains(&w.to_lowercase())
         })
         .map(str::to_string)
         .collect()
@@ -290,7 +290,7 @@ fn key_like(word: &str) -> bool {
     let chars: Vec<char> = word.chars().collect();
     if chars.len() < 4
         || !chars.iter().any(|c| c.is_ascii_alphabetic())
-        || crate::stopwords::CODE_STOPWORDS.contains(&word.to_lowercase())
+        || diffctx_config::stopwords::CODE_STOPWORDS.contains(&word.to_lowercase())
     {
         return false;
     }
@@ -1041,7 +1041,7 @@ impl LiteralNames {
             for (pattern, pathspec, shape) in found {
                 let grepped = super::read_or_note(
                     state,
-                    crate::grep::grep_lines_matching(
+                    diffctx_snapshot::grep::grep_lines_matching(
                         &state.root_dir,
                         &source,
                         &pattern,
@@ -1056,7 +1056,7 @@ impl LiteralNames {
                         || (super::mentions::commented_in(path, text)
                             && !Reading::of(path)
                                 .is_some_and(|r| r.php && text.contains("@dataProvider")))
-                        || crate::paths::is_lockfile_path(std::path::Path::new(path))
+                        || diffctx_base::paths::is_lockfile_path(std::path::Path::new(path))
                         || matches!(
                             super::extension(path).as_str(),
                             "diff" | "patch" | "lock" | "tex" | "bib" | "csv" | "tsv" | "log"
@@ -1217,9 +1217,9 @@ pub(super) fn untouched_terms(state: &ScoredState, path: &str) -> rustc_hash::Fx
 }
 
 /// The run's limits for a read of the snapshot's files.
-pub(super) fn read_budget(state: &ScoredState) -> crate::snapshot::RunBudget {
+pub(super) fn read_budget(state: &ScoredState) -> diffctx_snapshot::snapshot::RunBudget {
     let (deadline, cancel) = state.run.io_limits();
-    crate::snapshot::RunBudget {
+    diffctx_snapshot::snapshot::RunBudget {
         deadline,
         cancel: Some(cancel),
         read_fault: None,

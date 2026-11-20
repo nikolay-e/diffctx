@@ -242,6 +242,8 @@ dependencies = [
  "brokk-tree-sitter-kotlin",
  "clap",
  "diffctx-base",
+ "diffctx-config",
+ "diffctx-snapshot",
  "dunce",
  "glob",
  "libc",
@@ -259,7 +261,6 @@ dependencies = [
  "serde_yaml",
  "similar",
  "tempfile",
- "thiserror",
  "tiktoken-rs",
  "toml",
  "tracing",
@@ -302,7 +303,6 @@ dependencies = [
  "tree-sitter-typescript",
  "tree-sitter-yaml",
  "tree-sitter-zig",
- "wait-timeout",
  "walkdir",
 ]
 
@@ -321,6 +321,38 @@ dependencies = [
  "thiserror",
  "tiktoken-rs",
  "toml",
+]
+
+[[package]]
+name = "diffctx-config"
+version = "2.0.0-dev.0"
+dependencies = [
+ "diffctx-base",
+ "once_cell",
+ "regex",
+ "rustc-hash",
+]
+
+[[package]]
+name = "diffctx-snapshot"
+version = "2.0.0-dev.0"
+dependencies = [
+ "diffctx-base",
+ "diffctx-config",
+ "dunce",
+ "libc",
+ "once_cell",
+ "rayon",
+ "regex",
+ "rustc-hash",
+ "schemars",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror",
+ "toml",
+ "tracing",
+ "wait-timeout",
 ]
 
 [[package]]

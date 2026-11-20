@@ -8,7 +8,7 @@ use std::path::Path;
 use _diffctx::facts::Language;
 use _diffctx::facts::blob_oid;
 use _diffctx::facts::lang::builtin;
-use _diffctx::snapshot::{Loss, RepoPath, RunBudget};
+use diffctx_snapshot::snapshot::{Loss, RepoPath, RunBudget};
 use walkdir::WalkDir;
 
 const SKIPPED: [&str; 4] = [".git", "target", "node_modules", ".venv"];

@@ -4,7 +4,7 @@
 use _diffctx::facts::config::{ObjectId, Strength, identity_of};
 use _diffctx::facts::lang::config::ConfigExtractor;
 use _diffctx::facts::{BlobFacts, Def, DefKind, Disambig, Extractor, Fact, Scope};
-use _diffctx::snapshot::{Loss, RunBudget};
+use diffctx_snapshot::snapshot::{Loss, RunBudget};
 
 fn extract(source: &str) -> BlobFacts {
     ConfigExtractor.extract(source.as_bytes(), &RunBudget::default())

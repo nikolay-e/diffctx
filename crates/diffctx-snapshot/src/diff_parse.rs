@@ -18,7 +18,7 @@ static HUNK_RE: Lazy<Regex> =
 
 /// The diff with the context lines that anchor a run and tell layout from
 /// content; a `diff.context` in the user's config must not move them.
-pub(crate) fn get_diff_text(
+pub fn get_diff_text(
     repo_root: &Path,
     diff_range: Option<&str>,
     pathspec: &[String],
@@ -43,7 +43,7 @@ pub(crate) fn get_diff_text(
 /// and downstream `strip_prefix` guards are lexical for exactly the same
 /// reason. Absolute and rooted paths are refused for the same reason —
 /// `Path::join` with such an argument discards the root entirely.
-pub(crate) fn resolve_in_repo(repo_root: &Path, rel_path: &str) -> Option<PathBuf> {
+pub fn resolve_in_repo(repo_root: &Path, rel_path: &str) -> Option<PathBuf> {
     let rel = Path::new(rel_path);
     // `has_root` too: on Windows `\etc\x` is rooted but not absolute, and
     // `Path::join` still replaces everything after the drive with it.
@@ -55,7 +55,7 @@ pub(crate) fn resolve_in_repo(repo_root: &Path, rel_path: &str) -> Option<PathBu
         return None;
     }
 
-    let joined = crate::paths::repo_join(repo_root, rel_path);
+    let joined = diffctx_base::paths::repo_join(repo_root, rel_path);
     // Compare like for like. Falling back to the lexical spelling as an
     // *alternative* to the canonical check (rather than only when
     // canonicalization is impossible) would make the canonical check dead: with
@@ -80,7 +80,7 @@ pub(crate) fn resolve_in_repo(repo_root: &Path, rel_path: &str) -> Option<PathBu
     Some(joined)
 }
 
-pub(crate) fn parse_path_line(line: &str, repo_root: &Path) -> (&'static str, Option<PathBuf>) {
+pub fn parse_path_line(line: &str, repo_root: &Path) -> (&'static str, Option<PathBuf>) {
     if line.starts_with("--- /dev/null") {
         return ("old", None);
     }
@@ -139,7 +139,7 @@ fn parse_hunk_header(caps: &regex::Captures, path: &Path) -> Option<DiffHunk> {
     })
 }
 
-pub(crate) fn parse_diff(
+pub fn parse_diff(
     repo_root: &Path,
     diff_range: Option<&str>,
     pathspec: &[String],
@@ -148,7 +148,7 @@ pub(crate) fn parse_diff(
     Ok(parse_hunks_from_diff_output(&output, repo_root))
 }
 
-pub(crate) fn parse_hunks_from_diff_output(output: &str, repo_root: &Path) -> Vec<DiffHunk> {
+pub fn parse_hunks_from_diff_output(output: &str, repo_root: &Path) -> Vec<DiffHunk> {
     let mut hunks = Vec::new();
     let mut old_path: Option<PathBuf> = None;
     let mut new_path: Option<PathBuf> = None;
@@ -196,7 +196,7 @@ pub(crate) fn parse_hunks_from_diff_output(output: &str, repo_root: &Path) -> Ve
 /// changed path (a rename by its destination), the deletions, and the rename
 /// pairs. They were three listings, two of them run twice per run.
 #[derive(Default)]
-pub(crate) struct DiffNames {
+pub struct DiffNames {
     pub changed: Vec<PathBuf>,
     pub deleted: FxHashSet<PathBuf>,
     renamed: Vec<(String, String)>,
@@ -207,11 +207,11 @@ impl DiffNames {
     /// cannot be fragmented, so the pipeline excludes them from the changed set.
     /// The rename destinations need no special handling: they exist on HEAD and
     /// reach the universe through the ordinary changed-file path.
-    pub(crate) fn renamed_sources(&self, repo_root: &Path) -> FxHashSet<PathBuf> {
+    pub fn renamed_sources(&self, repo_root: &Path) -> FxHashSet<PathBuf> {
         self.renamed
             .iter()
             .map(|(old, _)| {
-                let joined = crate::paths::repo_join(repo_root, old);
+                let joined = diffctx_base::paths::repo_join(repo_root, old);
                 dunce::canonicalize(&joined).unwrap_or(joined)
             })
             .collect()
@@ -220,20 +220,20 @@ impl DiffNames {
     /// Rename pairs as repo-relative display paths (`old -> new`), for the
     /// output header: the pairing kept, nothing canonicalized (the old path no
     /// longer exists on disk).
-    pub(crate) fn rename_pairs(&self) -> Vec<(String, String)> {
+    pub fn rename_pairs(&self) -> Vec<(String, String)> {
         self.renamed
             .iter()
             .map(|(old, new)| {
                 (
-                    crate::paths::to_posix_display(std::borrow::Cow::Borrowed(old)),
-                    crate::paths::to_posix_display(std::borrow::Cow::Borrowed(new)),
+                    diffctx_base::paths::to_posix_display(std::borrow::Cow::Borrowed(old)),
+                    diffctx_base::paths::to_posix_display(std::borrow::Cow::Borrowed(new)),
                 )
             })
             .collect()
     }
 }
 
-pub(crate) fn diff_names(
+pub fn diff_names(
     repo_root: &Path,
     diff_range: Option<&str>,
     pathspec: &[String],
@@ -257,8 +257,8 @@ pub(crate) fn diff_names(
     // clone has no working tree, so an existence test empties both lists. The
     // symlink itself is caught where the file is actually read.
     let inside = |p: &str| {
-        crate::paths::contains_lexically(Path::new(p))
-            .then(|| crate::paths::repo_join(repo_root, p))
+        diffctx_base::paths::contains_lexically(Path::new(p))
+            .then(|| diffctx_base::paths::repo_join(repo_root, p))
     };
     let mut names = DiffNames::default();
     let mut i = 0;
@@ -296,7 +296,7 @@ pub(crate) fn diff_names(
     Ok(names)
 }
 
-pub(crate) fn get_untracked_files(repo_root: &Path, pathspec: &[String]) -> Result<Vec<PathBuf>> {
+pub fn get_untracked_files(repo_root: &Path, pathspec: &[String]) -> Result<Vec<PathBuf>> {
     let parts = untracked(repo_root, pathspec)?.names;
     // Lexical `root.join(p)`, never the canonical target: `canonicalize()` on a
     // symlink returns what it POINTS AT, so an untracked `evil -> /etc/shadow`
@@ -316,8 +316,8 @@ pub(crate) fn get_untracked_files(repo_root: &Path, pathspec: &[String]) -> Resu
     Ok(parts
         .iter()
         .filter(|p| !p.ends_with('/'))
-        .filter(|p| crate::paths::contains_lexically(std::path::Path::new(p)))
-        .map(|p| crate::paths::repo_join(repo_root, p))
+        .filter(|p| diffctx_base::paths::contains_lexically(std::path::Path::new(p)))
+        .map(|p| diffctx_base::paths::repo_join(repo_root, p))
         .collect())
 }
 
@@ -369,7 +369,7 @@ mod tests {
         let range = Some("HEAD~1..HEAD");
         let listed = |extra: &[&str]| diff_text(root, extra, range, &[]).unwrap();
         let names = diff_names(root, range, &[]).unwrap();
-        let joined = |s: &str| crate::paths::repo_join(root, s);
+        let joined = |s: &str| diffctx_base::paths::repo_join(root, s);
 
         let name_only: Vec<PathBuf> = listed(&["--name-only", "-M", "-z"])
             .split('\0')

@@ -24,7 +24,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use crate::facts::kotlin::{
     Declaration, InitCall, KotlinFacts, Receiver, Use, UseKind, Visibility,
 };
-use crate::source::Source;
+use diffctx_snapshot::source::Source;
 
 /// Supertype hops followed to find an inherited member.
 const MAX_INHERITANCE_DEPTH: usize = 6;
@@ -959,7 +959,7 @@ impl<'a> KotlinResolver<'a> {
             let rev = self.source.revision().map(str::to_string);
             let keywords = TYPE_KEYWORDS;
             let globs: Vec<String> = EXTENSIONS.iter().map(|e| format!("*.{e}")).collect();
-            let declared = crate::grep::grep_lines_matching(
+            let declared = diffctx_snapshot::grep::grep_lines_matching(
                 self.root,
                 self.source,
                 &format!("({})[[:space:]]+[A-Za-z_]", keywords.join("|")),

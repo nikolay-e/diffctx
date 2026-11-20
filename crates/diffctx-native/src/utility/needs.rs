@@ -4,9 +4,9 @@ use once_cell::sync::Lazy;
 use regex::Regex;
 use rustc_hash::{FxHashMap, FxHashSet};
 
-use crate::config::needs::NEEDS;
-use crate::stopwords::CODE_STOPWORDS;
 use diffctx_base::types::{Fragment, FragmentId, extract_identifiers};
+use diffctx_config::config::needs::NEEDS;
+use diffctx_config::stopwords::CODE_STOPWORDS;
 
 static CALL_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"(\w+)\s*\(").unwrap());
 static TYPE_REF_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?::|->)\s*([A-Z]\w+)").unwrap());

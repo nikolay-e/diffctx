@@ -45,7 +45,7 @@ use crate::facts::config::{
 use crate::facts::{
     DefKey, DefKind, Fact, FactsCache, FileFacts, Language, LocalKey, Name, Namespace, Scope,
 };
-use crate::snapshot::{AnalysisContext, RepoPath, Result, SideTag};
+use diffctx_snapshot::snapshot::{AnalysisContext, RepoPath, Result, SideTag};
 
 /// The files a tool reads where its place is a directory.
 const DIRECTORY_FILES: &[&str] = &[

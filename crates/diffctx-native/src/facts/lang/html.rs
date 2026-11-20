@@ -27,7 +27,7 @@ use crate::facts::lang::typescript::{Dialect, extract_as, relative_of};
 use crate::facts::{
     BlobFacts, Extractor, Fact, Import, ImportKind, Language, Lexical, ModulePath, Scope, Star,
 };
-use crate::snapshot::RunBudget;
+use diffctx_snapshot::snapshot::RunBudget;
 
 pub struct HtmlExtractor;
 pub struct AstroExtractor;

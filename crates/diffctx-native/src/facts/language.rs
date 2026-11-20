@@ -2,7 +2,7 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
-use crate::snapshot::RepoPath;
+use diffctx_snapshot::snapshot::RepoPath;
 
 /// The languages a cell exists for or is a candidate for. A file of any other
 /// language has no facts and is no loss.

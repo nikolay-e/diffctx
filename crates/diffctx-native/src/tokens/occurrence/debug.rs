@@ -20,9 +20,9 @@ use super::{
 use crate::decide::{Gap, USES, Use};
 use crate::facts::{DefKind, FactsCache, FileFacts, Name, facts_of};
 use crate::resolve::{Definition, Relation, UnresolvedReason};
-use crate::snapshot::{AnalysisContext, Loss, RepoPath, SideTag};
 use crate::tokens::{Names, TokenIndex};
 use crate::vocabulary::family::{Family, Group};
+use diffctx_snapshot::snapshot::{AnalysisContext, Loss, RepoPath, SideTag};
 
 const ENV: &str = "DIFFCTX_DEBUG_OCCURRENCES";
 

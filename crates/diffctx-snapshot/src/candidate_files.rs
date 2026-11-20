@@ -2,8 +2,8 @@ use std::path::{Path, PathBuf};
 
 use rustc_hash::FxHashSet;
 
-use crate::config::limits::LIMITS;
 use diffctx_base::languages::get_language_for_file;
+use diffctx_config::config::limits::LIMITS;
 
 const SHEBANG_SNIFF_BYTES: usize = 128;
 
@@ -32,7 +32,7 @@ fn is_candidate(
 /// size exclusion recorded on `ctx`. A listing that failed leaves the
 /// universe empty and says so: a walk of the disk in its place answered for
 /// a state nobody asked about (#443).
-pub(crate) fn collect_candidate_files(
+pub fn collect_candidate_files(
     root_dir: &Path,
     included_set: &FxHashSet<PathBuf>,
     scope: &[String],
@@ -58,7 +58,7 @@ pub(crate) fn collect_candidate_files(
     {
         ctx.note_file(
             crate::resource::LimitReason::FileTooLarge,
-            crate::paths::display_rel_or_abs(root_dir, path),
+            diffctx_base::paths::display_rel_or_abs(root_dir, path),
         );
     }
     ctx.bounded(listing.within(root_dir, scope))
@@ -69,7 +69,7 @@ pub(crate) fn collect_candidate_files(
             }
             ctx.note_file(
                 crate::resource::LimitReason::FileTooLarge,
-                crate::paths::display_rel_or_abs(root_dir, &b.path),
+                diffctx_base::paths::display_rel_or_abs(root_dir, &b.path),
             );
             false
         })
@@ -77,11 +77,11 @@ pub(crate) fn collect_candidate_files(
         .collect()
 }
 
-pub(crate) fn normalize_path(path: &Path, root_dir: &Path) -> PathBuf {
+pub fn normalize_path(path: &Path, root_dir: &Path) -> PathBuf {
     if path.is_absolute() {
         dunce::canonicalize(path).unwrap_or_else(|_| path.to_path_buf())
     } else {
-        let joined = crate::paths::repo_join(root_dir, &path.to_string_lossy());
+        let joined = diffctx_base::paths::repo_join(root_dir, &path.to_string_lossy());
         dunce::canonicalize(&joined).unwrap_or(joined)
     }
 }

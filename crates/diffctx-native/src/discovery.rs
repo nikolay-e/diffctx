@@ -5,9 +5,9 @@ use std::sync::OnceLock;
 use rayon::prelude::*;
 use rustc_hash::{FxHashMap, FxHashSet};
 
-use crate::config::bm25::BM25;
 use crate::token_corpus::{DocTokens, TokenCorpus};
 use diffctx_base::types::extract_identifier_list;
+use diffctx_config::config::bm25::BM25;
 
 pub(crate) struct DiscoveryContext {
     pub root_dir: PathBuf,
@@ -20,10 +20,10 @@ pub(crate) struct DiscoveryContext {
     /// Where an uncached file is read: the analysed snapshot, not
     /// necessarily the disk. Carried here because the strategies run on
     /// rayon workers the run's context is not published to.
-    pub source: crate::source::Source,
+    pub source: diffctx_snapshot::source::Source,
     /// The run whose deadline ends every loop over the candidates; the
     /// strategies run on rayon workers it is not published to.
-    pub run: crate::resource::RunContext,
+    pub run: diffctx_snapshot::resource::RunContext,
 }
 
 impl DiscoveryContext {
@@ -75,14 +75,15 @@ impl DiscoveryStrategy for DefaultDiscovery {
     fn discover(&self, ctx: &DiscoveryContext) -> Vec<PathBuf> {
         let changed_set: FxHashSet<&Path> = ctx.changed_files.iter().map(|p| p.as_path()).collect();
 
-        let mut discovered = crate::resource::with_changed_lines(ctx.run.changed_lines(), || {
-            crate::edges::discover_all_related_files(
-                &ctx.changed_files,
-                &ctx.all_candidates,
-                Some(ctx.root_dir.as_path()),
-                Some(&ctx.file_cache),
-            )
-        });
+        let mut discovered =
+            diffctx_snapshot::resource::with_changed_lines(ctx.run.changed_lines(), || {
+                crate::edges::discover_all_related_files(
+                    &ctx.changed_files,
+                    &ctx.all_candidates,
+                    Some(ctx.root_dir.as_path()),
+                    Some(&ctx.file_cache),
+                )
+            });
         discovered.retain(|p| !changed_set.contains(p.as_path()));
 
         let rare_files = expand_by_rare_identifiers(ctx);
@@ -98,7 +99,7 @@ impl DiscoveryStrategy for DefaultDiscovery {
 }
 
 fn expand_by_rare_identifiers(ctx: &DiscoveryContext) -> Vec<PathBuf> {
-    let rare_threshold = crate::config::limits::LIMITS.rare_identifier_threshold;
+    let rare_threshold = diffctx_config::config::limits::LIMITS.rare_identifier_threshold;
 
     let mut ident_to_files: FxHashMap<String, Vec<PathBuf>> = FxHashMap::default();
     for (path, doc) in ctx.run.bounded(&ctx.shared_corpus().docs) {
@@ -180,7 +181,7 @@ impl DiscoveryStrategy for ReverseReferenceDiscovery {
         // analysed; reading and parsing it here anyway cost seconds per MB.
         let too_large = ctx
             .run
-            .limited_by(crate::resource::LimitReason::FileTooLarge);
+            .limited_by(diffctx_snapshot::resource::LimitReason::FileTooLarge);
         // Per changed file: the module name a reference would import it by,
         // and the names it defines. A file that carries both is a reference
         // however common the name; one that carries the name alone counts
@@ -194,7 +195,7 @@ impl DiscoveryStrategy for ReverseReferenceDiscovery {
                 .map(|s| s.to_lowercase());
             let names: FxHashSet<String> = Some(path)
                 .filter(|p| {
-                    !too_large.contains(&crate::paths::display_rel_or_abs(&ctx.root_dir, p))
+                    !too_large.contains(&diffctx_base::paths::display_rel_or_abs(&ctx.root_dir, p))
                 })
                 .and_then(|p| ctx.read_file(p))
                 .map(|c| {
@@ -514,7 +515,8 @@ impl DiscoveryStrategy for EnsembleDiscovery {
             .strategies
             .par_iter()
             .map(|strategy| {
-                let found = crate::resource::with_source(&ctx.source, || strategy.discover(ctx));
+                let found =
+                    diffctx_snapshot::resource::with_source(&ctx.source, || strategy.discover(ctx));
                 (strategy.name(), found)
             })
             .collect();
@@ -592,8 +594,8 @@ mod tests {
                 expansion_concepts: self.concepts.iter().map(|s| s.to_string()).collect(),
                 file_cache: FxHashMap::default(),
                 token_corpus,
-                source: crate::source::Source::empty(),
-                run: crate::resource::RunContext::unbounded(),
+                source: diffctx_snapshot::source::Source::empty(),
+                run: diffctx_snapshot::resource::RunContext::unbounded(),
             }
         }
     }
@@ -716,7 +718,7 @@ mod tests {
 
     #[test]
     fn rare_identifier_expansion_keeps_rare_terms_and_drops_common_ones() {
-        let threshold = crate::config::limits::LIMITS.rare_identifier_threshold;
+        let threshold = diffctx_config::config::limits::LIMITS.rare_identifier_threshold;
         let mut docs: Vec<(&'static str, &'static str)> = vec![
             ("rare_a.py", "unique_marker"),
             ("rare_b.py", "unique_marker"),
@@ -940,8 +942,8 @@ mod tests {
                 .map(|(p, text)| (root.join(p), (*text).to_string()))
                 .collect(),
             token_corpus: OnceLock::new(),
-            source: crate::source::Source::empty(),
-            run: crate::resource::RunContext::unbounded(),
+            source: diffctx_snapshot::source::Source::empty(),
+            run: diffctx_snapshot::resource::RunContext::unbounded(),
         };
         let (ready, unready) = (Arc::new(AtomicUsize::new(0)), Arc::new(AtomicUsize::new(0)));
         let mut strategies: Vec<Box<dyn DiscoveryStrategy>> = (0..8)

@@ -9,7 +9,7 @@ use std::process::Output;
 use tempfile::TempDir;
 
 mod support;
-use _diffctx::snapshot::git_command;
+use diffctx_snapshot::snapshot::git_command;
 use support::{diffctx, write};
 
 fn git_out(repo: &Path, args: &[&str]) -> Output {

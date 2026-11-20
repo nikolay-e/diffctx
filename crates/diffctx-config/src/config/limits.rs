@@ -65,9 +65,9 @@ pub const DEFAULT_PIPELINE_TIMEOUT_SECONDS: u64 = 300;
 /// so K=64 preserves all legitimate edges while clamping pathological
 /// dense nodes (e.g. utility hubs in django/material-ui that radiate
 /// into thousands of dependents).
-pub(crate) const DEFAULT_MAX_OUT_EDGES_PER_NODE: usize = 64;
+pub const DEFAULT_MAX_OUT_EDGES_PER_NODE: usize = 64;
 
-pub(crate) fn read_max_out_edges_per_node() -> usize {
+pub fn read_max_out_edges_per_node() -> usize {
     std::env::var("DIFFCTX_MAX_EDGES_PER_NODE")
         .ok()
         .and_then(|v| v.parse::<usize>().ok())

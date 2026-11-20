@@ -56,7 +56,7 @@ use crate::facts::{
     Language, Local, LocalKey, LocalKind, ModulePath, Name, Namespace, Receiver, Ref, Scope, Span,
     Star, TypeName, UseKind, Visibility, expired, hash_text, hash_tokens,
 };
-use crate::snapshot::RunBudget;
+use diffctx_snapshot::snapshot::RunBudget;
 
 /// Annotations that make a method a test a runner calls.
 const TEST_ANNOTATIONS: &[&str] = &[

@@ -13,7 +13,7 @@ use crate::resolve::{
     KotlinResolver, PhpResolver, PythonResolver, RustResolver, ShellResolver, SqlResolver,
     SwiftResolver, TerraformResolver, TypeScriptResolver,
 };
-use crate::snapshot::{
+use diffctx_snapshot::snapshot::{
     self, Admission, AdmissionPolicy, AnalysisContext, Loss, RangeSpec, RepoPath, RunBudget, Side,
     SideTag, WorkspaceModel,
 };
@@ -444,12 +444,12 @@ pub(crate) fn context_in(
     let budget = RunBudget {
         deadline,
         cancel: Some(cancel),
-        read_fault: crate::resource::test_read_fault(),
+        read_fault: diffctx_snapshot::resource::test_read_fault(),
     };
     // The cap the engine reads a changed file under: a file past it is listed,
     // not read, here as in the fragments.
     let admission = Admission::new(AdmissionPolicy {
-        size_cap: crate::config::limits::LIMITS.max_changed_file_size as u64,
+        size_cap: diffctx_config::config::limits::LIMITS.max_changed_file_size as u64,
         ..AdmissionPolicy::default()
     });
     Ok(AnalysisContext::with_admission(
@@ -490,8 +490,8 @@ pub(crate) fn open_head(
     family: Family,
 ) -> Result<Arc<HeadFamily>> {
     let key = std::path::PathBuf::from(format!("{}@{}", root.display(), range.unwrap_or("")));
-    crate::resource::memoized(family.name(), &key, || -> Result<Arc<HeadFamily>> {
-        let limits = crate::resource::current_io_limits()
+    diffctx_snapshot::resource::memoized(family.name(), &key, || -> Result<Arc<HeadFamily>> {
+        let limits = diffctx_snapshot::resource::current_io_limits()
             .unwrap_or_else(|| (None, Arc::new(std::sync::atomic::AtomicBool::new(false))));
         let ctx = context_in(root, limits, range, false)?;
         let cache = FactsCache::user();

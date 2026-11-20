@@ -10,7 +10,7 @@ use std::collections::HashSet;
 use std::sync::OnceLock;
 
 use crate::facts::language::Language;
-use crate::snapshot::Oid;
+use diffctx_snapshot::snapshot::Oid;
 
 const WITNESSES: &str = include_str!("grammar_witnesses.txt");
 

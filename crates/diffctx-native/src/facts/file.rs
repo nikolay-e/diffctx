@@ -9,7 +9,7 @@ use crate::facts::grammar;
 use crate::facts::language::Language;
 use crate::facts::model::{BlobFacts, FileFacts};
 use crate::facts::module;
-use crate::snapshot::{
+use diffctx_snapshot::snapshot::{
     AnalysisContext, Bytes, Decision, NotAnalysedReason, RepoPath, Result, SideTag, SnapshotReader,
 };
 

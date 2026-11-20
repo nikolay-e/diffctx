@@ -9,8 +9,8 @@ use crate::facts::{
     Def, DefKey, DefKind, Disambig, EntryKind, Export, Fact, FileFacts, Import, ImportKind,
     LocalKind, Name, Scope,
 };
-use crate::snapshot::WorkspaceModel;
-use crate::snapshot::workspace::ProjectId;
+use diffctx_snapshot::snapshot::WorkspaceModel;
+use diffctx_snapshot::snapshot::workspace::ProjectId;
 
 /// The names from the outermost definition to the one in question.
 pub(super) type Path = Vec<Name>;

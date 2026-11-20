@@ -17,7 +17,7 @@ use _diffctx::occurrence::{
     Witness, scan,
 };
 use _diffctx::resolve::{CandidateReason, Relation};
-use _diffctx::snapshot::{Loss, RepoPath, RunBudget, SideTag};
+use diffctx_snapshot::snapshot::{Loss, RepoPath, RunBudget, SideTag};
 use proptest::test_runner::{Config, RngSeed, TestCaseError, TestRunner};
 use regex::Regex;
 

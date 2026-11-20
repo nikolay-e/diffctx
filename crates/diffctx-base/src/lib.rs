@@ -9,6 +9,7 @@ pub mod excerpt;
 pub mod fit;
 pub mod interval;
 pub mod languages;
+pub mod paths;
 pub mod peak_rss;
 pub mod profile;
 pub mod sanitize;
