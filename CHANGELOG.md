@@ -153,9 +153,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   as the keys were, and the file that spells it is named with its line. A key
   of the typed key table (an environment variable, an image, a route, a table)
   names its readers through the table, which knows `{id}` and `<int:id>` are
-  one route (Forgejo #109). The value search is bounded: the smallest changes
-  are searched first, at most 16 terms from each config and 96 in all, and the
-  configs left out stay "not followed" with their count named.
+  one route (Forgejo #109). A value is read as its file quotes it: a quote
+  opens where a value starts (`["--queue jobs"]`, `FLAGS='--profile nightly'`),
+  and compact JSON splits at its commas and after a quoted key, so a word is
+  never searched with a quote or a neighbour attached (Forgejo #262). The
+  value search is bounded: the smallest changes are searched first, at most 16
+  terms from each config and 96 in all, and the configs left out stay "not
+  followed" with their count named.
 
 ## [1.20.0] - 2026-10-22
 

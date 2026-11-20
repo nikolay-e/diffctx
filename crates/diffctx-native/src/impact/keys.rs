@@ -39,35 +39,35 @@ pub(super) fn is_phrase(term: &str) -> bool {
         .any(|c| !(c.is_alphanumeric() || c == '_' || c == '-'))
 }
 
-/// The whitespace-separated pieces of a line, kept whole where whitespace
-/// belongs to the piece: inside a quoted string, and inside the brackets of
+/// The pieces of a line, split at whitespace and at a comma except where they
+/// belong to the piece: inside a quoted string, and inside the brackets of
 /// a selector or a call (`up{job="a", pod="b"}`) — a bracket after a word
 /// character. A bracket after whitespace or another bracket is the file's own
-/// flow syntax and splits like any other text.
+/// flow syntax and splits like any other text. A quote opens where a value
+/// starts, and a quoted key ends at its colon: `{"a":"b c"}` splits as
+/// `{"a": "b c"}` does.
 fn split_tokens(text: &str) -> Vec<&str> {
     let mut tokens = Vec::new();
     let mut start: Option<usize> = None;
     let mut quote: Option<char> = None;
+    let mut closed = false;
     let mut escaped = false;
     let mut brackets: Vec<bool> = Vec::new();
     let mut attached = 0usize;
     let mut prev: Option<char> = None;
     for (i, c) in text.char_indices() {
-        if quote.is_none() && c.is_whitespace() && attached == 0 {
+        let free = quote.is_none() && attached == 0;
+        let key_colon = free && closed && c == ':';
+        closed = false;
+        if free && (c.is_whitespace() || c == ',' || key_colon) {
+            let end = if key_colon { i + 1 } else { i };
             if let Some(s) = start.take() {
-                tokens.push(&text[s..i]);
+                tokens.push(&text[s..end]);
             }
             prev = None;
             continue;
         }
-        if start.is_none() {
-            start = Some(i);
-            if c == '\'' || c == '"' {
-                quote = Some(c);
-                prev = Some(c);
-                continue;
-            }
-        }
+        start.get_or_insert(i);
         match quote {
             Some(q) => {
                 if escaped {
@@ -76,7 +76,11 @@ fn split_tokens(text: &str) -> Vec<&str> {
                     escaped = true;
                 } else if c == q {
                     quote = None;
+                    closed = true;
                 }
+            }
+            None if matches!(c, '"' | '\'') && prev.is_none_or(value_starts_after) => {
+                quote = Some(c);
             }
             None => match c {
                 '{' | '[' | '(' => {
@@ -102,6 +106,30 @@ fn split_tokens(text: &str) -> Vec<&str> {
     tokens
 }
 
+/// Whether a quote after `prev` opens a value: after whitespace, flow syntax or
+/// the separator of a key, never inside a word (`don't`).
+fn value_starts_after(prev: char) -> bool {
+    prev.is_whitespace() || matches!(prev, '[' | '{' | '(' | ',' | ':' | '=')
+}
+
+/// Where the quote `q` opened just before `text` closes; an escaped quote stays inside.
+fn closing_quote(text: &str, q: char) -> Option<usize> {
+    let mut escaped = false;
+    text.char_indices().find_map(|(i, c)| {
+        let end = c == q && !escaped;
+        escaped = c == '\\' && !escaped;
+        end.then_some(i)
+    })
+}
+
+/// What `token` quotes when the quote spans it whole: `"a b"` gives `a b`,
+/// `"a","b"` is two strings and gives none.
+fn quoted(token: &str) -> Option<&str> {
+    let q = token.chars().next().filter(|c| matches!(c, '"' | '\''))?;
+    let close = 1 + closing_quote(&token[1..], q)?;
+    (close == token.len() - 1).then(|| &token[1..close])
+}
+
 /// `token` without the flow syntax around it: the brackets of an enclosing
 /// list or mapping, the comma after it, the colon of a key.
 fn trim_flow(token: &str) -> &str {
@@ -118,13 +146,16 @@ fn trim_flow(token: &str) -> &str {
     }
 }
 
-/// `key=value` with a key-shaped head.
+/// `key=value` or `key:"value"` with a key-shaped head. A colon before an
+/// unquoted value is no separator: `app:2.14.1` is one value.
 fn assignment(token: &str) -> Option<(&str, &str)> {
-    let (head, value) = token.split_once('=')?;
+    let at = token.find(['=', ':'])?;
+    let (head, value) = (&token[..at], &token[at + 1..]);
     let key = !head.is_empty()
         && head
             .chars()
-            .all(|c| c.is_alphanumeric() || matches!(c, '_' | '.' | '-'));
+            .all(|c| c.is_alphanumeric() || matches!(c, '_' | '.' | '-'))
+        && (token[at..].starts_with('=') || value.starts_with(['"', '\'']));
     key.then_some((head, value))
 }
 
@@ -135,12 +166,7 @@ pub(super) fn value_phrases(line: &str) -> Vec<String> {
     fn collect(text: &str, depth: usize, out: &mut Vec<String>) {
         for raw in split_tokens(text) {
             let token = trim_flow(raw);
-            let inner = match token.chars().next() {
-                Some(q @ ('\'' | '"')) if token.len() >= 2 && token.ends_with(q) => {
-                    Some(&token[1..token.len() - 1])
-                }
-                _ => assignment(token).map(|(_, value)| value),
-            };
+            let inner = quoted(token).or_else(|| assignment(token).map(|(_, value)| value));
             match inner {
                 Some(inner) if depth < 2 => collect(inner, depth + 1, out),
                 Some(_) => {}
@@ -216,21 +242,18 @@ fn spelled_words(text: &str, words: fn(&str) -> Vec<String>) -> std::vec::IntoIt
     fn collect(text: &str, depth: usize, out: &mut Vec<String>, words: fn(&str) -> Vec<String>) {
         for raw in split_tokens(text) {
             let token = trim_flow(raw);
-            match token.chars().next() {
-                Some(q @ ('\'' | '"')) if token.len() >= 2 && token.ends_with(q) => {
-                    let inner = &token[1..token.len() - 1];
+            match (quoted(token), assignment(token)) {
+                (Some(inner), _) => {
                     if depth < 2 {
                         collect(inner, depth + 1, out, words);
                     }
                 }
-                _ => match assignment(token) {
-                    Some((head, value)) if depth < 2 => {
-                        out.extend(words(head));
-                        collect(value, depth + 1, out, words);
-                    }
-                    _ if phrase_like(token) => {}
-                    _ => out.extend(words(token)),
-                },
+                (None, Some((head, value))) if depth < 2 => {
+                    out.extend(words(head));
+                    collect(value, depth + 1, out, words);
+                }
+                _ if phrase_like(token) => {}
+                _ => out.extend(words(token)),
             }
         }
     }
@@ -239,23 +262,14 @@ fn spelled_words(text: &str, words: fn(&str) -> Vec<String>) -> std::vec::IntoIt
     out.into_iter()
 }
 
-/// `line` with each quoted string that is a sentence blanked out: a quote opens
-/// where a value starts, never inside a word (`don't`).
+/// `line` with each quoted string that is a sentence blanked out.
 fn without_sentences(line: &str) -> String {
     let mut out = String::with_capacity(line.len());
-    let mut chars = line.char_indices().peekable();
+    let mut chars = line.char_indices();
     let mut prev = ' ';
     while let Some((at, c)) = chars.next() {
-        let opens = matches!(c, '"' | '\'')
-            && (prev.is_whitespace() || matches!(prev, '[' | '(' | ',' | ':' | '='));
-        if opens {
-            let mut escaped = false;
-            let close = chars.clone().find_map(|(i, d)| {
-                let end = d == c && !escaped;
-                escaped = d == '\\' && !escaped;
-                end.then_some(i)
-            });
-            if let Some(close) = close {
+        if matches!(c, '"' | '\'') && value_starts_after(prev) {
+            if let Some(close) = closing_quote(&line[at + 1..], c).map(|i| at + 1 + i) {
                 if super::mentions::is_sentence(&line[at + 1..close]) {
                     while chars.next().is_some_and(|(i, _)| i < close) {}
                     out.push(' ');

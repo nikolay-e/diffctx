@@ -171,10 +171,3 @@ impact/typescript/ts_global_augmentation_of_a_builtin_type_is_called_through_it 
 impact/typescript/ts_namespace_merged_into_a_class_in_another_file_reads_its_member_bare  # `defaults` read bare in another file's body of a namespace merged into the class `Foo` is a hedged read, not a resolved caller: the file's scope does not hold the other file's member
 # Name-resolution routes whose answer is wrong today: each row names what it answers wrongly.
 impact/go/go_external_test_package_call_of_the_builtin_max_is_no_caller  # fj#234 open
-# A quoted config value the tokenizer cuts or glues (fj#262): the word a reader spells is searched
-# with a quote or a neighbour attached, so the reader is not named.
-impact/config/fj262_a_quoted_value_in_a_flow_list_names_the_script_spelling_its_old_word  # fj#262 open: `["--queue reportjobs"]` searches `reportjobs"`, so scripts/drain.sh:2 is not named
-impact/config/fj262_a_single_quoted_assignment_value_names_the_reader_of_its_new_word  # fj#262 open: `WORKER_FLAGS='… weeklybatch'` searches `weeklybatch'`, so cron/rebuild.sh:2 is not named
-impact/config/fj262_a_compact_json_value_followed_by_a_key_names_its_reader  # fj#262 open: `"canary streamflow","replicas":2` searches `streamflow","replicas":2`, so bin/start.sh:2 is not named
-impact/config/fj262_a_compact_json_list_names_the_script_spelling_its_old_word  # fj#262 open: `["auditlogger","ratelimiter"]` is read as one string and searched whole, so scripts/check.sh:2 is not named
-impact/config/fj262_a_quoted_value_after_a_key_colon_names_the_script_spelling_its_old_word  # fj#262 open: `service:"billing ledgersync"` searches `ledgersync"`, so scripts/reindex.sh:2 is not named
