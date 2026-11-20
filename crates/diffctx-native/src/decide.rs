@@ -2779,11 +2779,16 @@ impl Cell {
         })
     }
 
+    /// A definition's use is in the diff when the range changed it or wrote the use's line: an
+    /// added impl header names its untouched self type (fj#260). A reformatted line does not.
     fn in_diff(&self, file: &str, line: u32, scope: &Scope) -> bool {
         match root_scope(scope) {
-            Scope::Def(_) => self
-                .key_in(file, scope)
-                .is_some_and(|key| self.changed_keys.contains(&key)),
+            Scope::Def(_) => {
+                self.key_in(file, scope)
+                    .is_some_and(|key| self.changed_keys.contains(&key))
+                    || (self.added.get(file))
+                        .is_some_and(|lines| lines.iter().any(|(l, _)| *l == line))
+            }
             _ => self
                 .hunks
                 .get(file)

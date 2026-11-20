@@ -171,5 +171,3 @@ impact/typescript/ts_global_augmentation_of_a_builtin_type_is_called_through_it 
 impact/typescript/ts_namespace_merged_into_a_class_in_another_file_reads_its_member_bare  # `defaults` read bare in another file's body of a namespace merged into the class `Foo` is a hedged read, not a resolved caller: the file's scope does not hold the other file's member
 # Name-resolution routes whose answer is wrong today: each row names what it answers wrongly.
 impact/go/go_external_test_package_call_of_the_builtin_max_is_no_caller  # fj#234 open
-# Same-named definitions of one file and in-range impls: each row names what it answers wrongly.
-impact/rust/rs_an_impl_the_range_adds_is_no_caller_of_its_trait_outside_the_diff  # fj#260 open: the impls the range adds are callers of `Double` outside the diff
