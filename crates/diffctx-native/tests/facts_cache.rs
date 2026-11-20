@@ -332,7 +332,9 @@ fn an_unchanged_working_tree_file_shares_the_commits_entry() {
 #[test]
 fn a_working_tree_blob_id_is_gits() {
     let repo = Repo::init();
-    let sizes = [0usize, 1, 3, 55, 56, 57, 63, 64, 65, 119, 120, 1000];
+    let sizes = [
+        0usize, 1, 3, 55, 56, 57, 63, 64, 65, 119, 120, 121, 127, 128, 1000, 4096, 100_003,
+    ];
     for (n, size) in sizes.iter().enumerate() {
         let text: String = (0..*size)
             .map(|i| char::from(b'a' + (i % 26) as u8))
