@@ -26,8 +26,8 @@ use super::{
     Binding, CandidateReason, Definition, Evidence, EvidenceKind, Relation, Resolution, Solved,
     UnresolvedReason,
 };
-use crate::facts::FileFacts;
-use crate::facts::{
+use diffctx_facts::facts::FileFacts;
+use diffctx_facts::facts::{
     Def, DefKey, DefKind, Disambig, Export, Fact, FactsCache, Import, Language, Name, Namespace,
     Receiver, Ref, Scope, UseKind, Visibility,
 };

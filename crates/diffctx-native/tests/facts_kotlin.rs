@@ -1,8 +1,8 @@
 //! The Kotlin extractor, read through the facts it states: one table per kind of
 //! fact, each fixture small enough to read its answer off the source.
 
-use _diffctx::facts::lang::kotlin::KotlinExtractor;
-use _diffctx::facts::{
+use diffctx_facts::facts::lang::kotlin::KotlinExtractor;
+use diffctx_facts::facts::{
     BlobFacts, Def, DefKind, Disambig, EntryKind, Export, Extractor, Fact, Import, ImportKind,
     LocalKey, LocalKind, Namespace, Receiver, Ref, Scope, UseKind, Visibility,
 };

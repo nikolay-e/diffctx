@@ -23,6 +23,7 @@ const CRATES: &[(&str, &str)] = &[
     ("diffctx-base", "tests/public_api_base.txt"),
     ("diffctx-config", "tests/public_api_config.txt"),
     ("diffctx-snapshot", "tests/public_api_snapshot.txt"),
+    ("diffctx-facts", "tests/public_api_facts.txt"),
 ];
 
 fn collapsed(text: &str) -> String {

@@ -20,8 +20,8 @@ use super::solved::{Gathered, gather_of};
 use super::{
     Binding, Definition, Evidence, EvidenceKind, Relation, Resolution, Solved, UnresolvedReason,
 };
-use crate::facts::config::{PointerKind, Resolved, SourcePointer};
-use crate::facts::{
+use diffctx_facts::facts::config::{PointerKind, Resolved, SourcePointer};
+use diffctx_facts::facts::{
     DefKey, DefKind, Fact, FactsCache, FileFacts, Language, Name, Ref, Span, UseKind,
 };
 use diffctx_snapshot::snapshot::{AnalysisContext, RepoPath, Result, SideTag};
@@ -96,7 +96,7 @@ struct Index {
 }
 
 fn dir_of(path: &str) -> &str {
-    crate::facts::config::directory_of(path)
+    diffctx_facts::facts::config::directory_of(path)
 }
 
 impl Index {

@@ -28,7 +28,11 @@ pub struct ChangeSummary {
     pub commit_count: usize,
     /// `(display path, class, reason)` for every changed file, the class the
     /// selection policy ranked evidence by.
-    pub changes: Vec<(String, crate::change_class::ChangeClass, &'static str)>,
+    pub changes: Vec<(
+        String,
+        diffctx_facts::change_class::ChangeClass,
+        &'static str,
+    )>,
     /// Display paths of changed files that yielded no fragment at all (not
     /// code, binary, over the size cap): unrepresented by nature, not because
     /// the budget or the selection dropped them.
@@ -50,7 +54,7 @@ pub const CONTEXT_SCHEMA: &str = "diffctx.context.v2";
 #[derive(Serialize, Deserialize, JsonSchema, Clone, Debug)]
 pub struct ChangeEntry {
     pub path: String,
-    pub class: crate::change_class::ChangeClass,
+    pub class: diffctx_facts::change_class::ChangeClass,
     pub represented: bool,
     /// The file produced no fragment for any budget to keep or drop.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]

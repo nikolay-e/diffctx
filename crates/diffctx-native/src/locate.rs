@@ -404,7 +404,7 @@ fn build_coverage(
         // or a script that parses cleanly and defines nothing, has none to
         // miss — listing it is true and useless (#330, #454).
         let has_definition = frags.iter().any(|f| f.kind.is_definition_kind());
-        if crate::parsers::unanalysed_reason(file, has_definition, || {
+        if diffctx_facts::parsers::unanalysed_reason(file, has_definition, || {
             state.run.source().read_bytes(&state.root_dir.join(file))
         })
         .is_some()

@@ -10,7 +10,6 @@ use std::io::Write;
 use std::sync::Arc;
 
 use serde_json::json;
-use tree_sitter::Tree;
 
 use super::{
     Account, Alias, AliasScope, Basis, Class, Entry, Hedge, Implicit, Known, Occurrence, Outcome,
@@ -18,10 +17,10 @@ use super::{
     counts_against, entered, implicit_kinds, outcomes, value_use,
 };
 use crate::decide::{Gap, USES, Use};
-use crate::facts::{DefKind, FactsCache, FileFacts, Name, facts_of};
 use crate::resolve::{Definition, Relation, UnresolvedReason};
 use crate::tokens::{Names, TokenIndex};
 use crate::vocabulary::family::{Family, Group};
+use diffctx_facts::facts::{DefKind, FactsCache, FileFacts, Name, facts_of};
 use diffctx_snapshot::snapshot::{AnalysisContext, Loss, RepoPath, SideTag};
 
 const ENV: &str = "DIFFCTX_DEBUG_OCCURRENCES";
@@ -461,8 +460,9 @@ impl Shadow<'_> {
                     return None;
                 };
                 let text = String::from_utf8_lossy(&text);
-                let (line, bytes) = (self.names.iter())
-                    .find_map(|name| crate::impact::embedded_naming(&text, &runtime, name))?;
+                let (line, bytes) = (self.names.iter()).find_map(|name| {
+                    diffctx_facts::parsers::embedded::embedded_naming(&text, &runtime, name)
+                })?;
                 Some(Entry {
                     occurrence: Occurrence {
                         file: file.clone(),
@@ -539,7 +539,7 @@ impl Shadow<'_> {
     /// the file, once per file, here only.
     fn position(
         &self,
-        trees: &mut HashMap<RepoPath, Option<Tree>>,
+        trees: &mut HashMap<RepoPath, Option<diffctx_facts::parsers::Syntax>>,
         at: &Occurrence,
     ) -> Option<String> {
         let tree = trees.entry(at.file.clone()).or_insert_with(|| {
@@ -547,19 +547,9 @@ impl Shadow<'_> {
                 return None;
             };
             let text = std::str::from_utf8(&text).ok()?;
-            crate::parsers::parse_file(at.file.as_str(), text).map(|(tree, _)| tree)
+            diffctx_facts::parsers::Syntax::of_file(at.file.as_str(), text)
         });
-        let (start, end) = (at.bytes.start as usize, at.bytes.end as usize);
-        let node = tree
-            .as_ref()?
-            .root_node()
-            .descendant_for_byte_range(start, end)?;
-        let parent = node.parent()?;
-        let mut cursor = parent.walk();
-        let child = parent
-            .children(&mut cursor)
-            .position(|c| c.id() == node.id());
-        let field = child.and_then(|child| parent.field_name_for_child(child as u32));
-        Some(format!("{}/{}", parent.kind(), field.unwrap_or("")))
+        tree.as_ref()?
+            .position(at.bytes.start as usize, at.bytes.end as usize)
     }
 }

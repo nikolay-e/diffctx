@@ -6,17 +6,17 @@ use std::ops::Range;
 use std::path::Path;
 use std::sync::Arc;
 
-use _diffctx::facts::lang::python::PythonExtractor;
-use _diffctx::facts::{
-    BlobFacts, DefKey, Extractor, FileFacts, Language, Lexical, LocalKey, ModulePath, Name,
-    ProjectId, Span,
-};
 use _diffctx::occurrence::{
     Account, Alias, AliasBound, AliasScope, Basis, Case, Class, Entry, Hedge, Implicit,
     MAX_ALIAS_HOPS, MAX_ALIAS_NAMES, Occurrence, Outcome, Reason, Unread, ValuePlace, Verdict,
     Witness, scan,
 };
 use _diffctx::resolve::{CandidateReason, Relation};
+use diffctx_facts::facts::lang::python::PythonExtractor;
+use diffctx_facts::facts::{
+    BlobFacts, DefKey, Extractor, FileFacts, Language, Lexical, LocalKey, ModulePath, Name,
+    ProjectId, Span,
+};
 use diffctx_snapshot::snapshot::{Loss, RepoPath, RunBudget, SideTag};
 use proptest::test_runner::{Config, RngSeed, TestCaseError, TestRunner};
 use regex::Regex;

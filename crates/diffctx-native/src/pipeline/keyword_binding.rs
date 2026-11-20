@@ -8,68 +8,9 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-use tree_sitter::Node;
-
-use crate::facts::{BlobFacts, Fact, Import, LocalKind, Scope};
 use diffctx_base::types::Fragment;
+use diffctx_facts::facts::{BlobFacts, Fact, Import, LocalKind, Scope};
 use diffctx_snapshot::resource::RunContext;
-
-/// What a call writes before its parentheses: `a.b.f` is `f` qualified by `a.b`,
-/// and a receiver that is no plain name (`make().f`) has no qualifier to read.
-struct Callee {
-    qualifier: Option<Vec<String>>,
-    name: String,
-}
-
-fn dotted(node: Node<'_>, text: &str) -> Option<Vec<String>> {
-    match node.kind() {
-        "identifier" => Some(vec![text[node.byte_range()].to_string()]),
-        "attribute" => {
-            let mut chain = dotted(node.child_by_field_name("object")?, text)?;
-            chain.push(text[node.child_by_field_name("attribute")?.byte_range()].to_string());
-            Some(chain)
-        }
-        _ => None,
-    }
-}
-
-fn callee_of(function: Node<'_>, text: &str) -> Option<Callee> {
-    match function.kind() {
-        "identifier" => Some(Callee {
-            qualifier: Some(Vec::new()),
-            name: text[function.byte_range()].to_string(),
-        }),
-        "attribute" => Some(Callee {
-            qualifier: dotted(function.child_by_field_name("object")?, text),
-            name: text[function.child_by_field_name("attribute")?.byte_range()].to_string(),
-        }),
-        _ => None,
-    }
-}
-
-fn keyword_calls(node: Node<'_>, text: &str, name: &str, found: &mut Vec<Callee>) {
-    if node.kind() == "call" {
-        let passes = node.child_by_field_name("arguments").is_some_and(|args| {
-            let mut cursor = args.walk();
-            args.named_children(&mut cursor).any(|arg| {
-                arg.kind() == "keyword_argument"
-                    && arg
-                        .child_by_field_name("name")
-                        .is_some_and(|n| &text[n.byte_range()] == name)
-            })
-        });
-        if passes {
-            found.extend(
-                node.child_by_field_name("function")
-                    .and_then(|f| callee_of(f, text)),
-            );
-        }
-    }
-    let mut cursor = node.walk();
-    for child in node.children(&mut cursor) {
-        keyword_calls(child, text, name, found);
-    }
-}
 
 /// `record/tools.py` is `record.tools`, a package's `__init__.py` its directory.
 fn module_of(path: &str) -> String {
@@ -140,7 +81,7 @@ pub(crate) fn parameter_owners<'f>(
         let blob = facts.entry(fragment.path()).or_insert_with(|| {
             let text = run.source().read_to_string(Path::new(fragment.path()))?;
             text.contains(name)
-                .then(|| crate::facts::local_facts(fragment.path(), &text))
+                .then(|| diffctx_facts::facts::local_facts(fragment.path(), &text))
                 .flatten()
         });
         let takes = blob.as_ref().is_some_and(|blob| {
@@ -182,12 +123,11 @@ pub(crate) fn parameter_owners<'f>(
         else {
             continue;
         };
-        let Some((tree, _)) = crate::parsers::parse_file(&display, &text) else {
+        let Some(calls) = diffctx_facts::parsers::keyword_calls::of_file(&display, &text, name)
+        else {
             continue;
         };
-        let mut calls = Vec::new();
-        keyword_calls(tree.root_node(), &text, name, &mut calls);
-        let imports: Vec<Import> = crate::facts::local_facts(&display, &text)
+        let imports: Vec<Import> = diffctx_facts::facts::local_facts(&display, &text)
             .map(|blob| {
                 blob.facts
                     .into_iter()

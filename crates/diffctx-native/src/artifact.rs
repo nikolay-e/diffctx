@@ -15,9 +15,9 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use serde_json::Value;
 
 use crate::answer::v2::Range;
-use crate::change_class::ChangeClass;
 use crate::render::{CONTEXT_SCHEMA, DiffContextOutput, FragmentEntry};
 use diffctx_base::tokenizer::count_tokens;
+use diffctx_facts::change_class::ChangeClass;
 use diffctx_snapshot::resource::{CoverageReport, CoverageStatus, LimitReason, ResourceUsage};
 
 /// More tokens than the `needs` line of a document ever takes.

@@ -1,8 +1,8 @@
 //! The page extractors: the scripts of a page are read where they stand, so a
 //! fact's lines are the page's own, and nothing outside code is read.
 
-use _diffctx::facts::lang::html::{AstroExtractor, HtmlExtractor};
-use _diffctx::facts::{
+use diffctx_facts::facts::lang::html::{AstroExtractor, HtmlExtractor};
+use diffctx_facts::facts::{
     BlobFacts, DefKind, Extractor, Fact, Import, ImportKind, Language, Ref, UseKind,
 };
 use diffctx_snapshot::snapshot::RunBudget;

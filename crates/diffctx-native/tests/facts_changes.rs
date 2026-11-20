@@ -7,7 +7,7 @@ mod snapshot_fixture;
 
 use std::sync::atomic::Ordering;
 
-use _diffctx::facts::{
+use diffctx_facts::facts::{
     DefChange, Delta, Disambig, FactsCache, Language, LocalKey, Name, Namespace, Origin, Registry,
     SemanticChangeSet, TypeName, semantic_changes,
 };
@@ -46,7 +46,7 @@ fn path(text: &str) -> RepoPath {
 /// A set as the tests read it: each definition's key and change.
 #[derive(Debug, PartialEq)]
 struct View {
-    defs: Vec<(_diffctx::facts::DefKey, DefChange)>,
+    defs: Vec<(diffctx_facts::facts::DefKey, DefChange)>,
     losses: Vec<Loss>,
 }
 
@@ -573,12 +573,12 @@ fn the_sides_of_the_context_are_base_and_head() {
     let cache = FactsCache::disabled().with_registry(toy.registry());
     let b = path("b.py");
     assert!(
-        _diffctx::facts::facts_of(&ctx, SideTag::Base, &cache, &b)
+        diffctx_facts::facts::facts_of(&ctx, SideTag::Base, &cache, &b)
             .expect("base")
             .is_none()
     );
     assert!(
-        _diffctx::facts::facts_of(&ctx, SideTag::Head, &cache, &b)
+        diffctx_facts::facts::facts_of(&ctx, SideTag::Head, &cache, &b)
             .expect("head")
             .is_some()
     );

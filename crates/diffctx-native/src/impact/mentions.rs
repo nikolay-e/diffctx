@@ -989,19 +989,21 @@ fn selected_by_glob(state: &ScoredState, targets: &[String]) -> Vec<(String, u32
     };
     let budget = super::keys::read_budget(state);
     let mut found = Vec::new();
-    let selectors = tree.iter().filter(|p| crate::facts::config::may_select(p));
+    let selectors = tree
+        .iter()
+        .filter(|p| diffctx_facts::facts::config::may_select(p));
     for path in state.run.bounded(selectors) {
         let Some(text) = source.read_to_string(&state.root_dir.join(path.as_str())) else {
             continue;
         };
-        for glob in crate::facts::config::globs_of(path, &text, &budget) {
+        for glob in diffctx_facts::facts::config::globs_of(path, &text, &budget) {
             let Some(pattern) = diffctx_base::testfiles::glob_regex(&glob.pattern) else {
                 continue;
             };
             for target in targets.iter().filter(|t| *t != path) {
                 let hit = match glob.selects {
-                    crate::facts::config::Selects::Files => pattern.is_match(target),
-                    crate::facts::config::Selects::Roots => std::iter::once(0)
+                    diffctx_facts::facts::config::Selects::Files => pattern.is_match(target),
+                    diffctx_facts::facts::config::Selects::Roots => std::iter::once(0)
                         .chain(target.match_indices('/').map(|(at, _)| at + 1))
                         .any(|start| {
                             let root = target[..start].trim_end_matches('/');

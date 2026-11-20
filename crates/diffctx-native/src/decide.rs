@@ -36,11 +36,6 @@ use std::sync::Arc;
 
 use anyhow::Result;
 
-use crate::facts::{
-    Def, DefChange, DefKey, DefKind, Delta, Disambig, EntryKind, Export, Fact, FactsCache,
-    FileFacts, Framework, HeldAs, Language, ModulePath, Name, Origin, ProjectId, Scope,
-    SemanticDef, Visibility, facts_of, holds_data, members_of, semantic_changes,
-};
 use crate::fold::{self, Basis, Rule};
 use crate::resolve::{
     Binding, CandidateReason, Definition, EvidenceKind, Relation, Resolution, UnresolvedReason,
@@ -52,6 +47,11 @@ use crate::tokens::occurrence::{
 };
 use crate::tokens::{GroupTokens, Names, TokenIndex};
 use crate::vocabulary::family::{Family, Group, Resolver, context_in};
+use diffctx_facts::facts::{
+    Def, DefChange, DefKey, DefKind, Delta, Disambig, EntryKind, Export, Fact, FactsCache,
+    FileFacts, Framework, HeldAs, Language, ModulePath, Name, Origin, ProjectId, Scope,
+    SemanticDef, Visibility, facts_of, holds_data, members_of, semantic_changes,
+};
 use diffctx_snapshot::resource::LimitReason;
 use diffctx_snapshot::snapshot::{
     AnalysisContext, ChangeKind, Loss, NotAnalysedReason, RepoPath, SideTag,
@@ -2016,7 +2016,7 @@ impl Cell {
             .filter(|(path, _)| dir(path) == dir(file))
             .flat_map(|(_, at)| at)
             .any(|&at| {
-                crate::facts::lang::go::BY_NAME_LOOKUPS
+                diffctx_facts::facts::lang::go::BY_NAME_LOOKUPS
                     .contains(&self.head.bindings()[at].name.as_str())
             })
     }
@@ -3742,9 +3742,9 @@ impl Cell {
             .filter(|d| {
                 matches!(
                     d.kind,
-                    crate::facts::DefKind::Function
-                        | crate::facts::DefKind::Method
-                        | crate::facts::DefKind::Constructor
+                    diffctx_facts::facts::DefKind::Function
+                        | diffctx_facts::facts::DefKind::Method
+                        | diffctx_facts::facts::DefKind::Constructor
                 ) && d.span.lines.0 <= line
                     && line <= d.span.lines.1
             })

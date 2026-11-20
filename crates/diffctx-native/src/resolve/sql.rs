@@ -18,7 +18,9 @@ use super::{
     Binding, CandidateReason, Definition, Evidence, EvidenceKind, Relation, Resolution, Solved,
     UnresolvedReason,
 };
-use crate::facts::{DefKey, DefKind, Fact, FactsCache, FileFacts, Language, Name, Ref, UseKind};
+use diffctx_facts::facts::{
+    DefKey, DefKind, Fact, FactsCache, FileFacts, Language, Name, Ref, UseKind,
+};
 use diffctx_snapshot::snapshot::{AnalysisContext, Result, SideTag};
 
 /// The bindings of one snapshot's SQL files.

@@ -4,12 +4,12 @@
 //! positive ones: an unimported framework, or a name some other object owns, is
 //! no entry.
 
-use _diffctx::facts::framework::describe;
-use _diffctx::facts::lang::java::JavaExtractor;
-use _diffctx::facts::lang::kotlin::KotlinExtractor;
-use _diffctx::facts::lang::python::PythonExtractor;
-use _diffctx::facts::lang::typescript::TypeScript;
-use _diffctx::facts::{BlobFacts, Extractor, Fact, Scope};
+use diffctx_facts::facts::framework::describe;
+use diffctx_facts::facts::lang::java::JavaExtractor;
+use diffctx_facts::facts::lang::kotlin::KotlinExtractor;
+use diffctx_facts::facts::lang::python::PythonExtractor;
+use diffctx_facts::facts::lang::typescript::TypeScript;
+use diffctx_facts::facts::{BlobFacts, Extractor, Fact, Scope};
 use diffctx_snapshot::snapshot::RunBudget;
 
 /// `kind target framework verb label` of every entry a framework makes.

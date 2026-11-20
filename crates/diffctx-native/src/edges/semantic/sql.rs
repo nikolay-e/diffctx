@@ -157,7 +157,7 @@ mod tests {
     fn linked(files: &[(&str, &str)]) -> Vec<(String, String)> {
         let fragments: Vec<Fragment> = files
             .iter()
-            .flat_map(|(p, c)| crate::parsers::fragment_file(std::sync::Arc::from(*p), c))
+            .flat_map(|(p, c)| diffctx_facts::parsers::fragment_file(std::sync::Arc::from(*p), c))
             .collect();
         let mut pairs: Vec<(String, String)> = SqlEdgeBuilder
             .build(&fragments, None)

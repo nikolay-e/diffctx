@@ -717,7 +717,7 @@ mod fallback_gate_tests {
         ];
         let fragments: Vec<Fragment> = files
             .iter()
-            .flat_map(|(p, content)| crate::parsers::fragment_file(Arc::from(*p), content))
+            .flat_map(|(p, content)| diffctx_facts::parsers::fragment_file(Arc::from(*p), content))
             .collect();
         let capped = collect_capped_edges(
             &fragments,
@@ -761,7 +761,7 @@ mod fallback_gate_tests {
         ];
         let fragments: Vec<Fragment> = files
             .iter()
-            .flat_map(|(p, content)| crate::parsers::fragment_file(Arc::from(*p), content))
+            .flat_map(|(p, content)| diffctx_facts::parsers::fragment_file(Arc::from(*p), content))
             .collect();
         let capped = collect_capped_edges(
             &fragments,
@@ -791,7 +791,9 @@ mod fallback_gate_tests {
         let key_match = |files: &[(&str, &str)]| {
             let fragments: Vec<Fragment> = files
                 .iter()
-                .flat_map(|(p, content)| crate::parsers::fragment_file(Arc::from(*p), content))
+                .flat_map(|(p, content)| {
+                    diffctx_facts::parsers::fragment_file(Arc::from(*p), content)
+                })
                 .collect();
             let ctx = diffctx_snapshot::resource::RunContext::unbounded();
             ctx.set_changed_lines(diffctx_base::changed_lines::ChangedLines::from_diff(diff));
@@ -869,7 +871,7 @@ mod fallback_gate_tests {
     ) -> std::collections::BTreeSet<String> {
         let fragments: Vec<Fragment> = files
             .iter()
-            .flat_map(|(p, content)| crate::parsers::fragment_file(Arc::from(*p), content))
+            .flat_map(|(p, content)| diffctx_facts::parsers::fragment_file(Arc::from(*p), content))
             .collect();
         let repository = repository_of(files);
         let capped = collect_capped_edges(

@@ -5,13 +5,13 @@ use once_cell::sync::Lazy;
 use rayon::prelude::*;
 use rustc_hash::FxHashSet;
 
-use crate::parsers::fragment_file;
 use diffctx_base::languages::file_ext;
 use diffctx_base::tokenizer::count_tokens;
 use diffctx_base::types::{Fragment, FragmentId, FragmentKind, extract_identifiers};
 use diffctx_config::config::fragmentation::FRAGMENTATION;
 use diffctx_config::config::limits::LIMITS;
 use diffctx_config::config::tokenization::TOKENIZATION;
+use diffctx_facts::parsers::fragment_file;
 use diffctx_snapshot::candidate_files::normalize_path;
 use diffctx_snapshot::source::Source;
 

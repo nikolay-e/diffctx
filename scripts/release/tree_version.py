@@ -48,7 +48,7 @@ def _rewrite(path: Path, pattern: str, replacement: str, what: str) -> None:
     path.write_text(text, encoding="utf-8")
 
 
-INTERNAL_CRATES = ("diffctx-base", "diffctx-config", "diffctx-snapshot")
+INTERNAL_CRATES = ("diffctx-base", "diffctx-config", "diffctx-snapshot", "diffctx-facts")
 
 
 def set_tree_version(version: str, root: Path = ROOT) -> None:

@@ -317,7 +317,7 @@ pub fn unanalysed(out: &mut String, doc: &ImpactV2) {
         let groups: Vec<String> = groups
             .into_iter()
             .map(|(language, reason, paths)| {
-                let why = crate::parsers::unanalysed_text(reason);
+                let why = diffctx_facts::parsers::unanalysed_text(reason);
                 let page = Page::of(&paths, UNANALYSED_EXAMPLES, 0);
                 let examples = page.shown.join(", ");
                 let rest = if page.rest() > 0 { ", …" } else { "" };
@@ -606,7 +606,7 @@ fn textual_rows(doc: &ImpactV2) -> Vec<String> {
             rows.push(format!(
                 "{}{at} names {named} ({})",
                 f.path,
-                crate::parsers::unanalysed_text(f.reason)
+                diffctx_facts::parsers::unanalysed_text(f.reason)
             ));
         }
     }

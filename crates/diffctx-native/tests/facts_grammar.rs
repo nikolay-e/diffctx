@@ -4,7 +4,7 @@
 
 use std::sync::Arc;
 
-use _diffctx::facts::{BlobFacts, FileFacts, Language, ModulePath, ProjectId};
+use diffctx_facts::facts::{BlobFacts, FileFacts, Language, ModulePath, ProjectId};
 use diffctx_snapshot::snapshot::{Loss, RepoPath};
 
 fn file(outdated_grammar: bool) -> FileFacts {
@@ -48,7 +48,7 @@ fn an_unwitnessed_blob_stays_a_plain_parse_error() {
 
 #[test]
 fn the_witness_file_holds_a_language_and_a_blob_id_per_line() {
-    let witnesses = include_str!("../src/facts/grammar_witnesses.txt");
+    let witnesses = include_str!("../../diffctx-facts/src/facts/grammar_witnesses.txt");
     for line in witnesses
         .lines()
         .filter(|l| !l.trim().is_empty() && !l.starts_with('#'))

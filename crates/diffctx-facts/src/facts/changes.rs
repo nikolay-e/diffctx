@@ -467,7 +467,7 @@ impl Walk {
 
 /// The definitions directly inside `outer`, in source order: its members, not
 /// theirs. `defs` are those of `outer`'s file.
-pub(crate) fn members_of<'a>(defs: impl IntoIterator<Item = &'a Def>, outer: &Def) -> Vec<&'a Def> {
+pub fn members_of<'a>(defs: impl IntoIterator<Item = &'a Def>, outer: &Def) -> Vec<&'a Def> {
     let span = &outer.span.bytes;
     let mut inner: Vec<&Def> = defs
         .into_iter()
@@ -492,7 +492,7 @@ pub(crate) fn members_of<'a>(defs: impl IntoIterator<Item = &'a Def>, outer: &De
 /// A member whose place among the others is part of what it means: a field's is
 /// the type's layout and a positional constructor's order, a variant's its
 /// ordinal.
-pub(crate) const fn holds_data(kind: DefKind) -> bool {
+pub const fn holds_data(kind: DefKind) -> bool {
     matches!(
         kind,
         DefKind::Field

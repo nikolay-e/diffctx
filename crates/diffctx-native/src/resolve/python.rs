@@ -25,8 +25,8 @@ use super::{
     Binding, CandidateReason, Definition, Evidence, EvidenceKind, Relation, Resolution, Solved,
     UnresolvedReason, plain_relation,
 };
-use crate::facts::lang::python::is_dotted_name;
-use crate::facts::{
+use diffctx_facts::facts::lang::python::is_dotted_name;
+use diffctx_facts::facts::{
     DefKey, DefKind, Fact, FactsCache, Import, ImportKind, Language, Name, Receiver, Ref, Scope,
     UseKind,
 };

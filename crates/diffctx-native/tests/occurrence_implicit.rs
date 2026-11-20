@@ -7,19 +7,19 @@
 
 use std::sync::Arc;
 
-use _diffctx::facts::lang::c::{CExtractor, CppExtractor};
-use _diffctx::facts::lang::go::GoExtractor;
-use _diffctx::facts::lang::java::JavaExtractor;
-use _diffctx::facts::lang::kotlin::KotlinExtractor;
-use _diffctx::facts::lang::php::PhpExtractor;
-use _diffctx::facts::lang::python::PythonExtractor;
-use _diffctx::facts::lang::rust::RustExtractor;
-use _diffctx::facts::lang::shell::ShellExtractor;
-use _diffctx::facts::lang::sql::SqlExtractor;
-use _diffctx::facts::lang::terraform::TerraformExtractor;
-use _diffctx::facts::lang::typescript::TypeScript;
-use _diffctx::facts::{Extractor, FileFacts, ModulePath, ProjectId};
 use _diffctx::occurrence::{Implicit, Known, implicit_kinds};
+use diffctx_facts::facts::lang::c::{CExtractor, CppExtractor};
+use diffctx_facts::facts::lang::go::GoExtractor;
+use diffctx_facts::facts::lang::java::JavaExtractor;
+use diffctx_facts::facts::lang::kotlin::KotlinExtractor;
+use diffctx_facts::facts::lang::php::PhpExtractor;
+use diffctx_facts::facts::lang::python::PythonExtractor;
+use diffctx_facts::facts::lang::rust::RustExtractor;
+use diffctx_facts::facts::lang::shell::ShellExtractor;
+use diffctx_facts::facts::lang::sql::SqlExtractor;
+use diffctx_facts::facts::lang::terraform::TerraformExtractor;
+use diffctx_facts::facts::lang::typescript::TypeScript;
+use diffctx_facts::facts::{Extractor, FileFacts, ModulePath, ProjectId};
 use diffctx_snapshot::snapshot::{RepoPath, RunBudget};
 
 fn kinds_in(

@@ -5,7 +5,7 @@ use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::ops::Range;
 
-use crate::facts::{
+use diffctx_facts::facts::{
     Def, DefKey, DefKind, Disambig, EntryKind, Export, Fact, FileFacts, Import, ImportKind,
     LocalKind, Name, Scope,
 };

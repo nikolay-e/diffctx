@@ -24,7 +24,7 @@ use std::path::Path;
 
 use rustc_hash::{FxHashMap, FxHashSet};
 
-use crate::facts::EntryKind;
+use diffctx_facts::facts::EntryKind;
 
 use super::runs::{self, Run, spelled_as_command};
 use super::rust;
@@ -143,7 +143,7 @@ impl<'a> TestsReach<'a> {
                 let text = state.run.source().read_to_string(Path::new(f.path()));
                 // A read that failed is noted on the run by the source itself.
                 text.map_or_else(Vec::new, |t| {
-                    rust::test_functions(&t).unwrap_or_else(|e| {
+                    diffctx_facts::parsers::rust_tests::test_functions(&t).unwrap_or_else(|e| {
                         tracing::warn!("impact: {} is not read as UTF-8 ({e})", f.path());
                         state
                             .run
@@ -179,7 +179,7 @@ impl<'a> TestsReach<'a> {
                         .run
                         .source()
                         .read_to_string(Path::new(spelled))
-                        .and_then(|text| crate::facts::local_facts(shown, &text))
+                        .and_then(|text| diffctx_facts::facts::local_facts(shown, &text))
                         .is_some_and(|blob| holds_test_calls(&blob)))
             {
                 tests_at.entry(spelled).or_default().push((1, u32::MAX));
@@ -878,8 +878,8 @@ fn repo_holds_test_file(state: &ScoredState, declared: &DeclaredTests) -> bool {
 /// is a call of `test` on something else, and so is a name the file binds itself (a
 /// definition, an import, a parameter or a local called `it`): the runner's global
 /// is not what the call reaches.
-fn holds_test_calls(blob: &crate::facts::BlobFacts) -> bool {
-    use crate::facts::{Fact, Receiver, UseKind};
+fn holds_test_calls(blob: &diffctx_facts::facts::BlobFacts) -> bool {
+    use diffctx_facts::facts::{Fact, Receiver, UseKind};
     const REGISTRARS: [&str; 3] = ["describe", "it", "test"];
     let binds = |name: &str| {
         blob.facts.iter().any(|fact| match fact {
