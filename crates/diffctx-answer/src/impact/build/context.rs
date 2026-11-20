@@ -312,7 +312,7 @@ impl<'a> Impact<'a> {
         }
         one_project(user, used)
             && mentions(user, Some(name), &Receiver::Any)
-            && references_module(user, &files, Some(name), used.path())
+            && references_module(user, files, Some(name), used.path())
     }
 
     pub(super) fn reaches_file(&self, test: &Fragment, caller: &Fragment) -> bool {
@@ -325,7 +325,7 @@ impl<'a> Impact<'a> {
         if let Some(cell) = cells.of(&test_rel).filter(|c| c.owns(&caller_rel)) {
             return cell.reaches(&test_rel, &caller_rel);
         }
-        one_project(test, caller) && references_module(test, &files, None, caller.path())
+        one_project(test, caller) && references_module(test, files, None, caller.path())
     }
 
     /// What the tests say of a caller: the ones that reach it, and why an absent
@@ -337,7 +337,7 @@ impl<'a> Impact<'a> {
         let link = |user: &Fragment, used: &Fragment| self.link(user, used);
         let reaches_file = |test: &Fragment, caller: &Fragment| self.reaches_file(test, caller);
         let registration = |f: &Fragment| self.registration(f);
-        let tested = tests.tested_by(frag, state, &by_id, &link);
+        let tested = tests.tested_by(frag, state, by_id, &link);
         let registered_by = tested.is_empty().then(|| registration(frag)).flatten();
         Caller {
             file_tested: tested.is_empty()
@@ -352,7 +352,7 @@ impl<'a> Impact<'a> {
                     || tests.open_above(frag, &link, true),
                     |core| tests.caller_open(frag, core, &link),
                 ),
-            tests_partial: !tested.is_empty() && tests.nearest_only(frag, state, &by_id, &link),
+            tests_partial: !tested.is_empty() && tests.nearest_only(frag, state, by_id, &link),
             registered_by,
             tests: tested,
             ..Caller::default()
