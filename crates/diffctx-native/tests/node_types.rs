@@ -27,6 +27,9 @@ use tree_sitter::{Language, Node, Parser};
 const LIST: &str = "tests/node_types_unhandled.txt";
 const REWRITE: &str = "DIFFCTX_NODE_TYPES_REWRITE";
 
+/// The table of grammars and their definition types; its file never names tree-sitter.
+const LANG_CONFIG_FILE: &str = "parsers/tree_sitter_strategy/lang_config.rs";
+
 const JS: &[&str] = &["javascript", "typescript", "tsx"];
 const NONE: &[&str] = &[];
 
@@ -36,6 +39,7 @@ const SCOPES: &[(&str, Option<&[&str]>)] = &[
     ("change_class.rs", None),
     ("parsers/mod.rs", None),
     ("parsers/tree_sitter_strategy.rs", None),
+    (LANG_CONFIG_FILE, None),
     ("facts/lexical.rs", None),
     ("facts/lang/mod.rs", None),
     ("facts/lang/walker.rs", None),
@@ -291,16 +295,14 @@ impl<'a> Reader<'a> {
                 .extend(self.literal(node).split_whitespace().map(str::to_string)),
             "const_item" | "static_item" => {
                 let name = self.field(node, "name").unwrap_or_default();
-                if self.file == "parsers/tree_sitter_strategy.rs" && name == "LANG_CONFIGS" {
+                if self.file == LANG_CONFIG_FILE && name == "LANG_CONFIGS" {
                     return self.visit(node, out, consts);
                 }
                 let words = self.words(node);
                 match name.as_str() {
                     "DECLARING" => out.shared.declaring.extend(words),
                     "NOT" => out.shared.excluded.extend(words),
-                    _ if self.file == "parsers/tree_sitter_strategy.rs"
-                        && name.ends_with("_DEFINITION_TYPES") =>
-                    {
+                    _ if self.file == LANG_CONFIG_FILE && name.ends_with("_DEFINITION_TYPES") => {
                         consts.insert(name, words);
                     }
                     _ => out.shared.words.extend(words),
@@ -309,7 +311,7 @@ impl<'a> Reader<'a> {
             "struct_expression" => {
                 let name = self.field(node, "name").unwrap_or_default();
                 match (self.file, name.as_str()) {
-                    ("parsers/tree_sitter_strategy.rs", "LangConfig") => {
+                    (LANG_CONFIG_FILE, "LangConfig") => {
                         self.lang_config(node, out, consts);
                     }
                     ("facts/lexical.rs", "Row") => self.lexical_row(node, out),
@@ -512,7 +514,7 @@ fn tables() -> BTreeMap<String, Reads> {
             .to_string_lossy()
             .replace('\\', "/");
         let text = fs::read_to_string(&path).expect("source");
-        if !text.contains("tree_sitter") {
+        if !text.contains("tree_sitter") && relative != LANG_CONFIG_FILE {
             continue;
         }
         let Some((_, scope)) = SCOPES.iter().find(|(file, _)| *file == relative) else {
@@ -671,7 +673,7 @@ fn a_config_row_belongs_to_its_own_grammar() {
             LangConfig { extensions: &[".jsx"], ts_name: "jsx", definition_types: JS_DEFINITION_TYPES },
         ];
     "#;
-    let reads = read_source("parsers/tree_sitter_strategy.rs", source);
+    let reads = read_source(LANG_CONFIG_FILE, source);
     assert!(reads.own["python"].words.contains("only_python"));
     assert!(!reads.own["python"].words.contains("shared_def"));
     assert!(reads.own["javascript"].words.contains("shared_def"));
