@@ -249,15 +249,15 @@ fn a_comment_and_a_string_that_name_the_subject_are_records() {
     let knob = [(KNOB, sink.to_str().expect("a path"))];
     planted.ask(Query::Impact, &knob).expect("the answer");
     let lines = lines_of(&sink);
-    let account = lines
+    let tally = lines
         .iter()
         .find(|line| {
             is(line, "account") && line["def"] == "shop/pricing.py::total" && line["side"] == "head"
         })
         .unwrap_or_else(|| panic!("no account of total at head: {lines:?}"));
     // def total, the import, the comment, the string, the call.
-    assert_eq!(account["matches"], 5, "{account}");
-    assert_eq!(account["remainder"], 0, "{account}");
+    assert_eq!(tally["matches"], 5, "{tally}");
+    assert_eq!(tally["remainder"], 0, "{tally}");
     let violations: Vec<&Value> = lines.iter().filter(|line| is(line, "violation")).collect();
     assert!(violations.is_empty(), "{violations:#?}");
 }
