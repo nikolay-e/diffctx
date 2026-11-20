@@ -2,9 +2,9 @@ use std::path::Path;
 
 use rustc_hash::{FxHashMap, FxHashSet};
 
-use crate::canon::{KeyCache, for_each_word_key};
 use crate::config::edge_weights::TAGS_SEMANTIC;
-use crate::types::{Fragment, FragmentId};
+use diffctx_base::canon::{KeyCache, for_each_word_key};
+use diffctx_base::types::{Fragment, FragmentId};
 
 use super::super::EdgeDict;
 use super::super::base::{self, EdgeBuilder};
@@ -48,7 +48,7 @@ impl EdgeBuilder for TagsEdgeBuilder {
             // them, and a fallback edge on a keyword is noise with weight.
             // Config files keep every word: there the fallback is the link.
             let code = crate::config::extensions::CODE_EXTENSIONS
-                .contains(crate::languages::file_ext(Path::new(path)).as_str());
+                .contains(diffctx_base::languages::file_ext(Path::new(path)).as_str());
             let mut keys: FxHashSet<String> = FxHashSet::default();
             for ident in &f.identifiers {
                 keys.insert(cache.key(ident).to_string());
@@ -108,7 +108,7 @@ impl EdgeBuilder for TagsEdgeBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::{FragmentKind, extract_identifiers};
+    use diffctx_base::types::{FragmentKind, extract_identifiers};
     use std::sync::Arc;
 
     fn frag(path: &str, content: &str) -> Fragment {

@@ -3,7 +3,9 @@
 //! (the grammars come with it), the token cache on the sources that make
 //! tokens. A hand-bumped version is forgotten by the change that needed it; a
 //! digest of the code cannot be. The facts extractors read through `parsers`,
-//! `languages` and the snapshot, so no subset of `src/` is a fingerprint.
+//! `languages` and the snapshot, so no subset of `src/` is a fingerprint. The
+//! sources of every workspace path dependency (read from the manifests, so a
+//! new leaf crate joins by being depended on) count as this crate's own.
 
 use std::env;
 use std::fs;
@@ -31,6 +33,52 @@ fn sources(dir: &Path, out: &mut Vec<PathBuf>) {
             out.push(path);
         }
     }
+}
+
+/// The `src` directories, relative to `root`, of the dependencies that live in
+/// this workspace: a dependency with its own `path`, or `workspace = true`
+/// naming a `[workspace.dependencies]` entry that has one.
+fn path_dependency_sources(root: &Path) -> Vec<String> {
+    let read = |manifest: &Path| -> toml::Table {
+        let text = fs::read_to_string(manifest).expect("read a manifest");
+        println!("cargo:rerun-if-changed={}", manifest.display());
+        text.parse().expect("parse a manifest")
+    };
+    let own = read(&root.join("Cargo.toml"));
+    let shared = root.ancestors().enumerate().skip(1).find_map(|(up, dir)| {
+        let manifest = dir.join("Cargo.toml");
+        let table = read(&manifest.is_file().then_some(manifest)?);
+        let deps = table
+            .get("workspace")?
+            .get("dependencies")?
+            .as_table()?
+            .clone();
+        Some(("../".repeat(up), deps))
+    });
+    let mut dirs = Vec::new();
+    for section in ["dependencies", "build-dependencies"] {
+        let Some(deps) = own.get(section).and_then(toml::Value::as_table) else {
+            continue;
+        };
+        for (name, dep) in deps {
+            let own_path = dep.get("path").and_then(toml::Value::as_str);
+            let inherits = dep.get("workspace").and_then(toml::Value::as_bool) == Some(true);
+            match (own_path, &shared) {
+                (Some(path), _) => dirs.push(format!("{path}/src")),
+                (None, Some((base, table))) if inherits => {
+                    let path = table
+                        .get(name)
+                        .and_then(|entry| entry.get("path"))
+                        .and_then(toml::Value::as_str);
+                    dirs.extend(path.map(|path| format!("{base}{path}/src")));
+                }
+                _ => {}
+            }
+        }
+    }
+    dirs.sort();
+    dirs.dedup();
+    dirs
 }
 
 /// The digest of the files (sorted by path, each with its path) and of the lock
@@ -66,17 +114,30 @@ fn main() {
         .find(|p| p.is_file());
     println!("cargo:rerun-if-changed=build.rs");
     println!("cargo:rerun-if-changed=src");
-    let facts = digest(&root, &[], &["src"], lock.as_deref());
+    let dependencies = path_dependency_sources(&root);
+    let dirs = |own: &[&str]| -> Vec<String> {
+        own.iter()
+            .map(|dir| (*dir).to_owned())
+            .chain(dependencies.iter().cloned())
+            .collect()
+    };
+    let facts_dirs = dirs(&["src"]);
+    let facts = digest(
+        &root,
+        &[],
+        &facts_dirs.iter().map(String::as_str).collect::<Vec<_>>(),
+        lock.as_deref(),
+    );
+    let token_dirs = dirs(&["src/stopwords"]);
     let tokens = digest(
         &root,
         &[
             "src/token_corpus.rs",
-            "src/tokenizer.rs",
             "src/config/tokenization.rs",
             "src/config/bm25.rs",
             "src/stopwords.rs",
         ],
-        &["src/stopwords"],
+        &token_dirs.iter().map(String::as_str).collect::<Vec<_>>(),
         None,
     );
     fs::write(

@@ -6,7 +6,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::config::graph_filtering::GRAPH_FILTERING;
 use crate::config::scoring::EGO;
-use crate::types::{EdgeCategory, Fragment, FragmentId};
+use diffctx_base::types::{EdgeCategory, Fragment, FragmentId};
 
 pub struct CsrGraph {
     pub n: usize,
@@ -1186,7 +1186,7 @@ mod tests {
     fn plain_fragment(id: FragmentId) -> Fragment {
         Fragment {
             id,
-            kind: crate::types::FragmentKind::Function,
+            kind: diffctx_base::types::FragmentKind::Function,
             content: Arc::from(""),
             identifiers: FxHashSet::default(),
             token_count: 10,

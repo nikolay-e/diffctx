@@ -6,7 +6,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::config::extensions::DOTNET_EXTENSIONS;
 use crate::config::weights::EDGE_WEIGHTS;
-use crate::types::{Fragment, FragmentId, FragmentKind};
+use diffctx_base::types::{Fragment, FragmentId, FragmentKind};
 
 use super::super::EdgeDict;
 use super::super::base::{
@@ -27,7 +27,7 @@ static EXTENDED_DOTNET_EXTENSIONS: Lazy<FxHashSet<&str>> = Lazy::new(|| {
 });
 
 fn is_dotnet_file(path: &Path) -> bool {
-    EXTENDED_DOTNET_EXTENSIONS.contains(crate::languages::file_ext(path).as_str())
+    EXTENDED_DOTNET_EXTENSIONS.contains(diffctx_base::languages::file_ext(path).as_str())
 }
 
 fn is_cs_file(path: &Path) -> bool {

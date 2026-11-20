@@ -7,7 +7,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::config::bm25::BM25;
 use crate::token_corpus::{DocTokens, TokenCorpus};
-use crate::types::extract_identifier_list;
+use diffctx_base::types::extract_identifier_list;
 
 pub(crate) struct DiscoveryContext {
     pub root_dir: PathBuf,
@@ -331,9 +331,9 @@ impl DiscoveryStrategy for TestFileDiscovery {
             for suffix in TEST_SUFFIXES {
                 test_stems.insert(format!("{stem}{suffix}"));
             }
-            let ext = crate::languages::file_ext(f);
-            if crate::testfiles::JVM_TEST_SUFFIX_EXTENSIONS.contains(&ext.as_str()) {
-                for suffix in crate::testfiles::JVM_TEST_SUFFIXES {
+            let ext = diffctx_base::languages::file_ext(f);
+            if diffctx_base::testfiles::JVM_TEST_SUFFIX_EXTENSIONS.contains(&ext.as_str()) {
+                for suffix in diffctx_base::testfiles::JVM_TEST_SUFFIXES {
                     test_stems.insert(format!("{stem}{suffix}"));
                 }
             }

@@ -5,7 +5,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::config::limits::PPR;
 use crate::graph::{CsrGraph, Graph};
-use crate::types::FragmentId;
+use diffctx_base::types::FragmentId;
 
 fn init_seed_residuals(
     csr: &CsrGraph,
@@ -415,7 +415,7 @@ mod tests {
     #[test]
     fn claim_7_hub_suppression_reduces_hub_mass_without_removal() {
         use crate::graph::build_graph;
-        use crate::types::{EdgeCategory, Fragment, FragmentKind};
+        use diffctx_base::types::{EdgeCategory, Fragment, FragmentKind};
 
         let n_leaves = 20usize;
         let hub = fid("hub.rs", 1, 10);
@@ -760,7 +760,7 @@ mod tests {
     #[test]
     fn ppr_excludes_self_loop_and_infinite_weight_and_stays_finite() {
         use crate::graph::build_graph;
-        use crate::types::{EdgeCategory, Fragment, FragmentKind};
+        use diffctx_base::types::{EdgeCategory, Fragment, FragmentKind};
 
         let a = fid("a.rs", 1, 10);
         let b = fid("b.rs", 1, 10);

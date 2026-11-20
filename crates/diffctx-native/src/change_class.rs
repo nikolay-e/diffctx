@@ -16,8 +16,8 @@ use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use crate::changed_lines::{HunkText, reverted};
-use crate::types::DiffHunk;
+use diffctx_base::changed_lines::{HunkText, reverted};
+use diffctx_base::types::DiffHunk;
 
 #[derive(
     Serialize, Deserialize, JsonSchema, Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord,

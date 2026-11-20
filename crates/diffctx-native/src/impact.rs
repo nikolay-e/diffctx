@@ -14,14 +14,14 @@ use serde::Serialize;
 use crate::answer::render::place;
 use crate::answer::v2::GuardState;
 use crate::answer::{Answer, RenderCtx};
-use crate::container::{innermost, named_container_of, within};
 use crate::decide::{self, Cells, Effect};
 use crate::facts::{EntryKind, framework};
 use crate::run_provenance::state::ScoredState;
 use crate::tokens::Names;
 use crate::tokens::occurrence::{Hedge, Reason};
-use crate::types::{Fragment, FragmentId, FragmentKind};
 use crate::vocabulary;
+use diffctx_base::container::{innermost, named_container_of, within};
+use diffctx_base::types::{Fragment, FragmentId, FragmentKind};
 
 mod keys;
 mod mentions;
@@ -850,7 +850,7 @@ pub struct UnanalysedFile {
 
 impl UnanalysedFile {
     pub(crate) fn new(path: String, reason: &'static str, lines: Vec<u32>) -> Self {
-        let language = crate::languages::get_language_for_file(&path);
+        let language = diffctx_base::languages::get_language_for_file(&path);
         Self {
             path,
             language,
@@ -911,7 +911,7 @@ fn names_word(text: &str, name: &str) -> bool {
 }
 
 fn is_code_file(path: &str) -> bool {
-    let ext = crate::languages::file_ext(Path::new(path));
+    let ext = diffctx_base::languages::file_ext(Path::new(path));
     crate::config::extensions::CODE_EXTENSIONS.contains(ext.as_str())
 }
 
@@ -1229,7 +1229,7 @@ fn outside_definitions(cells: &Cells) -> Vec<UnanalysedFile> {
         .iter()
         .flat_map(decide::Cell::outside_definitions)
         .map(|(path, spans)| UnanalysedFile {
-            language: crate::languages::get_language_for_file(&path),
+            language: diffctx_base::languages::get_language_for_file(&path),
             path,
             reason: OUTSIDE_DEFINITIONS,
             lines: spans
@@ -1326,7 +1326,7 @@ fn nameless_changes(
             || code.is_empty()
             || !changed.contains(path)
             || !(is_code_file(path) || sql)
-            || crate::testfiles::is_test_path(Path::new(path))
+            || diffctx_base::testfiles::is_test_path(Path::new(path))
         {
             continue;
         }
@@ -1402,7 +1402,9 @@ fn unanalysed_files(state: &ScoredState, changed: &[String]) -> Vec<UnanalysedFi
                 Path::new(path).extension().is_none()
                     && source
                         .read_to_string(&state.root_dir.join(path))
-                        .is_some_and(|t| crate::languages::sniff_language(path, &t) == Some("bash"))
+                        .is_some_and(|t| {
+                            diffctx_base::languages::sniff_language(path, &t) == Some("bash")
+                        })
             };
             if !is_code_file(path) && !script() {
                 let binary = || {
@@ -1618,7 +1620,7 @@ fn searched_as_text(word: &str) -> bool {
 /// Whether text outside the language can call `core` by its name: a stage of a
 /// Dockerfile is no function a script runs.
 fn callable_by_name(path: &str) -> bool {
-    crate::languages::get_language_for_file(path) != Some("dockerfile")
+    diffctx_base::languages::get_language_for_file(path) != Some("dockerfile")
 }
 
 /// Code no cell reads (Objective-C, Scala and Groovy too, in the groups of the
@@ -1854,7 +1856,8 @@ impl UntracedNamers {
     ) -> Vec<UnanalysedFile> {
         // Terragrunt's `inputs` and a `.tftest.hcl`'s `variables` set a Terraform
         // module's variable by its name, in files the module's extractor never reads.
-        let sets_variable = crate::languages::get_language_for_file(&sym.path) == Some("terraform");
+        let sets_variable =
+            diffctx_base::languages::get_language_for_file(&sym.path) == Some("terraform");
         let mut spelled: Vec<UnanalysedFile> = Vec::new();
         let member = matches!(
             def.kind,
@@ -2105,7 +2108,7 @@ fn names_of(symbol: &str) -> Vec<String> {
 /// HTML and single-file components that embed it, Swift, Objective-C, C and
 /// C++ bridge and link. Anything else is its own runtime.
 pub(crate) fn runtime_of(path: &str) -> String {
-    let language = crate::languages::get_language_for_file(path).unwrap_or("");
+    let language = diffctx_base::languages::get_language_for_file(path).unwrap_or("");
     match language {
         "java" | "kotlin" | "scala" | "groovy" | "clojure" => "jvm",
         "javascript" | "typescript" | "tsx" | "jsx" | "html" | "svelte" | "vue" => "js",
@@ -2310,8 +2313,8 @@ fn is_public(path: &str, symbol: Option<&str>, content: &str) -> bool {
 /// An added run whose lines, blank ones aside, are a run removed elsewhere in
 /// the same file: the definition moved, its text and indentation did not.
 fn moved_verbatim(
-    run: &crate::changed_lines::HunkText,
-    hunks: &[crate::changed_lines::HunkText],
+    run: &diffctx_base::changed_lines::HunkText,
+    hunks: &[diffctx_base::changed_lines::HunkText],
 ) -> bool {
     let text = |lines: &[String]| -> Vec<String> {
         lines
@@ -2330,7 +2333,7 @@ fn moved_verbatim(
 
 fn is_schema_file(path: &str) -> bool {
     // A test named for the schema it checks is not a schema.
-    if crate::testfiles::is_test_path(Path::new(path)) {
+    if diffctx_base::testfiles::is_test_path(Path::new(path)) {
         return false;
     }
     let lower = path.to_lowercase();
@@ -3178,7 +3181,7 @@ fn declares_member(line: &str) -> bool {
 /// Whether every hunk in the definition only added fields or parameters
 /// that carry a default (#388): the call sites keep working, so they are
 /// counted instead of listed.
-fn compatible_extension(core: &Fragment, hunks: &[&crate::changed_lines::HunkText]) -> bool {
+fn compatible_extension(core: &Fragment, hunks: &[&diffctx_base::changed_lines::HunkText]) -> bool {
     let head_end = core.start_line() + declaration_head(&core.content).lines().count() as u32;
     !hunks.is_empty()
         && hunks.iter().all(|h| {
@@ -3280,7 +3283,7 @@ fn owned_by_a_nested_definition(frag: &Fragment, u: &decide::Use) -> bool {
         return false;
     };
     matches!(
-        crate::languages::get_language_for_file(&u.file),
+        diffctx_base::languages::get_language_for_file(&u.file),
         Some("typescript" | "javascript")
     ) && frag
         .symbol_name
@@ -3301,7 +3304,7 @@ fn lifted_caller<'a>(frags: &[&'a Fragment], source: &'a Fragment) -> &'a Fragme
     let field = source.kind == FragmentKind::Property;
     let chunk = source.kind == FragmentKind::Chunk;
     let in_a_test = matches!(source.kind, FragmentKind::Function | FragmentKind::Class)
-        && crate::testfiles::is_test_path(Path::new(source.path()));
+        && diffctx_base::testfiles::is_test_path(Path::new(source.path()));
     if source.kind != FragmentKind::Variable && !anonymous && !field && !chunk && !in_a_test {
         return source;
     }
@@ -3515,7 +3518,7 @@ pub fn build_impact(
     query: Option<&str>,
     deadline: Option<Instant>,
 ) -> ImpactOutput {
-    let setup = crate::profile::phase("impact.setup");
+    let setup = diffctx_base::profile::phase("impact.setup");
     // A signature variant as long as its fragment shares its id (a Kotlin
     // class header ending `) {`); the id names the fragment, not its stub.
     let mut by_id: FxHashMap<&FragmentId, &Fragment> = FxHashMap::default();
@@ -3538,7 +3541,7 @@ pub fn build_impact(
     // callers from the resolver of their language (decide.rs). The ranking
     // graph and the text filters take no part in what they answer.
     let cells = {
-        let _t = crate::profile::detail("impact.setup.cells", "");
+        let _t = diffctx_base::profile::detail("impact.setup.cells", "");
         Cells::open(
             state,
             state.analysed_range.as_deref().or(diff_range),
@@ -3546,7 +3549,7 @@ pub fn build_impact(
         )
     };
     let tests = {
-        let _t = crate::profile::detail("impact.setup.tests", "");
+        let _t = diffctx_base::profile::detail("impact.setup.tests", "");
         TestsReach::build(
             state,
             &cells,
@@ -3579,7 +3582,7 @@ pub fn build_impact(
                     .any(|&(a, b)| id.start_line <= b && id.end_line >= a)
             })
     };
-    let hunks_in = |core: &Fragment| -> Vec<&crate::changed_lines::HunkText> {
+    let hunks_in = |core: &Fragment| -> Vec<&diffctx_base::changed_lines::HunkText> {
         let path = rel(state, core.path());
         state
             .hunk_texts
@@ -3640,7 +3643,7 @@ pub fn build_impact(
     let mut definitions: FxHashMap<(&str, String), usize> = FxHashMap::default();
     let mut defined_in: FxHashSet<(String, &str)> = FxHashSet::default();
     let mut file_fragments: FxHashMap<&str, Vec<&Fragment>> = FxHashMap::default();
-    let indexing = crate::profile::detail("impact.setup.files", "");
+    let indexing = diffctx_base::profile::detail("impact.setup.files", "");
     for f in &state.all_fragments {
         file_fragments.entry(f.path()).or_default().push(f);
         if let Some(name) = f
@@ -3648,7 +3651,7 @@ pub fn build_impact(
             .as_deref()
             .filter(|_| f.kind.is_definition_kind() && f.kind != FragmentKind::Impl)
         {
-            let lang = crate::languages::get_language_for_file(f.path()).unwrap_or("");
+            let lang = diffctx_base::languages::get_language_for_file(f.path()).unwrap_or("");
             *definitions.entry((lang, name.to_lowercase())).or_default() += 1;
             defined_in.insert((name.to_string(), f.path()));
         }
@@ -3977,7 +3980,7 @@ pub fn build_impact(
             || (query.is_none() && in_a_hunk(id))
     };
     let untraced = {
-        let _t = crate::profile::detail("impact.setup.untraced", "");
+        let _t = diffctx_base::profile::detail("impact.setup.untraced", "");
         let removed: Vec<&str> = cell_removed
             .iter()
             .chain(&cell_apart)
@@ -4009,10 +4012,10 @@ pub fn build_impact(
         UntracedNamers::build(state, &cells, &cores, &removed, &left, &own, diff_range)
     };
     drop(setup);
-    crate::profile::count("impact.cores", cores.len() as u64);
+    diffctx_base::profile::count("impact.cores", cores.len() as u64);
     let stopped_early = !state.run.stops().is_empty();
     let mut unreached: Vec<&Fragment> = cell_lost;
-    let callers = crate::profile::phase("impact.callers");
+    let callers = diffctx_base::profile::phase("impact.callers");
     for (i, core) in cores.iter().enumerate() {
         // Past the deadline the symbols already answered are the answer:
         // `limits` then says it is partial, and a mass reformat returns what
@@ -4027,7 +4030,7 @@ pub fn build_impact(
         let py = cell_defs.get(&core.id);
         let verdict = py.and_then(|def| {
             let cell = cells.of(&def.file)?;
-            let _t = crate::profile::detail("impact.callers.verdict", "");
+            let _t = diffctx_base::profile::detail("impact.callers.verdict", "");
             Some(cell.verdict(def))
         });
         if let Some(v) = &verdict {
@@ -4080,7 +4083,7 @@ pub fn build_impact(
             .unwrap_or("");
         // `build`, `new`, `run`: a name defined all over the repository links
         // by name to every definition, and its "callers" would be everyone's.
-        let core_lang = crate::languages::get_language_for_file(core.path()).unwrap_or("");
+        let core_lang = diffctx_base::languages::get_language_for_file(core.path()).unwrap_or("");
         // With a cell, imports decide which definition a reference reaches; a
         // name defined in many files is ambiguous only without one.
         let binding_model = symbol.is_some() && py.is_some();
@@ -4166,7 +4169,7 @@ pub fn build_impact(
         // to trace"), so nothing is searched for it: a text row per definition
         // would be the noise that line folds.
         if py.is_none() && !ambiguous {
-            let _t = crate::profile::detail("impact.callers.text", "");
+            let _t = diffctx_base::profile::detail("impact.callers.text", "");
             let names = symbol.map_or_else(Vec::new, names_of);
             for path in spelling_files(state, &cells, &rel(state, core.path()), &names) {
                 let Some(frags) = files
@@ -4432,7 +4435,7 @@ pub fn build_impact(
         sources.retain(|(f, _, found)| {
             f.symbol_name.is_some() || found.is_some() || !named_files.contains(f.path())
         });
-        let rows = crate::profile::detail("impact.callers.rows", "");
+        let rows = diffctx_base::profile::detail("impact.callers.rows", "");
         let callers: Vec<Caller> = innermost(sources.iter().map(|(f, _, _)| *f).collect())
             .into_iter()
             .flat_map(|frag| {
@@ -4493,7 +4496,7 @@ pub fn build_impact(
         let in_time = deadline.is_none_or(|d| Instant::now() < d);
         let commits = match (&bounds, i < MAX_BLAMED_SYMBOLS && in_time) {
             (Some((base, head)), true) => {
-                let _t = crate::profile::detail("impact.callers.commits", "");
+                let _t = diffctx_base::profile::detail("impact.callers.commits", "");
                 commits_touching(state, base, head, core)
             }
             _ => 0,
@@ -4503,7 +4506,7 @@ pub fn build_impact(
         // its languages (Kotlin's cell also says which are public), the
         // declaration text for the rest.
         let public_change = match py
-            .filter(|c| crate::languages::get_language_for_file(&c.file) == Some("kotlin"))
+            .filter(|c| diffctx_base::languages::get_language_for_file(&c.file) == Some("kotlin"))
         {
             Some(changed) => changed.api,
             None => {
@@ -4711,7 +4714,7 @@ pub fn build_impact(
         let runs_script = |file: &UnanalysedFile| {
             let name = file.path.rsplit('/').next().unwrap_or(&file.path);
             matches!(
-                crate::languages::get_language_for_file(core.path()),
+                diffctx_base::languages::get_language_for_file(core.path()),
                 Some("bash" | "ruby")
             ) && (!name.contains('.')
                 || matches!(extension(name).as_str(), "yml" | "yaml" | "rake"))
@@ -5050,7 +5053,7 @@ pub fn build_impact(
             _ => changed.push(sym),
         }
     }
-    crate::profile::count("impact.traced_apart", traced_apart);
+    diffctx_base::profile::count("impact.traced_apart", traced_apart);
     {
         let stops = state.run.stops();
         for entry in apart_unreached {
@@ -5100,7 +5103,7 @@ pub fn build_impact(
             }
         }
     }
-    let removed = crate::profile::phase("impact.removed");
+    let removed = diffctx_base::profile::phase("impact.removed");
     if query.is_none() && state.run.check() {
         let mut defined: FxHashMap<&str, FxHashSet<String>> = FxHashMap::default();
         for (n, p) in &defined_in {
@@ -5176,7 +5179,7 @@ pub fn build_impact(
                 c.tests = tested;
             }
             if let Some(c) =
-                contract.filter(|c| !crate::testfiles::is_test_path(Path::new(&c.path)))
+                contract.filter(|c| !diffctx_base::testfiles::is_test_path(Path::new(&c.path)))
             {
                 contracts.push(c);
             }
@@ -5229,7 +5232,7 @@ pub fn build_impact(
         .map(|p| rel(state, &p.to_string_lossy()))
         .collect();
     let (stale, stale_omitted) = if query.is_none() {
-        let _stale = crate::profile::phase("impact.stale_paths");
+        let _stale = diffctx_base::profile::phase("impact.stale_paths");
         stale_references(state, &cells, analysed)
     } else {
         (Vec::new(), 0)
@@ -5240,7 +5243,7 @@ pub fn build_impact(
         (Vec::new(), changed)
     };
     let (named_by, named_by_path_omitted) = {
-        let _named = crate::profile::phase("impact.named_by");
+        let _named = diffctx_base::profile::phase("impact.named_by");
         let (mut named, omitted) = named_by_path(state, &cells, analysed);
         if query.is_none() {
             let by_module = untraced.module_refs(state, &cores, &named);
@@ -5343,7 +5346,7 @@ pub fn build_impact(
         for n in &nameless {
             if !all.iter().any(|f| f.path == n.path) {
                 all.push(UnanalysedFile {
-                    language: crate::languages::get_language_for_file(&n.path),
+                    language: diffctx_base::languages::get_language_for_file(&n.path),
                     path: n.path.clone(),
                     reason: OUTSIDE_DEFINITIONS,
                     lines: n
@@ -6427,11 +6430,11 @@ fn fit_with(output: &mut ImpactOutput, cap: u32, measure: &dyn Fn(&ImpactOutput)
     output.empty = proves_empty(output);
     // What showing everything would take, to the next hundred tokens.
     output.needs = measure(output).div_ceil(100) * 100;
-    let steps = crate::fit::shed_to_fit(output, cap, measure);
-    crate::profile::count("fit.steps", steps as u64);
+    let steps = diffctx_base::fit::shed_to_fit(output, cap, measure);
+    diffctx_base::profile::count("fit.steps", steps as u64);
 }
 
-impl crate::fit::Shed for ImpactOutput {
+impl diffctx_base::fit::Shed for ImpactOutput {
     fn shed_one(&mut self) -> bool {
         shed_one(self)
     }
@@ -6522,7 +6525,9 @@ fn shed_one(output: &mut ImpactOutput) -> bool {
     // The definitions of test files rank last among the targets: they go first,
     // whole, into the entry that names what the cap shed.
     if let Some(i) = output.changed.iter().rposition(|c| {
-        !is_omitted(c) && !is_unfinished(c) && crate::testfiles::is_test_path(Path::new(&c.path))
+        !is_omitted(c)
+            && !is_unfinished(c)
+            && diffctx_base::testfiles::is_test_path(Path::new(&c.path))
     }) {
         shed_definition(output, i);
         return true;
@@ -6828,14 +6833,16 @@ pub fn deliver_framed(
     unfold: bool,
     frame: &str,
 ) -> String {
-    let _render = crate::profile::phase("render");
+    let _render = diffctx_base::profile::phase("render");
     if !unfold {
         fold_rows(output);
     }
-    let markdown_tokens =
-        |o: &ImpactOutput| crate::tokenizer::count_tokens(&format!("{frame}{}", render(o, false)));
-    let json_tokens =
-        |o: &ImpactOutput| crate::tokenizer::count_tokens(&format!("{frame}{}\n", v2_json(o)));
+    let markdown_tokens = |o: &ImpactOutput| {
+        diffctx_base::tokenizer::count_tokens(&format!("{frame}{}", render(o, false)))
+    };
+    let json_tokens = |o: &ImpactOutput| {
+        diffctx_base::tokenizer::count_tokens(&format!("{frame}{}\n", v2_json(o)))
+    };
     let measure: &dyn Fn(&ImpactOutput) -> u32 = if markdown {
         &markdown_tokens
     } else {
@@ -6882,7 +6889,7 @@ fn fold_rows(output: &mut ImpactOutput) {
         sym.callers = kept;
         // A test is what the reviewer runs, so it is named first; then by path
         // and line, the same for the same change.
-        let is_test = |c: &Caller| crate::testfiles::is_test_path(Path::new(&c.path));
+        let is_test = |c: &Caller| diffctx_base::testfiles::is_test_path(Path::new(&c.path));
         rows.sort_by(|a, b| {
             (
                 !is_test(a),
@@ -6951,7 +6958,7 @@ pub const AUTOMATIC_TOKEN_CAP: u32 = 600;
 /// whole text, limits and metadata included, within `cap` tokens.
 pub fn render_automatic(output: &mut ImpactOutput, cap: u32) -> String {
     fold_rows(output);
-    let measure = |o: &ImpactOutput| crate::tokenizer::count_tokens(&render(o, true));
+    let measure = |o: &ImpactOutput| diffctx_base::tokenizer::count_tokens(&render(o, true));
     fit_with(output, cap, &measure);
     render(output, true)
 }

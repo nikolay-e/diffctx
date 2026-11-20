@@ -91,7 +91,7 @@ from the parser, never from rendered `kind:`.
 **Whole-file-chunk-as-core class (#105/#107/#123):** when fragmentation
 yields no narrow fragment covering a hunk, the core falls back to a
 whole-file chunk. The lost-signal half is fixed by the excerpt fallback
-(`crates/diffctx-native/src/excerpt.rs` — excerpts live in
+(`crates/diffctx-base/src/excerpt.rs` — excerpts live in
 `ScoredState.core_excerpts`, never become graph nodes, which is what
 keeps the mechanism E-class); the granularity-cost half stays on
 #105/#107. Zig comptime types, C++ templates and `*.api` dumps are the

@@ -178,7 +178,8 @@ impl Group {
         if path.as_str().to_ascii_lowercase().ends_with(".astro") {
             return Some(Self::Web);
         }
-        crate::languages::get_language_for_file(path.as_str()).map(|language| match language {
+        diffctx_base::languages::get_language_for_file(path.as_str()).map(|language| match language
+        {
             "java" | "kotlin" | "scala" | "groovy" => Self::Jvm,
             "c" | "cpp" | "objectivec" => Self::Native,
             "typescript" | "tsx" | "javascript" | "jsx" | "html" | "vue" | "svelte" => Self::Web,
@@ -226,7 +227,7 @@ impl Resolver {
         side: SideTag,
         cache: &FactsCache,
     ) -> Result<Self> {
-        let _open = crate::profile::detail(
+        let _open = diffctx_base::profile::detail(
             match side {
                 SideTag::Head => "resolver.open.head",
                 SideTag::Base => "resolver.open.base",

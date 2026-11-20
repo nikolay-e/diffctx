@@ -18,13 +18,13 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use crate::config::edge_weights::PYTHON_SEMANTIC;
 use crate::config::extensions::PYTHON_EXTENSIONS;
 use crate::config::weights::LANG_WEIGHTS;
-use crate::types::{Fragment, FragmentId};
+use diffctx_base::types::{Fragment, FragmentId};
 
 use super::super::EdgeDict;
 use super::super::base::{self, EdgeBuilder, path_to_module};
 
 fn is_python_file(path: &Path) -> bool {
-    PYTHON_EXTENSIONS.contains(crate::languages::file_ext(path).as_str())
+    PYTHON_EXTENSIONS.contains(diffctx_base::languages::file_ext(path).as_str())
 }
 
 static IMPORT_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?m)^\s*import\s+([\w.]+)").unwrap());

@@ -18,7 +18,7 @@ use crate::answer::v2::Range;
 use crate::change_class::ChangeClass;
 use crate::render::{CONTEXT_SCHEMA, DiffContextOutput, FragmentEntry};
 use crate::resource::{CoverageReport, CoverageStatus, LimitReason, ResourceUsage};
-use crate::tokenizer::count_tokens;
+use diffctx_base::tokenizer::count_tokens;
 
 /// More tokens than the `needs` line of a document ever takes.
 const NEEDS_LINE_TOKENS: u32 = 16;
@@ -99,7 +99,7 @@ pub fn fit(pack: &mut DiffContextOutput, format: Format) -> String {
     if whole + NEEDS_LINE_TOKENS <= cap || measure(&*pack) <= cap {
         return declare_exempt(pack, exempt, format);
     }
-    crate::fit::shed_to_fit(pack, cap, &measure);
+    diffctx_base::fit::shed_to_fit(pack, cap, &measure);
     // The least the artifact can say may outgrow the budget: said, not cut into.
     let mut least = measure(&*pack);
     if least > cap && pack.fragments.is_empty() {
@@ -136,7 +136,7 @@ fn declare_exempt(pack: &mut DiffContextOutput, exempt: u32, format: Format) -> 
 }
 
 /// A pack document, shed a fragment at a time.
-impl crate::fit::Shed for DiffContextOutput {
+impl diffctx_base::fit::Shed for DiffContextOutput {
     fn shed_one(&mut self) -> bool {
         drop_one_fragment(self)
     }
@@ -710,7 +710,7 @@ fn md_fragment(out: &mut String, frag: &FragmentEntry) {
     let content = frag.content.as_deref().unwrap_or_default();
     if !content.is_empty() {
         let name = path.rsplit('/').next().unwrap_or(path);
-        let lang = crate::languages::get_language_for_file(name).unwrap_or_default();
+        let lang = diffctx_base::languages::get_language_for_file(name).unwrap_or_default();
         code_block(out, content, lang);
     }
 }

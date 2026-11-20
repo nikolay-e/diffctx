@@ -3,7 +3,7 @@ use std::sync::Arc;
 use rustc_hash::FxHashSet;
 
 use crate::config::graph_filtering::GRAPH_FILTERING;
-use crate::types::{Fragment, FragmentId, FragmentKind};
+use diffctx_base::types::{Fragment, FragmentId, FragmentKind};
 
 fn is_signature_eligible(kind: FragmentKind) -> bool {
     // Variable covers TS/JS arrow-function bindings (`const f = (...) => {...}`);

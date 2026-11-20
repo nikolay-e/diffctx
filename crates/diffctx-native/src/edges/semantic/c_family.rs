@@ -8,8 +8,8 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use crate::config::edge_weights::{C_FAMILY_SEMANTIC, SEMANTIC_DISCOVERY};
 use crate::config::extensions::C_FAMILY_EXTENSIONS;
 use crate::config::weights::EDGE_WEIGHTS;
-use crate::languages::file_ext;
-use crate::types::{Fragment, FragmentId};
+use diffctx_base::languages::file_ext;
+use diffctx_base::types::{Fragment, FragmentId};
 
 use super::super::EdgeDict;
 use super::super::base::{self, EdgeBuilder, add_edge, add_edges_from_ids};

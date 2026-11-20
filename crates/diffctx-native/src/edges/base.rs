@@ -6,8 +6,8 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::config::edge_weights::SEMANTIC_DISCOVERY;
 use crate::config::extensions::CODE_EXTENSIONS;
-use crate::languages::file_ext;
-use crate::types::{Fragment, FragmentId};
+use diffctx_base::languages::file_ext;
+use diffctx_base::types::{Fragment, FragmentId};
 
 use super::EdgeDict;
 
@@ -839,7 +839,7 @@ pub(crate) fn has_ext(path: &Path, exts: &[&str]) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::FragmentKind;
+    use diffctx_base::types::FragmentKind;
 
     fn frag(path: &str) -> Fragment {
         Fragment {

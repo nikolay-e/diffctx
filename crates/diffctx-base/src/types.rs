@@ -70,11 +70,11 @@ impl EdgeCategory {
     /// Name matches took part in the damping, the dangling-reference check and
     /// the hub-noise filter as `Semantic` edges for as long as the tags
     /// fallback was one; they keep that part now that it is `KeyMatch`.
-    pub(crate) fn acts_as_reference(self) -> bool {
+    pub fn acts_as_reference(self) -> bool {
         matches!(self, Self::Semantic | Self::KeyMatch)
     }
 
-    pub(crate) fn is_suppression_exempt(self) -> bool {
+    pub fn is_suppression_exempt(self) -> bool {
         self.acts_as_reference() || matches!(self, Self::Structural | Self::TestEdge)
     }
 }
@@ -382,7 +382,7 @@ impl DiffHunk {
 
 static IDENT_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"[A-Za-z_]\w*").unwrap());
 
-pub(crate) fn unquote_c_style(quoted: &str) -> String {
+pub fn unquote_c_style(quoted: &str) -> String {
     if !(quoted.starts_with('"') && quoted.ends_with('"')) {
         return quoted.to_string();
     }
@@ -457,7 +457,7 @@ pub(crate) fn unquote_c_style(quoted: &str) -> String {
     String::from_utf8(result).unwrap_or_else(|e| String::from_utf8_lossy(e.as_bytes()).into_owned())
 }
 
-pub(crate) fn extract_identifiers(text: &str, min_length: usize) -> FxHashSet<String> {
+pub fn extract_identifiers(text: &str, min_length: usize) -> FxHashSet<String> {
     IDENT_RE
         .find_iter(text)
         .filter(|m| m.as_str().len() >= min_length)
@@ -465,7 +465,7 @@ pub(crate) fn extract_identifiers(text: &str, min_length: usize) -> FxHashSet<St
         .collect()
 }
 
-pub(crate) fn extract_identifier_list(text: &str, min_length: usize) -> Vec<String> {
+pub fn extract_identifier_list(text: &str, min_length: usize) -> Vec<String> {
     IDENT_RE
         .find_iter(text)
         .filter(|m| m.as_str().len() >= min_length)
@@ -473,10 +473,7 @@ pub(crate) fn extract_identifier_list(text: &str, min_length: usize) -> Vec<Stri
         .collect()
 }
 
-pub(crate) fn extract_identifier_counts(
-    text: &str,
-    min_length: usize,
-) -> (FxHashMap<String, u32>, u32) {
+pub fn extract_identifier_counts(text: &str, min_length: usize) -> (FxHashMap<String, u32>, u32) {
     let mut counts: FxHashMap<String, u32> = FxHashMap::default();
     let mut total = 0u32;
     for m in IDENT_RE.find_iter(text) {
@@ -548,7 +545,7 @@ mod fragment_id_tests {
 /// recorded fact from the moment of substitution, not a guess from a shared
 /// start line, so a stand-in that one day gets its own location keeps its
 /// role.
-pub(crate) fn carries_change(
+pub fn carries_change(
     frag: &Fragment,
     core_ids: &rustc_hash::FxHashSet<FragmentId>,
     stand_in_ids: &rustc_hash::FxHashSet<FragmentId>,

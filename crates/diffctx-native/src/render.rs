@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use crate::answer::envelope::{self, Inventory};
 use crate::answer::v2::{Fit, Range};
 use crate::config::render::RENDER;
-use crate::types::{Fragment, FragmentId, FragmentKind};
+use diffctx_base::types::{Fragment, FragmentId, FragmentKind};
 
 /// Orientation header for the diff-context output: tells the reader *what*
 /// changed before they read the fragments. Empty for working-tree / no-commit
@@ -65,8 +65,8 @@ pub struct PackRedactions {
     pub categories: Vec<String>,
 }
 
-impl From<crate::sanitize::Redactions> for PackRedactions {
-    fn from(found: crate::sanitize::Redactions) -> Self {
+impl From<diffctx_base::sanitize::Redactions> for PackRedactions {
+    fn from(found: diffctx_base::sanitize::Redactions) -> Self {
         Self {
             count: found.count,
             categories: found.categories.into_iter().map(str::to_string).collect(),
@@ -429,14 +429,14 @@ fn merge_file_fragments(
     let mut i = 0;
     while i < frags.len() {
         let first = frags[i];
-        let role_changed = crate::types::carries_change(first, core_ids, stand_in_ids);
+        let role_changed = diffctx_base::types::carries_change(first, core_ids, stand_in_ids);
         let mut end = first.end_line();
         let mut parts: Vec<&str> = vec![first.content.trim_end_matches('\n')];
         let mut uniform_kind = true;
         let mut j = i + 1;
         while j < frags.len() {
             let next = frags[j];
-            if crate::types::carries_change(next, core_ids, stand_in_ids) != role_changed {
+            if diffctx_base::types::carries_change(next, core_ids, stand_in_ids) != role_changed {
                 break;
             }
             if next.end_line() <= end {
@@ -470,7 +470,9 @@ fn merge_file_fragments(
             // `chunk` is the vocabulary's name for a span of lines with no
             // single semantic identity, which is precisely what a mixed run is.
             if !uniform_kind {
-                entry.kind = crate::types::FragmentKind::Chunk.as_str().to_string();
+                entry.kind = diffctx_base::types::FragmentKind::Chunk
+                    .as_str()
+                    .to_string();
             }
         }
         entry.role = role_changed.then(|| "changed".to_string());
@@ -539,10 +541,10 @@ pub fn build_diff_context_output(
     fragments_out.extend(changed.into_iter().map(|(_, _, e)| e));
     fragments_out.extend(context.into_iter().map(|(_, _, _, e)| e));
 
-    let mut redactions = crate::sanitize::Redactions::default();
+    let mut redactions = diffctx_base::sanitize::Redactions::default();
     for entry in &mut fragments_out {
         if let Some(content) = entry.content.as_deref() {
-            let (clean, found) = crate::sanitize::sanitize(content);
+            let (clean, found) = diffctx_base::sanitize::sanitize(content);
             if !found.is_empty() {
                 entry.content = Some(Arc::from(clean));
                 redactions.merge(found);
@@ -551,10 +553,10 @@ pub fn build_diff_context_output(
     }
     let mut change = change;
     if let Some(m) = change.commit_message.as_mut() {
-        redactions.merge(crate::sanitize::sanitize_in_place(m));
+        redactions.merge(diffctx_base::sanitize::sanitize_in_place(m));
     }
     for m in &mut change.commit_messages {
-        redactions.merge(crate::sanitize::sanitize_in_place(m));
+        redactions.merge(diffctx_base::sanitize::sanitize_in_place(m));
     }
     let messages = envelope::messages_of(
         change.commit_message.take(),
@@ -719,7 +721,7 @@ mod tests {
 #[cfg(test)]
 mod merge_kind_tests {
     use super::*;
-    use crate::types::{FragmentId, FragmentKind};
+    use diffctx_base::types::{FragmentId, FragmentKind};
 
     fn frag(start: u32, end: u32, kind: FragmentKind, body: &str) -> Fragment {
         Fragment {

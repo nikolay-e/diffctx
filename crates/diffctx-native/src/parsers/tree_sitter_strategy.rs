@@ -9,7 +9,7 @@ use tree_sitter::{Language, Node, ParseOptions, Parser, Tree};
 
 use crate::config::parsers::PARSERS;
 use crate::config::tokenization::TOKENIZATION;
-use crate::types::{Fragment, FragmentId, FragmentKind, extract_identifiers};
+use diffctx_base::types::{Fragment, FragmentId, FragmentKind, extract_identifiers};
 
 use super::{FragmentationStrategy, create_code_gap_fragments, create_snippet};
 
@@ -545,7 +545,7 @@ fn find_lang_config(path: &str) -> Option<&'static LangConfig> {
 // because languages::FILENAME_TO_LANGUAGE keeps the friendlier external
 // string ("makefile") for the markdown-code-fence / discoverability surface.
 fn find_lang_config_for(path: &str, content: &str) -> Option<&'static LangConfig> {
-    match crate::languages::sniff_language(path, content) {
+    match diffctx_base::languages::sniff_language(path, content) {
         Some(language) => LANG_CONFIGS.iter().find(|c| c.ts_name == language),
         None => find_lang_config(path),
     }
@@ -556,7 +556,7 @@ fn find_lang_config_by_filename(path: &str) -> Option<&'static LangConfig> {
         .file_name()?
         .to_string_lossy()
         .to_lowercase();
-    let language = *crate::languages::FILENAME_TO_LANGUAGE.get(name_lower.as_str())?;
+    let language = *diffctx_base::languages::FILENAME_TO_LANGUAGE.get(name_lower.as_str())?;
     let ts_name = if language == "makefile" {
         "make"
     } else {
@@ -1828,7 +1828,7 @@ fn fragment_embedded_source(
     let offset = node_start_line(raw_text) - 1;
     for f in embedded {
         fragments.push(Fragment {
-            id: crate::types::FragmentId::new(
+            id: diffctx_base::types::FragmentId::new(
                 Arc::clone(path),
                 f.id.start_line + offset,
                 f.id.end_line + offset,
@@ -2359,7 +2359,7 @@ mod grammar_tests {
 
     #[test]
     fn every_mapped_language_has_a_grammar_or_is_declared_text() {
-        let mut missing: Vec<(&str, &str)> = crate::languages::EXTENSION_TO_LANGUAGE
+        let mut missing: Vec<(&str, &str)> = diffctx_base::languages::EXTENSION_TO_LANGUAGE
             .iter()
             .filter(|(ext, lang)| {
                 !has_grammar(&format!("file{ext}")) && !TEXT_LANGUAGES.contains(lang)
@@ -2375,7 +2375,7 @@ mod grammar_tests {
         for config in LANG_CONFIGS {
             for ext in config.extensions {
                 assert!(
-                    crate::languages::EXTENSION_TO_LANGUAGE.contains_key(*ext),
+                    diffctx_base::languages::EXTENSION_TO_LANGUAGE.contains_key(*ext),
                     "LANG_CONFIGS extension {:?} (ts_name {:?}) has no EXTENSION_TO_LANGUAGE \
                      entry, so candidate_files.rs silently excludes it from discovery even \
                      though a grammar exists for it",

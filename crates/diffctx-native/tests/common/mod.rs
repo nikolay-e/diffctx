@@ -233,7 +233,7 @@ pub(crate) fn calculate_budget(case: &TestCase) -> u32 {
 
     let content_tokens: u32 = all_files
         .values()
-        .map(|c| _diffctx::tokenizer::count_tokens(c))
+        .map(|c| diffctx_base::tokenizer::count_tokens(c))
         .sum();
     let n_frags = all_files.len().max(2) as u32;
     // The product charges the change summary before selecting (#241); a

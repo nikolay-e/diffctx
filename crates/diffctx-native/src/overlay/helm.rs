@@ -3,7 +3,7 @@
 //! Who includes it is the facts layer's (`facts::lang::helm`, `resolve::chart`).
 
 use crate::facts::lang::helm::defined;
-use crate::types::FragmentKind;
+use diffctx_base::types::FragmentKind;
 
 pub(super) use crate::facts::lang::helm::is_template;
 

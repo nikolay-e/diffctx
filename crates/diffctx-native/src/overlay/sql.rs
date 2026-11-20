@@ -6,7 +6,7 @@
 use std::path::Path;
 
 use crate::facts::lang::sql::defined;
-use crate::types::FragmentKind;
+use diffctx_base::types::FragmentKind;
 
 pub(super) fn is_sql(path: &str) -> bool {
     Path::new(path)

@@ -21,7 +21,7 @@ pub struct HunkText {
     pub new_len: u32,
     pub removed: Vec<String>,
     pub added: Vec<String>,
-    /// Only what a formatter changes, settled by [`crate::change_class::settle_layout`] against
+    /// Only what a formatter changes, settled by `change_class::settle_layout` (in diffctx) against
     /// both whole versions of the file.
     pub layout: bool,
 }
@@ -42,7 +42,7 @@ fn hunk_start(spec: &str) -> Option<u32> {
     spec.split(',').next()?.parse().ok()
 }
 
-pub(crate) fn hunk_texts(diff_text: &str) -> Vec<HunkText> {
+pub fn hunk_texts(diff_text: &str) -> Vec<HunkText> {
     let mut out: Vec<HunkText> = Vec::new();
     let mut old_path: Option<String> = None;
     let mut new_path: Option<String> = None;
@@ -139,7 +139,7 @@ pub(crate) fn hunk_texts(diff_text: &str) -> Vec<HunkText> {
 }
 
 /// `new` with the runs undone, or `None` when the runs do not describe it.
-pub(crate) fn reverted(new: &str, runs: &[HunkText]) -> Option<String> {
+pub fn reverted(new: &str, runs: &[HunkText]) -> Option<String> {
     let lines: Vec<&str> = new.lines().collect();
     let mut old: Vec<&str> = Vec::with_capacity(lines.len());
     let mut next = 0usize;

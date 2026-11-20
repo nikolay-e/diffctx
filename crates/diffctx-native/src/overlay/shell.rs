@@ -37,7 +37,7 @@ fn read(text: &str) -> Option<ShellFacts> {
 /// Whether a path is a script by its name; `None` when only its shebang
 /// can say (`bin/deploy`).
 fn by_path(path: &str) -> Option<bool> {
-    match crate::languages::get_language_for_file(path) {
+    match diffctx_base::languages::get_language_for_file(path) {
         Some(lang) => Some(matches!(lang, "bash" | "zsh")),
         None if Path::new(path).extension().is_none() => None,
         None => Some(false),
@@ -45,7 +45,7 @@ fn by_path(path: &str) -> Option<bool> {
 }
 
 fn by_shebang(path: &str, text: &str) -> bool {
-    crate::languages::sniff_language(path, text) == Some("bash")
+    diffctx_base::languages::sniff_language(path, text) == Some("bash")
 }
 
 /// Whether `path`, whose text is `text`, is a script.

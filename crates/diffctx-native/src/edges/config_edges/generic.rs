@@ -4,11 +4,11 @@ use once_cell::sync::Lazy;
 use regex::Regex;
 use rustc_hash::{FxHashMap, FxHashSet};
 
-use crate::canon::{KeyCache, canon_tokens, for_each_name_key};
 use crate::config::extensions::{CODE_EXTENSIONS, CONFIG_EXTENSIONS};
 use crate::config::weights::EDGE_WEIGHTS;
 use crate::keytable::MAX_FILES_PER_KEY;
-use crate::types::Fragment;
+use diffctx_base::canon::{KeyCache, canon_tokens, for_each_name_key};
+use diffctx_base::types::Fragment;
 
 use super::super::EdgeDict;
 use super::super::base::{self, EdgeBuilder, add_edge};
@@ -100,7 +100,7 @@ static XML_ELEMENT_RE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"<([a-zA-Z_][\w.-]*)[>\s/]").unwrap());
 
 fn is_config_file(path: &Path) -> bool {
-    let ext = crate::languages::file_ext(path);
+    let ext = diffctx_base::languages::file_ext(path);
     if ext.is_empty() {
         return false;
     }
@@ -108,7 +108,7 @@ fn is_config_file(path: &Path) -> bool {
 }
 
 fn is_code_file(path: &Path) -> bool {
-    let ext = crate::languages::file_ext(path);
+    let ext = diffctx_base::languages::file_ext(path);
     if ext.is_empty() {
         return false;
     }
@@ -197,7 +197,7 @@ impl EdgeBuilder for ConfigToCodeEdgeBuilder {
         let mut key_to_cfgs: FxHashMap<String, Vec<usize>> = FxHashMap::default();
         let mut spelled_whole: FxHashSet<String> = FxHashSet::default();
         for (ci, cfg) in config_frags.iter().enumerate() {
-            let suffix = crate::languages::file_ext(Path::new(cfg.path()));
+            let suffix = diffctx_base::languages::file_ext(Path::new(cfg.path()));
             for (key, whole) in extract_config_keys(&suffix, &cfg.content) {
                 if key.len() < 4 || STOPWORDS.contains(key.as_str()) {
                     continue;
@@ -326,7 +326,7 @@ impl EdgeBuilder for ConfigToCodeEdgeBuilder {
                 Some(c) => c,
                 None => continue,
             };
-            let suffix = crate::languages::file_ext(cfg_path);
+            let suffix = diffctx_base::languages::file_ext(cfg_path);
             all_keys.extend(
                 extract_config_keys(&suffix, &content)
                     .into_keys()
@@ -364,7 +364,7 @@ impl EdgeBuilder for ConfigToCodeEdgeBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::{FragmentId, FragmentKind};
+    use diffctx_base::types::{FragmentId, FragmentKind};
     use std::sync::Arc;
 
     fn frag(path: &str, content: &str) -> Fragment {

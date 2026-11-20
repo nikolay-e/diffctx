@@ -20,7 +20,7 @@ use crate::config::limits::{PPR, UTILITY};
 use crate::config::needs::NEEDS;
 use crate::config::scoring::{EGO, PIT, RRF};
 use crate::mode::{ObjectiveMode, PipelineConfig, ScoringMode};
-use crate::tokenizer::{TokenCounter, TokenizerId};
+use diffctx_base::tokenizer::{TokenCounter, TokenizerId};
 
 pub const SCHEMA: &str = "diffctx.effective_config.v1";
 
@@ -309,8 +309,8 @@ impl EffectiveConfigV1 {
                 relatedness_bonus: NEEDS.relatedness_bonus,
             },
             tokenizer: TokenizerParams {
-                id: crate::tokenizer::ACCOUNTING.id(),
-                safety_factor: crate::tokenizer::safety_factor(),
+                id: diffctx_base::tokenizer::ACCOUNTING.id(),
+                safety_factor: diffctx_base::tokenizer::safety_factor(),
             },
             profiles: Profiles {
                 scoring: SCORING_PROFILE_VERSION,

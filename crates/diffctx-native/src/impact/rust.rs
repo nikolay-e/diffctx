@@ -149,7 +149,7 @@ fn is_test_macro(invocation: Node, bytes: &[u8]) -> Result<bool, Utf8Error> {
     let Some(name) = invocation.child_by_field_name("macro") else {
         return Ok(false);
     };
-    Ok(crate::testfiles::RUST_TEST_MACROS.contains(&last_segment(name, bytes)?))
+    Ok(diffctx_base::testfiles::RUST_TEST_MACROS.contains(&last_segment(name, bytes)?))
 }
 
 fn marked_test(func: Node, bytes: &[u8]) -> Result<bool, Utf8Error> {
@@ -158,7 +158,8 @@ fn marked_test(func: Node, bytes: &[u8]) -> Result<bool, Utf8Error> {
         match p.kind() {
             "attribute_item" => {
                 if let Some(path) = p.named_child(0).and_then(|a| a.named_child(0)) {
-                    if crate::testfiles::RUST_TEST_ATTRIBUTES.contains(&last_segment(path, bytes)?)
+                    if diffctx_base::testfiles::RUST_TEST_ATTRIBUTES
+                        .contains(&last_segment(path, bytes)?)
                     {
                         return Ok(true);
                     }

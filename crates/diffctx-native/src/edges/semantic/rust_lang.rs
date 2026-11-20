@@ -10,13 +10,13 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use crate::config::edge_weights::SEMANTIC_DISCOVERY;
 use crate::config::extensions::RUST_EXTENSIONS;
 use crate::config::weights::EDGE_WEIGHTS;
-use crate::types::{Fragment, FragmentId};
+use diffctx_base::types::{Fragment, FragmentId};
 
 use super::super::EdgeDict;
 use super::super::base::{self, EdgeBuilder, add_edge, add_edges_from_ids};
 
 fn is_rust_file(path: &Path) -> bool {
-    RUST_EXTENSIONS.contains(crate::languages::file_ext(path).as_str())
+    RUST_EXTENSIONS.contains(diffctx_base::languages::file_ext(path).as_str())
 }
 
 static USE_RE: Lazy<Regex> =
@@ -520,7 +520,7 @@ impl EdgeBuilder for RustEdgeBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::FragmentKind;
+    use diffctx_base::types::FragmentKind;
 
     fn frag(path: &str, content: &str) -> Fragment {
         Fragment {

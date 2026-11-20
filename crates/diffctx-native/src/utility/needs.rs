@@ -6,7 +6,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::config::needs::NEEDS;
 use crate::stopwords::CODE_STOPWORDS;
-use crate::types::{Fragment, FragmentId, extract_identifiers};
+use diffctx_base::types::{Fragment, FragmentId, extract_identifiers};
 
 static CALL_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"(\w+)\s*\(").unwrap());
 static TYPE_REF_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?::|->)\s*([A-Z]\w+)").unwrap());
@@ -302,7 +302,7 @@ fn defines_strength(scope_match: bool, has_scope: bool) -> f64 {
 }
 
 fn is_test_fragment(frag: &Fragment) -> bool {
-    if crate::testfiles::is_test_path(std::path::Path::new(frag.path())) {
+    if diffctx_base::testfiles::is_test_path(std::path::Path::new(frag.path())) {
         return true;
     }
     if let Some(ref sym) = frag.symbol_name {

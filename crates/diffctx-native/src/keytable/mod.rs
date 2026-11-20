@@ -28,12 +28,12 @@ use std::path::{Path, PathBuf};
 
 use rustc_hash::{FxHashMap, FxHashSet};
 
-use crate::canon::{KeyCache, for_each_name_key};
-use crate::changed_lines::ChangedLines;
 use crate::config::weights::EDGE_WEIGHTS;
 use crate::paths::index_key_of;
 use crate::resource::read_file_cached;
-use crate::types::{Fragment, FragmentId};
+use diffctx_base::canon::{KeyCache, for_each_name_key};
+use diffctx_base::changed_lines::ChangedLines;
+use diffctx_base::types::{Fragment, FragmentId};
 
 mod definitions;
 mod extract;

@@ -17,7 +17,7 @@ fn getrusage_max_rss_bytes() -> u64 {
 }
 
 #[cfg(target_os = "macos")]
-pub(crate) fn peak_rss_bytes() -> u64 {
+pub fn peak_rss_bytes() -> u64 {
     let mut info = std::mem::MaybeUninit::<libc::rusage_info_v4>::zeroed();
     let rc = unsafe {
         libc::proc_pid_rusage(
@@ -36,11 +36,11 @@ pub(crate) fn peak_rss_bytes() -> u64 {
 }
 
 #[cfg(all(unix, not(target_os = "macos")))]
-pub(crate) fn peak_rss_bytes() -> u64 {
+pub fn peak_rss_bytes() -> u64 {
     getrusage_max_rss_bytes()
 }
 
 #[cfg(not(unix))]
-pub(crate) fn peak_rss_bytes() -> u64 {
+pub fn peak_rss_bytes() -> u64 {
     0
 }

@@ -6,7 +6,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::config::edge_weights::ANSIBLE_SEMANTIC;
 use crate::config::weights::EDGE_WEIGHTS;
-use crate::types::{Fragment, FragmentId};
+use diffctx_base::types::{Fragment, FragmentId};
 
 use super::super::EdgeDict;
 use super::super::base::{
@@ -36,7 +36,7 @@ static VARS_FILES_LIST_RE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r#"(?m)^\s*-\s+["']([^"']{1,300}\.ya?ml)["']"#).unwrap());
 
 fn is_ansible_file(path: &Path) -> bool {
-    ANSIBLE_EXTS.contains(crate::languages::file_ext(path).as_str())
+    ANSIBLE_EXTS.contains(diffctx_base::languages::file_ext(path).as_str())
 }
 
 fn get_role_name(path: &Path) -> Option<String> {

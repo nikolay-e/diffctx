@@ -241,7 +241,7 @@ where
     T: Send + 'static,
 {
     let (tx, rx) = mpsc::channel();
-    let worker = thread::spawn(_diffctx::profile::carry(move || {
+    let worker = thread::spawn(diffctx_base::profile::carry(move || {
         let _ = tx.send(work());
     }));
     // The pipeline's own deadline is cooperative: at `timeout` it stops the
@@ -302,7 +302,7 @@ fn deliver(cli: &Cli, request: Request) -> Result<()> {
 
 /// An exit in the middle of a run: `process::exit` skips the profile's guard.
 fn exit(code: i32) -> ! {
-    _diffctx::profile::flush();
+    diffctx_base::profile::flush();
     std::process::exit(code)
 }
 
@@ -369,7 +369,7 @@ fn real_main() -> Result<()> {
 
     let scoring_mode =
         ScoringMode::from_str(&cli.scoring).expect("clap value_parser already validated --scoring");
-    let _run = _diffctx::profile::run_cli();
+    let _run = diffctx_base::profile::run_cli();
 
     // The per-phase git timeout does not bound in-process phases (parse, graph
     // build, scoring), so a pathological repo can hang far past `--timeout`

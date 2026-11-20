@@ -6,7 +6,6 @@
 
 // Input: git plumbing and path handling.
 pub(crate) mod diff_parse;
-pub mod fit;
 pub(crate) mod grep;
 pub mod in_memory_harness;
 mod paths;
@@ -14,18 +13,12 @@ pub mod snapshot;
 
 // Change set: what the diff touched, cut into fragments.
 pub(crate) mod candidate_files;
-pub(crate) mod canon;
 pub mod change_class;
-pub(crate) mod changed_lines;
-pub(crate) mod container;
 pub(crate) mod decide;
-pub(crate) mod excerpt;
 pub(crate) mod fold;
 pub(crate) mod fragmentation;
-pub(crate) mod languages;
 pub(crate) mod parsers;
 pub(crate) mod signatures;
-pub(crate) mod testfiles;
 pub(crate) mod tokens;
 
 // Graph: relationships between fragments.
@@ -45,10 +38,8 @@ pub(crate) mod ppr;
 pub(crate) mod scoring;
 pub(crate) mod stopwords;
 pub(crate) mod token_corpus;
-pub mod tokenizer;
 
 // Selection: the budgeted greedy and its repairs.
-pub(crate) mod interval;
 pub(crate) mod postpass;
 pub(crate) mod select;
 pub(crate) mod utility;
@@ -67,16 +58,12 @@ pub mod render;
 pub mod config;
 pub mod effective_config;
 pub mod mode;
-pub(crate) mod peak_rss;
 pub mod pipeline;
-pub mod profile;
 pub mod resource;
 pub mod run_provenance;
-pub mod sanitize;
 pub(crate) mod source;
 #[cfg(test)]
 pub(crate) mod test_rng;
-pub(crate) mod types;
 mod vocabulary;
 pub use vocabulary::{RelationKind, is_precise};
 

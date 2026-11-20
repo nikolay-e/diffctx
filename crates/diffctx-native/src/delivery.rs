@@ -26,7 +26,7 @@ use crate::mode::ScoringMode;
 use crate::pipeline;
 use crate::render::DiffContextOutput;
 use crate::resource::{CoverageReport, CoverageStatus, LimitReason, ResourceUsage};
-use crate::tokenizer::count_tokens;
+use diffctx_base::tokenizer::count_tokens;
 
 /// A diff that yields no semantic context is an actionable result, not a
 /// success: the status a script keys on.
@@ -324,7 +324,7 @@ fn pack_delivery(request: &Request, started: Instant) -> Result<Delivery> {
             request.budget,
         );
     }
-    let render = crate::profile::phase("render");
+    let render = diffctx_base::profile::phase("render");
     let mut text = artifact::fit(&mut pack, request.format);
     drop(render);
     text.insert_str(0, &request.envelope);
@@ -541,7 +541,7 @@ pub fn with_raw_diff(
     Ok(Some(patch))
 }
 
-fn count_patch_redactions(pack: &mut DiffContextOutput, found: crate::sanitize::Redactions) {
+fn count_patch_redactions(pack: &mut DiffContextOutput, found: diffctx_base::sanitize::Redactions) {
     let block = pack.redactions.get_or_insert_with(Default::default);
     block.count += found.count;
     for category in found.categories {

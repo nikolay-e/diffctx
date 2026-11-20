@@ -3,8 +3,8 @@
 A `[debt.*]` row in budget.toml is growth taken on loan, and only where it says: `covers` are new paths (a glob ending
 `/**`, or a file) whose lines count against the row, `grows` are existing files that may add `plus` lines over their
 recorded `base`. Every other product line obeys the plain ratchet. The row is repaid at the commit that makes its
-`due_when` gone. A `covers` entry `crates/diffctx-native/src/<dir>/**` that is a root module stays out of `root_modules`
-only while its row stands.
+`due_when` gone. A `covers` entry `crates/<crate>/src/<dir>/**` that is a root module stays out of `root_modules`
+only while its row stands; the root modules of every crate count.
 """
 
 import re
@@ -14,7 +14,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).parent.parent
 BUDGET = ROOT / "budget.toml"
-NATIVE_SRC = "crates/diffctx-native/src/"
+CRATE_SRC = re.compile(r"crates/[^/]+/src/")
 BIG_FILE = 1500
 ALLOW = re.compile(r"#!?\[allow\(")
 PRODUCT_SUFFIXES = (".rs", ".py", ".scm", ".toml", ".yaml", ".yml", ".json")
@@ -38,14 +38,15 @@ def _lines(path: str) -> int:
 def _root_modules(files: list[str], covers: tuple[str, ...] | list[str] = ()) -> int:
     names = set()
     for path in files:
-        if not path.startswith(NATIVE_SRC) or not path.endswith(".rs"):
+        crate = CRATE_SRC.match(path)
+        if not crate or not path.endswith(".rs"):
             continue
-        parts = path[len(NATIVE_SRC) :].split("/")
+        parts = path[crate.end() :].split("/")
         if len(parts) == 1 and parts[0] not in ("lib.rs", "main.rs"):
-            names.add(parts[0][:-3])
+            names.add((crate.group(), parts[0][:-3]))
         elif len(parts) == 2 and parts[1] == "mod.rs":
-            names.add(parts[0])
-    return len({n for n in names if f"{NATIVE_SRC}{n}/**" not in covers})
+            names.add((crate.group(), parts[0]))
+    return len({(src, n) for src, n in names if f"{src}{n}/**" not in covers})
 
 
 def _gone(root: Path, spec: str) -> bool:
@@ -190,7 +191,10 @@ def test_unrelated_growth_cannot_hide_under_a_debt():
 
 
 def test_a_covered_new_root_module_counts_only_while_its_row_stands():
-    files = [f"{NATIVE_SRC}{p}" for p in ("lib.rs", "a.rs", "occurrence/mod.rs", "occurrence/x.rs")]
+    native = "crates/diffctx-native/src/"
+    files = [f"{native}{p}" for p in ("lib.rs", "a.rs", "occurrence/mod.rs", "occurrence/x.rs")]
     assert _root_modules(files) == 2
-    assert _root_modules(files, [f"{NATIVE_SRC}occurrence/**"]) == 1
-    assert _root_modules(files, [f"{NATIVE_SRC}other/**", f"{NATIVE_SRC}a.rs"]) == 2
+    assert _root_modules(files, [f"{native}occurrence/**"]) == 1
+    assert _root_modules(files, [f"{native}other/**", f"{native}a.rs"]) == 2
+    other_crate = ["crates/diffctx-base/src/lib.rs", "crates/diffctx-base/src/types.rs"]
+    assert _root_modules(files + other_crate) == 3

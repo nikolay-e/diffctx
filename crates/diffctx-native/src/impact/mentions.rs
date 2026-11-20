@@ -105,7 +105,7 @@ fn comment_syntax_known(path: &str) -> bool {
     extension(path).is_empty()
         || is_code_file(path)
         || is_config_file(path)
-        || crate::languages::get_language_for_file(path).is_some()
+        || diffctx_base::languages::get_language_for_file(path).is_some()
 }
 
 /// A line that prints words (`echo lib.sh is mentioned`) names the path to the
@@ -640,7 +640,7 @@ pub(super) fn has_data_extension(path: &str) -> bool {
         "csv" | "tsv" | "log" | "jsonl" | "ndjson" => true,
         "txt" => {
             let name = path.rsplit('/').next().unwrap_or(path).to_lowercase();
-            !crate::languages::FILENAME_TO_LANGUAGE.contains_key(name.as_str())
+            !diffctx_base::languages::FILENAME_TO_LANGUAGE.contains_key(name.as_str())
                 && !is_pip_manifest(path)
         }
         _ => false,
@@ -660,7 +660,7 @@ pub(super) fn is_data(root_dir: &Path, source: &crate::source::Source, path: &st
 /// a path, but unknown as a reader of a name, which any program may read from it.
 pub(super) fn unclassified(root_dir: &Path, source: &crate::source::Source, path: &str) -> bool {
     !path.rsplit('/').next().unwrap_or(path).contains('.')
-        && crate::languages::get_language_for_file(path).is_none()
+        && diffctx_base::languages::get_language_for_file(path).is_none()
         && !source
             .read_to_string(&root_dir.join(path))
             .is_some_and(|t| t.starts_with("#!"))
@@ -983,7 +983,7 @@ fn selected_by_glob(state: &ScoredState, targets: &[String]) -> Vec<(String, u32
             continue;
         };
         for glob in crate::facts::config::globs_of(path, &text, &budget) {
-            let Some(pattern) = crate::testfiles::glob_regex(&glob.pattern) else {
+            let Some(pattern) = diffctx_base::testfiles::glob_regex(&glob.pattern) else {
                 continue;
             };
             for target in targets.iter().filter(|t| *t != path) {

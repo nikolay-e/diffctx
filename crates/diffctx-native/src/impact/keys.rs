@@ -938,25 +938,27 @@ fn called(text: &str, name: &str) -> bool {
 /// extensionless one has no shebang. What it spells as a call is a use the
 /// engine cannot read.
 fn unread_file(state: &ScoredState, path: &str) -> bool {
-    crate::languages::get_language_for_file(path).is_none()
+    diffctx_base::languages::get_language_for_file(path).is_none()
         && !super::mentions::has_data_extension(path)
         && (Path::new(path).extension().is_some()
             || state
                 .run
                 .source()
                 .read_to_string(&state.root_dir.join(path))
-                .is_none_or(|text| crate::languages::sniff_language(path, &text).is_none()))
+                .is_none_or(|text| diffctx_base::languages::sniff_language(path, &text).is_none()))
 }
 
 /// Whether the file is a shell script, by its name or its shebang.
 pub(super) fn runs_as_shell(state: &ScoredState, path: &str) -> bool {
-    match crate::languages::get_language_for_file(path) {
+    match diffctx_base::languages::get_language_for_file(path) {
         Some(language) => language == "bash",
         None => state
             .run
             .source()
             .read_to_string(&state.root_dir.join(path))
-            .is_some_and(|text| crate::languages::sniff_language(path, &text) == Some("bash")),
+            .is_some_and(|text| {
+                diffctx_base::languages::sniff_language(path, &text) == Some("bash")
+            }),
     }
 }
 
@@ -1000,7 +1002,7 @@ impl LiteralNames {
             .collect();
         let head = super::head_of(diff_range);
         let source = state.run.source();
-        let mapped = crate::languages::EXTENSION_TO_LANGUAGE
+        let mapped = diffctx_base::languages::EXTENSION_TO_LANGUAGE
             .keys()
             .map(|ext| format!(":(exclude,glob,icase)**/*{ext}"))
             .collect::<Vec<_>>();
@@ -1063,7 +1065,7 @@ impl LiteralNames {
                         continue;
                     }
                     let reading = Reading::of(path);
-                    let language = crate::languages::get_language_for_file(path);
+                    let language = diffctx_base::languages::get_language_for_file(path);
                     let eligible = match shape {
                         Shape::Call => unread_file(state, path),
                         Shape::Literal => reading.is_some(),
@@ -1203,7 +1205,7 @@ pub(super) fn untouched_terms(state: &ScoredState, path: &str) -> rustc_hash::Fx
         .hunk_texts
         .iter()
         .filter(|h| h.path == path && h.new_len > 0)
-        .map(crate::changed_lines::HunkText::new_range)
+        .map(diffctx_base::changed_lines::HunkText::new_range)
         .collect();
     (1..)
         .zip(text.as_deref().unwrap_or("").lines())

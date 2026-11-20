@@ -6,7 +6,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::config::edge_weights::HELM;
 use crate::source::Source;
-use crate::types::{Fragment, FragmentId};
+use diffctx_base::types::{Fragment, FragmentId};
 
 use super::super::EdgeDict;
 use super::super::base::{self, EdgeBuilder, add_edge};
@@ -25,7 +25,7 @@ fn is_helm_template(path: &Path) -> bool {
     if !path_str.contains("templates") {
         return false;
     }
-    let ext = crate::languages::file_ext(path);
+    let ext = diffctx_base::languages::file_ext(path);
     ext == ".yaml" || ext == ".yml" || ext == ".tpl"
 }
 

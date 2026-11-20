@@ -6,7 +6,7 @@ use serde::Serialize;
 
 use crate::analytics::QuotientGraph;
 use crate::graph::Graph;
-use crate::types::{EdgeCategory, Fragment, FragmentId};
+use diffctx_base::types::{EdgeCategory, Fragment, FragmentId};
 
 pub(crate) struct ProjectGraphView<'a> {
     pub graph: &'a Graph,
@@ -476,7 +476,7 @@ pub(crate) fn quotient_summary(
 mod tests {
     use super::*;
     use crate::graph::build_graph;
-    use crate::types::{Fragment, FragmentId, FragmentKind};
+    use diffctx_base::types::{Fragment, FragmentId, FragmentKind};
     use rustc_hash::{FxHashMap, FxHashSet};
     use std::sync::Arc;
 

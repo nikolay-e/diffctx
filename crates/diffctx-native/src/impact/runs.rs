@@ -14,7 +14,7 @@ use crate::facts::EntryKind;
 use crate::facts::framework::jvm;
 use crate::facts::{Fact, ImportKind, Scope};
 use crate::snapshot::workspace::dir_of;
-use crate::testfiles::{Bound, DeclaredTests};
+use diffctx_base::testfiles::{Bound, DeclaredTests};
 
 use super::mentions::{Naming, basename_of, commented, naming, path_search, starts_a_program};
 use super::rust;
@@ -87,7 +87,7 @@ pub(super) fn doctest_runs(state: &ScoredState) -> Vec<Run> {
     let mut python_read: FxHashSet<&str> = FxHashSet::default();
     for f in state.run.scan(&state.all_fragments) {
         let path = f.path();
-        if crate::testfiles::is_test_path(Path::new(path)) {
+        if diffctx_base::testfiles::is_test_path(Path::new(path)) {
             continue;
         }
         let shown = rel(state, path);
@@ -96,7 +96,7 @@ pub(super) fn doctest_runs(state: &ScoredState) -> Vec<Run> {
                 continue;
             }
             if let Some(text) = state.run.source().read_to_string(Path::new(path)) {
-                let calls = crate::testfiles::rust_doc_example_calls(&text);
+                let calls = diffctx_base::testfiles::rust_doc_example_calls(&text);
                 let lines = calls
                     .into_iter()
                     .map(|(row, names)| (row as u32 + 1, names));
@@ -107,7 +107,7 @@ pub(super) fn doctest_runs(state: &ScoredState) -> Vec<Run> {
             .is_some_and(|ext| ext.eq_ignore_ascii_case("py"))
             && f.content.contains(">>>")
         {
-            let calls = crate::testfiles::doctest_calls(&f.content);
+            let calls = diffctx_base::testfiles::doctest_calls(&f.content);
             let lines = calls
                 .into_iter()
                 .map(|(row, names)| (f.start_line() + row as u32, names));
@@ -211,7 +211,7 @@ fn imported_doctest_runs(
     text: &str,
     namespace: Vec<Bound>,
 ) {
-    for (row, module, name) in crate::testfiles::imported_doctest_calls(text, namespace) {
+    for (row, module, name) in diffctx_base::testfiles::imported_doctest_calls(text, namespace) {
         let module_path = module.replace('.', "/");
         let places = [
             format!("{module_path}.py"),
@@ -945,7 +945,7 @@ fn framework_runs(
             }
         }
     }
-    crate::profile::count("impact.tests.fragments", taken);
+    diffctx_base::profile::count("impact.tests.fragments", taken);
     // A registration call no facts rule knows (`tool("name")(fn)`) is keyed by its
     // first string and spelled beside the callee's name.
     for f in state.run.scan(&state.all_fragments) {
@@ -1021,7 +1021,7 @@ fn framework_runs(
     let mut read: FxHashSet<&str> = FxHashSet::default();
     for f in state.run.scan(&state.all_fragments) {
         let script = matches!(
-            crate::languages::get_language_for_file(f.path()),
+            diffctx_base::languages::get_language_for_file(f.path()),
             Some("javascript" | "typescript" | "tsx" | "jsx")
         );
         if !(script && f.content.contains("path") && read.insert(f.path())) {

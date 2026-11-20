@@ -13,7 +13,7 @@ use crate::config::importance::{
     DEFAULT_IMPORTANCE, GENERATED_CAP, GENERATED_DIRS, PERIPHERAL_CAP, PERIPHERAL_DIRS,
     PERIPHERAL_STEMS, PERIPHERAL_SUFFIXES,
 };
-use crate::types::Fragment;
+use diffctx_base::types::Fragment;
 
 fn path_components_lower(path: &Path) -> FxHashSet<String> {
     path.components()

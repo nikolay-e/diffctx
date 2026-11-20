@@ -6,13 +6,13 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::config::extensions::RUBY_EXTENSIONS;
 use crate::config::weights::EDGE_WEIGHTS;
-use crate::types::Fragment;
+use diffctx_base::types::Fragment;
 
 use super::super::EdgeDict;
 use super::super::base::{self, EdgeBuilder};
 
 fn is_ruby_file(path: &Path) -> bool {
-    RUBY_EXTENSIONS.contains(crate::languages::file_ext(path).as_str())
+    RUBY_EXTENSIONS.contains(diffctx_base::languages::file_ext(path).as_str())
 }
 
 const RUBY_SUFFIXES: &[&str] = &[".rb", ""];

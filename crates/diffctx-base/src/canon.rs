@@ -12,7 +12,7 @@ use rustc_hash::FxHashMap;
 
 /// `maxPoolSize` -> `max pool size`; `HTTPServer` -> `http server`;
 /// `sha256Hash` -> `sha256 hash`. Digits stay with the letters before them.
-pub(crate) fn canon_tokens(name: &str) -> Vec<String> {
+pub fn canon_tokens(name: &str) -> Vec<String> {
     let mut tokens: Vec<String> = Vec::new();
     for segment in name.split(|c: char| !c.is_alphanumeric()) {
         let chars: Vec<char> = segment.chars().collect();
@@ -36,17 +36,17 @@ pub(crate) fn canon_tokens(name: &str) -> Vec<String> {
 }
 
 /// The tokens joined by `_`; empty when the name holds no alphanumeric.
-pub(crate) fn canon_key(name: &str) -> String {
+pub fn canon_key(name: &str) -> String {
     canon_tokens(name).join("_")
 }
 
 /// Segment -> canonical key, kept across the fragments of one build: the same
 /// few thousand words recur in every file.
 #[derive(Default)]
-pub(crate) struct KeyCache(FxHashMap<String, String>);
+pub struct KeyCache(FxHashMap<String, String>);
 
 impl KeyCache {
-    pub(crate) fn key(&mut self, segment: &str) -> &str {
+    pub fn key(&mut self, segment: &str) -> &str {
         if !self.0.contains_key(segment) {
             self.0.insert(segment.to_string(), canon_key(segment));
         }
@@ -98,7 +98,7 @@ fn for_each_run(text: &str, mut run: impl FnMut(&[(usize, usize)])) {
 /// Every canonical key `text` spells as a setting name: each word, and each
 /// run of words joined by single dots or dashes with its contiguous sub-runs.
 /// The same key may be offered more than once.
-pub(crate) fn for_each_name_key(text: &str, cache: &mut KeyCache, mut sink: impl FnMut(&str)) {
+pub fn for_each_name_key(text: &str, cache: &mut KeyCache, mut sink: impl FnMut(&str)) {
     for_each_run(text, |segments| {
         let keys: Vec<String> = segments
             .iter()
@@ -122,7 +122,7 @@ pub(crate) fn for_each_name_key(text: &str, cache: &mut KeyCache, mut sink: impl
 
 /// The canonical key of every identifier `text` spells (a word that starts
 /// with a letter or an underscore), each possibly more than once.
-pub(crate) fn for_each_word_key(text: &str, cache: &mut KeyCache, mut sink: impl FnMut(&str)) {
+pub fn for_each_word_key(text: &str, cache: &mut KeyCache, mut sink: impl FnMut(&str)) {
     for_each_run(text, |segments| {
         for &(s, e) in segments {
             let word = &text[s..e];

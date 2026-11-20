@@ -6,17 +6,17 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::config::extensions::SHELL_EXTENSIONS;
 use crate::config::weights::EDGE_WEIGHTS;
-use crate::types::{Fragment, FragmentKind};
+use diffctx_base::types::{Fragment, FragmentKind};
 
 use super::super::EdgeDict;
 use super::super::base::{self, EdgeBuilder, FragmentIndex, link_by_name};
 
 fn is_shell_file(path: &Path) -> bool {
-    SHELL_EXTENSIONS.contains(crate::languages::file_ext(path).as_str())
+    SHELL_EXTENSIONS.contains(diffctx_base::languages::file_ext(path).as_str())
 }
 
 fn is_shebang_shell(path: &Path, content: &str) -> bool {
-    crate::languages::sniff_language(&path.to_string_lossy(), content) == Some("bash")
+    diffctx_base::languages::sniff_language(&path.to_string_lossy(), content) == Some("bash")
 }
 
 static SOURCE_RE: Lazy<Regex> =

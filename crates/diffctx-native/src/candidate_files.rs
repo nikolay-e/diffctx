@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use rustc_hash::FxHashSet;
 
 use crate::config::limits::LIMITS;
-use crate::languages::get_language_for_file;
+use diffctx_base::languages::get_language_for_file;
 
 const SHEBANG_SNIFF_BYTES: usize = 128;
 
@@ -22,7 +22,8 @@ fn is_candidate(
         || (path.extension().is_none()
             && source.read_bytes(path).is_some_and(|bytes| {
                 let head = &bytes[..bytes.len().min(SHEBANG_SNIFF_BYTES)];
-                crate::languages::sniff_language(&name, &String::from_utf8_lossy(head)).is_some()
+                diffctx_base::languages::sniff_language(&name, &String::from_utf8_lossy(head))
+                    .is_some()
             }))
 }
 

@@ -26,8 +26,8 @@ use crate::facts::{DefKey, Language};
 use crate::resolve::{Binding, Relation, Resolution, UnresolvedReason};
 use crate::resource::{LimitReason, current_source, note_current};
 use crate::snapshot::RepoPath;
-use crate::types::{Fragment, FragmentId};
 use crate::vocabulary::family::{self, Family, HeadFamily};
+use diffctx_base::types::{Fragment, FragmentId};
 
 use super::EdgeDict;
 use super::base::{self, EdgeBuilder, add_edge};
@@ -406,7 +406,7 @@ fn owner<'a>(frags: &[&'a Fragment], line: u32) -> Option<&'a Fragment> {
         .filter(|f| {
             f.start_line() <= line
                 && line <= f.end_line()
-                && f.kind != crate::types::FragmentKind::Excerpt
+                && f.kind != diffctx_base::types::FragmentKind::Excerpt
                 && !f.kind.is_signature()
         })
         .min_by_key(|f| (f.symbol_name.is_none(), f.line_count()))
@@ -418,7 +418,7 @@ fn split(rel: &str) -> (&str, String, String) {
     (
         rel.rsplit_once('/').map_or("", |(dir, _)| dir),
         base::file_stem_lower(path),
-        crate::languages::file_ext(path),
+        diffctx_base::languages::file_ext(path),
     )
 }
 
