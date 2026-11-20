@@ -640,8 +640,8 @@ fn check_lists(case: &Case, answer: &Answer, failures: &mut Vec<String>) {
 
 /// The text form must say what the JSON says: the header's count of callers
 /// is the number of resolved caller rows and the calls counted beside them (word
-/// matches are no callers), and a
-/// "called from" or "referenced from" line needs a resolved row behind it.
+/// matches are no callers), and a "called from", "referenced from" or
+/// "implemented by" line needs a resolved row behind it.
 /// Each form is fit to the cap on its own size, so a budgeted answer that shed
 /// rows is read against the same invocation asked with no budget: every row the
 /// text states is in it, and every row the budgeted JSON kept is in the text
@@ -686,6 +686,7 @@ fn check_text(answer: &Answer, failures: &mut Vec<String>) {
         let Some(rest) = line
             .strip_prefix("- called from ")
             .or_else(|| line.strip_prefix("- referenced from "))
+            .or_else(|| line.strip_prefix("- implemented by "))
         else {
             continue;
         };
