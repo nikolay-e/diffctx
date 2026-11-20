@@ -4,11 +4,11 @@ use once_cell::sync::Lazy;
 use regex::Regex;
 use rustc_hash::{FxHashMap, FxHashSet};
 
-use crate::config::extensions::{CODE_EXTENSIONS, CONFIG_EXTENSIONS};
-use crate::config::weights::EDGE_WEIGHTS;
 use crate::keytable::MAX_FILES_PER_KEY;
 use diffctx_base::canon::{KeyCache, canon_tokens, for_each_name_key};
 use diffctx_base::types::Fragment;
+use diffctx_config::config::extensions::{CODE_EXTENSIONS, CONFIG_EXTENSIONS};
+use diffctx_config::config::weights::EDGE_WEIGHTS;
 
 use super::super::EdgeDict;
 use super::super::base::{self, EdgeBuilder, add_edge};
@@ -246,7 +246,7 @@ impl EdgeBuilder for ConfigToCodeEdgeBuilder {
             // This scan alone outran the whole pipeline timeout on a
             // sentry-scale commit (#116); the between-builders deadline check
             // cannot interrupt a single builder, so poll inside the loop.
-            if !crate::resource::poll_current_every(i, 64) {
+            if !diffctx_snapshot::resource::poll_current_every(i, 64) {
                 break;
             }
             let mut spelled: FxHashSet<usize> = FxHashSet::default();
@@ -283,7 +283,8 @@ impl EdgeBuilder for ConfigToCodeEdgeBuilder {
         let mut edges: EdgeDict = FxHashMap::default();
         let mut reported = 0u64;
         for (n, (i, spelled)) in hits.iter().enumerate() {
-            if !crate::resource::poll_emissions(n, 64, edges.len() as u64, &mut reported) {
+            if !diffctx_snapshot::resource::poll_emissions(n, 64, edges.len() as u64, &mut reported)
+            {
                 break;
             }
             let code_frag = code_frags[*i];

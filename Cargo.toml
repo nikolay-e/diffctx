@@ -12,17 +12,24 @@ repository = "https://github.com/nikolay-e/diffctx"
 # Dependencies two or more crates of the workspace share: one version, one feature set.
 [workspace.dependencies]
 diffctx-base = { path = "crates/diffctx-base", version = "2.0.0-dev.0" }
+diffctx-config = { path = "crates/diffctx-config", version = "2.0.0-dev.0" }
+diffctx-snapshot = { path = "crates/diffctx-snapshot", version = "2.0.0-dev.0" }
+dunce = "1"
 libc = "0.2"
 once_cell = "1"
+rayon = "1.10"
 regex = "1"
 rustc-hash = "2"
 schemars = { version = "1", features = ["derive"] }
 serde = { version = "1", features = ["derive", "rc"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 serde_yaml = "0.9"
+tempfile = "3"
 thiserror = "2"
 tiktoken-rs = "=0.12.1"
 toml = "1.1"
+tracing = "0.1"
+wait-timeout = "0.2"
 
 [workspace.lints.clippy]
 pedantic = { level = "warn", priority = -1 }

@@ -33,7 +33,8 @@ use super::{
 };
 use crate::facts::shell::{PathHead, PathUse};
 use crate::facts::{DefKey, DefKind, Fact, FactsCache, Language, Name, Scope, UseKind};
-use crate::snapshot::{AnalysisContext, Result, SideTag, normalize_lexical};
+use diffctx_base::paths::normalize_lexical;
+use diffctx_snapshot::snapshot::{AnalysisContext, Result, SideTag};
 
 /// The bindings of one snapshot's shell scripts.
 pub struct ShellResolver {
@@ -430,7 +431,7 @@ impl ShellResolver {
                                         PathUse::Run => EvidenceKind::ImportedName,
                                     }),
                                 },
-                                None => match crate::snapshot::RepoPath::new(&found) {
+                                None => match diffctx_snapshot::snapshot::RepoPath::new(&found) {
                                     Ok(file) => Resolution::Module {
                                         file,
                                         evidence: Evidence::new(EvidenceKind::SameScope),

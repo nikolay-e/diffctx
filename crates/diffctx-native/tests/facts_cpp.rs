@@ -6,7 +6,7 @@ use _diffctx::facts::{
     BlobFacts, Def, DefKind, Disambig, Extractor, Fact, Import, LocalKey, Namespace, Receiver, Ref,
     Scope, Visibility,
 };
-use _diffctx::snapshot::RunBudget;
+use diffctx_snapshot::snapshot::RunBudget;
 
 fn c(source: &str) -> BlobFacts {
     CppExtractor.extract(source.as_bytes(), &RunBudget::default())

@@ -29,7 +29,7 @@ use crate::facts::{
     BlobFacts, Def, DefKind, Disambig, Extractor, Fact, Hasher, Language, Lexical, LocalKey, Name,
     Namespace, PathMention, Receiver, Ref, Scope, Span, UseKind, Visibility, expired, hash_text,
 };
-use crate::snapshot::RunBudget;
+use diffctx_snapshot::snapshot::RunBudget;
 
 pub struct DockerfileExtractor;
 

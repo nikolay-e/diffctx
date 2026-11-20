@@ -25,7 +25,9 @@ use _diffctx::facts::{DefKey, FactsCache, LocalKey, Name, Scope, semantic_change
 use _diffctx::resolve::{
     Binding, CandidateReason, EvidenceKind, PhpResolver, Relation, Resolution,
 };
-use _diffctx::snapshot::{AnalysisContext, RangeSpec, RunBudget, Side, SideTag, working_tree};
+use diffctx_snapshot::snapshot::{
+    AnalysisContext, RangeSpec, RunBudget, Side, SideTag, working_tree,
+};
 use serde::Deserialize;
 use snapshot_fixture::Repo;
 use walkdir::WalkDir;

@@ -19,7 +19,7 @@ use std::ops::Range;
 
 use crate::facts::{DefKey, ModulePath, Name, Scope, Span};
 use crate::resolve::{CandidateReason, Relation, UnresolvedReason};
-use crate::snapshot::{Loss, RepoPath, SideTag};
+use diffctx_snapshot::snapshot::{Loss, RepoPath, SideTag};
 
 pub use crate::facts::Lexical;
 pub use implicit::{Known, entered, implicit_kinds};

@@ -17,7 +17,7 @@ use _diffctx::resolve::{
     JavaResolver, KotlinResolver, PhpResolver, PythonResolver, Relation, Resolution, RustResolver,
     ShellResolver, TypeScriptResolver, UnresolvedReason,
 };
-use _diffctx::snapshot::{AnalysisContext, RangeSpec, RepoPath, RunBudget, Side, SideTag};
+use diffctx_snapshot::snapshot::{AnalysisContext, RangeSpec, RepoPath, RunBudget, Side, SideTag};
 use snapshot_fixture::Repo;
 
 struct World {

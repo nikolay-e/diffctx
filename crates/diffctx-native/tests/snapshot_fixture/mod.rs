@@ -3,7 +3,7 @@
 use std::collections::HashSet;
 use std::path::Path;
 
-use _diffctx::snapshot::{Listing, Oid, RangeSpec, RepoRoot, open};
+use diffctx_snapshot::snapshot::{Listing, Oid, RangeSpec, RepoRoot, open};
 
 /// A real repository in a temp directory, driven by the real `git`, with the
 /// user's global and system configuration out of the way.
@@ -13,7 +13,7 @@ pub(crate) struct Repo {
 }
 
 fn run(dir: &Path, args: &[&str]) -> String {
-    let out = _diffctx::snapshot::git_command(dir)
+    let out = diffctx_snapshot::snapshot::git_command(dir)
         .args(args)
         .env("GIT_CONFIG_GLOBAL", "/dev/null")
         .env("GIT_CONFIG_NOSYSTEM", "1")

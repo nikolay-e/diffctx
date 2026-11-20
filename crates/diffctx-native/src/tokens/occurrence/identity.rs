@@ -17,7 +17,7 @@ use super::scanner::{Standing, matches, standing_at};
 use super::{AliasScope, Case, Entry, Outcome};
 use crate::decide::Gap;
 use crate::facts::{FileFacts, Language, Name};
-use crate::snapshot::{Bytes, RepoPath};
+use diffctx_snapshot::snapshot::{Bytes, RepoPath};
 
 const ENV: &str = "DIFFCTX_DEBUG_IDENTITY";
 

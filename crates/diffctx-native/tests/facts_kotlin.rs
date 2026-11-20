@@ -6,7 +6,7 @@ use _diffctx::facts::{
     BlobFacts, Def, DefKind, Disambig, EntryKind, Export, Extractor, Fact, Import, ImportKind,
     LocalKey, LocalKind, Namespace, Receiver, Ref, Scope, UseKind, Visibility,
 };
-use _diffctx::snapshot::{Loss, RunBudget};
+use diffctx_snapshot::snapshot::{Loss, RunBudget};
 
 fn kt(source: &str) -> BlobFacts {
     KotlinExtractor.extract(source.as_bytes(), &RunBudget::default())

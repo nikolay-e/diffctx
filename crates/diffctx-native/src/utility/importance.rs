@@ -1,6 +1,6 @@
 //! File-importance prior I(f) for impact-need scoring.
 //!
-//! See `crate::config::importance` for the rationale behind the chosen
+//! See `diffctx_config::config::importance` for the rationale behind the chosen
 //! constants. This module computes I(f) ∈ (0, 1] from the fragment path
 //! using the path/stem patterns defined in config.
 
@@ -9,11 +9,11 @@ use std::sync::Arc;
 
 use rustc_hash::{FxHashMap, FxHashSet};
 
-use crate::config::importance::{
+use diffctx_base::types::Fragment;
+use diffctx_config::config::importance::{
     DEFAULT_IMPORTANCE, GENERATED_CAP, GENERATED_DIRS, PERIPHERAL_CAP, PERIPHERAL_DIRS,
     PERIPHERAL_STEMS, PERIPHERAL_SUFFIXES,
 };
-use diffctx_base::types::Fragment;
 
 fn path_components_lower(path: &Path) -> FxHashSet<String> {
     path.components()

@@ -10,7 +10,7 @@ use _diffctx::facts::lang::kotlin::KotlinExtractor;
 use _diffctx::facts::lang::python::PythonExtractor;
 use _diffctx::facts::lang::typescript::TypeScript;
 use _diffctx::facts::{BlobFacts, Extractor, Fact, Scope};
-use _diffctx::snapshot::RunBudget;
+use diffctx_snapshot::snapshot::RunBudget;
 
 /// `kind target framework verb label` of every entry a framework makes.
 fn entries(blob: &BlobFacts) -> Vec<String> {

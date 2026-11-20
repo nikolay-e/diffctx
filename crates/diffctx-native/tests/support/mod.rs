@@ -76,14 +76,14 @@ pub(crate) fn path_with_translated_git(dir: &Path) -> std::ffi::OsString {
 pub(crate) fn scrubbed_sh(cwd: &Path, line: &str) -> Command {
     let mut command = Command::new("sh");
     command.current_dir(cwd).args(["-c", line]);
-    for name in _diffctx::snapshot::REPO_LOCATING_ENV {
+    for name in diffctx_snapshot::snapshot::REPO_LOCATING_ENV {
         command.env_remove(name);
     }
     command
 }
 
 pub(crate) fn git(repo: &Path, args: &[&str]) {
-    let out = _diffctx::snapshot::git_command(repo)
+    let out = diffctx_snapshot::snapshot::git_command(repo)
         .args(args)
         .output()
         .expect("run git");

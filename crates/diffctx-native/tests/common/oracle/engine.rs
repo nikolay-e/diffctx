@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 use std::path::Path;
 use std::process::{Command, Output};
 
-use _diffctx::snapshot::git_command;
+use diffctx_snapshot::snapshot::git_command;
 use serde_json::Value;
 use tempfile::TempDir;
 

@@ -14,7 +14,7 @@ use tempfile::TempDir;
 /// job — the shipped artifact for a target, so every standalone binary that
 /// reaches a user passes this suite on its own platform.
 mod support;
-use _diffctx::snapshot::git_command;
+use diffctx_snapshot::snapshot::git_command;
 use support::{NO_WALL_DEADLINE, commit_all, diffctx, diffctx_unclocked, git, init_repo};
 
 fn run(repo: &Path, args: &[&str]) -> Output {

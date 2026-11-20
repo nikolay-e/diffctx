@@ -10,7 +10,7 @@ use std::process::{Command, Stdio};
 use tempfile::TempDir;
 
 mod support;
-use _diffctx::snapshot::git_command;
+use diffctx_snapshot::snapshot::git_command;
 use support::{commit_all, diffctx, git, scrubbed_sh, write};
 
 /// `pricing.total` is edited in the working tree; `checkout.charge` calls it

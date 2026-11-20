@@ -6,7 +6,7 @@ use super::Solved;
 use super::kotlin;
 use super::solved::{Gathered, gather_of};
 use crate::facts::{FactsCache, Language};
-use crate::snapshot::{AnalysisContext, Loss, Result, SideTag, Stage};
+use diffctx_snapshot::snapshot::{AnalysisContext, Loss, Result, SideTag, Stage};
 
 /// The bindings of one snapshot's Swift files.
 pub struct SwiftResolver {

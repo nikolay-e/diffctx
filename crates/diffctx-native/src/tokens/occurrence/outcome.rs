@@ -26,8 +26,8 @@ use crate::facts::{
 use crate::resolve::{
     Binding, CandidateReason, DYNAMIC, Definition, Relation, Resolution, UnresolvedReason,
 };
-use crate::snapshot::{Loss, RepoPath, WorkspaceModel};
 use crate::vocabulary::family::Family;
+use diffctx_snapshot::snapshot::{Loss, RepoPath, WorkspaceModel};
 mod routes;
 
 /// What one side's resolved snapshot is indexed by, as positions in its files and

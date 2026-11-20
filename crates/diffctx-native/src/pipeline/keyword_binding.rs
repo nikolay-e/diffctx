@@ -11,8 +11,8 @@ use std::path::{Path, PathBuf};
 use tree_sitter::Node;
 
 use crate::facts::{BlobFacts, Fact, Import, LocalKind, Scope};
-use crate::resource::RunContext;
 use diffctx_base::types::Fragment;
+use diffctx_snapshot::resource::RunContext;
 
 /// What a call writes before its parentheses: `a.b.f` is `f` qualified by `a.b`,
 /// and a receiver that is no plain name (`make().f`) has no qualifier to read.
@@ -171,7 +171,7 @@ pub(crate) fn parameter_owners<'f>(
     }
     let mut chosen: Vec<&'f Fragment> = Vec::new();
     for file in files {
-        let display = crate::paths::display_rel_or_abs(root_dir, file);
+        let display = diffctx_base::paths::display_rel_or_abs(root_dir, file);
         if !python(&display) {
             continue;
         }
@@ -215,7 +215,7 @@ pub(crate) fn parameter_owners<'f>(
             };
             let bound = bound_modules(&imports, root);
             let reaches = |fragment: &&&Fragment| {
-                let own = module_of(&crate::paths::display_rel_or_abs(
+                let own = module_of(&diffctx_base::paths::display_rel_or_abs(
                     root_dir,
                     Path::new(fragment.path()),
                 ));

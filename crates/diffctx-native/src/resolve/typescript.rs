@@ -34,10 +34,11 @@ use crate::facts::{
     Def, DefKey, DefKind, Export, Fact, FactsCache, FileFacts, Import, ImportKind, Initializer,
     Language, LocalKind, Name, Namespace, Receiver, Ref, Scope, Span, UseKind, Visibility,
 };
-use crate::snapshot::workspace::{Alias, Ecosystem, Project, ProjectId, RootOrigin};
-use crate::snapshot::{
+use diffctx_base::paths::normalize_lexical;
+use diffctx_snapshot::snapshot::workspace::{Alias, Ecosystem, Project, ProjectId, RootOrigin};
+use diffctx_snapshot::snapshot::{
     AnalysisContext, Bytes, Loss, NotAnalysedReason, RepoPath, Result, SideTag, SnapshotReader,
-    WorkspaceModel, normalize_lexical,
+    WorkspaceModel,
 };
 
 /// A call through an untyped receiver is a candidate for at most this many

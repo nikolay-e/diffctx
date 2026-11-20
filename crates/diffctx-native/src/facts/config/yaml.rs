@@ -9,7 +9,7 @@ use rustc_hash::FxHashMap;
 use tree_sitter::{Language as TsLanguage, Node as TsNode};
 
 use crate::facts::{Language, Span, lexical};
-use crate::snapshot::RunBudget;
+use diffctx_snapshot::snapshot::RunBudget;
 
 use super::syntax::{self, Guard};
 use super::template::{self, Template};

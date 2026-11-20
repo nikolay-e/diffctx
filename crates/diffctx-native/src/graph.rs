@@ -4,9 +4,9 @@ use std::collections::BinaryHeap;
 use rayon::prelude::*;
 use rustc_hash::{FxHashMap, FxHashSet};
 
-use crate::config::graph_filtering::GRAPH_FILTERING;
-use crate::config::scoring::EGO;
 use diffctx_base::types::{EdgeCategory, Fragment, FragmentId};
+use diffctx_config::config::graph_filtering::GRAPH_FILTERING;
+use diffctx_config::config::scoring::EGO;
 
 pub struct CsrGraph {
     pub n: usize,
@@ -651,7 +651,7 @@ fn build_graph_compact(compact: CompactEdges) -> Graph {
 
     apply_hub_suppression(&mut edges, &idx_to_node);
 
-    let max_per_node = crate::config::limits::read_max_out_edges_per_node();
+    let max_per_node = diffctx_config::config::limits::read_max_out_edges_per_node();
     let cap_stats = cap_out_edges_per_source(&mut edges, max_per_node);
     tracing::debug!(
         "edge cap K={}: {} -> {} (dropped {} from {} nodes)",
@@ -861,7 +861,7 @@ mod tests {
         seeds.insert(a.clone());
         let scores = g.ego_graph(&seeds, 2);
 
-        let gamma = crate::config::scoring::EGO.per_hop_decay;
+        let gamma = diffctx_config::config::scoring::EGO.per_hop_decay;
         assert!((scores[&a] - 1.0).abs() < 1e-9);
         assert!((scores[&b] - gamma).abs() < 1e-9);
         assert!((scores[&c] - gamma * gamma).abs() < 1e-9);
@@ -879,7 +879,7 @@ mod tests {
         seeds.insert(b.clone());
         let scores = g.ego_graph(&seeds, 1);
 
-        let gamma = crate::config::scoring::EGO.per_hop_decay;
+        let gamma = diffctx_config::config::scoring::EGO.per_hop_decay;
         assert!(
             (scores[&v] - 2.0 * gamma).abs() < 1e-9,
             "v reached by 2 seeds at d=1 must score 2·γ; got {}",
@@ -898,7 +898,7 @@ mod tests {
         seeds.insert(a.clone());
         let scores = g.ego_graph(&seeds, 2);
 
-        let gamma = crate::config::scoring::EGO.per_hop_decay;
+        let gamma = diffctx_config::config::scoring::EGO.per_hop_decay;
         assert!(
             (scores[&b] - gamma * 0.7).abs() < 1e-9,
             "1-hop weighted score = γ·0.7; got {}",
@@ -1235,7 +1235,7 @@ mod tests {
         let mut edges: FxHashMap<(FragmentId, FragmentId), f64> = FxHashMap::default();
         let mut cats: FxHashMap<(FragmentId, FragmentId), EdgeCategory> = FxHashMap::default();
 
-        let n_leaves = crate::config::limits::DEFAULT_MAX_OUT_EDGES_PER_NODE + 10;
+        let n_leaves = diffctx_config::config::limits::DEFAULT_MAX_OUT_EDGES_PER_NODE + 10;
         for i in 0..n_leaves {
             let leaf = fid(&format!("leaf_{i}.rs"), 1, 10);
             frags.push(plain_fragment(leaf.clone()));

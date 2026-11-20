@@ -34,8 +34,8 @@ use crate::facts::{
     Def, DefKey, DefKind, Disambig, Export, Fact, FactsCache, FileFacts, ImportKind, Language,
     LocalKey, Name, Namespace, Scope, Span, UseKind, Visibility, expired, facts_of,
 };
-use crate::snapshot::workspace::ProjectId;
-use crate::snapshot::{AnalysisContext, Loss, Result, SideTag, Stage, WorkspaceModel};
+use diffctx_snapshot::snapshot::workspace::ProjectId;
+use diffctx_snapshot::snapshot::{AnalysisContext, Loss, Result, SideTag, Stage, WorkspaceModel};
 
 impl Solved {
     /// Resolves every Kotlin and Java file of `side`; the definitions are `own`'s.

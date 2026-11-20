@@ -82,7 +82,7 @@ pub(super) enum Reader {
 /// shell scripts keep in variables.
 pub(super) struct Spellings {
     root_dir: std::path::PathBuf,
-    source: crate::source::Source,
+    source: diffctx_snapshot::source::Source,
     /// Each symlink of the tree and the repository path it names.
     links: Vec<(String, String)>,
     /// Per shell script, the variables that hold a directory of the
@@ -91,7 +91,7 @@ pub(super) struct Spellings {
 }
 
 impl Spellings {
-    pub(super) fn of(root_dir: &Path, source: crate::source::Source) -> Self {
+    pub(super) fn of(root_dir: &Path, source: diffctx_snapshot::source::Source) -> Self {
         let links = source.list().map_or_else(
             |_| Vec::new(),
             |listing| {
@@ -99,7 +99,7 @@ impl Spellings {
                     .links
                     .iter()
                     .filter_map(|abs| {
-                        let link = crate::paths::display_rel(root_dir, abs)?;
+                        let link = diffctx_base::paths::display_rel(root_dir, abs)?;
                         let text = source.read_to_string(abs)?;
                         let text = text.trim();
                         if text.starts_with('/') {

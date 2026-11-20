@@ -25,7 +25,9 @@ use _diffctx::facts::{DefKey, Disambig, FactsCache, LocalKey, Name, Scope, seman
 use _diffctx::resolve::{
     Binding, CandidateReason, EvidenceKind, JavaResolver, Relation, Resolution,
 };
-use _diffctx::snapshot::{AnalysisContext, RangeSpec, RunBudget, Side, SideTag, working_tree};
+use diffctx_snapshot::snapshot::{
+    AnalysisContext, RangeSpec, RunBudget, Side, SideTag, working_tree,
+};
 use serde::Deserialize;
 use snapshot_fixture::Repo;
 use walkdir::WalkDir;

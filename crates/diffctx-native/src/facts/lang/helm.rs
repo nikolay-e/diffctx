@@ -21,7 +21,7 @@ use crate::facts::{
     BlobFacts, Def, DefKind, Disambig, Extractor, Fact, Language, LocalKey, Name, Namespace, Scope,
     Span, Visibility, hash_text, hash_tokens,
 };
-use crate::snapshot::{RepoPath, RunBudget};
+use diffctx_snapshot::snapshot::{RepoPath, RunBudget};
 
 use super::config::{blob_of, facts_of_reading, slice, tree_hash};
 

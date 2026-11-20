@@ -17,7 +17,7 @@ use crate::impact::{
     self, Caller, ChangedSymbol, Contract, DeletedModule, ImpactOutput, KeySearch, NamedFile,
     PathReference, StaleReference, UnanalysedFile, Unknown,
 };
-use crate::resource::LimitReason;
+use diffctx_snapshot::resource::LimitReason;
 
 use super::Tally;
 

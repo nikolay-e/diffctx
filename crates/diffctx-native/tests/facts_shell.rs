@@ -4,7 +4,7 @@
 use _diffctx::facts::lang::shell::{ShellExtractor, UnreadShellExtractor};
 use _diffctx::facts::shell::{PathHead, PathUse};
 use _diffctx::facts::{BlobFacts, Def, DefKind, Extractor, Fact, Language, UseKind};
-use _diffctx::snapshot::{Loss, RepoPath, RunBudget};
+use diffctx_snapshot::snapshot::{Loss, RepoPath, RunBudget};
 
 fn extract(source: &str) -> BlobFacts {
     ShellExtractor.extract(source.as_bytes(), &RunBudget::default())

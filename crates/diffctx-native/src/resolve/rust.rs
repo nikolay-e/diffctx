@@ -31,8 +31,8 @@ use crate::facts::{
     Def, DefKey, DefKind, Disambig, Export, Fact, FactsCache, Import, Language, Name, Namespace,
     Receiver, Ref, Scope, UseKind, Visibility,
 };
-use crate::snapshot::workspace::CrateKind;
-use crate::snapshot::{
+use diffctx_snapshot::snapshot::workspace::CrateKind;
+use diffctx_snapshot::snapshot::{
     AnalysisContext, Bytes, Loss, RepoPath, Result, SideTag, SnapshotError, SnapshotReader,
     WorkspaceModel,
 };
@@ -318,7 +318,7 @@ impl Index {
                     index.mods[id].public = above
                         && matches!(
                             module.visibility,
-                            crate::snapshot::workspace::Visibility::Pub
+                            diffctx_snapshot::snapshot::workspace::Visibility::Pub
                         );
                     file_mod.entry(module.file.clone()).or_insert(id);
                 }

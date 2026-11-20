@@ -14,12 +14,12 @@ use std::path::{Path, PathBuf};
 /// Rewrites `\` to `/` on Windows, where it is the component separator, and
 /// leaves the string alone everywhere else, where it is an ordinary character.
 #[cfg(windows)]
-pub(crate) fn to_posix_display(s: Cow<'_, str>) -> String {
+pub fn to_posix_display(s: Cow<'_, str>) -> String {
     s.replace('\\', "/")
 }
 
 #[cfg(not(windows))]
-pub(crate) fn to_posix_display(s: Cow<'_, str>) -> String {
+pub fn to_posix_display(s: Cow<'_, str>) -> String {
     s.into_owned()
 }
 
@@ -27,11 +27,11 @@ pub(crate) fn to_posix_display(s: Cow<'_, str>) -> String {
 /// the way the platform spells every other path: `join` keeps the `/`, and on
 /// Windows `root\src/lib.rs` is then a different string key from the
 /// `root\src\lib.rs` canonicalisation produces for the same file.
-pub(crate) fn repo_join(base: &Path, rel: &str) -> PathBuf {
+pub fn repo_join(base: &Path, rel: &str) -> PathBuf {
     base.join(native_separators(Cow::Borrowed(rel)))
 }
 
-pub(crate) fn join_native(base: &Path, rel: &str) -> String {
+pub fn join_native(base: &Path, rel: &str) -> String {
     repo_join(base, rel).to_string_lossy().into_owned()
 }
 
@@ -47,7 +47,7 @@ fn native_separators(s: Cow<'_, str>) -> String {
 
 /// `path` written relative to `root`, ready for output. `None` when `path` is
 /// not inside `root` — callers that must still show something decide what.
-pub(crate) fn display_rel(root: &Path, path: &Path) -> Option<String> {
+pub fn display_rel(root: &Path, path: &Path) -> Option<String> {
     path.strip_prefix(root)
         .ok()
         .map(|rel| to_posix_display(rel.to_string_lossy()))
@@ -56,66 +56,61 @@ pub(crate) fn display_rel(root: &Path, path: &Path) -> Option<String> {
 /// `display_rel`, falling back to the path as given when it is not under
 /// `root`. The file lists in the diff output used a private copy of this that
 /// rewrote `\` unconditionally (#239).
-pub(crate) fn display_rel_or_abs(root: &Path, path: &Path) -> String {
+pub fn display_rel_or_abs(root: &Path, path: &Path) -> String {
     display_rel(root, path).unwrap_or_else(|| to_posix_display(path.to_string_lossy()))
 }
 
-/// The root as `canonicalize` resolves it, once per run: every file read
-/// resolved it again (`fragmentation`), at up to a third of a run's CPU.
-pub(crate) fn canonical_root(root: &Path) -> Option<PathBuf> {
-    crate::resource::memoized("canonical_root", root, || dunce::canonicalize(root)).ok()
-}
+/// Containment for a repo-relative name that need not exist on disk — what `git ls-files`,
+/// `git diff --name-only` and the deleted-file query hand back. Purely
+/// lexical: it normalises `.` and `..` against the root and asks whether the
+/// result is still under it, touching no filesystem, so a deleted path and a
+/// bare clone's tracked files answer the same as a present one.
+///
+/// It cannot see a symlink — that is not its job. A working-tree name that
+/// passes here and is then READ goes through `source::Containment` at the point of
+/// the read.
+pub fn contains_lexically(relative: &Path) -> bool {
+    use std::path::Component;
 
-/// Whether reading a path stays inside `root`.
-///
-/// The repository is the trust boundary: a tool that reads a stranger's
-/// checkout must not be walked out of it by a symlink the checkout contains.
-/// `~/repo/evil -> /etc/shadow` is one `read_to_string` away from being a
-/// context fragment, and `canonicalize()` on that name returns what it POINTS
-/// AT — which is how an absolute out-of-root path reached the changed-file
-/// list.
-///
-/// This is the READ-time guard, and it answers containment by canonicalising
-/// both sides, so a symlink chain, a `..` segment and a symlinked parent
-/// directory are all caught by one comparison. It therefore requires the path
-/// to exist, which makes it the wrong question for a name git handed us: a
-/// deleted file is by definition gone, and a bare clone has no working tree at
-/// all. Those callers get `contains_lexically` instead — containment and
-/// existence are different questions, and answering the second one where the
-/// first was meant empties both lists.
-///
-/// The path itself is never rewritten: the repo-relative name is what every
-/// downstream layer keys on (fragment ids, ignore rules, the secret policy),
-/// and substituting the link target renames the object mid-pipeline.
-///
-/// One per walk, the root resolved once; every path is still resolved in
-/// full, so the guard is the one each path always had.
-pub(crate) struct Containment {
-    root: Option<PathBuf>,
-}
-
-impl Containment {
-    pub(crate) fn new(root: &Path) -> Self {
-        Self {
-            root: dunce::canonicalize(root).ok(),
+    let mut depth: i32 = 0;
+    for component in relative.components() {
+        match component {
+            Component::Prefix(_) | Component::RootDir => return false,
+            Component::ParentDir => {
+                depth -= 1;
+                if depth < 0 {
+                    return false;
+                }
+            }
+            Component::CurDir => {}
+            Component::Normal(_) => depth += 1,
         }
     }
-
-    pub(crate) fn contains(&self, path: &Path) -> bool {
-        self.root.as_ref().is_some_and(|root| {
-            dunce::canonicalize(path).is_ok_and(|canon| canon.starts_with(root))
-        })
-    }
+    true
 }
 
-pub(crate) use crate::snapshot::{contains_lexically, normalize_lexical};
+/// `.` and `..` folded lexically out of a slash path; `None` when it climbs
+/// above its start.
+pub fn normalize_lexical(path: &str) -> Option<String> {
+    let mut parts: Vec<&str> = Vec::new();
+    for part in path.split('/') {
+        match part {
+            "" | "." => {}
+            ".." => {
+                parts.pop()?;
+            }
+            p => parts.push(p),
+        }
+    }
+    Some(parts.join("/"))
+}
 
 /// A fragment's path as `FragmentIndex` keys it: repo-relative, posix. In
 /// production fragment paths are absolute (`fragmentation.rs` stores what it
 /// was handed) and the index strips `repo_root`; a caller that derives a
 /// reference from a fragment's own path has to do the same, or its reference
 /// is absolute and matches nothing.
-pub(crate) fn index_key_of(path: &str, repo_root: Option<&Path>) -> String {
+pub fn index_key_of(path: &str, repo_root: Option<&Path>) -> String {
     repo_root
         .and_then(|root| Path::new(path).strip_prefix(root).ok())
         .map(|rel| to_posix_display(rel.to_string_lossy()))
@@ -127,7 +122,7 @@ pub(crate) fn index_key_of(path: &str, repo_root: Option<&Path>) -> String {
 /// because a bumped dependency IS part of the change — but rendering the raw
 /// hunks costs thousands of tokens of checksums for a fact that fits on one
 /// line, so the paths are reported and the content is left out (#112).
-pub(crate) fn is_lockfile_path(path: &Path) -> bool {
+pub fn is_lockfile_path(path: &Path) -> bool {
     let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
         return false;
     };
@@ -156,35 +151,6 @@ mod tests {
             display_rel(Path::new("/repo"), Path::new("/elsewhere/a.rs")),
             None
         );
-    }
-
-    #[test]
-    fn a_symlink_leaving_the_repository_is_not_resolvable_within_it() {
-        let tmp = tempfile::TempDir::new().expect("tempdir");
-        let root = tmp.path().join("repo");
-        let outside = tmp.path().join("outside");
-        std::fs::create_dir_all(&root).expect("root");
-        std::fs::create_dir_all(&outside).expect("outside");
-        std::fs::write(outside.join("secret.txt"), "LEAK\n").expect("write");
-        std::fs::write(root.join("real.txt"), "ok\n").expect("write");
-
-        let within = Containment::new(&root);
-        #[cfg(unix)]
-        {
-            std::os::unix::fs::symlink(outside.join("secret.txt"), root.join("escape.txt"))
-                .expect("symlink");
-            std::os::unix::fs::symlink(&outside, root.join("escape_dir")).expect("symlink dir");
-            std::os::unix::fs::symlink(root.join("real.txt"), root.join("inner_link.txt"))
-                .expect("symlink inside");
-            assert!(!within.contains(&root.join("escape.txt")));
-            // A symlinked *directory* hides the escape one level up: the leaf
-            // is an ordinary file, so only the canonical form catches it.
-            assert!(!within.contains(&root.join("escape_dir").join("secret.txt")));
-            assert!(within.contains(&root.join("inner_link.txt")));
-        }
-        assert!(within.contains(&root.join("real.txt")));
-        assert!(!within.contains(&root.join("missing.txt")));
-        assert!(!within.contains(&outside.join("secret.txt")));
     }
 
     #[test]

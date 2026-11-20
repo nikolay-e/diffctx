@@ -19,7 +19,7 @@ use _diffctx::facts::lang::shell::ShellExtractor;
 use _diffctx::facts::lang::swift::SwiftExtractor;
 use _diffctx::facts::lang::typescript::JavaScript;
 use _diffctx::facts::{Extractor, FactsCache, Lexical, facts_of};
-use _diffctx::snapshot::{RepoPath, RunBudget, SideTag};
+use diffctx_snapshot::snapshot::{RepoPath, RunBudget, SideTag};
 use facts_fixture::review;
 use snapshot_fixture::Repo;
 

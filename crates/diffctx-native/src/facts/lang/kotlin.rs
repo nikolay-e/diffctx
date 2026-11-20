@@ -53,7 +53,7 @@ use crate::facts::{
     ImportKind, Language, Local, LocalKey, LocalKind, ModulePath, Name, Namespace, Receiver, Ref,
     Scope, Span, Star, TypeName, UseKind, Visibility, expired, hash_text, hash_tokens,
 };
-use crate::snapshot::RunBudget;
+use diffctx_snapshot::snapshot::RunBudget;
 
 pub(super) const POLL_EVERY: usize = 256;
 /// Names an unwrapped binding is followed back through to the one that types it.

@@ -22,7 +22,7 @@ use crate::facts::hash::checksum;
 use crate::facts::lang;
 use crate::facts::language::Language;
 use crate::facts::model::{BlobFacts, Fact, Lexical};
-use crate::snapshot::{ContentId, Listing, Oid, Result, SnapshotReader};
+use diffctx_snapshot::snapshot::{ContentId, Listing, Oid, Result, SnapshotReader};
 
 /// The stored layout, named in the key and in the file name. This file is under
 /// `src/`, so a change to the layout moves [`FINGERPRINT`] whether or not this is

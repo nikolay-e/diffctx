@@ -4,7 +4,7 @@ use _diffctx::facts::lang::dockerfile::DockerfileExtractor;
 use _diffctx::facts::{
     BlobFacts, Def, DefKind, Disambig, Extractor, Fact, LocalKey, Namespace, Receiver, Ref, Scope,
 };
-use _diffctx::snapshot::RunBudget;
+use diffctx_snapshot::snapshot::RunBudget;
 
 fn docker(source: &str) -> BlobFacts {
     DockerfileExtractor.extract(source.as_bytes(), &RunBudget::default())

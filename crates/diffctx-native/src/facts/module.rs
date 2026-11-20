@@ -4,7 +4,7 @@
 
 use crate::facts::ids::{ModulePath, ProjectId};
 use crate::facts::language::Language;
-use crate::snapshot::WorkspaceModel;
+use diffctx_snapshot::snapshot::WorkspaceModel;
 
 pub(super) fn locate(
     workspace: &WorkspaceModel,
@@ -60,7 +60,7 @@ pub(super) fn locate(
 /// `pkg/__init__.py` is `pkg`.
 fn python_module(
     workspace: &WorkspaceModel,
-    project: Option<crate::snapshot::workspace::ProjectId>,
+    project: Option<diffctx_snapshot::snapshot::workspace::ProjectId>,
     root: &str,
     path: &str,
 ) -> String {

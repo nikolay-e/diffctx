@@ -3,12 +3,12 @@ use std::sync::Arc;
 
 use rustc_hash::{FxHashMap, FxHashSet};
 
-use crate::config::selection::rescue;
 use crate::fragmentation::create_whole_file_fragment;
 use crate::graph::Graph;
-use crate::source::Source;
 use diffctx_base::interval::IntervalIndex;
 use diffctx_base::types::{Fragment, FragmentId};
+use diffctx_config::config::selection::rescue;
+use diffctx_snapshot::source::Source;
 
 fn find_dangling_semantic_names(
     selected: &[Fragment],
@@ -427,7 +427,7 @@ mod tests {
             &changed_files,
             100,
             Path::new("."),
-            &crate::source::Source::empty(),
+            &diffctx_snapshot::source::Source::empty(),
             &core_ids,
             &FxHashMap::default(),
             &stand_in_ids,
@@ -513,7 +513,7 @@ mod tests {
             &changed_files,
             15,
             Path::new("."),
-            &crate::source::Source::empty(),
+            &diffctx_snapshot::source::Source::empty(),
             &core_ids,
             &FxHashMap::default(),
             &stand_in_ids,
@@ -569,7 +569,7 @@ mod tests {
                 &changed,
                 remaining,
                 Path::new("."),
-                &crate::source::Source::empty(),
+                &diffctx_snapshot::source::Source::empty(),
                 &core_ids,
                 &excerpts,
                 &FxHashSet::default(),

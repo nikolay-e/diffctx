@@ -235,10 +235,13 @@ mod tests {
     fn every_edge_weight_key_is_read_somewhere_outside_this_table() {
         let re = regex::Regex::new(r#"EDGE_WEIGHTS\["([a-z0-9_]+)"\]"#).unwrap();
         let mut files = Vec::new();
-        collect_rs_files(
-            &PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src"),
-            &mut files,
-        );
+        for krate in
+            std::fs::read_dir(std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(".."))
+                .unwrap()
+                .flatten()
+        {
+            collect_rs_files(&krate.path().join("src"), &mut files);
+        }
         let mut read: BTreeSet<String> = BTreeSet::new();
         for file in files {
             if file.ends_with("weights.rs") {

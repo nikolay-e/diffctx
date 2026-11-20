@@ -145,7 +145,9 @@ impl<'a> TestsReach<'a> {
                 text.map_or_else(Vec::new, |t| {
                     rust::test_functions(&t).unwrap_or_else(|e| {
                         tracing::warn!("impact: {} is not read as UTF-8 ({e})", f.path());
-                        state.run.note(crate::resource::LimitReason::ReadFailed);
+                        state
+                            .run
+                            .note(diffctx_snapshot::resource::LimitReason::ReadFailed);
                         Vec::new()
                     })
                 })
@@ -212,7 +214,8 @@ impl<'a> TestsReach<'a> {
             .limited_files()
             .into_iter()
             .filter(|f| {
-                f.reason == crate::resource::LimitReason::FileTooLarge && declared.runs(&f.path)
+                f.reason == diffctx_snapshot::resource::LimitReason::FileTooLarge
+                    && declared.runs(&f.path)
             })
             .map(|f| f.path)
             .collect();
@@ -860,10 +863,11 @@ fn asks_for(f: &Fragment, name: &str) -> Option<u32> {
 /// Whether the tree the run reads holds any test file, linked or not.
 fn repo_holds_test_file(state: &ScoredState, declared: &DeclaredTests) -> bool {
     match state.run.source().list() {
-        Ok(listing) => state
-            .run
-            .bounded(&listing.blobs)
-            .any(|b| declared.runs(&crate::paths::to_posix_display(b.path.to_string_lossy()))),
+        Ok(listing) => state.run.bounded(&listing.blobs).any(|b| {
+            declared.runs(&diffctx_base::paths::to_posix_display(
+                b.path.to_string_lossy(),
+            ))
+        }),
         Err(_) => false,
     }
 }

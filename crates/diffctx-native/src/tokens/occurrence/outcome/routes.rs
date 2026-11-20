@@ -9,11 +9,11 @@ use std::path::Path;
 use super::{Claim, Reading, encloses};
 use crate::facts::{DefKey, Fact, FileFacts, Name, Receiver, Scope, UseKind};
 use crate::resolve::{Binding, Definition, Relation, Resolution, UnresolvedReason};
-use crate::snapshot::RepoPath;
-use crate::snapshot::workspace::{Ecosystem, WorkspaceModel};
 use crate::tokens::occurrence::rows::{CLASSIC_PAGES, DESERIALIZERS, ISOLATED_MODULES, RUNS_CODE};
 use crate::tokens::occurrence::{Reason, Witness};
 use diffctx_base::testfiles::is_test_path;
+use diffctx_snapshot::snapshot::RepoPath;
+use diffctx_snapshot::snapshot::workspace::{Ecosystem, WorkspaceModel};
 
 /// The files each file of a family that isolates modules imports, as its import bindings land.
 #[derive(Default)]

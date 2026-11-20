@@ -4,9 +4,9 @@ use once_cell::sync::Lazy;
 use regex::Regex;
 use rustc_hash::{FxHashMap, FxHashSet};
 
-use crate::config::edge_weights::ANSIBLE_SEMANTIC;
-use crate::config::weights::EDGE_WEIGHTS;
 use diffctx_base::types::{Fragment, FragmentId};
+use diffctx_config::config::edge_weights::ANSIBLE_SEMANTIC;
+use diffctx_config::config::weights::EDGE_WEIGHTS;
 
 use super::super::EdgeDict;
 use super::super::base::{
@@ -153,7 +153,7 @@ impl EdgeBuilder for AnsibleEdgeBuilder {
         }
         for group in role_files.values_mut() {
             group.sort();
-            if group.len() > crate::config::limits::SIBLING.max_files_per_dir {
+            if group.len() > diffctx_config::config::limits::SIBLING.max_files_per_dir {
                 continue;
             }
             for (i, r1) in group.iter().enumerate() {

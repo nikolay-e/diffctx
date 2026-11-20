@@ -53,7 +53,7 @@ jobs:
         id: auth
         uses: rust-lang/crates-io-auth-action@3268eb413133e2960fa4ae0e963ca76380c54cd9  # v1.0.6
 
-      # diffctx-base first: diffctx asks the registry for it, and cargo publish
+      # Leaf crates first: each asks the registry for the ones below it, and cargo publish
       # waits until the index serves the crate it has just uploaded. A re-run
       # after a crate is up (a smoke that failed afterwards, as 1.20.0's did)
       # publishes nothing for it and goes on, like PyPI's skip-existing; cargo
@@ -63,7 +63,7 @@ jobs:
           CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
           VERSION: ${{ inputs.version }}
         run: |
-          for crate in diffctx-base diffctx; do
+          for crate in diffctx-base diffctx-config diffctx-snapshot diffctx; do
             if curl -fsS -A release-check "https://crates.io/api/v1/crates/${crate}/${VERSION}" > /dev/null; then
               echo "${crate} ${VERSION} is already on crates.io"
             else

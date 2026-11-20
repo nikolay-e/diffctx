@@ -17,8 +17,8 @@ use serde_json::Value;
 use crate::answer::v2::Range;
 use crate::change_class::ChangeClass;
 use crate::render::{CONTEXT_SCHEMA, DiffContextOutput, FragmentEntry};
-use crate::resource::{CoverageReport, CoverageStatus, LimitReason, ResourceUsage};
 use diffctx_base::tokenizer::count_tokens;
+use diffctx_snapshot::resource::{CoverageReport, CoverageStatus, LimitReason, ResourceUsage};
 
 /// More tokens than the `needs` line of a document ever takes.
 const NEEDS_LINE_TOKENS: u32 = 16;

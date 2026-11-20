@@ -187,7 +187,7 @@ pub struct ImpactOutput {
     /// while this is set. The graph's per-node cap, which every real
     /// repository trips (#306), is not listed: a caller it cut an edge from
     /// is recovered by the same tests an edge faces.
-    pub limits: Vec<crate::resource::LimitReason>,
+    pub limits: Vec<diffctx_snapshot::resource::LimitReason>,
     /// Whether any test file was in view. Without one, an absent `tests`
     /// says nothing about the caller, and the text form does not call it
     /// untested.
@@ -245,7 +245,7 @@ pub struct ImpactOutput {
     /// still not determined (the run stopped first); the header counts them.
     pub unfinished_omitted: usize,
     /// The run that built it: its limits end the fit too.
-    pub run: Option<crate::resource::RunContext>,
+    pub run: Option<diffctx_snapshot::resource::RunContext>,
     /// The token cap the answer was fitted to.
     pub cap: u32,
     /// Set when the least the answer can say still outgrows the budget asked:
@@ -306,7 +306,7 @@ pub struct SymbolNamed {
     /// What limited the run that found no definition: a read that failed or
     /// a deadline means the definition may exist, and the answer's `limits`
     /// say so.
-    pub limits: Vec<crate::resource::LimitReason>,
+    pub limits: Vec<diffctx_snapshot::resource::LimitReason>,
 }
 
 #[derive(Debug, Serialize, JsonSchema, Clone)]
@@ -475,7 +475,7 @@ pub enum Unknown {
     /// before this definition's search finished: what it found is a lower
     /// bound, and finding none does not mean there are none.
     Unfinished {
-        stops: Vec<crate::resource::LimitReason>,
+        stops: Vec<diffctx_snapshot::resource::LimitReason>,
     },
     /// The range pairs the definition's base and head sides in more than one
     /// way, so what changed in it, and who it reaches, is not determined.
@@ -622,8 +622,8 @@ impl Caller {
 
 /// The limits among `limits` that leave a count of callers a lower bound.
 pub(crate) fn stops_of(
-    limits: &[crate::resource::LimitReason],
-) -> Vec<crate::resource::LimitReason> {
+    limits: &[diffctx_snapshot::resource::LimitReason],
+) -> Vec<diffctx_snapshot::resource::LimitReason> {
     limits
         .iter()
         .copied()
@@ -631,7 +631,7 @@ pub(crate) fn stops_of(
         .collect()
 }
 
-pub(crate) fn reason_names(reasons: &[crate::resource::LimitReason]) -> String {
+pub(crate) fn reason_names(reasons: &[diffctx_snapshot::resource::LimitReason]) -> String {
     reasons
         .iter()
         .map(|r| match serde_json::to_value(r) {
@@ -741,7 +741,7 @@ fn unfinished_symbol(
     symbol: Option<String>,
     lines: String,
     kind: String,
-    stops: &[crate::resource::LimitReason],
+    stops: &[diffctx_snapshot::resource::LimitReason],
 ) -> ChangedSymbol {
     ChangedSymbol {
         unresolved: Some(Unknown::Unfinished {
@@ -912,7 +912,7 @@ fn names_word(text: &str, name: &str) -> bool {
 
 fn is_code_file(path: &str) -> bool {
     let ext = diffctx_base::languages::file_ext(Path::new(path));
-    crate::config::extensions::CODE_EXTENSIONS.contains(ext.as_str())
+    diffctx_config::config::extensions::CODE_EXTENSIONS.contains(ext.as_str())
 }
 
 /// Who may stand before a `.` in front of the name and still mean it.
@@ -1386,7 +1386,7 @@ fn unanalysed_files(state: &ScoredState, changed: &[String]) -> Vec<UnanalysedFi
     let source = state.run.source();
     let too_large = state
         .run
-        .limited_by(crate::resource::LimitReason::FileTooLarge);
+        .limited_by(diffctx_snapshot::resource::LimitReason::FileTooLarge);
     let layout = layout_files(state);
     let mut out: Vec<UnanalysedFile> = changed
         .iter()
@@ -1506,9 +1506,9 @@ impl UnreadFiles {
         };
         let mut unread = Self::default();
         for path in paths.iter().filter(|p| {
-            crate::source::in_scope(
+            diffctx_snapshot::source::in_scope(
                 &state.root_dir,
-                &crate::paths::repo_join(&state.root_dir, p),
+                &diffctx_base::paths::repo_join(&state.root_dir, p),
                 &state.scope,
             )
         }) {
@@ -1602,7 +1602,7 @@ pub(crate) fn distinctive(word: &str) -> bool {
 }
 
 fn uncommon(word: &str) -> bool {
-    !crate::stopwords::CODE_STOPWORDS.contains(&word.to_lowercase())
+    !diffctx_config::stopwords::CODE_STOPWORDS.contains(&word.to_lowercase())
         && !ROLE_STEMS.split(' ').any(|r| r == word)
 }
 
@@ -2191,7 +2191,7 @@ fn same_runtime(a: &str, b: &str) -> bool {
 }
 
 fn rel(state: &ScoredState, path: &str) -> String {
-    crate::paths::display_rel_or_abs(&state.root_dir, Path::new(path))
+    diffctx_base::paths::display_rel_or_abs(&state.root_dir, Path::new(path))
 }
 
 /// The changed files, by the path the answer prints.
@@ -2205,7 +2205,7 @@ fn changed_rels(state: &ScoredState) -> impl Iterator<Item = String> + '_ {
 /// The revision a range ends at, when it names one.
 fn head_of(range: Option<&str>) -> Option<String> {
     range
-        .map(crate::snapshot::split_diff_range)
+        .map(diffctx_snapshot::snapshot::split_diff_range)
         .and_then(|(_, head)| head)
 }
 
@@ -2214,10 +2214,10 @@ fn spelled_lines(
     state: &ScoredState,
     diff_range: Option<&str>,
     needles: &[String],
-) -> crate::grep::Grepped<crate::snapshot::Row> {
+) -> diffctx_snapshot::grep::Grepped<diffctx_snapshot::snapshot::Row> {
     read_or_note(
         state,
-        crate::grep::grep_lines(
+        diffctx_snapshot::grep::grep_lines(
             &state.root_dir,
             &state.run.source(),
             needles,
@@ -2237,7 +2237,7 @@ fn unread_namers(state: &ScoredState, diff_range: Option<&str>, mut names: Vec<S
     names.truncate(MAX_REMOVED_NAMES_TRACED);
     let grepped = read_or_note(
         state,
-        crate::grep::grep_code_words(
+        diffctx_snapshot::grep::grep_code_words(
             &state.root_dir,
             &state.run.source(),
             &names,
@@ -2251,7 +2251,7 @@ fn unread_namers(state: &ScoredState, diff_range: Option<&str>, mut names: Vec<S
             .withheld
             .into_iter()
             .filter(|path| {
-                let at = crate::paths::repo_join(&state.root_dir, path);
+                let at = diffctx_base::paths::repo_join(&state.root_dir, path);
                 !state.diffed_files.contains(&at)
             })
             .collect(),
@@ -2261,9 +2261,9 @@ fn unread_namers(state: &ScoredState, diff_range: Option<&str>, mut names: Vec<S
         .iter()
         .map(|(path, _, _)| path.as_str())
         .filter(|path| {
-            !crate::source::in_scope(
+            !diffctx_snapshot::source::in_scope(
                 &state.root_dir,
-                &crate::paths::repo_join(&state.root_dir, path),
+                &diffctx_base::paths::repo_join(&state.root_dir, path),
                 &state.scope,
             )
         })
@@ -2430,12 +2430,12 @@ fn declaration_head(content: &str) -> String {
 /// is kept, so a failure is met again as the first one was.
 struct BaseTexts<'a> {
     root: &'a Path,
-    source: crate::source::Source,
+    source: diffctx_snapshot::source::Source,
     texts: std::cell::RefCell<FxHashMap<String, std::rc::Rc<str>>>,
 }
 
 impl<'a> BaseTexts<'a> {
-    fn new(root: &'a Path, base: crate::source::Source) -> Self {
+    fn new(root: &'a Path, base: diffctx_snapshot::source::Source) -> Self {
         Self {
             root,
             source: base,
@@ -2444,7 +2444,7 @@ impl<'a> BaseTexts<'a> {
     }
 
     /// `Ok(None)`: the base has no such file.
-    fn read(&self, rel_path: &str) -> crate::snapshot::Result<Option<std::rc::Rc<str>>> {
+    fn read(&self, rel_path: &str) -> diffctx_snapshot::snapshot::Result<Option<std::rc::Rc<str>>> {
         if let Some(text) = self.texts.borrow().get(rel_path) {
             return Ok(Some(text.clone()));
         }
@@ -2470,7 +2470,7 @@ fn signature_changed(state: &ScoredState, base_texts: &BaseTexts, core: &Fragmen
         Ok(Some(old)) => old,
         Ok(None) => return true,
         Err(e) => {
-            state.run.note(crate::resource::reason_for(&e));
+            state.run.note(diffctx_snapshot::resource::reason_for(&e));
             return true;
         }
     };
@@ -2486,7 +2486,7 @@ fn commit_bounds(diff_range: Option<&str>) -> Option<(String, String)> {
     if range == "HEAD" {
         return None;
     }
-    match crate::snapshot::split_diff_range(range) {
+    match diffctx_snapshot::snapshot::split_diff_range(range) {
         (Some(base), Some(head)) => Some((base, head)),
         (None, None) => Some((range.to_string(), "HEAD".to_string())),
         _ => None,
@@ -2501,7 +2501,7 @@ fn commits_touching(state: &ScoredState, base: &str, head: &str, frag: &Fragment
     let rel_path = rel(state, frag.path());
     let span = format!("{},{}:{}", frag.id.start_line, frag.id.end_line, rel_path);
     let range = format!("{base}..{head}");
-    let Ok(out) = crate::snapshot::run_git(
+    let Ok(out) = diffctx_snapshot::snapshot::run_git(
         &state.root_dir,
         &["log", "--format=%H", "--no-patch", "-L", &span, &range],
     ) else {
@@ -3874,7 +3874,7 @@ pub fn build_impact(
     // unanchored entry, are not each traced apart (gh#619).
     let over_the_cap = state
         .run
-        .limited_by(crate::resource::LimitReason::FileTooLarge);
+        .limited_by(diffctx_snapshot::resource::LimitReason::FileTooLarge);
     let mut cell_removed: Vec<decide::Changed> = Vec::new();
     let mut cell_untracked: Vec<&Fragment> = Vec::new();
     // A queried name in a file its cell lost (a syntax error, a read): the
@@ -3935,7 +3935,7 @@ pub fn build_impact(
             }
             let anchor = files
                 .fragments
-                .get(crate::paths::join_native(&state.root_dir, &entry.file).as_str())
+                .get(diffctx_base::paths::join_native(&state.root_dir, &entry.file).as_str())
                 .and_then(|frags| cell_anchor(frags, &entry));
             match anchor {
                 Some(f) if !cell_defs.contains_key(&f.id) => {
@@ -4174,7 +4174,7 @@ pub fn build_impact(
             for path in spelling_files(state, &cells, &rel(state, core.path()), &names) {
                 let Some(frags) = files
                     .fragments
-                    .get(crate::paths::join_native(&state.root_dir, &path).as_str())
+                    .get(diffctx_base::paths::join_native(&state.root_dir, &path).as_str())
                 else {
                     continue;
                 };
@@ -4218,7 +4218,7 @@ pub fn build_impact(
             }
             let owner = files
                 .fragments
-                .get(crate::paths::join_native(&state.root_dir, &u.file).as_str())
+                .get(diffctx_base::paths::join_native(&state.root_dir, &u.file).as_str())
                 .and_then(|frags| cell_caller(frags, u.line));
             if owner.is_some_and(|frag| within(&frag.id, core)) {
                 continue;
@@ -4293,7 +4293,8 @@ pub fn build_impact(
                 .filter(|c| rel(state, &c.changed_path) == path && span.contains(&c.changed_line))
             {
                 let frags = files.fragments.get(
-                    crate::paths::join_native(&state.root_dir, &rel(state, &reader.path)).as_str(),
+                    diffctx_base::paths::join_native(&state.root_dir, &rel(state, &reader.path))
+                        .as_str(),
                 );
                 if let Some(frag) = frags.and_then(|f| cell_caller(f, reader.line as u32)) {
                     sources.push((
@@ -4971,7 +4972,7 @@ pub fn build_impact(
         let Some(frag) = row.sites.first().and_then(|&site| {
             let frags = files
                 .fragments
-                .get(crate::paths::join_native(&state.root_dir, &row.path).as_str())?;
+                .get(diffctx_base::paths::join_native(&state.root_dir, &row.path).as_str())?;
             cell_caller(frags, site).map(|f| lifted_caller(frags, f))
         }) else {
             return row;
@@ -5401,13 +5402,13 @@ pub fn build_impact(
     // changed file outside code holds no definition and calls nothing: one
     // over the cap is named in `unanalysed`, and no caller is missing for it
     // (#626).
-    let (mut limits, _, _) = crate::resource::classify_limits(&state.run, &[], &|p| {
+    let (mut limits, _, _) = diffctx_snapshot::resource::classify_limits(&state.run, &[], &|p| {
         changed_set.contains(p) && (is_code_file(p) || Path::new(p).extension().is_none())
     });
     // A changed file cut to the fragment cap keeps every fragment the diff
     // touched: pack loses context there, impact loses no changed definition,
     // and the cap fires on most large files (#306).
-    limits.retain(|r| *r != crate::resource::LimitReason::FragmentLimit);
+    limits.retain(|r| *r != diffctx_snapshot::resource::LimitReason::FragmentLimit);
     // A symbol lookup reads the files naming the symbol itself.
     let outside_scope_files = if query.is_none() {
         unread_namers(state, analysed, traced_names)
@@ -5474,10 +5475,12 @@ pub fn build_impact(
 /// A read the answer depends on, or nothing with the run marked: a failed
 /// `git grep` read as no match turned callers and stale references into a
 /// clean zero with exit 0.
-fn read_or_note<T: Default>(state: &ScoredState, read: crate::snapshot::Result<T>) -> T {
+fn read_or_note<T: Default>(state: &ScoredState, read: diffctx_snapshot::snapshot::Result<T>) -> T {
     read.unwrap_or_else(|e| {
         tracing::warn!("impact: a git read failed ({e}); its answer is unknown");
-        state.run.note(crate::resource::LimitReason::ReadFailed);
+        state
+            .run
+            .note(diffctx_snapshot::resource::LimitReason::ReadFailed);
         T::default()
     })
 }
@@ -5554,7 +5557,7 @@ fn removed_definitions(
             // removed: the answer says so, never "nothing removed".
             if crate::parsers::has_grammar(old_path) {
                 state.run.note_file(
-                    crate::resource::LimitReason::ReadFailed,
+                    diffctx_snapshot::resource::LimitReason::ReadFailed,
                     old_path.to_string(),
                 );
             }
@@ -5603,13 +5606,15 @@ fn removed_definitions(
         .map(|(n, _, _, _, _)| n.clone())
         .collect();
     if removed.len() > names.len() {
-        state.run.note(crate::resource::LimitReason::CandidateLimit);
+        state
+            .run
+            .note(diffctx_snapshot::resource::LimitReason::CandidateLimit);
     }
     let wanted: FxHashSet<&str> = names.iter().map(String::as_str).collect();
     let mut hits_of: FxHashMap<&str, Vec<(String, u32, String)>> = FxHashMap::default();
     let grepped = read_or_note(
         state,
-        crate::grep::grep_code_words(
+        diffctx_snapshot::grep::grep_code_words(
             &state.root_dir,
             &state.run.source(),
             &names,
@@ -5636,7 +5641,9 @@ fn removed_definitions(
         })
         .collect();
     if cut {
-        state.run.note(crate::resource::LimitReason::CandidateLimit);
+        state
+            .run
+            .note(diffctx_snapshot::resource::LimitReason::CandidateLimit);
     }
     for (path, line, text) in rows {
         let spelled: FxHashSet<&str> = text
@@ -5669,7 +5676,7 @@ fn removed_definitions(
         // monorepo, never finishes.
         let unresolved = if at >= MAX_REMOVED_NAMES_TRACED {
             Some(Unknown::Unfinished {
-                stops: vec![crate::resource::LimitReason::CandidateLimit],
+                stops: vec![diffctx_snapshot::resource::LimitReason::CandidateLimit],
             })
         } else {
             (hits.len() > MAX_REMOVED_NAME_HITS).then(|| Unknown::CommonWord {
@@ -6136,7 +6143,9 @@ fn key_references(
     for (index, path, mut words, mut readers) in candidates {
         words.sort_by(|a, b| b.len().cmp(&a.len()).then_with(|| a.cmp(b)));
         if words.len() > MAX_KEY_TERMS_PER_FILE {
-            state.run.note(crate::resource::LimitReason::CandidateLimit);
+            state
+                .run
+                .note(diffctx_snapshot::resource::LimitReason::CandidateLimit);
             words.truncate(MAX_KEY_TERMS_PER_FILE);
         }
         let fresh = words.iter().filter(|w| !searched.contains(*w)).count();
@@ -6167,7 +6176,9 @@ fn key_references(
         tracing::warn!(
             "impact: the head's files could not be searched ({e}); the answer is unknown"
         );
-        state.run.note(crate::resource::LimitReason::ReadFailed);
+        state
+            .run
+            .note(diffctx_snapshot::resource::LimitReason::ReadFailed);
         decide::Spelled::default()
     });
     let changed: FxHashSet<String> = changed_rels(state).collect();
@@ -6340,7 +6351,7 @@ fn read_by_collection(
     let head = head_of(diff_range);
     let grepped = read_or_note(
         state,
-        crate::grep::grep_lines_matching(
+        diffctx_snapshot::grep::grep_lines_matching(
             &state.root_dir,
             &state.run.source(),
             r"(getCollection|getEntry|getEntries|getEntryBySlug|getDataEntryById)[[:space:]]*\(",
@@ -6443,7 +6454,7 @@ impl diffctx_base::fit::Shed for ImpactOutput {
         let stopped = self.run.clone().filter(|run| !run.check());
         for reason in stopped
             .iter()
-            .flat_map(|run| crate::resource::classify_limits(run, &[], &|_| false).0)
+            .flat_map(|run| diffctx_snapshot::resource::classify_limits(run, &[], &|_| false).0)
         {
             if let Err(at) = self.limits.binary_search(&reason) {
                 self.limits.insert(at, reason);
@@ -7069,10 +7080,10 @@ pub(crate) const MAX_TEXTUAL_SHOWN: usize = 12;
 /// reading. Code and config come first (Forgejo #114).
 pub(crate) fn symbol_named(
     root_dir: &Path,
-    source: &crate::source::Source,
+    source: &diffctx_snapshot::source::Source,
     lines: Vec<(String, u32, String)>,
     unread: Vec<UnanalysedFile>,
-    limits: Vec<crate::resource::LimitReason>,
+    limits: Vec<diffctx_snapshot::resource::LimitReason>,
 ) -> Option<SymbolNamed> {
     let mut rows: Vec<NamedFile> = lines
         .into_iter()

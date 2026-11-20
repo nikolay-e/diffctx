@@ -10,7 +10,7 @@ use _diffctx::facts::{
     BlobFacts, Def, Disambig, Export, Extractor, Fact, Import, ImportKind, Initializer, LocalKey,
     Namespace, Receiver, Ref, Scope, Star, Visibility,
 };
-use _diffctx::snapshot::{Loss, RunBudget};
+use diffctx_snapshot::snapshot::{Loss, RunBudget};
 
 fn ts(source: &str) -> BlobFacts {
     TypeScript.extract(source.as_bytes(), &RunBudget::default())

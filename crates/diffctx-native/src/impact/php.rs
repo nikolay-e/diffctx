@@ -65,7 +65,7 @@ pub(super) fn registered_by(
     let source = state.run.source();
     let grepped = read_or_note(
         state,
-        crate::grep::grep_lines_matching(
+        diffctx_snapshot::grep::grep_lines_matching(
             &state.root_dir,
             &source,
             &pattern,

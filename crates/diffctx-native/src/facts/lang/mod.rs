@@ -12,7 +12,7 @@ use crate::facts::extractor::{Extractor, Registry};
 use crate::facts::hash::Hasher;
 use crate::facts::language::Language;
 use crate::facts::{BlobFacts, Span, expired};
-use crate::snapshot::RunBudget;
+use diffctx_snapshot::snapshot::RunBudget;
 
 #[macro_use]
 mod walker;

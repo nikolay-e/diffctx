@@ -3,9 +3,9 @@ use std::collections::VecDeque;
 use rayon;
 use rustc_hash::{FxHashMap, FxHashSet};
 
-use crate::config::limits::PPR;
 use crate::graph::{CsrGraph, Graph};
 use diffctx_base::types::FragmentId;
+use diffctx_config::config::limits::PPR;
 
 fn init_seed_residuals(
     csr: &CsrGraph,
@@ -124,7 +124,7 @@ fn ppr_push_csr(
     let mut truncated = false;
 
     while let Some(u) = queue.pop_front() {
-        if pushes >= max_pushes || !crate::resource::poll_current_every(pushes, 4096) {
+        if pushes >= max_pushes || !diffctx_snapshot::resource::poll_current_every(pushes, 4096) {
             truncated = true;
             break;
         }

@@ -6,7 +6,7 @@ use _diffctx::facts::{
     BlobFacts, Def, DefKind, Disambig, EntryKind, Extractor, Fact, Import, ImportKind, LocalKey,
     LocalKind, Namespace, Receiver, Ref, Scope, UseKind, Visibility,
 };
-use _diffctx::snapshot::RunBudget;
+use diffctx_snapshot::snapshot::RunBudget;
 
 fn java(source: &str) -> BlobFacts {
     JavaExtractor.extract(source.as_bytes(), &RunBudget::default())

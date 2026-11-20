@@ -7,9 +7,9 @@ use std::sync::Arc;
 
 use once_cell::sync::Lazy;
 
-use crate::config::parsers::PARSERS;
-use crate::config::tokenization::TOKENIZATION;
 use diffctx_base::types::Fragment;
+use diffctx_config::config::parsers::PARSERS;
+use diffctx_config::config::tokenization::TOKENIZATION;
 
 trait FragmentationStrategy: Send + Sync {
     fn can_handle(&self, path: &str, content: &str) -> bool;
@@ -41,7 +41,7 @@ pub(crate) fn unanalysed_reason(
     content: impl FnOnce() -> Option<Vec<u8>>,
 ) -> Option<(&'static str, Vec<u32>)> {
     let ext = diffctx_base::languages::file_ext(std::path::Path::new(path));
-    if !crate::config::extensions::CODE_EXTENSIONS.contains(ext.as_str()) {
+    if !diffctx_config::config::extensions::CODE_EXTENSIONS.contains(ext.as_str()) {
         return None;
     }
     if !has_grammar(path) {

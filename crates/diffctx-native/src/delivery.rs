@@ -22,11 +22,11 @@ use serde_json::{Value, json};
 use crate::answer::envelope::fit_of;
 use crate::artifact::{self, Format, UNLIMITED_BUDGET_TOKENS};
 use crate::impact::{self, ImpactOutput};
-use crate::mode::ScoringMode;
 use crate::pipeline;
 use crate::render::DiffContextOutput;
-use crate::resource::{CoverageReport, CoverageStatus, LimitReason, ResourceUsage};
 use diffctx_base::tokenizer::count_tokens;
+use diffctx_config::mode::ScoringMode;
+use diffctx_snapshot::resource::{CoverageReport, CoverageStatus, LimitReason, ResourceUsage};
 
 /// A diff that yields no semantic context is an actionable result, not a
 /// success: the status a script keys on.
@@ -106,11 +106,11 @@ impl Request {
             envelope: String::new(),
             format: Format::Md,
             unfold: false,
-            alpha: crate::config::limits::DEFAULT_PPR_ALPHA,
+            alpha: diffctx_config::config::limits::DEFAULT_PPR_ALPHA,
             tau: None,
-            scoring: ScoringMode::from_str(crate::config::limits::DEFAULT_SCORING)
+            scoring: ScoringMode::from_str(diffctx_config::config::limits::DEFAULT_SCORING)
                 .expect("the shipped default scoring mode parses"),
-            timeout: crate::config::limits::DEFAULT_PIPELINE_TIMEOUT_SECONDS,
+            timeout: diffctx_config::config::limits::DEFAULT_PIPELINE_TIMEOUT_SECONDS,
             no_content: false,
             full: false,
             with_raw_diff: false,
@@ -443,7 +443,7 @@ fn empty_diff_hint(request: &Request, changed_files: &[String]) -> String {
             Ok(false) => range_hint(diff_ref),
             Err(_) => "git refused to read the working tree's status, so whether it matches HEAD is unknown; check with: git status".to_string(),
         },
-        _ if crate::snapshot::is_staged_keyword(diff_ref) => {
+        _ if diffctx_snapshot::snapshot::is_staged_keyword(diff_ref) => {
             "check the staged changes with: git diff --cached --stat".to_string()
         }
         _ => match is_duration_window(root, diff_ref) {
@@ -470,18 +470,23 @@ fn range_hint(diff_ref: &str) -> String {
     }
 }
 
-fn working_tree_is_clean(root: &Path) -> Result<bool, crate::snapshot::SnapshotError> {
-    Ok(crate::snapshot::run_git(root, &["status", "--porcelain"])?
-        .trim()
-        .is_empty())
+fn working_tree_is_clean(root: &Path) -> Result<bool, diffctx_snapshot::snapshot::SnapshotError> {
+    Ok(
+        diffctx_snapshot::snapshot::run_git(root, &["status", "--porcelain"])?
+            .trim()
+            .is_empty(),
+    )
 }
 
 /// Whether `diff_ref` is a time window (`24h`); a spelling that only looks like
 /// one is no window, and a read git refused is an error.
-fn is_duration_window(root: &Path, diff_ref: &str) -> Result<bool, crate::snapshot::SnapshotError> {
-    match crate::snapshot::duration_base(root, diff_ref) {
+fn is_duration_window(
+    root: &Path,
+    diff_ref: &str,
+) -> Result<bool, diffctx_snapshot::snapshot::SnapshotError> {
+    match diffctx_snapshot::snapshot::duration_base(root, diff_ref) {
         Ok(base) => Ok(base.is_some()),
-        Err(crate::snapshot::SnapshotError::InvalidDuration(_)) => Ok(false),
+        Err(diffctx_snapshot::snapshot::SnapshotError::InvalidDuration(_)) => Ok(false),
         Err(e) => Err(e),
     }
 }

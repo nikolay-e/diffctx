@@ -4,15 +4,15 @@ use once_cell::sync::Lazy;
 use regex::Regex;
 use rustc_hash::{FxHashMap, FxHashSet};
 
-use crate::config::edge_weights::SEMANTIC_DISCOVERY;
-use crate::config::extensions::CODE_EXTENSIONS;
 use diffctx_base::languages::file_ext;
 use diffctx_base::types::{Fragment, FragmentId};
+use diffctx_config::config::edge_weights::SEMANTIC_DISCOVERY;
+use diffctx_config::config::extensions::CODE_EXTENSIONS;
 
 use super::EdgeDict;
 
-pub(crate) use crate::paths::{index_key_of, normalize_lexical};
-pub(crate) use crate::resource::read_file_cached;
+pub(crate) use diffctx_base::paths::{index_key_of, normalize_lexical};
+pub(crate) use diffctx_snapshot::resource::read_file_cached;
 
 pub(crate) trait EdgeBuilder: Send + Sync {
     fn build(&self, fragments: &[Fragment], repo_root: Option<&Path>) -> EdgeDict;
@@ -174,8 +174,8 @@ impl FragmentIndex {
             };
             let matchable = repo_root
                 .and_then(|root| Path::new(f.path()).strip_prefix(root).ok())
-                .map(|rel| crate::paths::to_posix_display(rel.to_string_lossy()))
-                .unwrap_or_else(|| crate::paths::to_posix_display(f.path().into()));
+                .map(|rel| diffctx_base::paths::to_posix_display(rel.to_string_lossy()))
+                .unwrap_or_else(|| diffctx_base::paths::to_posix_display(f.path().into()));
             let idx = lower_paths.len() as u32;
             let lower = matchable.to_lowercase();
             for comp in lower.split('/').filter(|c| !c.is_empty()) {
@@ -502,7 +502,7 @@ fn component_aligned(path: &str, reference: &str, interior_needle: &str) -> bool
 fn candidate_rel_path(candidate: &Path, repo_root: Option<&Path>) -> String {
     if let Some(root) = repo_root {
         if let Ok(rel) = candidate.strip_prefix(root) {
-            return crate::paths::to_posix_display(rel.to_string_lossy()).to_lowercase();
+            return diffctx_base::paths::to_posix_display(rel.to_string_lossy()).to_lowercase();
         }
     }
     lower_file_name(candidate)
@@ -540,8 +540,8 @@ impl FragmentIndex {
         self.root
             .as_deref()
             .and_then(|root| Path::new(path).strip_prefix(root).ok())
-            .map(|rel| crate::paths::to_posix_display(rel.to_string_lossy()))
-            .unwrap_or_else(|| crate::paths::to_posix_display(path.into()))
+            .map(|rel| diffctx_base::paths::to_posix_display(rel.to_string_lossy()))
+            .unwrap_or_else(|| diffctx_base::paths::to_posix_display(path.into()))
     }
 
     /// The representative of the file at the repo-relative `rel`, compared

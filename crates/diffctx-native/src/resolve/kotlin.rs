@@ -45,7 +45,7 @@ use crate::facts::{
     Def, DefKey, DefKind, Disambig, Fact, FactsCache, FileFacts, Language, Name, Receiver, Ref,
     Scope, UseKind, Visibility, expired,
 };
-use crate::snapshot::{AnalysisContext, Result, SideTag, WorkspaceModel};
+use diffctx_snapshot::snapshot::{AnalysisContext, Result, SideTag, WorkspaceModel};
 
 /// A call through an untyped receiver is a candidate for at most this many
 /// members; past it the list says nothing a reader could use.

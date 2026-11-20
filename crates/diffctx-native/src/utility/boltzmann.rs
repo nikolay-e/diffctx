@@ -1,9 +1,9 @@
 use rustc_hash::{FxHashMap, FxHashSet};
 
-use crate::config::selection::boltzmann;
 use crate::select::{SelectionReason, SelectionResult};
 use diffctx_base::interval::IntervalIndex;
 use diffctx_base::types::{Fragment, FragmentId};
+use diffctx_config::config::selection::boltzmann;
 
 fn boltzmann_weight(rel_score: f64, token_count: u32, beta: f64) -> f64 {
     rel_score * (-beta * token_count as f64).exp()

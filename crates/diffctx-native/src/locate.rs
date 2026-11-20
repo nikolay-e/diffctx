@@ -61,14 +61,14 @@ pub struct Coverage {
     /// every surface uses (`diffctx.resource.LimitReason`). Empty on a
     /// complete run.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub limits: Vec<crate::resource::LimitReason>,
+    pub limits: Vec<diffctx_snapshot::resource::LimitReason>,
     /// Limits the run hit that cost these items nothing: graph caps, and
     /// per-file caps on files the answer does not touch (#306).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub capped: Vec<crate::resource::LimitReason>,
+    pub capped: Vec<diffctx_snapshot::resource::LimitReason>,
     /// The files behind the per-file reasons in `limits`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub limited_files: Vec<crate::resource::LimitedFile>,
+    pub limited_files: Vec<diffctx_snapshot::resource::LimitedFile>,
     /// How well the selection could see the change.
     #[serde(default, skip_serializing_if = "Selection::is_clean")]
     pub selection: Selection,
@@ -237,7 +237,7 @@ impl diffctx_base::fit::Shed for LocateOutput {
         self.items.remove(at);
         self.overflow.total += 1;
         self.summary = Summary::of(&self.items);
-        let reason = crate::resource::LimitReason::SelectionBudgetExceeded;
+        let reason = diffctx_snapshot::resource::LimitReason::SelectionBudgetExceeded;
         if !self.coverage.limits.contains(&reason) {
             self.coverage.limits.push(reason);
             self.coverage.limits.sort();
@@ -322,12 +322,12 @@ pub enum Reason {
 
 /// Falls back to the path as given when it lies outside the root: locate is a
 /// navigation list, and an unattributable entry is still more useful named than
-/// dropped. The separator handling comes from `crate::paths` so it matches the
+/// dropped. The separator handling comes from `diffctx_base::paths` so it matches the
 /// pack renderer instead of unconditionally rewriting backslashes, which on
 /// POSIX renames a legal file.
 fn rel_path(state: &ScoredState, path: &str) -> String {
-    crate::paths::display_rel(&state.root_dir, Path::new(path))
-        .unwrap_or_else(|| crate::paths::to_posix_display(std::borrow::Cow::Borrowed(path)))
+    diffctx_base::paths::display_rel(&state.root_dir, Path::new(path))
+        .unwrap_or_else(|| diffctx_base::paths::to_posix_display(std::borrow::Cow::Borrowed(path)))
 }
 
 fn reasons_for(
@@ -430,7 +430,7 @@ fn build_coverage(
 
     let about = answer_paths(state, outcome.selected.iter());
     let (limits, capped, limited_files) =
-        crate::resource::classify_limits(&state.run, &[], &|p| about.contains(p));
+        diffctx_snapshot::resource::classify_limits(&state.run, &[], &|p| about.contains(p));
 
     Coverage {
         limits,
@@ -602,7 +602,7 @@ pub fn build_locate(state: &ScoredState, outcome: &SelectionOutcome) -> LocateOu
     if !redactions.is_empty() {
         coverage
             .limits
-            .push(crate::resource::LimitReason::SanitizationRedaction);
+            .push(diffctx_snapshot::resource::LimitReason::SanitizationRedaction);
         coverage.limits.sort();
         coverage.limits.dedup();
     }
@@ -811,7 +811,7 @@ mod tests {
         assert!(
             out.coverage
                 .limits
-                .contains(&crate::resource::LimitReason::SelectionBudgetExceeded)
+                .contains(&diffctx_snapshot::resource::LimitReason::SelectionBudgetExceeded)
         );
     }
 }

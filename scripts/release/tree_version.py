@@ -4,7 +4,7 @@ A release patches the tree surfaces and the user pins together; once it has
 shipped, the tree moves on to `X.Y.(Z+1).dev0` and the pins stay on the release.
 Only the tree surfaces are written here: the version module, pyproject, the
 workspace manifest (the version every crate inherits, and the one the diffctx
-crate asks of diffctx-base) and the diffctx entries of Cargo.lock and uv.lock.
+crate asks of the crates below it) and the diffctx entries of Cargo.lock and uv.lock.
 """
 
 from __future__ import annotations
@@ -48,13 +48,22 @@ def _rewrite(path: Path, pattern: str, replacement: str, what: str) -> None:
     path.write_text(text, encoding="utf-8")
 
 
+INTERNAL_CRATES = ("diffctx-base", "diffctx-config", "diffctx-snapshot")
+
+
 def set_tree_version(version: str, root: Path = ROOT) -> None:
     cargo = cargo_spelling(version)
     _rewrite(root / "src/diffctx/version.py", r'(__version__\s*=\s*")[^"]*(")', version, "__version__ assignment")
     _rewrite(root / "pyproject.toml", r'(?m)(^version\s*=\s*")[^"]+(")', version, "[project].version")
     _rewrite(root / "Cargo.toml", r'(?m)(^version\s*=\s*")[^"]+(")', cargo, "[workspace.package].version")
-    _rewrite(root / "Cargo.toml", r'(diffctx-base = \{[^}\n]*version = ")[^"]+(")', cargo, "the diffctx-base dependency version")
-    for crate in ("diffctx", "diffctx-base"):
+    for crate in INTERNAL_CRATES:
+        _rewrite(
+            root / "Cargo.toml",
+            rf'({crate} = \{{[^}}\n]*version = ")[^"]+(")',
+            cargo,
+            f"the {crate} dependency version",
+        )
+    for crate in ("diffctx", *INTERNAL_CRATES):
         _rewrite(
             root / "Cargo.lock", rf'(\[\[package\]\]\nname = "{crate}"\nversion = ")[^"]+(")', cargo, f"{crate} package entry"
         )

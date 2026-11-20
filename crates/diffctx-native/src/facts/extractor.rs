@@ -6,7 +6,7 @@ use std::time::Instant;
 use crate::facts::lang;
 use crate::facts::language::Language;
 use crate::facts::model::BlobFacts;
-use crate::snapshot::RunBudget;
+use diffctx_snapshot::snapshot::RunBudget;
 
 /// One language's reader of a blob. Pure: the same bytes give the same facts,
 /// which is what lets the cache key on the blob, the build's fingerprint and the

@@ -9,8 +9,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::answer::envelope::{self, Inventory};
 use crate::answer::v2::{Fit, Range};
-use crate::config::render::RENDER;
 use diffctx_base::types::{Fragment, FragmentId, FragmentKind};
+use diffctx_config::config::render::RENDER;
 
 /// Orientation header for the diff-context output: tells the reader *what*
 /// changed before they read the fragments. Empty for working-tree / no-commit
@@ -98,7 +98,7 @@ pub struct DiffContextOutput {
     /// Present only when a limit stopped the run short: what stopped it and
     /// what was consumed. A complete run's output carries no block.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub coverage: Option<crate::resource::CoverageReport>,
+    pub coverage: Option<diffctx_snapshot::resource::CoverageReport>,
     /// Present only when the sanitizer replaced a credential-shaped string
     /// somewhere in this artifact — fragment text, a commit message.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -364,7 +364,7 @@ fn extract_symbol(frag: &Fragment) -> Option<String> {
 /// like with like. A private variant here stripped an un-canonicalised root
 /// and could disagree with the list on a symlinked checkout (#263).
 pub(crate) fn get_relative_path(frag: &Fragment, repo_root: &Path) -> String {
-    crate::paths::display_rel_or_abs(repo_root, Path::new(frag.path()))
+    diffctx_base::paths::display_rel_or_abs(repo_root, Path::new(frag.path()))
 }
 
 fn create_fragment_entry(frag: &Fragment, path_str: &str) -> FragmentEntry {

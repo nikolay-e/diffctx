@@ -5,15 +5,15 @@ use once_cell::sync::Lazy;
 use rayon::prelude::*;
 use rustc_hash::FxHashSet;
 
-use crate::candidate_files::normalize_path;
-use crate::config::fragmentation::FRAGMENTATION;
-use crate::config::limits::LIMITS;
-use crate::config::tokenization::TOKENIZATION;
 use crate::parsers::fragment_file;
-use crate::source::Source;
 use diffctx_base::languages::file_ext;
 use diffctx_base::tokenizer::count_tokens;
 use diffctx_base::types::{Fragment, FragmentId, FragmentKind, extract_identifiers};
+use diffctx_config::config::fragmentation::FRAGMENTATION;
+use diffctx_config::config::limits::LIMITS;
+use diffctx_config::config::tokenization::TOKENIZATION;
+use diffctx_snapshot::candidate_files::normalize_path;
+use diffctx_snapshot::source::Source;
 
 // Content reaching here is already-decoded UTF-8 text, so the only reliable
 // binary signal is an embedded NUL (matching git's own heuristic). The old
@@ -223,7 +223,7 @@ enum FileRead {
     /// The run's deadline or cancellation stopped the read, or the read
     /// failed: the file is unknown, and reading the disk instead would answer
     /// for another snapshot.
-    Lost(crate::resource::LimitReason),
+    Lost(diffctx_snapshot::resource::LimitReason),
 }
 
 /// The one decoder for file bytes, whichever store they came from. A
@@ -258,8 +258,8 @@ fn read_file_content(
     }
 
     let abs_path = normalize_path(file_path, root_dir);
-    let resolved_root =
-        crate::paths::canonical_root(root_dir).unwrap_or_else(|| root_dir.to_path_buf());
+    let resolved_root = diffctx_snapshot::resource::canonical_root(root_dir)
+        .unwrap_or_else(|| root_dir.to_path_buf());
     if abs_path.strip_prefix(&resolved_root).is_err() {
         return FileRead::Unreadable;
     }
@@ -277,10 +277,10 @@ fn read_file_content(
         let bytes = match side.read(&abs_path) {
             Ok(Some(bytes)) => bytes,
             Ok(None) => continue,
-            Err(crate::snapshot::SnapshotError::Cancelled) => {
-                return FileRead::Lost(crate::resource::LimitReason::Cancelled);
+            Err(diffctx_snapshot::snapshot::SnapshotError::Cancelled) => {
+                return FileRead::Lost(diffctx_snapshot::resource::LimitReason::Cancelled);
             }
-            Err(e) => return FileRead::Lost(crate::resource::reason_for(&e)),
+            Err(e) => return FileRead::Lost(diffctx_snapshot::resource::reason_for(&e)),
         };
         if bytes.len() > max_size {
             oversized = true;
@@ -313,7 +313,7 @@ pub(crate) fn process_files_for_fragments(
     root_dir: &Path,
     seen_frag_ids: &mut FxHashSet<FragmentId>,
     is_changed: bool,
-    ctx: &crate::resource::RunContext,
+    ctx: &diffctx_snapshot::resource::RunContext,
 ) -> Vec<Fragment> {
     fragment_files(files, root_dir, seen_frag_ids, is_changed, ctx, &[])
 }
@@ -328,7 +328,7 @@ pub(crate) fn fragment_files(
     root_dir: &Path,
     seen_frag_ids: &mut FxHashSet<FragmentId>,
     is_changed: bool,
-    ctx: &crate::resource::RunContext,
+    ctx: &diffctx_snapshot::resource::RunContext,
     hunks: &[diffctx_base::types::DiffHunk],
 ) -> Vec<Fragment> {
     let max_source_bytes = ctx.budget().max_source_bytes;
@@ -349,7 +349,7 @@ pub(crate) fn fragment_files(
                 break;
             }
             if ctx.usage().source_bytes > max_source_bytes {
-                ctx.note(crate::resource::LimitReason::TotalByteLimit);
+                ctx.note(diffctx_snapshot::resource::LimitReason::TotalByteLimit);
                 break;
             }
         }
@@ -380,7 +380,7 @@ fn read_chunk(
     chunk: &[PathBuf],
     root_dir: &Path,
     is_changed: bool,
-    ctx: &crate::resource::RunContext,
+    ctx: &diffctx_snapshot::resource::RunContext,
 ) -> Vec<(PathBuf, String)> {
     let source = ctx.source();
     let contents: Vec<(PathBuf, String)> = chunk
@@ -389,21 +389,23 @@ fn read_chunk(
             |file_path| match read_file_content(file_path, root_dir, &source, is_changed) {
                 FileRead::Text { content, lossy } => {
                     if lossy {
-                        ctx.note_lossy(crate::paths::display_rel_or_abs(root_dir, file_path));
+                        ctx.note_lossy(diffctx_base::paths::display_rel_or_abs(
+                            root_dir, file_path,
+                        ));
                     }
                     Some((file_path.clone(), content))
                 }
                 FileRead::TooLarge => {
                     ctx.note_file(
-                        crate::resource::LimitReason::FileTooLarge,
-                        crate::paths::display_rel_or_abs(root_dir, file_path),
+                        diffctx_snapshot::resource::LimitReason::FileTooLarge,
+                        diffctx_base::paths::display_rel_or_abs(root_dir, file_path),
                     );
                     None
                 }
                 FileRead::Lost(reason) => {
                     ctx.note_file(
                         reason,
-                        crate::paths::display_rel_or_abs(root_dir, file_path),
+                        diffctx_base::paths::display_rel_or_abs(root_dir, file_path),
                     );
                     None
                 }
@@ -429,7 +431,7 @@ fn fragment_one(
     content: &str,
     is_changed: bool,
     hunks: &[diffctx_base::types::DiffHunk],
-    ctx: &crate::resource::RunContext,
+    ctx: &diffctx_snapshot::resource::RunContext,
 ) -> Vec<Fragment> {
     let path_arc: Arc<str> = Arc::from(file_path.to_string_lossy().as_ref());
     let mut raw_frags = fragment_file(Arc::clone(&path_arc), content);
@@ -456,10 +458,10 @@ fn fragment_one(
         if !generated {
             ctx.note_file(
                 match capped {
-                    Some(_) => crate::resource::LimitReason::FragmentLimit,
-                    None => crate::resource::LimitReason::FileTooLarge,
+                    Some(_) => diffctx_snapshot::resource::LimitReason::FragmentLimit,
+                    None => diffctx_snapshot::resource::LimitReason::FileTooLarge,
                 },
-                crate::paths::display_rel_or_abs(root_dir, file_path),
+                diffctx_base::paths::display_rel_or_abs(root_dir, file_path),
             );
         }
         raw_frags = capped.unwrap_or_default();

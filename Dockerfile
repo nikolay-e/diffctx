@@ -8,6 +8,8 @@ WORKDIR /build
 COPY README.md ./
 COPY Cargo.toml Cargo.lock ./
 COPY crates/diffctx-base ./crates/diffctx-base
+COPY crates/diffctx-snapshot ./crates/diffctx-snapshot
+COPY crates/diffctx-config ./crates/diffctx-config
 COPY crates/diffctx-native/Cargo.toml crates/diffctx-native/build.rs ./crates/diffctx-native/
 COPY crates/diffctx-native/src ./crates/diffctx-native/src
 COPY crates/diffctx-native/tests ./crates/diffctx-native/tests

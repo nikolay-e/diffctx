@@ -57,10 +57,12 @@ class TestOneVersionEverywhere:
         tree_version.set_tree_version(version, tree)
         manifest = _read(tree, "Cargo.toml")
         assert re.search(rf'(?m)^version = "{re.escape(cargo)}"$', manifest)
-        assert re.search(rf'(?m)^diffctx-base = \{{[^}}\n]*version = "{re.escape(cargo)}"', manifest)
+        for crate in tree_version.INTERNAL_CRATES:
+            assert re.search(rf'(?m)^{crate} = \{{[^}}\n]*version = "{re.escape(cargo)}"', manifest)
         lock = _read(tree, "Cargo.lock")
         assert f'name = "diffctx"\nversion = "{cargo}"' in lock
-        assert f'name = "diffctx-base"\nversion = "{cargo}"' in lock
+        for crate in tree_version.INTERNAL_CRATES:
+            assert f'name = "{crate}"\nversion = "{cargo}"' in lock
 
     def test_the_python_surfaces_carry_the_pep_440_string(self, tree):
         tree_version.set_tree_version("2.1.0rc2", tree)

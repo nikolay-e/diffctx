@@ -3,10 +3,10 @@ use std::sync::Arc;
 
 use rustc_hash::{FxHashMap, FxHashSet};
 
-use crate::config::limits::UTILITY;
-use crate::config::needs::NEEDS;
 use crate::utility::needs::{InformationNeed, match_strength_typed};
 use diffctx_base::types::Fragment;
+use diffctx_config::config::limits::UTILITY;
+use diffctx_config::config::needs::NEEDS;
 
 #[derive(Clone)]
 pub(crate) struct UtilityState {

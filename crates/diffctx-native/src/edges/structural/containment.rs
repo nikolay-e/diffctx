@@ -2,8 +2,8 @@ use std::path::Path;
 
 use rustc_hash::FxHashMap;
 
-use crate::config::weights::EDGE_WEIGHTS;
 use diffctx_base::types::Fragment;
+use diffctx_config::config::weights::EDGE_WEIGHTS;
 
 use super::super::EdgeDict;
 use super::super::base::{EdgeBuilder, add_edge};

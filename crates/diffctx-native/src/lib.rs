@@ -5,20 +5,14 @@
 //! change or disappear between releases without a semver signal.
 
 // Input: git plumbing and path handling.
-pub(crate) mod diff_parse;
-pub(crate) mod grep;
 pub mod in_memory_harness;
-mod paths;
-pub mod snapshot;
 
 // Change set: what the diff touched, cut into fragments.
-pub(crate) mod candidate_files;
 pub mod change_class;
 pub(crate) mod decide;
 pub(crate) mod fold;
 pub(crate) mod fragmentation;
 pub(crate) mod parsers;
-pub(crate) mod signatures;
 pub(crate) mod tokens;
 
 // Graph: relationships between fragments.
@@ -36,7 +30,6 @@ pub(crate) mod discovery;
 pub(crate) mod filtering;
 pub(crate) mod ppr;
 pub(crate) mod scoring;
-pub(crate) mod stopwords;
 pub(crate) mod token_corpus;
 
 // Selection: the budgeted greedy and its repairs.
@@ -55,13 +48,9 @@ pub(crate) mod overlay;
 pub mod render;
 
 // Orchestration and shared configuration.
-pub mod config;
 pub mod effective_config;
-pub mod mode;
 pub mod pipeline;
-pub mod resource;
 pub mod run_provenance;
-pub(crate) mod source;
 #[cfg(test)]
 pub(crate) mod test_rng;
 mod vocabulary;

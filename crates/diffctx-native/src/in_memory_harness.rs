@@ -5,12 +5,12 @@ use std::sync::Arc;
 use rustc_hash::{FxHashMap, FxHashSet};
 use similar::{ChangeTag, TextDiff};
 
-use crate::config::budget::BUDGET;
-use crate::config::tokenization::TOKENIZATION;
-use crate::mode::{PipelineConfig, ScoringMode};
 use crate::parsers::fragment_file;
 use crate::render::{DiffContextOutput, build_diff_context_output};
 use diffctx_base::types::{DiffHunk, Fragment, FragmentId};
+use diffctx_config::config::budget::BUDGET;
+use diffctx_config::config::tokenization::TOKENIZATION;
+use diffctx_config::mode::{PipelineConfig, ScoringMode};
 
 pub struct MemoryRepo {
     pub name: String,
@@ -97,7 +97,7 @@ impl TempTree {
             std::fs::write(at, content).ok()?;
         }
         let git = |args: &[&str]| {
-            crate::snapshot::git_command(&tree.root)
+            diffctx_snapshot::snapshot::git_command(&tree.root)
                 .args(args)
                 .env("GIT_CONFIG_GLOBAL", "/dev/null")
                 .env("GIT_CONFIG_NOSYSTEM", "1")
@@ -140,7 +140,7 @@ pub fn final_state_edges(repo: &MemoryRepo) -> Vec<FileEdge> {
         &fragments,
         tree.as_ref().map(|t| t.root.as_path()),
         false,
-        &crate::resource::RunContext::unbounded(),
+        &diffctx_snapshot::resource::RunContext::unbounded(),
     );
     let mut out: Vec<FileEdge> = capped
         .edges
@@ -177,7 +177,7 @@ pub struct TypedKeyLink {
 /// part of the change.
 pub fn typed_key_links(repo: &MemoryRepo) -> Vec<TypedKeyLink> {
     let fragments = final_state_fragments(repo);
-    let run = crate::resource::RunContext::unbounded();
+    let run = diffctx_snapshot::resource::RunContext::unbounded();
     run.set_changed_lines(diffctx_base::changed_lines::ChangedLines::from_diff(
         &compute_memory_diff_text(&repo.initial_files, &repo.changed_files),
     ));
@@ -226,7 +226,7 @@ pub fn build_diff_context_in_memory(
 
     let mut config = PipelineConfig::from_mode(scoring_mode);
     config.ppr_alpha = alpha;
-    let run = crate::resource::RunContext::unbounded();
+    let run = diffctx_snapshot::resource::RunContext::unbounded();
     run.set_changed_lines(diffctx_base::changed_lines::ChangedLines::from_diff(
         &diff_text,
     ));
@@ -253,7 +253,7 @@ pub fn build_diff_context_in_memory(
         expansion_concepts,
         file_cache: file_cache.clone(),
         token_corpus: std::sync::OnceLock::new(),
-        source: crate::source::Source::empty(),
+        source: diffctx_snapshot::source::Source::empty(),
         run: run.clone(),
     };
     let (discovered, _attribution) =
@@ -364,7 +364,7 @@ pub fn build_diff_context_in_memory(
         &changed_files,
         remaining,
         Path::new("."),
-        &crate::source::Source::empty(),
+        &diffctx_snapshot::source::Source::empty(),
         &core_ids,
         &FxHashMap::default(),
         &stand_in_ids,
@@ -584,7 +584,7 @@ mod tests {
 
         // `--no-index` needs no repository and emits exactly the header and
         // hunk syntax `parse_diff` consumes in production.
-        let output = crate::snapshot::git_command(tmp.path())
+        let output = diffctx_snapshot::snapshot::git_command(tmp.path())
             .args([
                 "diff",
                 "--no-index",
@@ -596,7 +596,8 @@ mod tests {
             .output()
             .expect("git diff --no-index");
         let diff_text = String::from_utf8_lossy(&output.stdout);
-        let from_git = crate::diff_parse::parse_hunks_from_diff_output(&diff_text, tmp.path());
+        let from_git =
+            diffctx_snapshot::diff_parse::parse_hunks_from_diff_output(&diff_text, tmp.path());
         assert_eq!(from_git.len(), 1, "git reported {diff_text:?}");
 
         let path: Arc<str> = Arc::from("f.py");

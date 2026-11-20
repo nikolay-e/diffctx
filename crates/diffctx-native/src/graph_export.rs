@@ -68,7 +68,7 @@ fn relative_path(path: &str, root: Option<&Path>) -> String {
     };
     let p = PathBuf::from(path);
     match p.strip_prefix(root) {
-        Ok(rel) => crate::paths::to_posix_display(rel.to_string_lossy()),
+        Ok(rel) => diffctx_base::paths::to_posix_display(rel.to_string_lossy()),
         Err(_) => path.to_string(),
     }
 }
@@ -628,7 +628,7 @@ mod tests {
 
     #[test]
     fn export_stays_cap_consistent_when_edge_cap_fires() {
-        use crate::config::limits::DEFAULT_MAX_OUT_EDGES_PER_NODE;
+        use diffctx_config::config::limits::DEFAULT_MAX_OUT_EDGES_PER_NODE;
 
         let hub = make_fragment("hub.rs", 1, 10, Some("hub"));
         let mut frags = vec![hub.clone()];

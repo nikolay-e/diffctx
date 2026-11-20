@@ -6,7 +6,7 @@
 use toml::Spanned;
 use toml::de::{DeTable, DeValue};
 
-use crate::snapshot::RunBudget;
+use diffctx_snapshot::snapshot::RunBudget;
 
 use super::Reading;
 use super::syntax::{self, Guard, LineIndex};
