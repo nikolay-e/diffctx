@@ -1,0 +1,51 @@
+name: rs_two_impls_of_a_changed_trait_method_in_one_file_are_two_implementers
+mode: impact
+source: synthetic
+issue_state: open
+tags: [rust, trait, impl, same-name]
+repo:
+  initial_files:
+    Cargo.toml: |
+      [package]
+      name = "app"
+      version = "0.1.0"
+      edition = "2021"
+    src/lib.rs: |
+      pub mod ext;
+      pub mod impls;
+      pub mod types;
+    src/types.rs: |
+      pub struct Foo(pub i32);
+      pub struct Bar(pub i32);
+    src/ext.rs: |
+      pub trait Double {
+          fn double(&self) -> i32;
+      }
+    src/impls.rs: |
+      use crate::ext::Double;
+      use crate::types::{Bar, Foo};
+
+      impl Double for Foo {
+          fn double(&self) -> i32 {
+              self.0 * 2
+          }
+      }
+
+      impl Double for Bar {
+          fn double(&self) -> i32 {
+              self.0 * 3
+          }
+      }
+  changed_files:
+    src/ext.rs: |
+      pub trait Double {
+          fn double(&self, by: i32) -> i32;
+      }
+  commit_message: change the trait method
+expect:
+  changed: ['src/ext.rs::double']
+  relations:
+  - {from: 'src/impls.rs::Foo.double', to: 'src/ext.rs::double', kind: overrides}
+  - {from: 'src/impls.rs::Bar.double', to: 'src/ext.rs::double', kind: overrides}
+  partial:
+    src/ext.rs::double: {calls: dispatched, reads: dispatched}
