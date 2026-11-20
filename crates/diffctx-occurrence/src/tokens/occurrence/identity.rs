@@ -15,7 +15,6 @@ use serde_json::{Value, json};
 
 use super::scanner::{Standing, matches, standing_at};
 use super::{AliasScope, Case, Entry, Outcome};
-use crate::decide::Gap;
 use diffctx_facts::facts::{FileFacts, Language, Name};
 use diffctx_snapshot::snapshot::{Bytes, RepoPath};
 
@@ -27,6 +26,8 @@ pub struct Bounds<'a> {
     pub pathspec: &'a dyn Fn(&str) -> bool,
     /// A local's own file: its name elsewhere is another name.
     pub own_file: Option<&'a str>,
+    /// The run left files outside its scope: a match there is that gap.
+    pub outside_scope: bool,
 }
 
 /// The files a name may be matched in, besides the ones the account visited.
@@ -39,8 +40,6 @@ pub struct Universe<'a> {
     pub listing: Vec<RepoPath>,
     pub read: &'a dyn Fn(&RepoPath) -> Option<Bytes>,
     pub bounds: &'a Bounds<'a>,
-    /// The gaps of the run that stand against every relation.
-    pub gaps: &'a [Gap],
 }
 
 enum Sink {
@@ -240,7 +239,7 @@ impl Ledger {
     /// run, a not-ours of a local's scope, or a violation. Files of other groups are
     /// counted apart.
     pub fn universe(&mut self, universe: &Universe<'_>) {
-        let covered = (universe.gaps.iter()).any(|gap| matches!(gap, Gap::OutsideScope { .. }));
+        let covered = universe.bounds.outside_scope;
         let bounds = universe.bounds;
         let own: HashSet<&RepoPath> = universe.group.iter().chain(universe.outside).collect();
         let mut other_group: HashSet<&RepoPath> = HashSet::new();

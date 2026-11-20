@@ -6,12 +6,12 @@
 
 #![deny(clippy::disallowed_methods)]
 
-use crate::resolve::Relation;
 use diffctx_facts::facts::{DefKind, Language};
+use diffctx_resolve::resolve::Relation;
 
 /// Why a row is folded.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum Rule {
+pub(crate) enum Rule {
     /// An override replaces the body: it does not run it.
     OverrideNotRun,
     /// An import or a re-export names the definition, not what it does.
@@ -27,7 +27,7 @@ pub enum Rule {
 }
 
 impl Rule {
-    pub const fn name(self) -> &'static str {
+    pub(crate) const fn name(self) -> &'static str {
         match self {
             Self::OverrideNotRun => "override-not-run",
             Self::ImportsABody => "imports-a-body",

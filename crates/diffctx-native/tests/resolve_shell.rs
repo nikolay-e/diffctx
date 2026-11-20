@@ -6,8 +6,8 @@
 
 mod snapshot_fixture;
 
-use _diffctx::resolve::{Binding, CandidateReason, Relation, Resolution, ShellResolver};
 use diffctx_facts::facts::{DefKey, FactsCache};
+use diffctx_resolve::resolve::{Binding, CandidateReason, Relation, Resolution, ShellResolver};
 use diffctx_snapshot::snapshot::{AnalysisContext, RangeSpec, RunBudget, Side, SideTag};
 use snapshot_fixture::Repo;
 

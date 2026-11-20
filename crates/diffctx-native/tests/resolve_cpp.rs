@@ -21,8 +21,8 @@ use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use _diffctx::resolve::{Binding, CResolver, CandidateReason, Relation, Resolution};
 use diffctx_facts::facts::{DefKey, Disambig, FactsCache, LocalKey, Name, Scope, semantic_changes};
+use diffctx_resolve::resolve::{Binding, CResolver, CandidateReason, Relation, Resolution};
 use diffctx_snapshot::snapshot::{
     AnalysisContext, RangeSpec, RunBudget, Side, SideTag, working_tree,
 };

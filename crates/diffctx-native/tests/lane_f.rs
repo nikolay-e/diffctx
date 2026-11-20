@@ -169,7 +169,10 @@ const BOUNDED_REGIONS: &[(&str, Option<&str>)] = &[
     ("src/token_corpus.rs", Some("build")),
     ("src/pipeline.rs", Some("build_file_cache")),
     ("src/impact.rs", Some("unanalysed_files")),
-    ("src/tokens/occurrence/debug.rs", Some("embedded_uses")),
+    (
+        "../diffctx-occurrence/src/tokens/occurrence/debug.rs",
+        Some("embedded_uses"),
+    ),
     ("src/impact/mentions.rs", Some("stale_references")),
     ("src/impact.rs", Some("fit_with")),
     ("../diffctx-base/src/fit.rs", None),

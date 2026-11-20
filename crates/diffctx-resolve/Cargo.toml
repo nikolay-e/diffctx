@@ -1,0 +1,23 @@
+[package]
+name = "diffctx-resolve"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "The resolvers of diffctx: a name to its definition per language, with the bindings the imports and scopes of a file give it, and no verdict on what a use may claim"
+license.workspace = true
+repository.workspace = true
+homepage = "https://diffctx.com/"
+readme = "../../README.md"
+keywords = ["git", "diff", "llm", "context"]
+categories = ["development-tools"]
+
+[dependencies]
+anyhow.workspace = true
+diffctx-base.workspace = true
+diffctx-config.workspace = true
+diffctx-facts.workspace = true
+diffctx-snapshot.workspace = true
+serde_json.workspace = true
+
+[lints]
+workspace = true

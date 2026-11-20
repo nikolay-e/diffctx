@@ -46,7 +46,7 @@ pub enum Family {
 }
 
 impl Family {
-    pub(crate) const ALL: [Self; 14] = [
+    pub const ALL: [Self; 14] = [
         Self::Python,
         Self::TypeScript,
         Self::Rust,
@@ -63,7 +63,7 @@ impl Family {
         Self::Sql,
     ];
 
-    pub(crate) fn has(self, language: Language) -> bool {
+    pub fn has(self, language: Language) -> bool {
         match self {
             Self::Python => language == Language::Python,
             Self::TypeScript => matches!(
@@ -89,11 +89,11 @@ impl Family {
     /// loaded, not through an import of that file: a shell function is global once
     /// sourced, so a script that sources nothing may still call one a deleted file
     /// defined, and a name the head no longer defines is no proof it is not that one.
-    pub(crate) const fn names_are_global(self) -> bool {
+    pub const fn names_are_global(self) -> bool {
         matches!(self, Self::Shell)
     }
 
-    pub(crate) fn name(self) -> &'static str {
+    pub fn name(self) -> &'static str {
         match self {
             Self::Python => "Python",
             Self::TypeScript => "TypeScript/JavaScript",
@@ -113,7 +113,7 @@ impl Family {
     }
 
     /// Whether a file of this extension is read by the family's resolver.
-    pub(crate) fn has_path(self, path: &str) -> bool {
+    pub fn has_path(self, path: &str) -> bool {
         // A YAML file is the configuration cell's only where it holds objects
         // (`Cell::owns` reads that off the resolver): the rest of the YAML of a
         // repository (workflows, compose files, values) is read by other paths.
@@ -203,7 +203,7 @@ impl Group {
 }
 
 /// The resolver of a family, behind the one set of questions a cell asks.
-pub(crate) enum Resolver {
+pub enum Resolver {
     Python(PythonResolver),
     TypeScript(TypeScriptResolver),
     Rust(RustResolver),
@@ -221,7 +221,7 @@ pub(crate) enum Resolver {
 }
 
 impl Resolver {
-    pub(crate) fn open(
+    pub fn open(
         family: Family,
         ctx: &AnalysisContext,
         side: SideTag,
@@ -252,7 +252,7 @@ impl Resolver {
         })
     }
 
-    pub(crate) fn bindings(&self) -> &[Binding] {
+    pub fn bindings(&self) -> &[Binding] {
         match self {
             Self::Python(r) => r.bindings(),
             Self::TypeScript(r) => r.bindings(),
@@ -272,7 +272,7 @@ impl Resolver {
     }
 
     /// The modules a name names, for the families that import modules by name.
-    pub(crate) fn modules_named(&self, dotted: &str) -> Vec<RepoPath> {
+    pub fn modules_named(&self, dotted: &str) -> Vec<RepoPath> {
         match self {
             Self::Python(r) => r.modules_named(dotted),
             _ => Vec::new(),
@@ -282,7 +282,7 @@ impl Resolver {
     /// How many files that `may_reach` compute a name that could be a definition's
     /// (`getattr(obj, name)`, `Lib.class.getMethod(name)`), for the families whose
     /// facts say so.
-    pub(crate) fn name_computers(
+    pub fn name_computers(
         &self,
         member: bool,
         classes: &[Name],
@@ -297,11 +297,11 @@ impl Resolver {
     }
 
     /// Whether Jackson calls the Java getter the key names.
-    pub(crate) fn serialized(&self, key: &DefKey) -> bool {
+    pub fn serialized(&self, key: &DefKey) -> bool {
         matches!(self, Self::Java(r) if r.serialized(key))
     }
 
-    pub(crate) fn definitions(&self) -> &[Definition] {
+    pub fn definitions(&self) -> &[Definition] {
         match self {
             Self::Python(r) => r.definitions(),
             Self::TypeScript(r) => r.definitions(),
@@ -320,7 +320,7 @@ impl Resolver {
         }
     }
 
-    pub(crate) fn references_to(&self, key: &DefKey) -> Vec<&Binding> {
+    pub fn references_to(&self, key: &DefKey) -> Vec<&Binding> {
         match self {
             Self::Python(r) => r.references_to(key),
             Self::TypeScript(r) => r.references_to(key),
@@ -344,7 +344,7 @@ impl Resolver {
     /// packages other than `main` and those under `internal/`; a file
     /// outside every crate (no manifest names it) and one the head no longer
     /// holds are taken to have exported.
-    pub(crate) fn exports(&self, file: &str, workspace: &WorkspaceModel) -> bool {
+    pub fn exports(&self, file: &str, workspace: &WorkspaceModel) -> bool {
         match self {
             Self::Rust(r) => {
                 r.is_public_module(file)
@@ -360,7 +360,7 @@ impl Resolver {
     }
 
     /// The files the resolver read.
-    pub(crate) fn read_paths(&self) -> &[RepoPath] {
+    pub fn read_paths(&self) -> &[RepoPath] {
         match self {
             Self::Python(r) => r.read_paths(),
             Self::TypeScript(r) => r.read_paths(),
@@ -379,7 +379,7 @@ impl Resolver {
         }
     }
 
-    pub(crate) fn losses(&self) -> &[Loss] {
+    pub fn losses(&self) -> &[Loss] {
         match self {
             Self::Python(r) => r.losses(),
             Self::TypeScript(r) => r.losses(),
@@ -399,7 +399,7 @@ impl Resolver {
     }
 
     /// The module calls that name a source outside the repository.
-    pub(crate) fn external_sources(&self) -> usize {
+    pub fn external_sources(&self) -> usize {
         match self {
             Self::Terraform(r) => r.external_sources(),
             _ => 0,
@@ -409,7 +409,7 @@ impl Resolver {
     /// Whether the module `file` is in is entered from outside, applied or called
     /// by another repository, so that what sets its variables and reads its
     /// outputs is not in the snapshot.
-    pub(crate) fn root_module(&self, file: &str) -> bool {
+    pub fn root_module(&self, file: &str) -> bool {
         match self {
             Self::Terraform(r) => r.is_root(file),
             _ => false,
@@ -419,7 +419,7 @@ impl Resolver {
 
 /// `context` for a reader that holds no `ScoredState`: the root and the run's
 /// I/O limits.
-pub(crate) fn context_in(
+pub fn context_in(
     root: &std::path::Path,
     limits: (
         Option<std::time::Instant>,
@@ -464,17 +464,17 @@ pub(crate) fn context_in(
 /// bindings and the definitions, as plain data. The resolver itself stays with
 /// the cell (the TypeScript one is not `Send`, so a run cannot hold one for
 /// every thread that builds edges).
-pub(crate) struct HeadFamily {
+pub struct HeadFamily {
     bindings: Vec<Binding>,
     definitions: Vec<Definition>,
 }
 
 impl HeadFamily {
-    pub(crate) fn bindings(&self) -> &[Binding] {
+    pub fn bindings(&self) -> &[Binding] {
         &self.bindings
     }
 
-    pub(crate) fn definitions(&self) -> &[Definition] {
+    pub fn definitions(&self) -> &[Definition] {
         &self.definitions
     }
 }
@@ -484,7 +484,7 @@ impl HeadFamily {
 /// per run and family however many edge builders and discovery ask; the run's
 /// I/O deadline and cancellation are the current run's. A family that cannot be
 /// read is an `Err`, never kept: the caller notes it and draws no edge.
-pub(crate) fn open_head(
+pub fn open_head(
     root: &std::path::Path,
     range: Option<&str>,
     family: Family,

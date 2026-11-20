@@ -6,11 +6,11 @@ use std::ops::Range;
 
 use super::rows::STATEMENT_KEYWORDS;
 use super::{Alias, AliasBound, AliasScope, Basis, Outcome, Reason, ValuePlace};
-use crate::resolve::Relation;
 use diffctx_facts::facts::config::UseOf;
 use diffctx_facts::facts::{
     DefKind, Fact, FileFacts, Language, LocalKey, LocalKind, Name, Scope, UseKind,
 };
+use diffctx_resolve::resolve::Relation;
 
 /// Repeats `step` over each new scoped name until none appears: it accounts one
 /// name (`None` for a reference name of the definition, else the alias's scope)

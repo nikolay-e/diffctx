@@ -6,17 +6,17 @@ use std::ops::Range;
 use std::path::Path;
 use std::sync::Arc;
 
-use _diffctx::occurrence::{
-    Account, Alias, AliasBound, AliasScope, Basis, Case, Class, Entry, Hedge, Implicit,
-    MAX_ALIAS_HOPS, MAX_ALIAS_NAMES, Occurrence, Outcome, Reason, Unread, ValuePlace, Verdict,
-    Witness, scan,
-};
-use _diffctx::resolve::{CandidateReason, Relation};
 use diffctx_facts::facts::lang::python::PythonExtractor;
 use diffctx_facts::facts::{
     BlobFacts, DefKey, Extractor, FileFacts, Language, Lexical, LocalKey, ModulePath, Name,
     ProjectId, Span,
 };
+use diffctx_occurrence::tokens::occurrence::{
+    Account, Alias, AliasBound, AliasScope, Basis, Case, Class, Entry, Hedge, Implicit,
+    MAX_ALIAS_HOPS, MAX_ALIAS_NAMES, Occurrence, Outcome, Reason, Unread, ValuePlace, Verdict,
+    Witness, scan,
+};
+use diffctx_resolve::resolve::{CandidateReason, Relation};
 use diffctx_snapshot::snapshot::{Loss, RepoPath, RunBudget, SideTag};
 use proptest::test_runner::{Config, RngSeed, TestCaseError, TestRunner};
 use regex::Regex;
@@ -411,7 +411,7 @@ fn candidate(line: u32, relation: Option<Relation>) -> Entry {
 
 fn hedges(verdict: Verdict) -> Vec<Hedge> {
     match verdict {
-        Verdict::Complete => Vec::new(),
+        Verdict::Complete(_) => Vec::new(),
         Verdict::Partial(hedges) => hedges,
     }
 }

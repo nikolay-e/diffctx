@@ -21,10 +21,10 @@ use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use _diffctx::resolve::{
+use diffctx_facts::facts::{DefKey, FactsCache, LocalKey, Name, Scope, semantic_changes};
+use diffctx_resolve::resolve::{
     Binding, CandidateReason, EvidenceKind, PhpResolver, Relation, Resolution,
 };
-use diffctx_facts::facts::{DefKey, FactsCache, LocalKey, Name, Scope, semantic_changes};
 use diffctx_snapshot::snapshot::{
     AnalysisContext, RangeSpec, RunBudget, Side, SideTag, working_tree,
 };
