@@ -120,11 +120,11 @@ pub(super) fn read(cx: &Impact<'_>, t: &Targets<'_>, found: &mut Findings) {
                 else {
                     continue;
                 };
-                let tested = tests.tested_by(frag, state, &by_id, &link);
+                let tested = tests.tested_by(frag, state, by_id, &link);
                 c.file_tested = tested.is_empty() && tests.file_tested(frag, &reaches_file);
                 c.tests_open = tested.is_empty() && tests.open_above(frag, &link, true);
                 c.tests_partial =
-                    !tested.is_empty() && tests.nearest_only(frag, state, &by_id, &link);
+                    !tested.is_empty() && tests.nearest_only(frag, state, by_id, &link);
                 c.tests = tested;
             }
             if let Some(c) =
