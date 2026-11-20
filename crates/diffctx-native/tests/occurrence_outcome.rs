@@ -315,9 +315,9 @@ fn a_not_ours_occurrence_stands_in_the_way_of_nothing() {
     let subject = world.def("lib.py", "f");
     let found = world.outcomes(subject, "app.py", &["f"]);
     assert_eq!(on(&found, 3).outcome.as_str(), "not_ours", "{found:#?}");
-    let mut account = Account::new(subject.key.clone(), Relation::Calls, SideTag::Head);
-    account.entries = found.entries;
-    assert!(account.verdict().is_complete(), "{account:#?}");
+    let mut tally = Account::new(subject.key.clone(), Relation::Calls, SideTag::Head);
+    tally.entries = found.entries;
+    assert!(tally.verdict().is_complete(), "{tally:#?}");
 }
 
 #[test]
