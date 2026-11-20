@@ -16,7 +16,7 @@ use diffctx_facts::facts::framework::jvm;
 use diffctx_facts::facts::{Fact, ImportKind, Scope};
 use diffctx_snapshot::snapshot::workspace::dir_of;
 
-use super::changes::{changed_rels, rel, spelled_lines};
+use super::changes::{Search, announce, changed_rels, rel};
 use super::dispatch::base_symbol;
 use super::mentions::{Naming, basename_of, commented, naming, path_search, starts_a_program};
 use super::removed::read_or_note;
@@ -45,21 +45,35 @@ impl Run {
     }
 }
 
-/// Every run the tests in view make. `spelled` maps the path the answer prints
-/// to the path the fragments spell.
+/// Every run the tests in view make, and the runs of the strings a changed
+/// definition holds that a test asserts. `spelled` maps the path the answer
+/// prints to the path the fragments spell. Every source plans before any
+/// searches, so the run's one fixed-string search holds all their needles.
 pub(super) fn all(
     state: &ScoredState,
     cells: &Cells,
     diff_range: Option<&str>,
     spelled: &FxHashMap<&str, &str>,
     declared: &DeclaredTests,
-) -> Vec<Run> {
-    let mut runs = binary_runs(state, diff_range);
-    runs.extend(swift_product_runs(state, diff_range, declared));
-    runs.extend(console_runs(state, diff_range, spelled, declared));
-    runs.extend(script_runs(state, diff_range, spelled, declared));
-    runs.extend(framework_runs(state, cells, diff_range, spelled, declared));
-    runs
+) -> (Vec<Run>, Vec<Run>) {
+    let sources = [
+        binary_runs(state),
+        swift_product_runs(state, declared),
+        console_runs(state, spelled, declared),
+        script_runs(state, spelled, declared),
+        framework_runs(state, cells, spelled, declared),
+    ];
+    let asserted = literal_runs(state, declared);
+    announce(
+        state,
+        diff_range,
+        sources.iter().chain([&asserted]).map(Search::needles),
+    );
+    let runs = sources
+        .into_iter()
+        .flat_map(|source| source.read(state, diff_range))
+        .collect();
+    (runs, asserted.read(state, diff_range))
 }
 
 /// The distinct (file, line) sites, in path then line order.
@@ -336,7 +350,7 @@ pub(super) fn dict_registrations_of<'f>(
 /// as fragments spell it, each run by one test of its crate that runs
 /// the built binary. `src/main.rs` is the package's binary, named in
 /// `Cargo.toml`; `src/bin/<name>.rs` is `<name>`.
-fn binary_runs(state: &ScoredState, diff_range: Option<&str>) -> Vec<Run> {
+fn binary_runs(state: &ScoredState) -> Search<'_, Vec<Run>> {
     let mut entries: Vec<(String, String, String)> = Vec::new();
     let mut seen: FxHashSet<&str> = FxHashSet::default();
     for f in state.run.scan(&state.all_fragments) {
@@ -366,35 +380,36 @@ fn binary_runs(state: &ScoredState, diff_range: Option<&str>) -> Vec<Run> {
         entries.push((own.to_string(), krate, name));
     }
     if entries.is_empty() {
-        return Vec::new();
+        return Search::answered(Vec::new());
     }
     let needles = vec!["CARGO_BIN_EXE".to_string(), "cargo_bin".to_string()];
-    let grepped = spelled_lines(state, diff_range, &needles);
-    let mut out = Vec::new();
-    for (own, krate, name) in entries {
-        let exe = format!("CARGO_BIN_EXE_{name}");
-        let quoted = format!("\"{name}\"");
-        let tests = ordered(
-            grepped
-                .rows
-                .iter()
-                .filter(|(path, _, text)| {
-                    path.starts_with(&format!("{krate}tests/"))
-                        && (names_word(text, &exe)
-                            || (text.contains("cargo_bin") && text.contains(&quoted)))
-                })
-                .map(|(path, line, _)| (path.clone(), *line))
-                .collect(),
-        );
-        if !tests.is_empty() {
-            out.push(Run {
-                file: own,
-                symbol: Some("main".to_string()),
-                tests,
-            });
+    Search::of(needles, move |grepped| {
+        let mut out = Vec::new();
+        for (own, krate, name) in entries {
+            let exe = format!("CARGO_BIN_EXE_{name}");
+            let quoted = format!("\"{name}\"");
+            let tests = ordered(
+                grepped
+                    .rows
+                    .iter()
+                    .filter(|(path, _, text)| {
+                        path.starts_with(&format!("{krate}tests/"))
+                            && (names_word(text, &exe)
+                                || (text.contains("cargo_bin") && text.contains(&quoted)))
+                    })
+                    .map(|(path, line, _)| (path.clone(), *line))
+                    .collect(),
+            );
+            if !tests.is_empty() {
+                out.push(Run {
+                    file: own,
+                    symbol: Some("main".to_string()),
+                    tests,
+                });
+            }
         }
-    }
-    out
+        out
+    })
 }
 
 /// The SwiftPM executables in the analysed fragments: an `.executableTarget(name:
@@ -402,11 +417,10 @@ fn binary_runs(state: &ScoredState, diff_range: Option<&str>) -> Vec<Run> {
 /// `main.swift` of `Sources/<name>` (or of the target's `path:`), whose top-level
 /// code is what runs. A test runs it by the built product's path
 /// (`.build/release/<name>`) or by `swift run <name>`.
-fn swift_product_runs(
-    state: &ScoredState,
-    diff_range: Option<&str>,
-    declared: &DeclaredTests,
-) -> Vec<Run> {
+fn swift_product_runs<'a>(
+    state: &'a ScoredState,
+    declared: &'a DeclaredTests,
+) -> Search<'a, Vec<Run>> {
     static TARGET: once_cell::sync::Lazy<regex::Regex> = once_cell::sync::Lazy::new(|| {
         regex::Regex::new(
             r#"\.executableTarget\(\s*name:\s*"([^"]+)"(?:[^()]*?\bpath:\s*"([^"]+)")?"#,
@@ -449,30 +463,31 @@ fn swift_product_runs(
         }
     }
     if entries.is_empty() {
-        return Vec::new();
+        return Search::answered(Vec::new());
     }
     let needles = vec![".build/".to_string(), "swift run".to_string()];
-    let grepped = spelled_lines(state, diff_range, &needles);
-    entries
-        .into_iter()
-        .filter_map(|(own, name)| {
-            let tests = ordered(
-                grepped
-                    .rows
-                    .iter()
-                    .filter(|(path, _, text)| {
-                        declared.runs(path) && !commented(text) && runs_product(text, &name)
-                    })
-                    .map(|(path, line, _)| (path.clone(), *line))
-                    .collect(),
-            );
-            (!tests.is_empty()).then_some(Run {
-                file: own,
-                symbol: None,
-                tests,
+    Search::of(needles, move |grepped| {
+        entries
+            .into_iter()
+            .filter_map(|(own, name)| {
+                let tests = ordered(
+                    grepped
+                        .rows
+                        .iter()
+                        .filter(|(path, _, text)| {
+                            declared.runs(path) && !commented(text) && runs_product(text, &name)
+                        })
+                        .map(|(path, line, _)| (path.clone(), *line))
+                        .collect(),
+                );
+                (!tests.is_empty()).then_some(Run {
+                    file: own,
+                    symbol: None,
+                    tests,
+                })
             })
-        })
-        .collect()
+            .collect()
+    })
 }
 
 /// A command line that starts the SwiftPM product `name`: its built path, or
@@ -625,52 +640,52 @@ pub(super) fn spelled_as_command(text: &str, name: &str) -> bool {
 /// The tests that run a console script: a test file with a line that starts or
 /// locates a program and spells the script's name as a command. The function the manifest
 /// names (a Python entry), or the file (a Node bin), is what they run.
-fn console_runs(
-    state: &ScoredState,
-    diff_range: Option<&str>,
-    spelled: &FxHashMap<&str, &str>,
-    declared: &DeclaredTests,
-) -> Vec<Run> {
+fn console_runs<'a>(
+    state: &'a ScoredState,
+    spelled: &'a FxHashMap<&str, &str>,
+    declared: &'a DeclaredTests,
+) -> Search<'a, Vec<Run>> {
     let paths: FxHashSet<String> =
         read_or_note(state, state.run.source().list_paths(&state.root_dir))
             .into_iter()
             .collect();
     let scripts = declared_scripts(state, &paths);
     if scripts.is_empty() {
-        return Vec::new();
+        return Search::answered(Vec::new());
     }
     let mut needles: Vec<String> = scripts.iter().map(|s| s.name.clone()).collect();
     needles.sort();
     needles.dedup();
-    let grepped = spelled_lines(state, diff_range, &needles);
-    let mut out = Vec::new();
-    for script in scripts {
-        let Some(file) = spelled.get(script.file.as_str()) else {
-            continue;
-        };
-        let tests = ordered(
-            grepped
-                .rows
-                .iter()
-                .filter(|(path, _, text)| {
-                    declared.runs(path)
-                        && *path != script.file
-                        && !commented(text)
-                        && (starts_a_program(text) || locates_a_program(text))
-                        && spelled_as_command(text, &script.name)
-                })
-                .map(|(path, line, _)| (path.clone(), *line))
-                .collect(),
-        );
-        if !tests.is_empty() {
-            out.push(Run {
-                file: (*file).to_string(),
-                symbol: script.function,
-                tests,
-            });
+    Search::of(needles, move |grepped| {
+        let mut out = Vec::new();
+        for script in scripts {
+            let Some(file) = spelled.get(script.file.as_str()) else {
+                continue;
+            };
+            let tests = ordered(
+                grepped
+                    .rows
+                    .iter()
+                    .filter(|(path, _, text)| {
+                        declared.runs(path)
+                            && *path != script.file
+                            && !commented(text)
+                            && (starts_a_program(text) || locates_a_program(text))
+                            && spelled_as_command(text, &script.name)
+                    })
+                    .map(|(path, line, _)| (path.clone(), *line))
+                    .collect(),
+            );
+            if !tests.is_empty() {
+                out.push(Run {
+                    file: (*file).to_string(),
+                    symbol: script.function,
+                    tests,
+                });
+            }
         }
-    }
-    out
+        out
+    })
 }
 
 /// A line that finds an installed console script to run it: beside the
@@ -694,64 +709,64 @@ fn is_runnable(path: &str) -> bool {
 /// The tests that run a changed script by its path: a test file with a line
 /// that starts a program and spells the path as a command line does (the same
 /// reading `named_by_path` gives a path, which an import is not).
-fn script_runs(
-    state: &ScoredState,
-    diff_range: Option<&str>,
-    spelled: &FxHashMap<&str, &str>,
-    declared: &DeclaredTests,
-) -> Vec<Run> {
+fn script_runs<'a>(
+    state: &'a ScoredState,
+    spelled: &'a FxHashMap<&str, &str>,
+    declared: &'a DeclaredTests,
+) -> Search<'a, Vec<Run>> {
     let targets: Vec<String> = changed_rels(state)
         .filter(|t| is_runnable(t) && !declared.runs(t))
         .filter(|t| spelled.contains_key(t.as_str()))
         .collect();
     if targets.is_empty() {
-        return Vec::new();
+        return Search::answered(Vec::new());
     }
     let (root, basenames, needles) = path_search(state, &targets);
-    let grepped = spelled_lines(state, diff_range, &needles);
-    let token_re = once_cell::sync::Lazy::force(&super::mentions::PATH_TOKEN);
-    let mut out = Vec::new();
-    for target in &targets {
-        let basename = basename_of(target);
-        let tests = grepped
-            .rows
-            .iter()
-            .filter(|(path, _, text)| {
-                declared.runs(path)
-                    && path != target
-                    && !commented(text)
-                    && starts_a_program(text)
-                    && token_re.find_iter(text).any(|m| {
-                        let token = m.as_str().trim_end_matches('.');
-                        token.ends_with(basename.as_str())
-                            && matches!(
-                                naming(
-                                    token,
-                                    path,
-                                    target,
-                                    basenames.get(&basename) == Some(&1),
-                                    &root
-                                ),
-                                Some(
-                                    Naming::FullPath
-                                        | Naming::RelativePath
-                                        | Naming::UniqueBasename
+    Search::of(needles, move |grepped| {
+        let token_re = once_cell::sync::Lazy::force(&super::mentions::PATH_TOKEN);
+        let mut out = Vec::new();
+        for target in &targets {
+            let basename = basename_of(target);
+            let tests = grepped
+                .rows
+                .iter()
+                .filter(|(path, _, text)| {
+                    declared.runs(path)
+                        && path != target
+                        && !commented(text)
+                        && starts_a_program(text)
+                        && token_re.find_iter(text).any(|m| {
+                            let token = m.as_str().trim_end_matches('.');
+                            token.ends_with(basename.as_str())
+                                && matches!(
+                                    naming(
+                                        token,
+                                        path,
+                                        target,
+                                        basenames.get(&basename) == Some(&1),
+                                        &root
+                                    ),
+                                    Some(
+                                        Naming::FullPath
+                                            | Naming::RelativePath
+                                            | Naming::UniqueBasename
+                                    )
                                 )
-                            )
-                    })
-            })
-            .map(|(path, line, _)| (path.clone(), *line))
-            .collect();
-        let tests = ordered(tests);
-        if let (false, Some(file)) = (tests.is_empty(), spelled.get(target.as_str())) {
-            out.push(Run {
-                file: (*file).to_string(),
-                symbol: None,
-                tests,
-            });
+                        })
+                })
+                .map(|(path, line, _)| (path.clone(), *line))
+                .collect();
+            let tests = ordered(tests);
+            if let (false, Some(file)) = (tests.is_empty(), spelled.get(target.as_str())) {
+                out.push(Run {
+                    file: (*file).to_string(),
+                    symbol: None,
+                    tests,
+                });
+            }
         }
-    }
-    out
+        out
+    })
 }
 
 /// How a test spells the key of an entry a framework makes: the request of a
@@ -879,13 +894,12 @@ fn route_needle(label: &str) -> String {
 /// change enters them: a test file with a line that spells the entry's key as a
 /// caller of it does. The framework's name is nobody's concern
 /// here (`facts::framework`); only `kind`, `verb` and `label` are read.
-fn framework_runs(
-    state: &ScoredState,
+fn framework_runs<'a>(
+    state: &'a ScoredState,
     cells: &Cells,
-    diff_range: Option<&str>,
     spelled: &FxHashMap<&str, &str>,
-    declared: &DeclaredTests,
-) -> Vec<Run> {
+    declared: &'a DeclaredTests,
+) -> Search<'a, Vec<Run>> {
     struct Entry {
         file: String,
         symbol: String,
@@ -1066,32 +1080,35 @@ fn framework_runs(
         }
     }
     if entries.is_empty() {
-        return Vec::new();
+        return Search::answered(Vec::new());
     }
     let mut needles: Vec<String> = entries.iter().map(|e| e.needle.clone()).collect();
     needles.sort();
     needles.dedup();
-    let grepped = spelled_lines(state, diff_range, &needles);
-    entries
-        .into_iter()
-        .filter_map(|entry| {
-            let tests = ordered(
-                grepped
-                    .rows
-                    .iter()
-                    .filter(|(path, _, text)| {
-                        declared.runs(path) && !commented(text) && entry.spelling.spelled_by(text)
-                    })
-                    .map(|(path, line, _)| (path.clone(), *line))
-                    .collect(),
-            );
-            (!tests.is_empty()).then(|| Run {
-                file: entry.file,
-                symbol: Some(entry.symbol),
-                tests,
+    Search::of(needles, move |grepped| {
+        entries
+            .into_iter()
+            .filter_map(|entry| {
+                let tests = ordered(
+                    grepped
+                        .rows
+                        .iter()
+                        .filter(|(path, _, text)| {
+                            declared.runs(path)
+                                && !commented(text)
+                                && entry.spelling.spelled_by(text)
+                        })
+                        .map(|(path, line, _)| (path.clone(), *line))
+                        .collect(),
+                );
+                (!tests.is_empty()).then(|| Run {
+                    file: entry.file,
+                    symbol: Some(entry.symbol),
+                    tests,
+                })
             })
-        })
-        .collect()
+            .collect()
+    })
 }
 
 /// The routes of a React Router table in `text` (a file that imports
@@ -1246,11 +1263,7 @@ fn distinctive(literal: &str) -> bool {
 /// The test reaches the definition the way it reaches one it runs, through what
 /// the code says rather than what it calls (an error code, a label), which no
 /// resolved use shows.
-pub(super) fn literal_runs(
-    state: &ScoredState,
-    diff_range: Option<&str>,
-    declared: &DeclaredTests,
-) -> Vec<Run> {
+fn literal_runs<'a>(state: &'a ScoredState, declared: &'a DeclaredTests) -> Search<'a, Vec<Run>> {
     static STRING: once_cell::sync::Lazy<regex::Regex> = once_cell::sync::Lazy::new(|| {
         regex::Regex::new(r#""([^"\\\n]{8,80})"|'([^'\\\n]{8,80})'"#).expect("string regex")
     });
@@ -1301,54 +1314,60 @@ pub(super) fn literal_runs(
         needles.truncate(MAX_LITERAL_NEEDLES);
     }
     if needles.is_empty() {
-        return Vec::new();
+        return Search::answered(Vec::new());
     }
-    let grepped = spelled_lines(state, diff_range, &needles);
-    let mut files_of: FxHashMap<&str, FxHashSet<&str>> = FxHashMap::default();
-    for (path, _, text) in &grepped.rows {
-        for needle in &needles {
-            if text.contains(needle.as_str()) {
-                files_of
-                    .entry(needle.as_str())
-                    .or_default()
-                    .insert(path.as_str());
+    let sought = needles.clone();
+    Search::of(needles, move |grepped| {
+        let mut files_of: FxHashMap<&str, FxHashSet<&str>> = FxHashMap::default();
+        for (path, _, text) in &grepped.rows {
+            for needle in &sought {
+                if text.contains(needle.as_str()) {
+                    files_of
+                        .entry(needle.as_str())
+                        .or_default()
+                        .insert(path.as_str());
+                }
             }
         }
-    }
-    held.into_iter()
-        .filter_map(|(file, shown, symbol, literals)| {
-            let shown = shown.as_str();
-            let spells = |literal: &str, path: &str, text: &str| {
-                path != shown && declared.runs(path) && !commented(text) && text.contains(literal)
-            };
-            let (clear, shared): (Vec<&String>, Vec<&String>) = literals.iter().partition(|l| {
-                files_of
-                    .get(l.as_str())
-                    .is_some_and(|files| files.len() <= MAX_LITERAL_FILES)
-            });
-            let tests = ordered(
-                clear
-                    .into_iter()
-                    .flat_map(|literal| {
-                        grepped
-                            .rows
-                            .iter()
-                            .filter(move |(path, _, text)| spells(literal, path, text))
-                            .map(|(path, line, _)| (path.clone(), *line))
-                    })
-                    .collect(),
-            );
-            // A test that spells a string too many files spell may assert this
-            // definition's: no run is made of it, and none is ruled out.
-            (!tests.is_empty()
-                || shared
-                    .into_iter()
-                    .any(|l| grepped.rows.iter().any(|(p, _, t)| spells(l, p, t))))
-            .then(|| Run {
-                file,
-                symbol: Some(symbol),
-                tests,
+        held.into_iter()
+            .filter_map(|(file, shown, symbol, literals)| {
+                let shown = shown.as_str();
+                let spells = |literal: &str, path: &str, text: &str| {
+                    path != shown
+                        && declared.runs(path)
+                        && !commented(text)
+                        && text.contains(literal)
+                };
+                let (clear, shared): (Vec<&String>, Vec<&String>) =
+                    literals.iter().partition(|l| {
+                        files_of
+                            .get(l.as_str())
+                            .is_some_and(|files| files.len() <= MAX_LITERAL_FILES)
+                    });
+                let tests = ordered(
+                    clear
+                        .into_iter()
+                        .flat_map(|literal| {
+                            grepped
+                                .rows
+                                .iter()
+                                .filter(move |(path, _, text)| spells(literal, path, text))
+                                .map(|(path, line, _)| (path.clone(), *line))
+                        })
+                        .collect(),
+                );
+                // A test that spells a string too many files spell may assert this
+                // definition's: no run is made of it, and none is ruled out.
+                (!tests.is_empty()
+                    || shared
+                        .into_iter()
+                        .any(|l| grepped.rows.iter().any(|(p, _, t)| spells(l, p, t))))
+                .then(|| Run {
+                    file,
+                    symbol: Some(symbol),
+                    tests,
+                })
             })
-        })
-        .collect()
+            .collect()
+    })
 }

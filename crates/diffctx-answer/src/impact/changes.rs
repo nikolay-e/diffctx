@@ -122,6 +122,62 @@ pub(super) fn spelled_lines(
     )
 }
 
+/// A consumer of [`spelled_lines`] in two halves: the needles it will search,
+/// known when it plans, and what it makes of their rows. Consumers that plan
+/// together announce their needles together, so the run searches them once.
+pub(super) struct Search<'a, T> {
+    needles: Vec<String>,
+    read:
+        Box<dyn FnOnce(diffctx_snapshot::grep::Grepped<diffctx_snapshot::snapshot::Row>) -> T + 'a>,
+}
+
+impl<'a, T> Search<'a, T> {
+    pub(super) fn of(
+        needles: Vec<String>,
+        read: impl FnOnce(diffctx_snapshot::grep::Grepped<diffctx_snapshot::snapshot::Row>) -> T + 'a,
+    ) -> Self {
+        Self {
+            needles,
+            read: Box::new(read),
+        }
+    }
+
+    /// Nothing to search: `answer` is the whole of it.
+    pub(super) fn answered(answer: T) -> Self
+    where
+        T: 'a,
+    {
+        Self::of(Vec::new(), move |_| answer)
+    }
+
+    pub(super) fn needles(&self) -> &[String] {
+        &self.needles
+    }
+
+    pub(super) fn read(self, state: &ScoredState, diff_range: Option<&str>) -> T {
+        let rows = if self.needles.is_empty() {
+            diffctx_snapshot::grep::Grepped::default()
+        } else {
+            spelled_lines(state, diff_range, &self.needles)
+        };
+        (self.read)(rows)
+    }
+}
+
+/// Tells the run what the consumers that plan now will ask [`spelled_lines`] for.
+pub(super) fn announce<'a>(
+    state: &ScoredState,
+    diff_range: Option<&str>,
+    needles: impl IntoIterator<Item = &'a [String]>,
+) {
+    let all: Vec<String> = needles.into_iter().flatten().cloned().collect();
+    diffctx_snapshot::grep::grep_register_needles(
+        &state.root_dir,
+        &all,
+        head_of(diff_range).as_deref(),
+    );
+}
+
 /// The files the search for the changed definitions' uses did not read that spell
 /// one of their names: those the ignore rules withhold are counted on the run, and
 /// the number outside the run's pathspecs is returned. What they say of a caller is
