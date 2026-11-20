@@ -187,34 +187,16 @@ pub fn word_first_lines(root: &Path, word: &str, pathspec: &[String]) -> Result<
 /// One run's fixed-string searches of one revision (or the working tree) as a
 /// single body of rows: every needle searched so far is `covered`, and the rows
 /// are every line holding any of them. A later question about covered needles
-/// is answered from the rows; the uncovered ones, and the `pending` ones that
-/// consumers announced with [`register_needles`], go to one `git grep` together.
+/// is answered from the rows; the uncovered ones go to one `git grep` together.
 #[derive(Debug, Default)]
 pub(crate) struct Searches {
     covered: FxHashSet<String>,
-    pending: FxHashSet<String>,
     rows: Vec<Row>,
-}
-
-/// Announces needles a consumer will ask for with [`needle_lines`], so the
-/// first of the run's questions searches them all in one `git grep`. Starts no
-/// process; a needle never asked for costs one more `-e` in a search that runs
-/// anyway, and a consumer that does not announce is searched when it asks.
-pub fn register_needles(root: &Path, needles: &[String], rev: Option<&str>) {
-    if let Some(shared) = Exec::current().searches(root, rev) {
-        let mut searches = shared.lock().unwrap();
-        for needle in needles.iter().filter(|n| !n.is_empty()) {
-            if !searches.covered.contains(needle) {
-                searches.pending.insert(needle.clone());
-            }
-        }
-    }
 }
 
 /// Every line holding one of `needles` (fixed strings) at `rev`, or in the
 /// working tree when `rev` is `None`, sorted by path then line. Within a run,
-/// one body of rows serves every question: a needle is searched once, with the
-/// ones announced beside it.
+/// one body of rows serves every question: a needle is searched once.
 pub fn needle_lines(
     root: &Path,
     needles: &[String],
@@ -234,7 +216,6 @@ pub fn needle_lines(
         let mut missing: Vec<String> = wanted
             .iter()
             .map(|n| (*n).to_string())
-            .chain(searches.pending.iter().cloned())
             .filter(|n| !searches.covered.contains(n))
             .collect::<FxHashSet<_>>()
             .into_iter()
@@ -248,7 +229,6 @@ pub fn needle_lines(
         // was found, and nobody else is told they are the answer.
         if more() {
             searches.covered.extend(missing);
-            searches.pending.clear();
         }
     }
     // Sizes alone would take covered {a, b} for wanted {c, d} after a cut search.

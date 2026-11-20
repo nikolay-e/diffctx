@@ -694,13 +694,13 @@ impl RunContext {
     pub fn enter(&self) -> ScopedContext {
         let prev = CURRENT.with(|c| c.replace(Some(self.clone())));
         SELF_REPORTED.with(|r| r.set(0));
-        let git = crate::snapshot::enter_run(
+        let git = crate::snapshot::enter_run_memoized(
             crate::snapshot::RunBudget {
                 deadline: self.inner.io_expires_at,
                 cancel: Some(self.inner.cancel.clone()),
                 read_fault: None,
             },
-            self.inner.git_memo.clone(),
+            Some(self.inner.git_memo.clone()),
         );
         ScopedContext { prev, _git: git }
     }

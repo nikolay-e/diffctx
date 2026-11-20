@@ -6,8 +6,8 @@
 //! three files and one of twenty must cost the same: a spawn per item shows as
 //! a difference, whatever the ceiling.
 //!
-//! Needles announced before the first search share it: one `git grep` for every
-//! consumer that announced, and each gets the rows its own needles select.
+//! Needles searched together share the search: one `git grep` for every consumer
+//! that planned, and each gets the rows its own needles select.
 //!
 //! One test: the counter is the process's, and a second test would count into it.
 
@@ -21,8 +21,7 @@ use diffctx_config::config::limits::DEFAULT_PPR_ALPHA;
 use diffctx_config::mode::ScoringMode;
 use diffctx_snapshot::resource::RunContext;
 use diffctx_snapshot::snapshot::{
-    Admission, Oid, RepoPath, Side, SnapshotReader, git_spawns, needle_lines, open,
-    register_needles, rev_oid,
+    Admission, Oid, RepoPath, Side, SnapshotReader, git_spawns, needle_lines, open, rev_oid,
 };
 use tempfile::TempDir;
 
@@ -112,7 +111,7 @@ fn processes(repo: &Path, run: fn(&Path)) -> usize {
     git_spawns() - before
 }
 
-fn announced_needles_are_one_search(repo: &Path) {
+fn needles_searched_together_are_one_search(repo: &Path) {
     let (total, charge) = (vec!["total".to_string()], vec!["charge".to_string()]);
     let more = || true;
     let alone = (
@@ -127,8 +126,8 @@ fn announced_needles_are_one_search(repo: &Path) {
     let run = RunContext::unbounded();
     let _in_run = run.enter();
     let before = git_spawns();
-    register_needles(repo, &total, None);
-    register_needles(repo, &charge, None);
+    let together_needles: Vec<String> = total.iter().chain(&charge).cloned().collect();
+    needle_lines(repo, &together_needles, None, &more).expect("search");
     let together = (
         needle_lines(repo, &total, None, &more).expect("search"),
         needle_lines(repo, &charge, None, &more).expect("search"),
@@ -136,7 +135,7 @@ fn announced_needles_are_one_search(repo: &Path) {
     assert_eq!(
         git_spawns() - before,
         1,
-        "two announced needles, one search"
+        "two needles searched together, one search"
     );
     assert_eq!(together, alone, "each reads the rows of its own needles");
     needle_lines(repo, &total, None, &more).expect("search");
@@ -216,7 +215,7 @@ fn a_run_starts_no_more_git_processes_than_its_cell_allows_whatever_the_reposito
             failures.push(format!("{name}: over its ceiling"));
         }
     }
-    announced_needles_are_one_search(small.path());
+    needles_searched_together_are_one_search(small.path());
     a_cut_search_gives_no_row_of_other_needles(small.path());
     readers_of_a_run_share_one_object_reader(small.path());
     let report = report.join("\n");

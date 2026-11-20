@@ -164,18 +164,17 @@ impl<'a, T> Search<'a, T> {
     }
 }
 
-/// Tells the run what the consumers that plan now will ask [`spelled_lines`] for.
+/// Searches, once, what the consumers that plan now will ask [`spelled_lines`]
+/// for: the run keeps the rows, and each consumer's read is answered from them.
 pub(super) fn announce<'a>(
     state: &ScoredState,
     diff_range: Option<&str>,
     needles: impl IntoIterator<Item = &'a [String]>,
 ) {
     let all: Vec<String> = needles.into_iter().flatten().cloned().collect();
-    diffctx_snapshot::grep::grep_register_needles(
-        &state.root_dir,
-        &all,
-        head_of(diff_range).as_deref(),
-    );
+    if !all.is_empty() {
+        spelled_lines(state, diff_range, &all);
+    }
 }
 
 /// The files the search for the changed definitions' uses did not read that spell

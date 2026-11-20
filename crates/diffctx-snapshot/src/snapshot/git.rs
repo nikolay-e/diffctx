@@ -48,10 +48,15 @@ thread_local! {
 /// Publishes a run's limits to this thread until the guard drops: every git
 /// child the engine's questions start here ([`run_git`](crate::snapshot::run_git)
 /// and its kin) is bounded by them, as a reader is by the budget it was built with.
-pub fn enter_run(budget: RunBudget, memo: Arc<GitMemo>) -> RunScope {
+pub fn enter_run(budget: RunBudget) -> RunScope {
+    enter_run_memoized(budget, None)
+}
+
+/// [`enter_run`] with the run's memo of read-only git answers.
+pub(crate) fn enter_run_memoized(budget: RunBudget, memo: Option<Arc<GitMemo>>) -> RunScope {
     RunScope(
         AMBIENT.with(|a| a.replace(budget)),
-        MEMO.with(|m| m.replace(Some(memo))),
+        MEMO.with(|m| m.replace(memo)),
     )
 }
 
@@ -73,6 +78,7 @@ thread_local! {
 
 /// Git children this process has started: what a gate on the number of
 /// processes a run costs reads before and after.
+#[cfg(any(test, feature = "test-support"))]
 pub fn git_spawns() -> usize {
     GIT_SPAWNS.load(Ordering::Relaxed)
 }
@@ -92,7 +98,7 @@ fn start_git(cmd: &mut Command) -> std::io::Result<Child> {
 /// answer git gave (success, or the 1 of "no"), is kept; a failure, a timeout
 /// and a cancellation are asked again.
 #[derive(Debug, Default)]
-pub struct GitMemo {
+pub(crate) struct GitMemo {
     answers: Mutex<std::collections::HashMap<Asked, Arc<Mutex<Option<Output>>>>>,
     kept_bytes: AtomicUsize,
     derived: Mutex<std::collections::HashMap<Vec<u8>, Arc<Mutex<Option<Derived>>>>>,
