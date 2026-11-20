@@ -40,6 +40,7 @@ const SCOPES: &[(&str, Option<&[&str]>)] = &[
     ("facts/lang/mod.rs", None),
     ("facts/lang/walker.rs", None),
     ("facts/lang/python.rs", Some(&["python"])),
+    ("facts/lang/python/mutations.rs", Some(&["python"])),
     ("overlay/python.rs", Some(&["python"])),
     ("parsers/keyword_calls.rs", Some(&["python"])),
     ("facts/lang/typescript.rs", Some(JS)),
