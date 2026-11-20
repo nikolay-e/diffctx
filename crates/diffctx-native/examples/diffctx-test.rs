@@ -207,7 +207,7 @@ fn load_all_cases(dir: &Path) -> Vec<(PathBuf, TestCase)> {
             }
         };
 
-        if let Ok(case) = serde_yaml::from_str::<TestCase>(&content) {
+        if let Ok(case) = diffctx_base::yaml::from_str::<TestCase>(&content) {
             let mut c = case;
             if c.name.is_empty() {
                 c.name = path
@@ -219,14 +219,14 @@ fn load_all_cases(dir: &Path) -> Vec<(PathBuf, TestCase)> {
             continue;
         }
 
-        if let Ok(list) = serde_yaml::from_str::<Vec<TestCase>>(&content) {
+        if let Ok(list) = diffctx_base::yaml::from_str::<Vec<TestCase>>(&content) {
             for case in list {
                 cases.push((path.clone(), case));
             }
             continue;
         }
 
-        if let Ok(wrapper) = serde_yaml::from_str::<TestsWrapper>(&content) {
+        if let Ok(wrapper) = diffctx_base::yaml::from_str::<TestsWrapper>(&content) {
             for case in wrapper.tests {
                 cases.push((path.clone(), case));
             }

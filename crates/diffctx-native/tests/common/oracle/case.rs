@@ -320,7 +320,7 @@ fn merge_sites(relations: Vec<Relation>) -> Vec<Relation> {
 /// Parses and validates a case file. `stem` is the file name without its
 /// extension; `dir_mode` is the corpus directory the file sits in.
 pub(crate) fn parse(raw: &str, stem: &str, dir_mode: Mode) -> Result<Case, String> {
-    let case: Case = serde_yaml::from_str(raw).map_err(|e| format!("parse YAML: {e}"))?;
+    let case: Case = diffctx_base::yaml::from_str(raw).map_err(|e| format!("parse YAML: {e}"))?;
     if !case.name.is_empty() && case.name != stem {
         return Err(format!(
             "name `{}` is not the file stem `{stem}`",
@@ -435,6 +435,6 @@ pub(crate) fn has_tag(path: &std::path::Path, tag: &str) -> bool {
     }
     std::fs::read_to_string(path)
         .ok()
-        .and_then(|raw| serde_yaml::from_str::<Tags>(&raw).ok())
+        .and_then(|raw| diffctx_base::yaml::from_str::<Tags>(&raw).ok())
         .is_some_and(|t| t.tags.iter().any(|x| x == tag))
 }

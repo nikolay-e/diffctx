@@ -73,8 +73,8 @@ pub(crate) fn load_cases(dirs: &[PathBuf]) -> Vec<Case> {
         paths.sort();
         for path in paths {
             let raw = std::fs::read_to_string(&path).expect("read case");
-            let test: TestCase =
-                serde_yaml::from_str(&raw).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+            let test: TestCase = diffctx_base::yaml::from_str(&raw)
+                .unwrap_or_else(|e| panic!("{}: {e}", path.display()));
             let name = path
                 .strip_prefix(&root)
                 .unwrap_or(&path)

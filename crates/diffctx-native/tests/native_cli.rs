@@ -858,7 +858,7 @@ fn tracing_goes_to_stderr_and_the_artifact_still_parses() {
         let doc: serde_json::Value = if format == "json" {
             serde_json::from_str(&stdout).expect("stdout is JSON")
         } else {
-            serde_yaml::from_str(&stdout).expect("stdout is YAML")
+            diffctx_base::yaml::from_str(&stdout).expect("stdout is YAML")
         };
         assert_eq!(doc["type"], "diff_context", "{format}");
         assert!(
