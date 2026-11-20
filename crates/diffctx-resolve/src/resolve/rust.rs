@@ -19,6 +19,8 @@
 use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
 
+use rustc_hash::FxHashMap;
+
 use super::index::scope_path;
 use super::solved::{Gathered, before_deadline, gather_of, reader_of};
 use super::twins::{self, Outcome, Typed};
@@ -36,6 +38,10 @@ use diffctx_snapshot::snapshot::{
     AnalysisContext, Bytes, Loss, RepoPath, Result, SideTag, SnapshotError, SnapshotReader,
     WorkspaceModel,
 };
+
+mod lookup;
+
+use lookup::{Children, GlobWalks, Guards, ImportsIndex, Items, Locals};
 
 /// A call through an untyped receiver is a candidate for at most this many
 /// methods; past it the list says nothing a reader could use.
@@ -239,6 +245,7 @@ struct FileRec {
     facts: FileFacts,
     module: usize,
     imports: Vec<ImportRec>,
+    by_name: ImportsIndex,
     /// Every name the file defines, imports or refers to.
     names: HashSet<Name>,
     /// The paths of the inline modules the file declares.
@@ -270,12 +277,13 @@ struct Index {
     crates: Vec<CrateRec>,
     mods: Vec<ModRec>,
     mod_ix: HashMap<(usize, String), usize>,
+    children: Children,
     files: Vec<FileRec>,
     defs: Vec<DefRec>,
     /// Items of a module by name.
-    items: HashMap<(usize, Name), Vec<usize>>,
+    items: Items,
     /// Items local to a function, by file and the function's path.
-    locals: HashMap<(usize, Vec<Name>, Name), Vec<usize>>,
+    locals: Locals,
     /// Members of a type (or trait) written in a module, by the type's name.
     groups: HashMap<(usize, Name), Vec<usize>>,
     /// Methods by name: what an untyped receiver may be.
@@ -512,10 +520,7 @@ impl Index {
                 rest: rest.clone(),
             };
             if rest.is_empty() {
-                self.items
-                    .entry((home, rec.def.local.name.clone()))
-                    .or_default()
-                    .push(id);
+                self.items.push(home, &rec.def.local.name, id);
                 if rec.def.kind == DefKind::Macro {
                     self.macros
                         .entry(rec.def.local.name.clone())
@@ -524,13 +529,7 @@ impl Index {
                 }
             } else if local {
                 self.locals
-                    .entry((
-                        at,
-                        rec.def.local.container.clone(),
-                        rec.def.local.name.clone(),
-                    ))
-                    .or_default()
-                    .push(id);
+                    .push(at, &rec.def.local.container, &rec.def.local.name, id);
             } else if rest.len() == 1 && rec.is_member() {
                 self.groups
                     .entry((home, rest[0].clone()))
@@ -576,6 +575,7 @@ impl Index {
             facts,
             module,
             imports,
+            by_name: ImportsIndex::default(),
             names,
             inline,
         });
@@ -667,6 +667,13 @@ impl Index {
                     import.exported = stars;
                 }
             }
+            file.by_name = ImportsIndex::of(&file.imports);
+        }
+        self.locals.settle();
+        for (id, module) in self.mods.iter().enumerate() {
+            if let Some(parent) = module.parent {
+                self.children.add(parent, &module.path, id);
+            }
         }
     }
 }
@@ -707,8 +714,10 @@ struct Engine<'a> {
     texts: RefCell<HashMap<usize, Option<Bytes>>>,
     losses: RefCell<Vec<Loss>>,
     /// What an import binds, once found.
-    imported: RefCell<HashMap<(usize, usize), Option<Ent>>>,
-    members: RefCell<HashMap<usize, Vec<usize>>>,
+    imported: RefCell<FxHashMap<(usize, usize), Option<Ent>>>,
+    members: RefCell<FxHashMap<usize, Vec<usize>>>,
+    globs: GlobWalks,
+    guards: Guards,
     implemented: RefCell<Traits>,
     /// A trait lookup was made while the trait table was being built, and met no
     /// table: what it answered is not the repository's.
@@ -737,8 +746,10 @@ impl<'a> Engine<'a> {
             side,
             texts: RefCell::default(),
             losses: RefCell::default(),
-            imported: RefCell::new(HashMap::new()),
-            members: RefCell::new(HashMap::new()),
+            imported: RefCell::default(),
+            members: RefCell::default(),
+            globs: GlobWalks::default(),
+            guards: Guards::default(),
             implemented: RefCell::new(Traits::Unbuilt),
             met_unfinished_table: Cell::new(false),
         }
@@ -815,15 +826,7 @@ impl<'a> Engine<'a> {
     }
 
     fn child_mod(&self, parent: usize, name: &str) -> Option<usize> {
-        let krate = self.ix.mods[parent].krate;
-        let path = if self.ix.mods[parent].path.is_empty() {
-            name.to_string()
-        } else {
-            format!("{}::{name}", self.ix.mods[parent].path)
-        };
-        let id = *self.ix.mod_ix.get(&(krate, path))?;
-        // Only a module this file holds inline, or one it declares.
-        Some(id)
+        self.ix.children.get(parent, name)
     }
 
     // ---- names
@@ -852,7 +855,7 @@ impl<'a> Engine<'a> {
 
     /// A module item by name, or a child module.
     fn item_in(&self, module: usize, name: &Name, want: Want, from: usize) -> Option<Ent> {
-        if let Some(ids) = self.ix.items.get(&(module, name.clone())) {
+        if let Some(ids) = self.ix.items.get(module, name.as_str()) {
             if let Some(d) = self.pick(ids, want, from) {
                 // A `mod m` declaration names the module, not a definition.
                 if self.ix.defs[d].def.kind == DefKind::Module {
@@ -864,18 +867,9 @@ impl<'a> Engine<'a> {
             }
         }
         if want != Want::Value {
-            if let Some(child) = self.child_mod(module, name.as_str()) {
-                if self.declared(module, name) {
-                    return Some(Ent::Mod(child));
-                }
-            }
+            return self.child_mod(module, name.as_str()).map(Ent::Mod);
         }
         None
-    }
-
-    /// Whether the module has a `mod name` or a file for it in the workspace.
-    fn declared(&self, module: usize, name: &Name) -> bool {
-        self.child_mod(module, name.as_str()).is_some()
     }
 
     /// The name as the scope around `site` gives it.
@@ -891,25 +885,16 @@ impl<'a> Engine<'a> {
         }
         // An item of a function around the site.
         let file = site.file;
-        for len in (0..=site.scope.len()).rev() {
-            let outer = &site.scope[..len];
-            if let Some(ids) = self.ix.locals.get(&(file, outer.to_vec(), name.clone())) {
-                if let Some(d) = self.pick(ids, want, file) {
-                    return Some((Ent::Def(d), EvidenceKind::SameScope));
-                }
+        for ids in self.ix.locals.around(file, name.as_str(), &site.scope) {
+            if let Some(d) = self.pick(ids, want, file) {
+                return Some((Ent::Def(d), EvidenceKind::SameScope));
             }
         }
         // A `use` of the scopes around, innermost first, then the module's.
         let rec = &self.ix.files[file];
         let mut scoped: Vec<&ImportRec> = rec
-            .imports
-            .iter()
-            .filter(|i| {
-                i.module == site.module
-                    && !i.glob
-                    && i.local.as_ref() == Some(name)
-                    && site.scope.starts_with(&i.scope)
-            })
+            .imports_named(name.as_str())
+            .filter(|i| i.module == site.module && site.scope.starts_with(&i.scope))
             .collect();
         scoped.sort_by_key(|i| std::cmp::Reverse(i.scope.len()));
         for import in scoped {
@@ -927,9 +912,8 @@ impl<'a> Engine<'a> {
                 continue;
             }
             for import in self.ix.files[*other]
-                .imports
-                .iter()
-                .filter(|i| i.module == site.module && !i.glob && i.local.as_ref() == Some(name))
+                .imports_named(name.as_str())
+                .filter(|i| i.module == site.module)
             {
                 if let Some(ent) = self.import_target(*other, import, want, depth) {
                     return Some((ent, EvidenceKind::ImportedName));
@@ -938,25 +922,23 @@ impl<'a> Engine<'a> {
         }
         // Globs.
         for import in rec
-            .imports
-            .iter()
-            .filter(|i| i.module == site.module && i.glob && site.scope.starts_with(&i.scope))
+            .globs()
+            .filter(|i| i.module == site.module && site.scope.starts_with(&i.scope))
         {
-            let Some(Ent::Mod(m)) = self.walk(site, &import.segs, Want::Type, depth + 1) else {
-                if let Some(Ent::Def(d)) = self.walk(site, &import.segs, Want::Type, depth + 1) {
-                    // `use Enum::*`.
+            match self.glob_target(file, import, &site.scope, depth + 1) {
+                Some(Ent::Mod(m)) => {
+                    if let Some(ent) = self.exported_from(m, name, want, file, depth + 1) {
+                        return Some((ent, EvidenceKind::StarImport));
+                    }
+                }
+                // `use Enum::*`.
+                Some(Ent::Def(d)) => {
                     if let Some(v) = self.member_named(d, name) {
                         return Some((Ent::Def(v), EvidenceKind::StarImport));
                     }
                 }
-                continue;
-            };
-            if let Some(ent) = self.exported_from(m, name, want, file, depth + 1) {
-                return Some((ent, EvidenceKind::StarImport));
+                _ => {}
             }
-        }
-        if want != Want::Value && PRELUDE.contains(&name.as_str()) {
-            return Some((Ent::Builtin, EvidenceKind::SameScope));
         }
         if PRELUDE.contains(&name.as_str()) {
             return Some((Ent::Builtin, EvidenceKind::SameScope));
@@ -981,20 +963,13 @@ impl<'a> Engine<'a> {
         }
         for f in self.ix.files_of.get(&m).into_iter().flatten().copied() {
             let file = &self.ix.files[f];
-            for import in file.imports.iter().filter(|i| i.module == m) {
-                if !import.glob && import.local.as_ref() == Some(name) {
-                    if let Some(ent) = self.import_target(f, import, want, depth) {
-                        return Some(ent);
-                    }
+            for import in file.imports_named(name.as_str()).filter(|i| i.module == m) {
+                if let Some(ent) = self.import_target(f, import, want, depth) {
+                    return Some(ent);
                 }
             }
-            for import in file.imports.iter().filter(|i| i.module == m && i.glob) {
-                let site = Site {
-                    file: f,
-                    module: m,
-                    scope: Vec::new(),
-                };
-                match self.walk(&site, &import.segs, Want::Type, depth + 1) {
+            for import in file.globs().filter(|i| i.module == m) {
+                match self.glob_target(f, import, &[], depth + 1) {
                     Some(Ent::Mod(inner)) if inner != m => {
                         if let Some(ent) = self.exported_from(inner, name, want, from, depth + 1) {
                             return Some(ent);
@@ -1017,16 +992,19 @@ impl<'a> Engine<'a> {
         let at = import as *const ImportRec as usize;
         let key = (f, at);
         if let Some(known) = self.imported.borrow().get(&key) {
+            self.guards.read(lookup::IMPORT, f, at);
             return *known;
         }
         // Guard against a cycle: the name is unresolved while it is looked up.
         self.imported.borrow_mut().insert(key, None);
+        self.guards.enter(lookup::IMPORT, f, at);
         let site = Site {
             file: f,
             module: import.module,
             scope: import.scope.clone(),
         };
         let found = self.walk_import(&site, &import.segs, want, depth + 1);
+        self.guards.leave(lookup::IMPORT, f, at);
         self.imported.borrow_mut().insert(key, found);
         found
     }
@@ -1233,10 +1211,12 @@ impl<'a> Engine<'a> {
     /// its impls in the crate, and a trait's own items.
     fn members_of(&self, t: usize) -> Vec<usize> {
         if let Some(known) = self.members.borrow().get(&t) {
+            self.guards.read(lookup::MEMBERS, t, 0);
             return known.clone();
         }
         // A cycle through a glob finds the type without members.
         self.members.borrow_mut().insert(t, Vec::new());
+        self.guards.enter(lookup::MEMBERS, t, 0);
         let rec = &self.ix.defs[t];
         let name = rec.def.local.name.clone();
         let mut found = Vec::new();
@@ -1263,6 +1243,7 @@ impl<'a> Engine<'a> {
         }
         found.sort_unstable();
         found.dedup();
+        self.guards.leave(lookup::MEMBERS, t, 0);
         self.members.borrow_mut().insert(t, found.clone());
         found
     }
@@ -1325,6 +1306,7 @@ impl<'a> Engine<'a> {
             Traits::Built(_) => return true,
             Traits::Building => {
                 self.met_unfinished_table.set(true);
+                self.guards.unfinished();
                 return false;
             }
             Traits::Unbuilt => {}
@@ -1635,7 +1617,7 @@ impl<'a> Engine<'a> {
         if !r.qualifier.is_empty() {
             let segs = r.qualifier.clone();
             if let Some(Ent::Mod(m)) = self.walk(site, &segs, Want::Type, 0) {
-                if let Some(ids) = self.ix.items.get(&(m, name.clone())) {
+                if let Some(ids) = self.ix.items.get(m, name.as_str()) {
                     found.extend(ids.iter().copied());
                 }
             } else {
