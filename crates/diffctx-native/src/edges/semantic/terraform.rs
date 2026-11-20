@@ -5,7 +5,7 @@ use regex::Regex;
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::config::edge_weights::TERRAFORM_SEMANTIC;
-use crate::types::{Fragment, FragmentId};
+use diffctx_base::types::{Fragment, FragmentId};
 
 use super::super::EdgeDict;
 use super::super::base::{self, EdgeBuilder, add_edge, add_edges_from_ids};

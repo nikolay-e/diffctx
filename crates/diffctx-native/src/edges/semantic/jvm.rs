@@ -9,7 +9,7 @@ use crate::config::extensions::{
     JAVA_EXTENSIONS, JVM_EXTENSIONS, KOTLIN_EXTENSIONS, SCALA_EXTENSIONS,
 };
 use crate::config::weights::EDGE_WEIGHTS;
-use crate::types::{Fragment, FragmentId, FragmentKind};
+use diffctx_base::types::{Fragment, FragmentId, FragmentKind};
 
 use super::super::EdgeDict;
 use super::super::base::{self, EdgeBuilder, add_edge, add_edges_from_ids};
@@ -20,21 +20,21 @@ use super::super::base::{self, EdgeBuilder, add_edge, add_edges_from_ids};
 const MAX_FILES_PER_NAME: usize = 8;
 
 fn is_jvm_file(path: &Path) -> bool {
-    JVM_EXTENSIONS.contains(crate::languages::file_ext(path).as_str())
+    JVM_EXTENSIONS.contains(diffctx_base::languages::file_ext(path).as_str())
 }
 
 fn is_java(path: &Path) -> bool {
-    let ext = crate::languages::file_ext(path);
+    let ext = diffctx_base::languages::file_ext(path);
     JAVA_EXTENSIONS.contains(ext.as_str())
 }
 
 fn is_kotlin(path: &Path) -> bool {
-    let ext = crate::languages::file_ext(path);
+    let ext = diffctx_base::languages::file_ext(path);
     KOTLIN_EXTENSIONS.contains(ext.as_str())
 }
 
 fn is_scala(path: &Path) -> bool {
-    let ext = crate::languages::file_ext(path);
+    let ext = diffctx_base::languages::file_ext(path);
     SCALA_EXTENSIONS.contains(ext.as_str())
 }
 
@@ -825,7 +825,7 @@ impl EdgeBuilder for JVMEdgeBuilder {
                         continue;
                     }
                     for d in defs {
-                        if d.id == jf.id || crate::container::within(&jf.id, d) {
+                        if d.id == jf.id || diffctx_base::container::within(&jf.id, d) {
                             continue;
                         }
                         let Some(def) = defs_of

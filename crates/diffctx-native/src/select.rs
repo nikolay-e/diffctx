@@ -6,12 +6,12 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::config::limits::UTILITY;
 use crate::config::selection::selection;
-use crate::interval::IntervalIndex;
-use crate::types::{Fragment, FragmentId, FragmentKind};
 use crate::utility::needs::InformationNeed;
 use crate::utility::objective::{
     UtilityState, apply_fragment, compute_density, marginal_gain, utility_value,
 };
+use diffctx_base::interval::IntervalIndex;
+use diffctx_base::types::{Fragment, FragmentId, FragmentKind};
 
 const SENTINEL_TOKEN_COUNT: u32 = 1_000_000_000;
 
@@ -263,7 +263,7 @@ fn witness_options<'a>(
 ) -> (&'a Fragment, Option<&'a Fragment>) {
     let preferred: &Fragment = core_excerpts
         .and_then(|e| e.get(&core.id))
-        .filter(|excerpt| crate::excerpt::is_downshift_worthwhile(core, excerpt))
+        .filter(|excerpt| diffctx_base::excerpt::is_downshift_worthwhile(core, excerpt))
         .unwrap_or(core);
     let fallback = sig_lookup
         .get(&core.id)
@@ -278,7 +278,7 @@ fn clipped_witness(core: &Fragment, max_tokens: u32) -> Option<Fragment> {
     let mut kept: Vec<&str> = Vec::new();
     let mut total = 0u32;
     for line in core.content.lines() {
-        let cost = crate::tokenizer::count_tokens(line) + 1;
+        let cost = diffctx_base::tokenizer::count_tokens(line) + 1;
         if !kept.is_empty() && total + cost > max_tokens {
             break;
         }
@@ -300,8 +300,8 @@ fn clipped_witness(core: &Fragment, max_tokens: u32) -> Option<Fragment> {
     Some(Fragment {
         id: FragmentId::new(core.id.path.clone(), core.start_line(), end),
         kind: FragmentKind::Excerpt,
-        identifiers: crate::types::extract_identifiers(&content, 3),
-        token_count: crate::tokenizer::count_tokens(&content),
+        identifiers: diffctx_base::types::extract_identifiers(&content, 3),
+        token_count: diffctx_base::tokenizer::count_tokens(&content),
         content: Arc::from(content),
         symbol_name: core.symbol_name.clone(),
     })
@@ -471,7 +471,7 @@ fn select_core_fragments(
         }
         let frag: &Fragment = core_excerpts
             .and_then(|e| e.get(&frag.id))
-            .filter(|excerpt| crate::excerpt::is_downshift_worthwhile(frag, excerpt))
+            .filter(|excerpt| diffctx_base::excerpt::is_downshift_worthwhile(frag, excerpt))
             .unwrap_or(frag);
         if state.selected_ids.is_superset_of(frag) {
             satisfied.insert(core_id);
@@ -1285,7 +1285,7 @@ pub(crate) fn lazy_greedy_select(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::FragmentKind;
+    use diffctx_base::types::FragmentKind;
 
     fn frag(path: &str, start: u32, end: u32, kind: FragmentKind, tokens: u32) -> Fragment {
         let mut identifiers = FxHashSet::default();
@@ -1317,7 +1317,7 @@ mod tests {
             .collect();
         let mut core = frag("big.py", 10, 210, FragmentKind::Function, 0);
         core.content = Arc::from(format!("def big():\n{body}"));
-        core.token_count = crate::tokenizer::count_tokens(&core.content);
+        core.token_count = diffctx_base::tokenizer::count_tokens(&core.content);
 
         let witness = clipped_witness(&core, 60).expect("a witness");
         assert!(witness.token_count <= 60 + 20, "{}", witness.token_count);

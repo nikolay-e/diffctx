@@ -51,14 +51,20 @@ class TestWhatThisTreeIs:
         assert match, "no __version__ assignment found in src/diffctx/version.py"
         assert match.group(1) == __version__
 
-    def test_native_crate_cargo_toml_version(self):
-        match = re.search(r'^version = "([^"]+)"', _load_text("crates/diffctx-native/Cargo.toml"), re.MULTILINE)
-        assert match, "no [package] version key found in crates/diffctx-native/Cargo.toml"
+    def test_workspace_cargo_toml_versions(self):
+        """Every crate inherits the workspace version; the diffctx crate asks diffctx-base for it by number."""
+        manifest = _load_text("Cargo.toml")
+        match = re.search(r'^version = "([^"]+)"', manifest, re.MULTILINE)
+        assert match, "no [workspace.package] version key found in Cargo.toml"
         assert match.group(1) == tree_version.cargo_spelling(__version__)
+        dependency = re.search(r'^diffctx-base = \{[^}\n]*version = "([^"]+)"', manifest, re.MULTILINE)
+        assert dependency, "no diffctx-base dependency version found in Cargo.toml"
+        assert dependency.group(1) == match.group(1)
 
-    def test_cargo_lock_diffctx_entry_version(self):
-        match = re.search(r'name = "diffctx"\nversion = "([^"]+)"', _load_text("Cargo.lock"))
-        assert match, "no diffctx package entry found in Cargo.lock"
+    @pytest.mark.parametrize("crate", ["diffctx", "diffctx-base"])
+    def test_cargo_lock_entry_version(self, crate):
+        match = re.search(rf'name = "{crate}"\nversion = "([^"]+)"', _load_text("Cargo.lock"))
+        assert match, f"no {crate} package entry found in Cargo.lock"
         assert match.group(1) == tree_version.cargo_spelling(__version__)
 
     def test_uv_lock_editable_entry_version(self):
@@ -137,7 +143,7 @@ class TestTheReleaseWritesTheTreeSurfaces:
         surfaces = [
             "src/diffctx/version.py",
             "pyproject.toml",
-            "crates/diffctx-native/Cargo.toml",
+            "Cargo.toml",
             "Cargo.lock",
             "uv.lock",
         ]
@@ -154,9 +160,9 @@ class TestTheReleaseWritesTheTreeSurfaces:
             before, after = lines(PROJECT_ROOT, surface), lines(tmp_path, surface)
             assert len(before) == len(after), surface
             changed = [new for old, new in zip(before, after, strict=True) if old != new]
-            assert len(changed) <= 1, (surface, changed)
+            assert len(changed) <= (2 if surface.startswith("Cargo") else 1), (surface, changed)
         assert 'version = "7.8.9.dev3"' in lines(tmp_path, "pyproject.toml")
-        assert 'version = "7.8.9-dev.3"' in lines(tmp_path, "crates/diffctx-native/Cargo.toml")
+        assert 'version = "7.8.9-dev.3"' in lines(tmp_path, "Cargo.toml")
         assert '__version__ = "7.8.9.dev3"' in lines(tmp_path, "src/diffctx/version.py")
 
     def test_the_command_line_opens_the_next_development_version(self, tmp_path):
@@ -180,7 +186,7 @@ class TestTheReleaseWritesTheTreeSurfaces:
         assert set(add.group(1).split()) == {
             "src/diffctx/version.py",
             "pyproject.toml",
-            "crates/diffctx-native/Cargo.toml",
+            "Cargo.toml",
             "Cargo.lock",
             "uv.lock",
         }, "the dev version is for the tree only: a user pin must stay on the release"

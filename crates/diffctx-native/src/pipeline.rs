@@ -31,10 +31,10 @@ use crate::scoring::{ScoringResult, create_scoring_strategy};
 use crate::signatures::generate_signature_variants;
 use crate::snapshot;
 use crate::source::{Admitted, Source, Why};
-use crate::tokenizer::count_tokens;
-use crate::types::{Fragment, FragmentId, unquote_c_style};
 use crate::utility::InformationNeed;
 use crate::{diff_parse, grep};
+use diffctx_base::tokenizer::count_tokens;
+use diffctx_base::types::{Fragment, FragmentId, unquote_c_style};
 
 mod keyword_binding;
 
@@ -68,7 +68,7 @@ pub fn build_diff_context_in(
     scoring_mode: ScoringMode,
     timeout: u64,
 ) -> Result<DiffContextOutput> {
-    let _run = crate::profile::run(if full { "full" } else { "pack" });
+    let _run = diffctx_base::profile::run(if full { "full" } else { "pack" });
     if full {
         return build_diff_context_full(root_dir, diff_range, paths, no_content, timeout);
     }
@@ -95,7 +95,7 @@ pub fn build_diff_context_locate(
     timeout: u64,
     include_overflow: bool,
 ) -> Result<crate::locate::LocateOutput> {
-    let _run = crate::profile::run("locate");
+    let _run = diffctx_base::profile::run("locate");
     validate_tau(tau)?;
     let state = compute_scored_state(root_dir, diff_range, paths, alpha, scoring_mode, timeout)?;
     let outcome = if state.all_fragments.is_empty() {
@@ -116,7 +116,7 @@ pub fn build_diff_context_locate(
     } else {
         run_selection(&state, budget_tokens, tau)
     };
-    let _render = crate::profile::phase("render");
+    let _render = diffctx_base::profile::phase("render");
     let mut output = crate::locate::build_locate(&state, &outcome);
     // The first item of every changed file stays whatever the budget: one too
     // small for the selection to hold them is cut from the answer the selection
@@ -190,7 +190,7 @@ fn impact_of(
     scoring_mode: ScoringMode,
     timeout: u64,
 ) -> Result<crate::impact::ImpactOutput> {
-    let _run = crate::profile::run("impact");
+    let _run = diffctx_base::profile::run("impact");
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(timeout);
     let state =
         compute_scored_state_anchored(root_dir, anchor, paths, alpha, scoring_mode, timeout, true)?;
@@ -215,7 +215,7 @@ pub fn build_symbol_impact(
     scoring_mode: ScoringMode,
     timeout: u64,
 ) -> Result<crate::impact::ImpactOutput> {
-    let _run = crate::profile::run("symbol");
+    let _run = diffctx_base::profile::run("symbol");
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(timeout);
     let state = match compute_scored_state_anchored(
         root_dir,
@@ -317,7 +317,7 @@ fn count_text_lines(source: &Source, path: &Path) -> Option<u32> {
 /// paths sans churn) are readable as one unit.
 #[derive(Default)]
 struct ChangeSetData {
-    hunks: Vec<crate::types::DiffHunk>,
+    hunks: Vec<diffctx_base::types::DiffHunk>,
     diff_text: String,
     changed_files: Vec<PathBuf>,
     diffed_files: FxHashSet<PathBuf>,
@@ -366,7 +366,7 @@ pub(crate) fn collect_hunks_with_untracked(
     is_working_tree_diff: bool,
     source: &Source,
     run: Option<&crate::resource::RunContext>,
-) -> Result<(Vec<crate::types::DiffHunk>, Vec<PathBuf>)> {
+) -> Result<(Vec<diffctx_base::types::DiffHunk>, Vec<PathBuf>)> {
     let mut hunks = diff_parse::parse_diff(root_dir, diff_range, pathspec)?;
     if !is_working_tree_diff {
         return Ok((hunks, Vec::new()));
@@ -390,7 +390,7 @@ pub(crate) fn collect_hunks_with_untracked(
         };
         if line_count > 0 {
             let path_str: Arc<str> = Arc::from(f.to_string_lossy().as_ref());
-            hunks.push(crate::types::DiffHunk {
+            hunks.push(diffctx_base::types::DiffHunk {
                 path: path_str,
                 new_start: 1,
                 new_len: line_count,
@@ -432,7 +432,7 @@ fn unless_cut_short<T: Default>(
 fn withhold_secret_hunks(
     root_dir: &Path,
     source: &Source,
-    hunks: &mut Vec<crate::types::DiffHunk>,
+    hunks: &mut Vec<diffctx_base::types::DiffHunk>,
 ) -> FxHashSet<String> {
     let mut secret_excluded_paths: FxHashSet<String> = FxHashSet::default();
     hunks.retain(|h| {
@@ -458,7 +458,7 @@ fn withhold_secret_hunks(
 fn ignore_disclosure(
     root_dir: &Path,
     source: &Source,
-    hunks: &[crate::types::DiffHunk],
+    hunks: &[diffctx_base::types::DiffHunk],
 ) -> (Vec<String>, FxHashSet<String>) {
     let mut ignored_display: Vec<String> = Vec::new();
     let mut policy_excluded_paths: FxHashSet<String> = FxHashSet::default();
@@ -779,7 +779,7 @@ fn unanalysed_namers(
             continue;
         };
         unread.push(crate::impact::UnanalysedFile {
-            language: crate::languages::get_language_for_file(&rel),
+            language: diffctx_base::languages::get_language_for_file(&rel),
             path: rel,
             reason,
             lines,
@@ -1224,7 +1224,7 @@ fn resolve_symbol_change_set(
     let kotlin_owned = |def: &Fragment, owner: &str| -> Option<bool> {
         use crate::facts::lang::kotlin::KotlinExtractor;
         use crate::facts::{Disambig, Extractor as _, Fact};
-        if crate::languages::get_language_for_file(def.path()) != Some("kotlin") {
+        if diffctx_base::languages::get_language_for_file(def.path()) != Some("kotlin") {
             return None;
         }
         let text = run.source().read_to_string(Path::new(def.path()))?;
@@ -1266,7 +1266,7 @@ fn resolve_symbol_change_set(
     // What diff mode names as a changed definition: a module-level `const`
     // or `let` is one, though its kind is a variable's (#420).
     let is_definition = |f: &&Fragment| {
-        crate::container::named_container_of(f, &fragments).is_some_and(|c| c.id == f.id)
+        diffctx_base::container::named_container_of(f, &fragments).is_some_and(|c| c.id == f.id)
     };
     // SQL names its routines without regard to case: `Net_Total` and `NET_TOTAL`
     // are one function.
@@ -1274,7 +1274,7 @@ fn resolve_symbol_change_set(
         f.symbol_name.as_deref().is_some_and(|n| {
             n == wanted
                 || (n.eq_ignore_ascii_case(wanted)
-                    && crate::languages::get_language_for_file(f.path()) == Some("sql"))
+                    && diffctx_base::languages::get_language_for_file(f.path()) == Some("sql"))
         })
     };
     let mut definitions: Vec<&Fragment> = fragments
@@ -1379,7 +1379,7 @@ fn resolve_symbol_change_set(
     let mut changed_files: Vec<PathBuf> = Vec::new();
     for def in &definitions {
         let (start, len) = (def.start_line(), def.line_count());
-        hunks.push(crate::types::DiffHunk {
+        hunks.push(diffctx_base::types::DiffHunk {
             path: Arc::from(def.path()),
             new_start: start,
             new_len: len,
@@ -1558,7 +1558,7 @@ pub fn compute_scored_state_anchored(
 ) -> Result<ScoredState> {
     let t_entry = Instant::now();
     crate::effective_config::enforce_strict_env()?;
-    crate::tokenizer::warm();
+    diffctx_base::tokenizer::warm();
     snapshot::set_git_timeout(timeout);
     let run = crate::resource::RunContext::for_run(timeout);
     let _in_run = run.enter();
@@ -1582,7 +1582,7 @@ pub fn compute_scored_state_anchored(
             ignored_changes,
             policy_excluded_count,
         } => {
-            crate::profile::record("pre_phase", t_entry.elapsed().as_secs_f64() * 1000.0);
+            diffctx_base::profile::record("pre_phase", t_entry.elapsed().as_secs_f64() * 1000.0);
             let mut state =
                 empty_scored_state_with_changes(root_dir, diff_range, &scope, timeout, run)?;
             state.change_classes = classify_changes(&state.root_dir, &changed_files, &[], &[], &[]);
@@ -1618,7 +1618,9 @@ pub fn compute_scored_state_anchored(
         pre_phase_ms,
     } = *data;
     run.set_head_rev(history_rev);
-    run.set_changed_lines(crate::changed_lines::ChangedLines::from_diff(&diff_text));
+    run.set_changed_lines(diffctx_base::changed_lines::ChangedLines::from_diff(
+        &diff_text,
+    ));
 
     let t0 = Instant::now();
 
@@ -1639,7 +1641,7 @@ pub fn compute_scored_state_anchored(
         .iter()
         .filter_map(|h| rel_path_string(&root_dir, Path::new(&*h.path)))
         .collect();
-    let mut hunk_texts: Vec<_> = crate::changed_lines::hunk_texts(&diff_text)
+    let mut hunk_texts: Vec<_> = diffctx_base::changed_lines::hunk_texts(&diff_text)
         .into_iter()
         .filter(|h| analysed.contains(&h.path))
         .collect();
@@ -1683,10 +1685,12 @@ pub fn compute_scored_state_anchored(
         crate::effective_config::EffectiveConfigV1::resolve(&config, timeout),
     )?;
 
-    let mut expansion_concepts: FxHashSet<String> =
-        crate::types::extract_identifiers(&diff_text, TOKENIZATION.query_min_identifier_length)
-            .into_iter()
-            .collect();
+    let mut expansion_concepts: FxHashSet<String> = diffctx_base::types::extract_identifiers(
+        &diff_text,
+        TOKENIZATION.query_min_identifier_length,
+    )
+    .into_iter()
+    .collect();
 
     if std::env::var("DIFFCTX_NO_COMMIT_SIGNAL").as_deref() != Ok("1") {
         // Every message in the range, not the last one alone: a bot commit
@@ -1701,9 +1705,10 @@ pub fn compute_scored_state_anchored(
             }
         }
         for text in &signal {
-            for ident in
-                crate::types::extract_identifiers(text, TOKENIZATION.query_min_identifier_length)
-            {
+            for ident in diffctx_base::types::extract_identifiers(
+                text,
+                TOKENIZATION.query_min_identifier_length,
+            ) {
                 expansion_concepts.insert(ident);
             }
         }
@@ -1829,7 +1834,7 @@ pub fn compute_scored_state_anchored(
         ("graph_build", heavy_latency_ms.graph_build),
         ("scoring", heavy_latency_ms.scoring),
     ] {
-        crate::profile::record(name, ms);
+        diffctx_base::profile::record(name, ms);
     }
     let usage = run.usage();
     for (name, n) in [
@@ -1837,7 +1842,7 @@ pub fn compute_scored_state_anchored(
         ("fragments", all_fragments.len() as u64),
         ("edges", usage.final_edges),
     ] {
-        crate::profile::count(name, n);
+        diffctx_base::profile::count(name, n);
     }
 
     tracing::debug!(
@@ -1895,11 +1900,11 @@ const MAX_COMMIT_MESSAGE_CHARS: usize = 2_000;
 /// in parallel. Past the deadline a file is judged by its lines alone.
 fn settle_layout(
     root_dir: &Path,
-    hunk_texts: &mut [crate::changed_lines::HunkText],
+    hunk_texts: &mut [diffctx_base::changed_lines::HunkText],
     run: &crate::resource::RunContext,
 ) {
     let source = run.source();
-    let mut files: Vec<&mut [crate::changed_lines::HunkText]> =
+    let mut files: Vec<&mut [diffctx_base::changed_lines::HunkText]> =
         hunk_texts.chunk_by_mut(|a, b| a.path == b.path).collect();
     for chunk in files.chunks_mut(rayon::current_num_threads().max(1)) {
         let texts: Vec<Option<String>> = chunk
@@ -1931,8 +1936,8 @@ fn settle_layout(
 pub(crate) fn classify_changes(
     root_dir: &Path,
     changed_files: &[PathBuf],
-    hunks: &[crate::types::DiffHunk],
-    hunk_texts: &[crate::changed_lines::HunkText],
+    hunks: &[diffctx_base::types::DiffHunk],
+    hunk_texts: &[diffctx_base::changed_lines::HunkText],
     fragments: &[Fragment],
 ) -> Vec<(String, crate::change_class::ChangeClass, &'static str)> {
     // A file is layout-only when every run of it is: lines that only moved
@@ -1958,7 +1963,7 @@ pub(crate) fn classify_changes(
         .map(|path| {
             let display = crate::paths::display_rel_or_abs(root_dir, path);
             let key = path.to_string_lossy();
-            let file_hunks: Vec<&crate::types::DiffHunk> = hunks
+            let file_hunks: Vec<&diffctx_base::types::DiffHunk> = hunks
                 .iter()
                 .filter(|h| h.path.as_ref() == key.as_ref())
                 .collect();
@@ -1999,7 +2004,7 @@ pub struct ScoredFragments {
 /// filesystem do without one there.
 pub fn score_from_fragments(
     mut all_fragments: Vec<Fragment>,
-    hunks: &[crate::types::DiffHunk],
+    hunks: &[diffctx_base::types::DiffHunk],
     diff_text: &str,
     config: &PipelineConfig,
     repo_root: Option<&Path>,
@@ -2012,7 +2017,7 @@ pub fn score_from_fragments(
     let core_ids = identify_core_fragments(hunks, &all_fragments);
 
     let mut core_excerpts =
-        crate::excerpt::generate_core_excerpts(&all_fragments, &core_ids, hunks);
+        diffctx_base::excerpt::generate_core_excerpts(&all_fragments, &core_ids, hunks);
     assign_excerpt_token_counts(&mut core_excerpts);
 
     let mut sig_frags = generate_signature_variants(&all_fragments);
@@ -2114,11 +2119,11 @@ pub(crate) fn evidence_priority_of(
 pub(crate) fn evidence_tier(repo_path: &str, class: crate::change_class::ChangeClass) -> u8 {
     use crate::change_class::ChangeClass;
     let path = Path::new(repo_path);
-    let ext = crate::languages::file_ext(path);
+    let ext = diffctx_base::languages::file_ext(path);
     match class {
         ChangeClass::Generated => 4,
         ChangeClass::Mechanical | ChangeClass::Layout => 3,
-        _ if crate::testfiles::is_test_path(path) => 1,
+        _ if diffctx_base::testfiles::is_test_path(path) => 1,
         _ if crate::config::extensions::CONFIG_EXTENSIONS.contains(ext.as_str())
             || matches!(ext.as_str(), ".md" | ".rst" | ".txt" | ".adoc") =>
         {
@@ -2307,7 +2312,7 @@ pub fn run_selection(
     budget_tokens: Option<u32>,
     tau: Option<f64>,
 ) -> SelectionOutcome {
-    let _selection = crate::profile::phase("selection");
+    let _selection = diffctx_base::profile::phase("selection");
     let t_start = Instant::now();
     // Selection runs after the heavy phase returned, often on another thread
     // (the Python bridge re-runs it per cell): publish the run context again
@@ -2389,7 +2394,7 @@ pub fn run_selection(
     stand_in_ids.extend(
         selected
             .iter()
-            .filter(|f| f.kind == crate::types::FragmentKind::Excerpt)
+            .filter(|f| f.kind == diffctx_base::types::FragmentKind::Excerpt)
             .map(|f| f.id.clone()),
     );
     let represented: FxHashSet<&str> = selected.iter().map(|f| f.id.path.as_ref()).collect();
@@ -2516,7 +2521,7 @@ pub fn select_with_params(
         stopping_certificate,
         ppr_forward_pushes: state.scoring_result.ppr_forward_pushes,
         ppr_backward_pushes: state.scoring_result.ppr_backward_pushes,
-        peak_rss_bytes: crate::peak_rss::peak_rss_bytes(),
+        peak_rss_bytes: diffctx_base::peak_rss::peak_rss_bytes(),
         edge_emissions_by_category: cap_stats
             .emissions_by_category
             .iter()
@@ -2593,14 +2598,14 @@ pub fn raw_diff_text(
     diff_range: Option<&str>,
     paths: &[String],
     timeout: u64,
-) -> Result<(String, crate::sanitize::Redactions)> {
+) -> Result<(String, diffctx_base::sanitize::Redactions)> {
     snapshot::set_git_timeout(timeout);
     let (root_dir, scope) = resolve_scope(root_dir, paths)?;
     let run = crate::resource::RunContext::for_run(timeout);
     let analysis = crate::source::Analysis::open(&root_dir, diff_range, &run)?;
     let diff_text = diff_parse::get_diff_text(&root_dir, analysis.range(), &scope)?;
     let mut disclosable = keep_disclosable_sections(&root_dir, &analysis.head(), &diff_text);
-    let redactions = crate::sanitize::sanitize_in_place(&mut disclosable);
+    let redactions = diffctx_base::sanitize::sanitize_in_place(&mut disclosable);
     Ok((disclosable, redactions))
 }
 

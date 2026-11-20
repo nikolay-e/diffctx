@@ -3,7 +3,7 @@
 //! The rules are data a reader can check; `keys_extract.rs` applies the ones
 //! that name a transformation.
 
-use crate::canon::canon_key;
+use diffctx_base::canon::canon_key;
 
 #[allow(
     dead_code,

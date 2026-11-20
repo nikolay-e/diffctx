@@ -102,7 +102,7 @@ fn every_format_fits_its_own_text_and_production_goes_last() {
                 continue;
             }
             let text = pack(repo.path(), budget, format);
-            let tokens = _diffctx::tokenizer::count_tokens(&text);
+            let tokens = diffctx_base::tokenizer::count_tokens(&text);
             assert!(tokens <= budget, "-f {format} at {budget}: {tokens}");
             let shown: Vec<String> = fragments(&text, format)
                 .into_iter()

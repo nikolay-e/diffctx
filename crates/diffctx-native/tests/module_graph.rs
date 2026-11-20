@@ -1,8 +1,10 @@
 // The module graph is a ratchet (fj#195). Cargo forbids a cycle between crates
-// and says nothing about one between the modules of this crate, so any module
-// can reach any other and responsibilities blur. The graph is read off the
-// source with tree-sitter-rust (comments and strings never count) and held to
-// three contracts:
+// and says nothing about one between the modules of a crate, so any module
+// can reach any other and responsibilities blur. The modules of every crate in
+// `crates/` are one graph: a module keeps its layer wherever its crate puts it
+// (`crate_graph.rs` holds the edges between the crates). The graph is read off
+// the source with tree-sitter-rust (comments and strings never count) and held
+// to three contracts:
 //   - `module_edges.txt` lists every edge, both ways: an edge missing from the
 //     list is red, and so is a listed edge the code no longer has;
 //   - `LAYERS` is the intended order; an edge pointing against it carries an
@@ -16,7 +18,10 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use tempfile::TempDir;
-use tree_sitter::{Node, Parser};
+use tree_sitter::Node;
+
+mod graph_reader;
+use graph_reader::{Source, budget_number, crate_file, parse, ratchet};
 
 /// Lowest layer first: a module may use its own layer and every one below it.
 const LAYERS: &[(&str, &[&str])] = &[
@@ -96,37 +101,26 @@ const AGAINST: &str = "against order";
 
 type Edges = BTreeSet<(String, String)>;
 
-struct Source<'a> {
-    text: &'a str,
-}
-
-impl Source<'_> {
-    fn of(&self, node: Node) -> &str {
-        &self.text[node.byte_range()]
-    }
-}
-
 struct Leaf {
     segments: Vec<String>,
     alias: Option<String>,
 }
 
+/// A workspace crate: the name another crate's paths start with, and its `src`.
+struct Crate {
+    ident: String,
+    src: PathBuf,
+}
+
 struct Graph {
-    modules: BTreeSet<String>,
+    /// Every top-level module of every crate, with the `src` of the crate that declares it.
+    modules: BTreeMap<String, PathBuf>,
+    /// The names that reach a workspace crate's root from outside it.
+    crate_idents: BTreeSet<String>,
     /// `pub use tokens::occurrence;` in lib.rs: `crate::occurrence` names an
     /// item of that module, so it is an edge to it.
     reexports: BTreeMap<String, String>,
     edges: Edges,
-}
-
-fn parse(path: &Path) -> (String, tree_sitter::Tree) {
-    let text = fs::read_to_string(path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
-    let mut parser = Parser::new();
-    parser
-        .set_language(&tree_sitter_rust::LANGUAGE.into())
-        .expect("rust grammar");
-    let tree = parser.parse(&text, None).expect("parse");
-    (text, tree)
 }
 
 /// The children that exist in a product build: an item behind `#[cfg(test)]`
@@ -230,6 +224,7 @@ impl Graph {
     fn target(&self, segments: &[String], module_path: &[String]) -> Option<String> {
         let name = match segments.first()?.as_str() {
             "crate" => segments.get(1)?,
+            ident if self.crate_idents.contains(ident) => segments.get(1)?,
             "super" | "self" => {
                 let mut up = module_path.len();
                 let mut at = 0;
@@ -249,7 +244,7 @@ impl Graph {
             }
             _ => return None,
         };
-        if self.modules.contains(name) {
+        if self.modules.contains_key(name) {
             Some(name.clone())
         } else {
             self.reexports.get(name).cloned()
@@ -339,54 +334,60 @@ impl Graph {
     }
 }
 
-/// The top-level modules of the crate whose root is `src`, and every edge
-/// between them.
-fn read_graph(src: &Path) -> Graph {
-    let (text, tree) = parse(&src.join("lib.rs"));
-    let source = Source { text: &text };
-    let declared = live_children(tree.root_node(), &source);
+/// The top-level modules of the crates and every edge between them.
+fn read_graph(crates: &[Crate]) -> Graph {
     let mut graph = Graph {
-        modules: BTreeSet::new(),
+        modules: BTreeMap::new(),
+        crate_idents: crates.iter().map(|c| c.ident.clone()).collect(),
         reexports: BTreeMap::new(),
         edges: Edges::new(),
     };
-    for item in &declared {
-        if item.kind() == "mod_item" && item.child_by_field_name("body").is_none() {
-            let name = item.child_by_field_name("name").expect("mod name");
-            graph.modules.insert(source.of(name).to_string());
-        }
-    }
-    for item in declared
-        .iter()
-        .filter(|item| item.kind() == "use_declaration")
-    {
-        let Some(argument) = item.child_by_field_name("argument") else {
-            continue;
-        };
-        let mut leaves = Vec::new();
-        use_leaves(argument, &source, &[], &mut leaves);
-        for leaf in leaves {
-            let Some(top) = leaf
-                .segments
-                .first()
-                .filter(|top| graph.modules.contains(*top))
-            else {
-                continue;
-            };
-            let name = leaf.alias.clone().or_else(|| leaf.segments.last().cloned());
-            if let Some(name) = name.filter(|name| !graph.modules.contains(name)) {
-                graph.reexports.insert(name, top.clone());
+    let mut roots = Vec::new();
+    for krate in crates {
+        let (text, tree) = parse(&krate.src.join("lib.rs"));
+        let source = Source { text: &text };
+        let declared = live_children(tree.root_node(), &source);
+        for item in &declared {
+            if item.kind() == "mod_item" && item.child_by_field_name("body").is_none() {
+                let name = item.child_by_field_name("name").expect("mod name");
+                let name = source.of(name).to_string();
+                let twin = graph.modules.insert(name.clone(), krate.src.clone());
+                assert!(twin.is_none(), "module {name} is declared by two crates");
             }
         }
+        let uses: Vec<Leaf> = declared
+            .iter()
+            .filter(|item| item.kind() == "use_declaration")
+            .filter_map(|item| item.child_by_field_name("argument"))
+            .flat_map(|argument| {
+                let mut leaves = Vec::new();
+                use_leaves(argument, &source, &[], &mut leaves);
+                leaves
+            })
+            .collect();
+        roots.push(uses);
     }
-    for module in graph.modules.clone() {
-        graph.walk_declared(src, &module, &[module.clone()]);
+    for leaf in roots.iter().flatten() {
+        let Some(top) = leaf
+            .segments
+            .first()
+            .filter(|top| graph.modules.contains_key(*top))
+        else {
+            continue;
+        };
+        let name = leaf.alias.clone().or_else(|| leaf.segments.last().cloned());
+        if let Some(name) = name.filter(|name| !graph.modules.contains_key(name)) {
+            graph.reexports.insert(name, top.clone());
+        }
+    }
+    for (module, src) in graph.modules.clone() {
+        graph.walk_declared(&src, &module, &[module.clone()]);
     }
     graph
 }
 
 /// Size of the largest set of modules that all reach one another (Tarjan).
-fn largest_scc(edges: &Edges, modules: &BTreeSet<String>) -> usize {
+fn largest_scc(edges: &Edges, modules: &BTreeMap<String, PathBuf>) -> usize {
     struct State<'a> {
         next: BTreeMap<&'a str, Vec<&'a str>>,
         index: BTreeMap<&'a str, usize>,
@@ -429,7 +430,7 @@ fn largest_scc(edges: &Edges, modules: &BTreeSet<String>) -> usize {
             .or_default()
             .push(to.as_str());
     }
-    for module in modules {
+    for module in modules.keys() {
         if !state.index.contains_key(module.as_str()) {
             strong(module.as_str(), &mut state);
         }
@@ -461,24 +462,6 @@ fn listed_edges(text: &str) -> BTreeMap<(String, String), bool> {
         .collect()
 }
 
-fn budget_number(budget: &toml::Table, key: &str) -> usize {
-    budget
-        .get(key)
-        .and_then(toml::Value::as_integer)
-        .and_then(|n| usize::try_from(n).ok())
-        .unwrap_or_else(|| panic!("budget.toml: {key} is missing or not a count"))
-}
-
-fn ratchet(problems: &mut Vec<String>, key: &str, recorded: usize, measured: usize) {
-    if measured > recorded {
-        problems.push(format!("{key} grew {recorded} -> {measured}"));
-    } else if measured < recorded {
-        problems.push(format!(
-            "{key} dropped {recorded} -> {measured}: lower it in budget.toml in the same commit"
-        ));
-    }
-}
-
 fn problems(graph: &Graph, list: &str, budget: &toml::Table) -> Vec<String> {
     let listed = listed_edges(list);
     let mut problems = Vec::new();
@@ -504,13 +487,13 @@ fn problems(graph: &Graph, list: &str, budget: &toml::Table) -> Vec<String> {
     }
     for module in graph
         .modules
-        .iter()
+        .keys()
         .filter(|module| layer_of(module).is_none())
     {
         problems.push(format!("module {module} has no layer: add it to LAYERS"));
     }
     for member in LAYERS.iter().flat_map(|(_, members)| *members) {
-        if !graph.modules.contains(*member) {
+        if !graph.modules.contains_key(*member) {
             problems.push(format!(
                 "LAYERS names {member}, which is not a module: delete it"
             ));
@@ -537,13 +520,32 @@ fn problems(graph: &Graph, list: &str, budget: &toml::Table) -> Vec<String> {
     problems
 }
 
-fn crate_file(relative: &str) -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join(relative)
+/// Every crate of the workspace: a directory of `crates/` with a `src/lib.rs`.
+fn workspace_crates() -> Vec<Crate> {
+    let mut dirs: Vec<PathBuf> = fs::read_dir(crate_file(".."))
+        .expect("crates/")
+        .map(|entry| entry.expect("a directory entry").path())
+        .filter(|dir| dir.join("src/lib.rs").is_file())
+        .collect();
+    dirs.sort();
+    dirs.iter()
+        .map(|dir| {
+            let manifest: toml::Table = fs::read_to_string(dir.join("Cargo.toml"))
+                .expect("Cargo.toml")
+                .parse()
+                .expect("Cargo.toml parses");
+            let name = manifest["package"]["name"].as_str().expect("package name");
+            Crate {
+                ident: name.replace('-', "_"),
+                src: dir.join("src"),
+            }
+        })
+        .collect()
 }
 
 #[test]
 fn the_module_graph_matches_its_list_and_its_caps() {
-    let graph = read_graph(&crate_file("src"));
+    let graph = read_graph(&workspace_crates());
     let list = fs::read_to_string(crate_file("tests/module_edges.txt")).unwrap_or_default();
     let budget: toml::Table = fs::read_to_string(crate_file("../../budget.toml"))
         .expect("budget.toml")
@@ -597,15 +599,52 @@ fn the_reader_follows_every_way_a_module_names_another() {
     write("h.rs", "");
     write("i.rs", "");
     write("t.rs", "use crate::a::A;\n");
-    let edges: Vec<String> = read_graph(dir.path())
-        .edges
-        .iter()
-        .map(|(from, to)| format!("{from}->{to}"))
-        .collect();
+    let edges: Vec<String> = read_graph(&[Crate {
+        ident: "single".to_string(),
+        src: dir.path().to_path_buf(),
+    }])
+    .edges
+    .iter()
+    .map(|(from, to)| format!("{from}->{to}"))
+    .collect();
     assert_eq!(
         edges,
         [
             "a->b", "a->c", "c->d", "c->e", "c->f", "d->g", "e->b", "f->i", "g->h", "g->i"
         ]
     );
+}
+
+#[test]
+fn a_module_reaches_another_crate_by_its_name_or_by_a_re_export() {
+    let dir = TempDir::new().expect("tempdir");
+    let write = |path: &str, text: &str| {
+        let file = dir.path().join(path);
+        fs::create_dir_all(file.parent().expect("parent")).expect("mkdir");
+        fs::write(file, text).expect("write");
+    };
+    write("lower/lib.rs", "pub mod low;\npub mod other;\n");
+    write("lower/low.rs", "pub fn g() {}\n");
+    write("lower/other.rs", "use crate::low::g;\n");
+    write(
+        "upper/lib.rs",
+        "pub use lower::low;\nmod by_name;\nmod by_re_export;\n",
+    );
+    write("upper/by_name.rs", "fn f() { lower::other::run(); }\n");
+    write("upper/by_re_export.rs", "use crate::low::g;\n");
+    let edges: Vec<String> = read_graph(&[
+        Crate {
+            ident: "lower".to_string(),
+            src: dir.path().join("lower"),
+        },
+        Crate {
+            ident: "upper".to_string(),
+            src: dir.path().join("upper"),
+        },
+    ])
+    .edges
+    .iter()
+    .map(|(from, to)| format!("{from}->{to}"))
+    .collect();
+    assert_eq!(edges, ["by_name->other", "by_re_export->low", "other->low"]);
 }

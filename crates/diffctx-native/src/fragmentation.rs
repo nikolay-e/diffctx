@@ -9,11 +9,11 @@ use crate::candidate_files::normalize_path;
 use crate::config::fragmentation::FRAGMENTATION;
 use crate::config::limits::LIMITS;
 use crate::config::tokenization::TOKENIZATION;
-use crate::languages::file_ext;
 use crate::parsers::fragment_file;
 use crate::source::Source;
-use crate::tokenizer::count_tokens;
-use crate::types::{Fragment, FragmentId, FragmentKind, extract_identifiers};
+use diffctx_base::languages::file_ext;
+use diffctx_base::tokenizer::count_tokens;
+use diffctx_base::types::{Fragment, FragmentId, FragmentKind, extract_identifiers};
 
 // Content reaching here is already-decoded UTF-8 text, so the only reliable
 // binary signal is an embedded NUL (matching git's own heuristic). The old
@@ -329,7 +329,7 @@ pub(crate) fn fragment_files(
     seen_frag_ids: &mut FxHashSet<FragmentId>,
     is_changed: bool,
     ctx: &crate::resource::RunContext,
-    hunks: &[crate::types::DiffHunk],
+    hunks: &[diffctx_base::types::DiffHunk],
 ) -> Vec<Fragment> {
     let max_source_bytes = ctx.budget().max_source_bytes;
 
@@ -428,7 +428,7 @@ fn fragment_one(
     root_dir: &Path,
     content: &str,
     is_changed: bool,
-    hunks: &[crate::types::DiffHunk],
+    hunks: &[diffctx_base::types::DiffHunk],
     ctx: &crate::resource::RunContext,
 ) -> Vec<Fragment> {
     let path_arc: Arc<str> = Arc::from(file_path.to_string_lossy().as_ref());
@@ -479,7 +479,7 @@ fn fragment_one(
 fn is_added_data_document(
     file_path: &Path,
     content: &str,
-    hunks: &[crate::types::DiffHunk],
+    hunks: &[diffctx_base::types::DiffHunk],
 ) -> bool {
     if !matches!(file_ext(file_path).as_str(), ".json" | ".yaml" | ".yml") {
         return false;
@@ -503,7 +503,7 @@ fn cap_fragments(
     cap: usize,
     file_path: &Path,
     generated: bool,
-    hunks: &[crate::types::DiffHunk],
+    hunks: &[diffctx_base::types::DiffHunk],
 ) -> Option<Vec<Fragment>> {
     let key = file_path.to_string_lossy();
     let (kept, mut rest): (Vec<Fragment>, Vec<Fragment>) = raw_frags.into_iter().partition(|f| {
@@ -522,7 +522,7 @@ fn cap_fragments(
     Some(rest)
 }
 
-fn overlaps_hunk(fragment: &Fragment, hunk: &crate::types::DiffHunk) -> bool {
+fn overlaps_hunk(fragment: &Fragment, hunk: &diffctx_base::types::DiffHunk) -> bool {
     let (start, end) = hunk.core_selection_range();
     fragment.start_line() <= end && fragment.end_line() >= start
 }
@@ -580,7 +580,7 @@ fn whole_file_chunk(path: Arc<str>, content: String) -> Fragment {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::FragmentKind;
+    use diffctx_base::types::FragmentKind;
 
     fn frag(path: &str, start: u32, end: u32, content: &str) -> Fragment {
         Fragment {

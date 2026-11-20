@@ -857,9 +857,9 @@ fn the_answer_fits_the_cap_and_says_what_it_dropped() {
     let json = String::from_utf8(out.stdout).unwrap();
     let doc: serde_json::Value = serde_json::from_str(&json).unwrap();
     assert!(
-        _diffctx::tokenizer::count_tokens(&json) <= _diffctx::impact::IMPACT_TOKEN_CAP,
+        diffctx_base::tokenizer::count_tokens(&json) <= _diffctx::impact::IMPACT_TOKEN_CAP,
         "{} tokens",
-        _diffctx::tokenizer::count_tokens(&json)
+        diffctx_base::tokenizer::count_tokens(&json)
     );
     assert!(doc["summary"]["shed"].as_u64().unwrap() > 0, "{doc}");
     let listed = doc["definitions"][0]["rows"].as_array().unwrap().len();
@@ -4896,7 +4896,7 @@ fn an_answer_at_a_tight_budget_sheds_its_names_to_fit() {
             .expect("run diffctx");
         assert!(out.status.success());
         let text = String::from_utf8(out.stdout).expect("utf8");
-        let tokens = _diffctx::tokenizer::count_tokens(&text);
+        let tokens = diffctx_base::tokenizer::count_tokens(&text);
         let budget_tokens = budget.parse::<u32>().unwrap();
         let doc: serde_json::Value = serde_json::from_str(&text).expect("impact JSON");
         // The least a document can say may outgrow a tight budget: it then states
@@ -5613,7 +5613,7 @@ fn a_cap_deals_rows_round_robin_and_a_larger_budget_lists_a_superset() {
     for symbol in ["MAX_RETRIES", "compute"] {
         assert_eq!(rows(&whole, symbol).len(), FILES, "{symbol}: {whole}");
     }
-    let half = _diffctx::tokenizer::count_tokens(&whole) / 2;
+    let half = diffctx_base::tokenizer::count_tokens(&whole) / 2;
     let mut shown: Vec<(Vec<String>, Vec<String>)> = Vec::new();
     for budget in [half / 2, half, half + half / 2, 2 * half] {
         let text = answer(budget);
@@ -7113,7 +7113,7 @@ fn the_cap_sheds_the_definitions_of_test_files_before_any_other() {
     // helper, which sorts first, is still listed. (Where the first shed takes two,
     // the omitted entry's own text is why one does not fit.)
     let helper = "aaa/test_helpers.py::make";
-    let top = _diffctx::tokenizer::count_tokens(&whole.to_string()) + 20;
+    let top = diffctx_base::tokenizer::count_tokens(&whole.to_string()) + 20;
     let mut helper_shed = false;
     for budget in (60..=top).rev().step_by(20) {
         let doc = impact_budget(tmp.path(), budget);

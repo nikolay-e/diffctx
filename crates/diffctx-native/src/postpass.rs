@@ -6,9 +6,9 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use crate::config::selection::rescue;
 use crate::fragmentation::create_whole_file_fragment;
 use crate::graph::Graph;
-use crate::interval::IntervalIndex;
 use crate::source::Source;
-use crate::types::{Fragment, FragmentId};
+use diffctx_base::interval::IntervalIndex;
+use diffctx_base::types::{Fragment, FragmentId};
 
 fn find_dangling_semantic_names(
     selected: &[Fragment],
@@ -62,7 +62,7 @@ fn change_coverage_rank(
     // same fact the renderers state, so it is the same function — the third
     // hand-rolled copy of the rule scanned every core id per candidate to
     // rediscover it from a shared start line.
-    if crate::types::carries_change(f, core_ids, stand_in_ids) {
+    if diffctx_base::types::carries_change(f, core_ids, stand_in_ids) {
         1
     } else {
         2
@@ -379,7 +379,7 @@ mod tests {
         path: &str,
         start: u32,
         end: u32,
-        kind: crate::types::FragmentKind,
+        kind: diffctx_base::types::FragmentKind,
         tokens: u32,
     ) -> Fragment {
         Fragment {
@@ -399,12 +399,18 @@ mod tests {
     /// fragment also fits the remaining budget.
     #[test]
     fn ensure_changed_files_represented_prefers_core_fragment_when_it_fits() {
-        let core = frag("a.ts", 10, 20, crate::types::FragmentKind::Function, 60);
+        let core = frag(
+            "a.ts",
+            10,
+            20,
+            diffctx_base::types::FragmentKind::Function,
+            60,
+        );
         let stub = frag(
             "a.ts",
             10,
             10,
-            crate::types::FragmentKind::FunctionSignature,
+            diffctx_base::types::FragmentKind::FunctionSignature,
             10,
         );
         let all_fragments = vec![core.clone(), stub.clone()];
@@ -439,7 +445,7 @@ mod tests {
     /// fragment wins — so this is the test the two above could not be.
     #[test]
     fn a_recorded_stand_in_outranks_a_cheaper_unrelated_fragment() {
-        use crate::types::FragmentKind;
+        use diffctx_base::types::FragmentKind;
         let core = frag("a.ts", 10, 20, FragmentKind::Function, 60);
         let stub = frag("a.ts", 10, 10, FragmentKind::FunctionSignature, 12);
         let unrelated = frag("a.ts", 40, 41, FragmentKind::Function, 8);
@@ -479,12 +485,18 @@ mod tests {
     /// (some representation beats none).
     #[test]
     fn ensure_changed_files_represented_falls_back_to_stub_when_core_does_not_fit() {
-        let core = frag("a.ts", 10, 20, crate::types::FragmentKind::Function, 60);
+        let core = frag(
+            "a.ts",
+            10,
+            20,
+            diffctx_base::types::FragmentKind::Function,
+            60,
+        );
         let stub = frag(
             "a.ts",
             10,
             10,
-            crate::types::FragmentKind::FunctionSignature,
+            diffctx_base::types::FragmentKind::FunctionSignature,
             10,
         );
         let all_fragments = vec![core.clone(), stub.clone()];
@@ -521,7 +533,7 @@ mod tests {
     /// the whole repository, so no post-pass ever runs near the cap there.
     #[test]
     fn post_passes_never_push_the_selection_past_the_budget() {
-        use crate::types::FragmentKind;
+        use diffctx_base::types::FragmentKind;
 
         let core = frag("changed.rs", 1, 9, FragmentKind::Function, 40);
         let all = vec![
@@ -579,7 +591,7 @@ mod tests {
     /// reached file could absorb the whole allowance.
     #[test]
     fn rescue_spends_its_budget_on_distinct_files() {
-        use crate::types::FragmentKind;
+        use diffctx_base::types::FragmentKind;
 
         let core = frag("changed.rs", 1, 10, FragmentKind::Function, 100);
         let mut all = vec![core.clone()];
@@ -644,7 +656,7 @@ mod tests {
 
     #[test]
     fn pick_smallest_fitting_refuses_every_oversized_candidate() {
-        use crate::types::FragmentKind;
+        use diffctx_base::types::FragmentKind;
 
         let candidates = vec![
             frag("a.rs", 1, 40, FragmentKind::Function, 500),
@@ -677,7 +689,7 @@ mod tests {
 
     #[test]
     fn pick_smallest_fitting_skips_already_selected_and_zero_cost_fragments() {
-        use crate::types::FragmentKind;
+        use diffctx_base::types::FragmentKind;
 
         let taken = frag("a.rs", 1, 10, FragmentKind::Function, 30);
         let zero = frag("a.rs", 20, 30, FragmentKind::Function, 0);

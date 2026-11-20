@@ -12,7 +12,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use crate::config::edge_weights::JAVASCRIPT_SEMANTIC;
 use crate::config::extensions::{JS_TS_EXTENSIONS, TYPESCRIPT_EXTENSIONS};
 use crate::config::weights::LANG_WEIGHTS;
-use crate::types::{Fragment, FragmentId};
+use diffctx_base::types::{Fragment, FragmentId};
 
 use super::super::EdgeDict;
 use super::super::base::{self, EdgeBuilder};
@@ -22,12 +22,12 @@ use super::super::base::{self, EdgeBuilder};
 const SFC_EXTENSIONS: [&str; 2] = [".vue", ".svelte"];
 
 fn is_js_file(path: &Path) -> bool {
-    let ext = crate::languages::file_ext(path);
+    let ext = diffctx_base::languages::file_ext(path);
     JS_TS_EXTENSIONS.contains(ext.as_str()) || SFC_EXTENSIONS.contains(&ext.as_str())
 }
 
 fn is_ts_file(path: &Path) -> bool {
-    TYPESCRIPT_EXTENSIONS.contains(crate::languages::file_ext(path).as_str())
+    TYPESCRIPT_EXTENSIONS.contains(diffctx_base::languages::file_ext(path).as_str())
 }
 
 static IMPORT_SOURCE_RE: Lazy<Regex> = Lazy::new(|| {
@@ -137,7 +137,7 @@ impl EdgeBuilder for JavaScriptEdgeBuilder {
             let mut defines = extract_defines(&f.content);
             // A class or object-literal method is a fragment the grammar
             // named; no declaration keyword spells it (#444, #473).
-            if f.kind == crate::types::FragmentKind::Function {
+            if f.kind == diffctx_base::types::FragmentKind::Function {
                 if let Some(name) = f.symbol_name.as_deref() {
                     let name = name.split('[').next().unwrap_or(name);
                     let name = name.rsplit('.').next().unwrap_or(name);

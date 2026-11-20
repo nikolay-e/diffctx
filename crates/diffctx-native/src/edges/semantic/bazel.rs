@@ -5,7 +5,7 @@ use regex::Regex;
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::config::weights::EDGE_WEIGHTS;
-use crate::types::Fragment;
+use diffctx_base::types::Fragment;
 
 use super::super::EdgeDict;
 use super::super::base::{
@@ -35,7 +35,7 @@ fn is_bazel_file(path: &Path) -> bool {
     if BAZEL_NAMES.contains(name.as_str()) {
         return true;
     }
-    let ext = crate::languages::file_ext(path);
+    let ext = diffctx_base::languages::file_ext(path);
     ext == ".bzl" || ext == ".bazel"
 }
 
@@ -232,7 +232,7 @@ impl EdgeBuilder for BazelEdgeBuilder {
         let mut changed_paths: FxHashSet<String> = FxHashSet::default();
         for f in &bazel_changed {
             changed_paths.insert(f.to_string_lossy().to_string());
-            if crate::languages::file_ext(f) == ".bzl" {
+            if diffctx_base::languages::file_ext(f) == ".bzl" {
                 if let Some(stem) = f.file_stem() {
                     changed_paths.insert(stem.to_string_lossy().to_string());
                 }

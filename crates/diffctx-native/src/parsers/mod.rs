@@ -9,7 +9,7 @@ use once_cell::sync::Lazy;
 
 use crate::config::parsers::PARSERS;
 use crate::config::tokenization::TOKENIZATION;
-use crate::types::Fragment;
+use diffctx_base::types::Fragment;
 
 trait FragmentationStrategy: Send + Sync {
     fn can_handle(&self, path: &str, content: &str) -> bool;
@@ -40,7 +40,7 @@ pub(crate) fn unanalysed_reason(
     has_definition: bool,
     content: impl FnOnce() -> Option<Vec<u8>>,
 ) -> Option<(&'static str, Vec<u32>)> {
-    let ext = crate::languages::file_ext(std::path::Path::new(path));
+    let ext = diffctx_base::languages::file_ext(std::path::Path::new(path));
     if !crate::config::extensions::CODE_EXTENSIONS.contains(ext.as_str()) {
         return None;
     }
@@ -231,13 +231,13 @@ fn create_code_gap_fragments(
             continue;
         }
         if let Some(snippet) = create_snippet(lines, start, end) {
-            let identifiers = crate::types::extract_identifiers(
+            let identifiers = diffctx_base::types::extract_identifiers(
                 &snippet,
                 TOKENIZATION.fragment_min_identifier_length,
             );
             fragments.push(Fragment {
-                id: crate::types::FragmentId::new(Arc::clone(&path), start, end),
-                kind: crate::types::FragmentKind::Chunk,
+                id: diffctx_base::types::FragmentId::new(Arc::clone(&path), start, end),
+                kind: diffctx_base::types::FragmentKind::Chunk,
                 content: Arc::from(snippet),
                 identifiers,
                 token_count: 0,

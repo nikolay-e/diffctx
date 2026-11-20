@@ -649,7 +649,7 @@ fn supervised(name: &str, work: impl FnOnce() -> Result<(), Failed>) -> Result<(
         .lock()
         .unwrap()
         .insert(name.to_string(), std::time::Instant::now());
-    let result = _diffctx::profile::tagged(&format!("yaml_cases::{name}"), work);
+    let result = diffctx_base::profile::tagged(&format!("yaml_cases::{name}"), work);
     IN_FLIGHT.lock().unwrap().remove(name);
     result
 }

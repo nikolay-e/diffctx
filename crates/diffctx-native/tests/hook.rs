@@ -4157,7 +4157,7 @@ fn a_clean_tree_search_answer_fits_one_hundred_and_fifty_tokens() {
     );
     let context = context_of(&h);
     assert!(context.contains("--symbol total"), "{context}");
-    let tokens = _diffctx::tokenizer::count_tokens(&context);
+    let tokens = diffctx_base::tokenizer::count_tokens(&context);
     assert!(tokens <= 150, "{tokens} tokens: {context}");
 }
 

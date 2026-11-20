@@ -5,7 +5,7 @@ use regex::Regex;
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::config::edge_weights::DOCKER;
-use crate::types::{Fragment, FragmentId};
+use diffctx_base::types::{Fragment, FragmentId};
 
 use super::super::EdgeDict;
 use super::super::base::{
@@ -339,7 +339,7 @@ impl EdgeBuilder for DockerEdgeBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::FragmentKind;
+    use diffctx_base::types::FragmentKind;
     use std::sync::Arc;
 
     fn frag(path: &str, content: &str) -> Fragment {

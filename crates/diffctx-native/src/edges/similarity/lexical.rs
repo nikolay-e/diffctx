@@ -6,9 +6,9 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use crate::config::limits::LEXICAL;
 use crate::config::tokenization::TOKENIZATION;
 use crate::config::weights::{DEFAULT_LANG_WEIGHTS, LANG_WEIGHTS, LangWeights};
-use crate::languages::{EXTENSION_TO_LANGUAGE, file_ext};
 use crate::stopwords::{filter_idents, profile_from_path};
-use crate::types::{Fragment, FragmentId, extract_identifier_list};
+use diffctx_base::languages::{EXTENSION_TO_LANGUAGE, file_ext};
+use diffctx_base::types::{Fragment, FragmentId, extract_identifier_list};
 
 use super::super::EdgeDict;
 use super::super::base::EdgeBuilder;

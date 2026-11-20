@@ -172,7 +172,7 @@ const BOUNDED_REGIONS: &[(&str, Option<&str>)] = &[
     ("src/tokens/occurrence/debug.rs", Some("embedded_uses")),
     ("src/impact/mentions.rs", Some("stale_references")),
     ("src/impact.rs", Some("fit_with")),
-    ("src/fit.rs", None),
+    ("../diffctx-base/src/fit.rs", None),
     // The snapshot layer lists and reads the repository for every run: its
     // loops are over a listing already in memory, and each git call and
     // object read beneath them carries the run's deadline and cancellation.
@@ -241,7 +241,7 @@ const NOT_OVER_THE_REPOSITORY: &[(&str, &str, &str)] = &[
     ),
     (
         "src/discovery.rs",
-        "for suffix in crate::testfiles::JVM_TEST_SUFFIXES",
+        "for suffix in diffctx_base::testfiles::JVM_TEST_SUFFIXES",
         "a constant",
     ),
     (
@@ -275,12 +275,12 @@ const NOT_OVER_THE_REPOSITORY: &[(&str, &str, &str)] = &[
         "the deleted and renamed paths",
     ),
     (
-        "src/fit.rs",
+        "../diffctx-base/src/fit.rs",
         "for stride in (0..).map(|k| 1usize << k)",
         "the answer's sheddable rows: a stride doubles per turn and ends when shed_one can take none; past the run's limits the rest goes at once",
     ),
     (
-        "src/fit.rs",
+        "../diffctx-base/src/fit.rs",
         "while hi - lo > 1",
         "halves one stride of the answer",
     ),

@@ -89,7 +89,7 @@ impl TokenCorpus {
                 }
                 let content = ctx.read_file(f)?;
                 let (term_counts, total_len) =
-                    crate::types::extract_identifier_counts(&content, min_len);
+                    diffctx_base::types::extract_identifier_counts(&content, min_len);
                 let doc = DocTokens {
                     term_counts,
                     total_len,

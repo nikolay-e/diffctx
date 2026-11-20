@@ -84,7 +84,7 @@ fn has_camel_marker(stem: &str) -> bool {
 }
 
 /// Whether `path` is test material.
-pub(crate) fn is_test_path(path: &Path) -> bool {
+pub fn is_test_path(path: &Path) -> bool {
     if has_test_directory(path) {
         return true;
     }
@@ -98,7 +98,7 @@ pub(crate) fn is_test_path(path: &Path) -> bool {
 
 /// Whether `path` is a test file the way the test-naming convention reads one:
 /// `is_test_path`, and a Perl `.t` script.
-pub(crate) fn is_test_file(path: &Path) -> bool {
+pub fn is_test_file(path: &Path) -> bool {
     is_test_path(path)
         || path
             .extension()
@@ -107,7 +107,7 @@ pub(crate) fn is_test_file(path: &Path) -> bool {
 
 /// The stem a test file's name asks for: `test_foo`, `foo_test`, `foo.spec`,
 /// `TestFoo`, `FooTests` all name `foo`.
-pub(crate) fn target_name_of_test(test_name: &str) -> Option<String> {
+pub fn target_name_of_test(test_name: &str) -> Option<String> {
     let lower = test_name.to_lowercase();
     if let Some(rest) = lower.strip_prefix("test_") {
         return Some(rest.to_string());
@@ -151,9 +151,8 @@ pub(crate) fn target_name_of_test(test_name: &str) -> Option<String> {
 
 /// JVM test classes are named after their subject: `FooTest`, `FooTests`,
 /// `FooSpec`, `FooIT` (stems lower-cased).
-pub(crate) const JVM_TEST_SUFFIXES: &[&str] = &["test", "tests", "spec", "it"];
-pub(crate) const JVM_TEST_SUFFIX_EXTENSIONS: &[&str] =
-    &[".java", ".kt", ".kts", ".scala", ".groovy"];
+pub const JVM_TEST_SUFFIXES: &[&str] = &["test", "tests", "spec", "it"];
+pub const JVM_TEST_SUFFIX_EXTENSIONS: &[&str] = &[".java", ".kt", ".kts", ".scala", ".groovy"];
 
 /// Same ambiguity bar as the c-family and path-reference caps: a stem carried
 /// by more files than this cannot name a target.
@@ -164,7 +163,7 @@ const MAX_GLOBAL_TARGET_FILES: usize = 8;
 /// test's own directory first, then anywhere while the stem stays rare enough to
 /// identify a file. `config_test` names `config`, but envoy holds 520 files with
 /// that stem. Files come in as the run lists them, and pairs go out in that order.
-pub(crate) fn naming_links<'a>(paths: &[&'a str]) -> Vec<(&'a str, &'a str)> {
+pub fn naming_links<'a>(paths: &[&'a str]) -> Vec<(&'a str, &'a str)> {
     let stem = |path: &str| {
         Path::new(path)
             .file_stem()
@@ -212,7 +211,7 @@ pub(crate) fn naming_links<'a>(paths: &[&'a str]) -> Vec<(&'a str, &'a str)> {
 /// the path (`tokio::test`, `sqlx::test` are `test`): the built-in one and the
 /// test-framework crates' (`rstest`, `test-case`, `test-strategy`, `quickcheck`,
 /// `wasm-bindgen-test`).
-pub(crate) const RUST_TEST_ATTRIBUTES: &[&str] = &[
+pub const RUST_TEST_ATTRIBUTES: &[&str] = &[
     "test",
     "rstest",
     "test_case",
@@ -223,13 +222,13 @@ pub(crate) const RUST_TEST_ATTRIBUTES: &[&str] = &[
 
 /// The macros whose block makes tests of the functions written inside it:
 /// `proptest! { #[test] fn .. }`, `quickcheck! { fn .. }`.
-pub(crate) const RUST_TEST_MACROS: &[&str] = &["proptest", "quickcheck"];
+pub const RUST_TEST_MACROS: &[&str] = &["proptest", "quickcheck"];
 
 /// The words a source file spells when its language lets a test live beside the
 /// code it tests, as the token index asks for them before the file is read; none
 /// where the language has no such convention and the path alone decides. The
 /// scopes themselves are [`in_source_test_scopes`].
-pub(crate) fn in_source_markers(path: &Path) -> &'static [&'static str] {
+pub fn in_source_markers(path: &Path) -> &'static [&'static str] {
     match path
         .extension()
         .map(|ext| ext.to_string_lossy().to_ascii_lowercase())
@@ -250,7 +249,7 @@ pub(crate) fn in_source_markers(path: &Path) -> &'static [&'static str] {
 /// subclass, a doctest or Catch2 `TEST_CASE`/`SCENARIO` block. A test context is
 /// the scope that holds an occurrence, not the file's path. Rust's inline
 /// `#[test]` functions are found by the Rust reader.
-pub(crate) fn in_source_test_scopes(path: &Path, text: &str) -> Vec<(u32, u32)> {
+pub fn in_source_test_scopes(path: &Path, text: &str) -> Vec<(u32, u32)> {
     let lines: Vec<&str> = text.lines().collect();
     match path
         .extension()
@@ -373,7 +372,7 @@ fn called_names(example: &str) -> Vec<&str> {
 
 /// The names the `>>>` examples of `text` call, with the 0-based line of each
 /// example: a doctest runs what it calls, in the file it documents.
-pub(crate) fn doctest_calls(text: &str) -> Vec<(usize, Vec<&str>)> {
+pub fn doctest_calls(text: &str) -> Vec<(usize, Vec<&str>)> {
     text.lines()
         .enumerate()
         .filter_map(|(row, line)| {
@@ -385,10 +384,10 @@ pub(crate) fn doctest_calls(text: &str) -> Vec<(usize, Vec<&str>)> {
 
 /// A name a doctest's namespace binds: `local` is `name` of `module`, or the module
 /// itself when there is no `name`.
-pub(crate) struct Bound {
-    pub(crate) local: String,
-    pub(crate) module: String,
-    pub(crate) name: Option<String>,
+pub struct Bound {
+    pub local: String,
+    pub module: String,
+    pub name: Option<String>,
 }
 
 /// The names `>>>` examples call through an import, as (0-based line, dotted
@@ -396,10 +395,7 @@ pub(crate) struct Bound {
 /// elsewhere. The examples' own `from m import n [as a]` and `import m [as a]` lines
 /// bind beside the `namespace` the examples run in (a module's own imports, read
 /// from its facts); the `>>>` lines are text, nothing parses them.
-pub(crate) fn imported_doctest_calls(
-    text: &str,
-    namespace: Vec<Bound>,
-) -> Vec<(usize, String, String)> {
+pub fn imported_doctest_calls(text: &str, namespace: Vec<Bound>) -> Vec<(usize, String, String)> {
     static FROM: once_cell::sync::Lazy<regex::Regex> = once_cell::sync::Lazy::new(|| {
         regex::Regex::new(r"^from\s+([A-Za-z_][\w.]*)\s+import\s+\(?([^)#]+)")
             .expect("from import regex")
@@ -479,7 +475,7 @@ fn fence_runs(info: &str) -> bool {
 
 /// The names the fenced examples of a Rust file's `///` and `//!` comments call
 /// that `cargo test --doc` runs, with the 0-based line of each.
-pub(crate) fn rust_doc_example_calls(text: &str) -> Vec<(usize, Vec<&str>)> {
+pub fn rust_doc_example_calls(text: &str) -> Vec<(usize, Vec<&str>)> {
     let mut found = Vec::new();
     let mut fence: Option<bool> = None;
     for (row, line) in text.lines().enumerate() {
@@ -726,11 +722,11 @@ struct Declared {
 /// naming convention: a file `checks/check_a.py` is a test where `python_files`
 /// says `check_*.py`. A configuration that cannot be read declares nothing.
 #[derive(Default)]
-pub(crate) struct DeclaredTests(Vec<Declared>);
+pub struct DeclaredTests(Vec<Declared>);
 
 impl DeclaredTests {
     /// Reads the configuration files among `paths` (repository-relative) through `read`.
-    pub(crate) fn read(paths: &[&str], read: impl Fn(&str) -> Option<String>) -> Self {
+    pub fn read(paths: &[&str], read: impl Fn(&str) -> Option<String>) -> Self {
         let mut declared = Vec::new();
         for path in paths {
             let (config_dir, name) = path.rsplit_once('/').unwrap_or(("", path));
@@ -771,13 +767,13 @@ impl DeclaredTests {
         Self(declared)
     }
 
-    pub(crate) fn is_test(&self, path: &str) -> bool {
+    pub fn is_test(&self, path: &str) -> bool {
         self.declares(path, |declared| &declared.include)
     }
 
     /// Whether the runner loads `path` without saying it is a test: a test only
     /// where its facts hold a call of a test registrar (`describe(`, `it(`, `test(`).
-    pub(crate) fn is_loaded(&self, path: &str) -> bool {
+    pub fn is_loaded(&self, path: &str) -> bool {
         self.declares(path, |declared| &declared.loaded)
     }
 
@@ -816,7 +812,7 @@ impl DeclaredTests {
 
     /// Whether a runner runs `path` (repository-relative) as a test: by the naming
     /// convention, or by a runner's configuration.
-    pub(crate) fn runs(&self, path: &str) -> bool {
+    pub fn runs(&self, path: &str) -> bool {
         is_test_path(Path::new(path)) || self.is_test(path)
     }
 }
@@ -1067,7 +1063,7 @@ fn script_values(text: &str, key: &str) -> Vec<(String, bool)> {
 /// `**/` spans segments, `[..]` classes, `{a,b}` alternatives and the extglob
 /// groups `?(..)`, `*(..)`, `+(..)`, `@(..)`. A negated group `!(..)` is not
 /// read: the pattern then declares nothing.
-pub(crate) fn glob_regex(glob: &str) -> Option<regex::Regex> {
+pub fn glob_regex(glob: &str) -> Option<regex::Regex> {
     let chars: Vec<char> = glob.chars().collect();
     let mut out = String::from("^");
     let mut closers: Vec<&str> = Vec::new();

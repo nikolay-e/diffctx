@@ -1,9 +1,9 @@
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::config::selection::boltzmann;
-use crate::interval::IntervalIndex;
 use crate::select::{SelectionReason, SelectionResult};
-use crate::types::{Fragment, FragmentId};
+use diffctx_base::interval::IntervalIndex;
+use diffctx_base::types::{Fragment, FragmentId};
 
 fn boltzmann_weight(rel_score: f64, token_count: u32, beta: f64) -> f64 {
     rel_score * (-beta * token_count as f64).exp()
@@ -146,7 +146,7 @@ mod paper_claim_tests {
     //!    Without monotonicity the bisection in `calibrate_beta` does not converge.
 
     use super::*;
-    use crate::types::{FragmentId, FragmentKind};
+    use diffctx_base::types::{FragmentId, FragmentKind};
     use std::sync::Arc;
 
     fn frag(name: &str, tokens: u32) -> Fragment {

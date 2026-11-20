@@ -5,7 +5,7 @@ use regex::Regex;
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::config::weights::EDGE_WEIGHTS;
-use crate::types::Fragment;
+use diffctx_base::types::Fragment;
 
 use super::super::EdgeDict;
 use super::super::base::{self, EdgeBuilder, discover_by_refs};

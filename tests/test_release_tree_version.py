@@ -19,7 +19,7 @@ SCRIPT = PROJECT_ROOT / "scripts" / "release" / "tree_version.py"
 SURFACES = [
     "src/diffctx/version.py",
     "pyproject.toml",
-    "crates/diffctx-native/Cargo.toml",
+    "Cargo.toml",
     "Cargo.lock",
     "uv.lock",
 ]
@@ -55,8 +55,12 @@ class TestOneVersionEverywhere:
     )
     def test_the_manifest_and_the_lock_entry_carry_the_cargo_spelling(self, tree, version, cargo):
         tree_version.set_tree_version(version, tree)
-        assert re.search(rf'(?m)^version = "{re.escape(cargo)}"$', _read(tree, "crates/diffctx-native/Cargo.toml"))
-        assert f'name = "diffctx"\nversion = "{cargo}"' in _read(tree, "Cargo.lock")
+        manifest = _read(tree, "Cargo.toml")
+        assert re.search(rf'(?m)^version = "{re.escape(cargo)}"$', manifest)
+        assert re.search(rf'(?m)^diffctx-base = \{{[^}}\n]*version = "{re.escape(cargo)}"', manifest)
+        lock = _read(tree, "Cargo.lock")
+        assert f'name = "diffctx"\nversion = "{cargo}"' in lock
+        assert f'name = "diffctx-base"\nversion = "{cargo}"' in lock
 
     def test_the_python_surfaces_carry_the_pep_440_string(self, tree):
         tree_version.set_tree_version("2.1.0rc2", tree)
@@ -67,7 +71,7 @@ class TestOneVersionEverywhere:
         )
 
     def test_nothing_but_the_version_lines_changes(self, tree):
-        before = {s: _read(tree, s).splitlines() for s in ("pyproject.toml", "Cargo.lock", "uv.lock")}
+        before = {s: _read(tree, s).splitlines() for s in ("pyproject.toml", "Cargo.toml", "Cargo.lock", "uv.lock")}
         tree_version.set_tree_version("7.8.9.dev3", tree)
         for surface, old in before.items():
             new = _read(tree, surface).splitlines()

@@ -19,11 +19,11 @@ use crate::graph::{
     CappedEdges, CompactEdge, EdgeCapStats, RankedCandidate, SourceTopK, SuppressionFactors,
     cap_out_edges_per_source, dedup_compact_edges, intern_fragment_nodes, push_bounded_top_k,
 };
-use crate::types::{EdgeCategory, FragmentId};
+use diffctx_base::types::{EdgeCategory, FragmentId};
 
 type EdgeDict = FxHashMap<(FragmentId, FragmentId), f64>;
 
-use crate::types::Fragment;
+use diffctx_base::types::Fragment;
 
 use self::base::EdgeBuilder;
 
@@ -293,16 +293,16 @@ fn collect_capped_edges_from(
             .iter()
             .filter(|f| f.id.start_line == 1 && Path::new(f.path()).extension().is_none())
             .filter_map(|f| {
-                let language = crate::languages::sniff_language(f.path(), &f.content)?;
+                let language = diffctx_base::languages::sniff_language(f.path(), &f.content)?;
                 Some((f.path(), language))
             })
             .collect();
         let kind_of = |p: &str| -> Option<String> {
             let path = Path::new(p);
             if path.extension().is_some() {
-                return Some(crate::languages::file_ext(path));
+                return Some(diffctx_base::languages::file_ext(path));
             }
-            crate::languages::get_language_for_file(p)
+            diffctx_base::languages::get_language_for_file(p)
                 .or_else(|| shebang_languages.get(p).copied())
                 .map(str::to_owned)
         };
@@ -506,7 +506,7 @@ pub(crate) fn discover_all_related_files(
 /// connection is proximity never enters the admissible set.
 pub(crate) fn naming_reachable_files(
     capped: &CappedEdges,
-    core_ids: &rustc_hash::FxHashSet<crate::types::FragmentId>,
+    core_ids: &rustc_hash::FxHashSet<diffctx_base::types::FragmentId>,
     max_depth: usize,
 ) -> rustc_hash::FxHashSet<std::sync::Arc<str>> {
     reachable_files(capped, core_ids, max_depth, |e| e.naming)
@@ -529,7 +529,7 @@ pub(crate) fn naming_reachable_files(
 /// exists to block (measured: 143 of 146 corpus improvements lost).
 pub(crate) fn declared_reachable_files(
     capped: &CappedEdges,
-    core_ids: &rustc_hash::FxHashSet<crate::types::FragmentId>,
+    core_ids: &rustc_hash::FxHashSet<diffctx_base::types::FragmentId>,
     max_depth: usize,
 ) -> rustc_hash::FxHashSet<std::sync::Arc<str>> {
     reachable_files(capped, core_ids, max_depth, |e| {
@@ -547,7 +547,7 @@ pub(crate) fn declared_reachable_files(
 
 fn reachable_files(
     capped: &CappedEdges,
-    core_ids: &rustc_hash::FxHashSet<crate::types::FragmentId>,
+    core_ids: &rustc_hash::FxHashSet<diffctx_base::types::FragmentId>,
     max_depth: usize,
     keep: impl Fn(&CompactEdge) -> bool,
 ) -> rustc_hash::FxHashSet<std::sync::Arc<str>> {
@@ -604,8 +604,8 @@ mod fallback_gate_tests {
 
     fn frag(path: &str, content: &str, idents: &[&str]) -> Fragment {
         Fragment {
-            id: crate::types::FragmentId::new(Arc::from(path), 1, 10),
-            kind: crate::types::FragmentKind::Function,
+            id: diffctx_base::types::FragmentId::new(Arc::from(path), 1, 10),
+            kind: diffctx_base::types::FragmentKind::Function,
             content: Arc::from(content),
             identifiers: idents.iter().map(|s| s.to_string()).collect::<Set<_>>(),
             token_count: 10,
@@ -794,7 +794,7 @@ mod fallback_gate_tests {
                 .flat_map(|(p, content)| crate::parsers::fragment_file(Arc::from(*p), content))
                 .collect();
             let ctx = crate::resource::RunContext::unbounded();
-            ctx.set_changed_lines(crate::changed_lines::ChangedLines::from_diff(diff));
+            ctx.set_changed_lines(diffctx_base::changed_lines::ChangedLines::from_diff(diff));
             let capped = collect_capped_edges(&fragments, None, false, &ctx);
             has_fallback_pair(&capped, "svc/app.env", "tools/loadtest.py")
         };
@@ -815,7 +815,7 @@ mod fallback_gate_tests {
     #[test]
     fn each_branch_of_the_gate_decides_the_pair_it_owns() {
         let unread = |path: &str, content: &str, idents: &[&str]| Fragment {
-            kind: crate::types::FragmentKind::Chunk,
+            kind: diffctx_base::types::FragmentKind::Chunk,
             ..frag(path, content, idents)
         };
         let fragments = vec![
@@ -980,8 +980,8 @@ mod naming_merge_tests {
 
     fn frag(path: &str) -> Fragment {
         Fragment {
-            id: crate::types::FragmentId::new(Arc::from(path), 1, 10),
-            kind: crate::types::FragmentKind::Function,
+            id: diffctx_base::types::FragmentId::new(Arc::from(path), 1, 10),
+            kind: diffctx_base::types::FragmentKind::Function,
             content: Arc::from("x"),
             identifiers: Set::default(),
             token_count: 10,

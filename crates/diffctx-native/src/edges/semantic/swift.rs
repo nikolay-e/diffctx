@@ -6,7 +6,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::config::weights::EDGE_WEIGHTS;
 use crate::facts::kotlin::{KotlinFacts, UseKind};
-use crate::types::{Fragment, FragmentId};
+use diffctx_base::types::{Fragment, FragmentId};
 
 use super::super::EdgeDict;
 use super::super::base::{self, EdgeBuilder, add_edges_from_ids, discover_by_refs};

@@ -11,7 +11,7 @@ use regex::Regex;
 use rustc_hash::FxHashSet;
 
 use crate::snapshot::{Result, diff_text, untracked};
-use crate::types::{DiffHunk, unquote_c_style};
+use diffctx_base::types::{DiffHunk, unquote_c_style};
 
 static HUNK_RE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@").unwrap());

@@ -5,8 +5,8 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::config::limits::UTILITY;
 use crate::config::needs::NEEDS;
-use crate::types::Fragment;
 use crate::utility::needs::{InformationNeed, match_strength_typed};
+use diffctx_base::types::Fragment;
 
 #[derive(Clone)]
 pub(crate) struct UtilityState {
@@ -258,7 +258,7 @@ mod paper_claim_tests {
     //!  - Claim 4: cost(C) = Σ_f |f| is modular.
 
     use super::*;
-    use crate::types::{FragmentId, FragmentKind};
+    use diffctx_base::types::{FragmentId, FragmentKind};
 
     fn frag(symbol: &str, mentions: &[&str], tokens: u32) -> Fragment {
         Fragment {

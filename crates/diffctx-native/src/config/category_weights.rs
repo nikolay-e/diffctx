@@ -12,7 +12,7 @@
 
 use once_cell::sync::Lazy;
 
-use crate::types::EdgeCategory;
+use diffctx_base::types::EdgeCategory;
 
 #[derive(Debug, Clone, Copy)]
 pub struct CategoryWeights {

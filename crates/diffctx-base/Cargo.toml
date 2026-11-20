@@ -1,0 +1,28 @@
+[package]
+name = "diffctx-base"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "The types, language tables, tokenizer and text helpers diffctx builds on: no grammar, no Python bindings, nothing above it"
+license.workspace = true
+repository.workspace = true
+homepage = "https://diffctx.com/"
+readme = "../../README.md"
+keywords = ["git", "diff", "llm", "context"]
+categories = ["development-tools"]
+
+[dependencies]
+libc.workspace = true
+once_cell.workspace = true
+regex.workspace = true
+rustc-hash.workspace = true
+schemars.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+serde_yaml.workspace = true
+thiserror.workspace = true
+tiktoken-rs.workspace = true
+toml.workspace = true
+
+[lints]
+workspace = true

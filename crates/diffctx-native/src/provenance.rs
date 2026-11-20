@@ -4,7 +4,7 @@ use std::path::Path;
 use rustc_hash::FxHashSet;
 
 use crate::run_provenance::state::{ScoredState, incoming_mass, seed_hops};
-use crate::types::{Fragment, FragmentId};
+use diffctx_base::types::{Fragment, FragmentId};
 
 const PROVENANCE_ENV: &str = "DIFFCTX_PROVENANCE_DUMP";
 

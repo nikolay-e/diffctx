@@ -4,7 +4,7 @@ use rustc_hash::FxHashMap;
 
 use crate::config::limits::COCHANGE;
 use crate::config::weights::EDGE_WEIGHTS;
-use crate::types::{Fragment, FragmentId};
+use diffctx_base::types::{Fragment, FragmentId};
 
 use super::super::EdgeDict;
 use super::super::base::{EdgeBuilder, add_edge};
