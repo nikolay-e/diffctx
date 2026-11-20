@@ -2,7 +2,6 @@
 //! unknowns.
 
 use std::path::Path;
-use std::rc::Rc;
 
 use std::time::Instant;
 
@@ -17,11 +16,11 @@ use crate::decide::{self};
 
 use crate::run_provenance::state::ScoredState;
 
-use diffctx_base::container::{innermost, named_container_of, within};
+use diffctx_base::container::{innermost, within};
 
 use diffctx_base::types::{Fragment, FragmentId, FragmentKind};
 
-use diffctx_facts::facts::{EntryKind, Import, framework};
+use diffctx_facts::facts::{EntryKind, framework};
 
 use diffctx_facts::parsers::code_text;
 
@@ -38,35 +37,40 @@ use super::MAX_BLAMED_SYMBOLS;
 use super::MAX_CONTRACTS;
 use super::MAX_DEFINITIONS;
 use super::callers::{
-    Files, Receiver, binds_locally, extension, first_naming_line, is_code_file, is_import_block,
+    Receiver, binds_locally, extension, first_naming_line, is_code_file, is_import_block,
     is_member, mentions, module_aliases, references_module,
 };
 use super::cells::{
-    FINDING_WEIGHT, KEY_MATCH, REEXPORT, Reach, cell_anchor, cell_caller, cell_row, cell_symbol,
-    cell_unknown, held_has_users, is_module_block_binding, lifted_caller,
-    owned_by_a_nested_definition, reach_of,
+    FINDING_WEIGHT, KEY_MATCH, REEXPORT, Reach, cell_caller, cell_row, cell_symbol, cell_unknown,
+    held_has_users, lifted_caller, owned_by_a_nested_definition, reach_of,
 };
 use super::changes::{
-    BaseTexts, changed_rels, commit_bounds, commits_touching, head_of, is_public, is_schema_file,
-    layout_files, lines_of, moved_verbatim, names_of, rel, same_runtime, signature_changed,
-    spelling_files, tool_contract_changed, unread_namers, without_decorators,
+    changed_rels, commits_touching, head_of, is_public, is_schema_file, layout_files, lines_of,
+    moved_verbatim, names_of, rel, same_runtime, signature_changed, spelling_files,
+    tool_contract_changed, unread_namers, without_decorators,
 };
 use super::coverage::{absence, search_coverage, uncovered_symbol, unfinished_symbol};
 use super::deliver::{proves_empty, relation_rank};
-use super::dispatch::{base_symbol, dispatch_route, enclosing_class, indent_of, merge_by_symbol};
+use super::dispatch::{base_symbol, dispatch_route, enclosing_class, merge_by_symbol};
 use super::entry::{
-    Entered, compatible_extension, entered_by, http_handler_base, is_jvm_path, is_program_main,
-    is_pytest_fixture, jvm_entry_point, registering_decorator, scala_imports,
+    Entered, compatible_extension, entered_by, http_handler_base, is_program_main,
+    is_pytest_fixture,
 };
 use super::key_search::{key_references, read_by_collection};
 use super::output::{Caller, ChangedSymbol, Contract, ImpactOutput, UnanalysedFile, Unknown};
 use super::removed::{dead_modules, removed_definitions, removed_route};
-use super::symbol::{directory_name, parse_symbol_query};
+use super::symbol::directory_name;
 use super::unanalysed::{
-    MAX_OUTSIDE_RUNS, MAX_UNTRACED_NAMERS, OUTSIDE_DEFINITIONS, UntracedNamers, callable_by_name,
-    left_words, literal_base, nameless_changes, outside_definitions, searched_as_text,
-    spelled_name, spelled_word, unaccounted_rows, unanalysed_files,
+    MAX_OUTSIDE_RUNS, MAX_UNTRACED_NAMERS, OUTSIDE_DEFINITIONS, callable_by_name, left_words,
+    nameless_changes, outside_definitions, searched_as_text, spelled_name, unaccounted_rows,
+    unanalysed_files,
 };
+
+mod context;
+mod targets;
+
+use context::{Findings, Impact};
+use targets::Targets;
 
 /// `deadline`: the line log (one git call per changed symbol) runs only
 /// while there is time left; commit overlap is the least actionable of the
@@ -78,24 +82,6 @@ pub fn build_impact(
     deadline: Option<Instant>,
 ) -> ImpactOutput {
     let setup = diffctx_base::profile::phase("impact.setup");
-    // A signature variant as long as its fragment shares its id (a Kotlin
-    // class header ending `) {`); the id names the fragment, not its stub.
-    let mut by_id: FxHashMap<&FragmentId, &Fragment> = FxHashMap::default();
-    for f in &state.all_fragments {
-        by_id
-            .entry(&f.id)
-            .and_modify(|seen| {
-                if seen.kind.is_signature() && !f.kind.is_signature() {
-                    *seen = f;
-                }
-            })
-            .or_insert(f);
-    }
-    let changed_paths: FxHashSet<&str> = state
-        .changed_files
-        .iter()
-        .filter_map(|p| p.to_str())
-        .collect();
     // The cells: changed definitions from the facts layer's semantic changes,
     // callers from the resolver of their language (decide.rs). The ranking
     // graph and the text filters take no part in what they answer.
@@ -115,495 +101,45 @@ pub fn build_impact(
             state.analysed_range.as_deref().or(diff_range),
         )
     };
-    // A caller in a changed file is outside the diff unless its lines are
-    // in a hunk: the reader holds the hunks, not the rest of the file (#362).
-    let mut hunk_lines: FxHashMap<&str, Vec<(u32, u32)>> = FxHashMap::default();
-    for h in &state.hunk_texts {
-        // A pure removal sits between new lines N and N+1: as `(N+1, N)` the
-        // overlap test below holds only for a fragment spanning both, not
-        // for the caller that ends on N right above the deleted lines.
-        let range = if h.new_len == 0 {
-            (h.new_start + 1, h.new_start)
-        } else {
-            h.new_range()
-        };
-        hunk_lines.entry(h.path.as_str()).or_default().push(range);
-    }
-    let in_a_hunk = |id: &FragmentId| {
-        if state.hunk_texts.is_empty() {
-            return changed_paths.contains(id.path.as_ref());
-        }
-        hunk_lines
-            .get(rel(state, id.path.as_ref()).as_str())
-            .is_some_and(|ranges| {
-                ranges
-                    .iter()
-                    .any(|&(a, b)| id.start_line <= b && id.end_line >= a)
-            })
-    };
-    let hunks_in = |core: &Fragment| -> Vec<&diffctx_base::changed_lines::HunkText> {
-        let path = rel(state, core.path());
-        state
-            .hunk_texts
-            .iter()
-            .filter(|h| {
-                let (a, b) = h.new_range();
-                h.path == path && core.start_line() <= b && core.end_line() >= a
-            })
-            .collect()
-    };
-    let core_place = |core: &Fragment| {
-        place(
-            &rel(state, core.path()),
-            core.symbol_name.as_deref(),
-            &lines_of(&core.id),
-        )
-    };
-    let mut untested_definitions = 0usize;
-    let mut untested_unlisted: Vec<String> = Vec::new();
-    let mut untested_called_in_diff: Vec<String> = Vec::new();
-    let mut entry_unlisted: Vec<String> = Vec::new();
-    let mut layout_only: Vec<String> = Vec::new();
-    let mut traced_definitions = 0usize;
-    let mut traced_names: Vec<String> = Vec::new();
-
-    // A hunk inside a function body seeds a nested fragment — a `let`, an
-    // inner block — that nobody calls; the symbol a reader knows, and the one
-    // the callers link to, is the named container around it.
-    let mut cores: Vec<&Fragment> = state
-        .core_ids
-        .iter()
-        .filter_map(|id| by_id.get(id).copied())
-        .filter_map(|f| named_container_of(f, &state.all_fragments))
-        .collect();
-    cores.sort_by(|a, b| a.id.cmp(&b.id));
-    cores.dedup_by(|a, b| a.id == b.id);
-    let mut held: FxHashMap<String, Vec<(u32, u32)>> = FxHashMap::default();
-    for c in &cores {
-        held.entry(rel(state, c.path()))
-            .or_default()
-            .push((c.start_line(), c.end_line()));
-    }
-
-    let analysed = state.analysed_range.as_deref().or(diff_range);
-    let bounds = commit_bounds(analysed).filter(|_| state.commit_count >= 2);
-    let base_texts = BaseTexts::new(&state.root_dir, state.run.source().base());
-
-    let mut changed: Vec<ChangedSymbol> = Vec::new();
-    // Schema changes first, then the public symbols something calls, then
-    // the rest: what the cap keeps is what a reader would look at first.
-    let mut contracts: Vec<Contract> = Vec::new();
-    let mut public_api: Vec<(bool, Contract)> = Vec::new();
-    // Definitions are counted per language: the builders link a call to the
-    // definitions of its own language, so a Python wrapper named like a Rust
-    // function is not what makes the Rust name ambiguous. An `impl` block
-    // extends the type it names rather than competing with it: a struct with
-    // a `Display` and an `Error` impl is one definition, not three.
-    let mut definitions: FxHashMap<(&str, String), usize> = FxHashMap::default();
-    let mut defined_in: FxHashSet<(String, &str)> = FxHashSet::default();
-    let mut file_fragments: FxHashMap<&str, Vec<&Fragment>> = FxHashMap::default();
-    let indexing = diffctx_base::profile::detail("impact.setup.files", "");
-    for f in &state.all_fragments {
-        file_fragments.entry(f.path()).or_default().push(f);
-        if let Some(name) = f
-            .symbol_name
-            .as_deref()
-            .filter(|_| f.kind.is_definition_kind() && f.kind != FragmentKind::Impl)
-        {
-            let lang = diffctx_base::languages::get_language_for_file(f.path()).unwrap_or("");
-            *definitions.entry((lang, name.to_lowercase())).or_default() += 1;
-            defined_in.insert((name.to_string(), f.path()));
-        }
-    }
-    drop(indexing);
-    let files = Files {
-        fragments: file_fragments,
-        cells: &cells,
-        state,
-    };
-    let source = state.run.source();
-    // A lexical link stops at a project the workspace model says cannot
-    // reference the other: a Python test naming `config` is not a test of
-    // another project's `config.ts`. It crosses through a declared
-    // dependency — a Maven `it/` module importing `com.acme.core.Pricing`, a
-    // workspace crate writing `core_crate::pricing`.
-    let one_tree =
-        |user: &str, used: &str| source.may_reference(&rel(state, user), &rel(state, used));
-    let one_project = |user: &Fragment, used: &Fragment| one_tree(user.path(), used.path());
-    let file_of = |f: &Fragment| files.fragments.get(f.path()).map_or(&[][..], Vec::as_slice);
-    let metric_readers = std::cell::LazyCell::new(|| {
-        diffctx_graph::keytable::metric_readers(
-            &state.all_fragments,
-            Some(state.root_dir.as_path()),
-            state.run.changed_lines(),
-        )
-    });
-    let scala_import_memo: std::cell::RefCell<FxHashMap<String, Rc<Vec<Import>>>> =
-        std::cell::RefCell::default();
-    let registration = |f: &Fragment| -> Option<String> {
-        let path = rel(state, f.path());
-        let stated_entry = f.symbol_name.as_deref().map(base_symbol).and_then(|name| {
-            cells
-                .of(&path)?
-                .framework_entries_at(&path, name, (f.start_line(), f.end_line()))
-                .into_iter()
-                .find(|(kind, _)| *kind != EntryKind::Fixture)
-        });
-        if let Some((kind, entry)) = stated_entry {
-            return Some(framework::describe(kind, &entry));
-        }
-        if is_jvm_path(f.path()) {
-            // Kotlin's and Java's annotations are the facts' own.
-            let stated = cells.of(&path).and_then(|cell| {
-                cell.annotations_at(
-                    &path,
-                    f.symbol_name.as_deref().map(base_symbol)?,
-                    (f.start_line(), f.end_line()),
-                )
-            });
-            let imports = if Path::new(&path)
-                .extension()
-                .is_some_and(|ext| ext.eq_ignore_ascii_case("scala"))
-            {
-                scala_import_memo
-                    .borrow_mut()
-                    .entry(path.clone())
-                    .or_insert_with(|| {
-                        Rc::new(
-                            cells
-                                .head_text(state, &path)
-                                .map_or_else(Vec::new, |text| scala_imports(&text)),
-                        )
-                    })
-                    .clone()
-            } else {
-                Rc::new(cells.imports_at(&path))
-            };
-            jvm_entry_point(f, imports.as_slice(), stated.as_deref()).or_else(|| {
-                let name = f.symbol_name.as_deref().map(base_symbol)?;
-                cells
-                    .of(&path)?
-                    .serialized_at(&path, name, (f.start_line(), f.end_line()))
-                    .then(|| format!("{}serialized by Jackson", framework::ENTRY_PREFIX))
-            })
-        } else {
-            registering_decorator(f, file_of(f))
-        }
-    };
-    let is_tool = |f: &Fragment| -> bool {
-        let path = rel(state, f.path());
-        f.symbol_name
-            .as_deref()
-            .map(base_symbol)
-            .is_some_and(|name| {
-                cells.of(&path).is_some_and(|cell| {
-                    cell.framework_entries_at(&path, name, (f.start_line(), f.end_line()))
-                        .into_iter()
-                        .any(|(kind, _)| kind == EntryKind::Tool)
-                })
-            })
-    };
-    let link = |user: &Fragment, used: &Fragment| -> bool {
-        let Some(name) = used.symbol_name.as_deref().map(base_symbol) else {
-            return false;
-        };
-        if !same_runtime(user.path(), used.path()) {
-            return false;
-        }
-        let (user_rel, used_rel) = (rel(state, user.path()), rel(state, used.path()));
-        if let Some(cell) = cells.of(&user_rel).filter(|c| c.owns(&used_rel)) {
-            return cell.links(
-                &user_rel,
-                (user.start_line(), user.end_line()),
-                &used_rel,
-                name,
-                (used.start_line(), used.end_line()),
-            );
-        }
-        one_project(user, used)
-            && mentions(user, Some(name), &Receiver::Any)
-            && references_module(user, &files, Some(name), used.path())
-    };
-    let reaches_file = |test: &Fragment, caller: &Fragment| -> bool {
-        if !same_runtime(test.path(), caller.path()) {
-            return false;
-        }
-        let (test_rel, caller_rel) = (rel(state, test.path()), rel(state, caller.path()));
-        if let Some(cell) = cells.of(&test_rel).filter(|c| c.owns(&caller_rel)) {
-            return cell.reaches(&test_rel, &caller_rel);
-        }
-        one_project(test, caller) && references_module(test, &files, None, caller.path())
-    };
-    // What the tests say of a caller: the ones that reach it, and why an absent
-    // link is or is not a finding.
-    // A caller of a changed fragment (`core`) is open too where a test asserts
-    // that fragment's text.
-    let test_links = |frag: &Fragment, core: Option<&Fragment>| -> Caller {
-        let tested = tests.tested_by(frag, state, &by_id, &link);
-        let registered_by = tested.is_empty().then(|| registration(frag)).flatten();
-        Caller {
-            file_tested: tested.is_empty()
-                && registered_by.is_none()
-                && tests.file_tested(frag, &reaches_file),
-            unread_test: tested
-                .is_empty()
-                .then(|| tests.unread_naming(frag, &rel(state, frag.path())))
-                .flatten(),
-            tests_open: tested.is_empty()
-                && core.map_or_else(
-                    || tests.open_above(frag, &link, true),
-                    |core| tests.caller_open(frag, core, &link),
-                ),
-            tests_partial: !tested.is_empty() && tests.nearest_only(frag, state, &by_id, &link),
-            registered_by,
-            tests: tested,
-            ..Caller::default()
-        }
-    };
-    // A field changes its class too: how the class is built (a dataclass's
-    // constructor, a column's default) is its callers' business, and what
-    // reads the field is the field's (#388, #488); so does an attribute the
-    // method around it sets (#426). A query names one definition.
-    let holding: Vec<&Fragment> = cores
-        .iter()
-        .filter(|f| query.is_none() && f.kind == FragmentKind::Property)
-        .filter_map(|f| {
-            file_of(f)
-                .iter()
-                .copied()
-                .filter(|c| {
-                    c.id != f.id
-                        && (c.kind.is_container() || c.kind == FragmentKind::Function)
-                        && c.symbol_name.is_some()
-                        && within(&f.id, c)
-                })
-                .min_by_key(|c| c.line_count())
-        })
-        .collect();
-    let mut cores = innermost(cores);
-    cores.extend(holding);
-    // An `impl` block extends the type it names: with that type among the
-    // cores, a second entry for the block repeats the type (#403).
-    let types: FxHashSet<(&str, &str)> = cores
-        .iter()
-        .filter(|c| c.kind != FragmentKind::Impl)
-        .filter_map(|c| Some((c.path(), c.symbol_name.as_deref()?)))
-        .collect();
-    let cores: Vec<&Fragment> = cores
-        .into_iter()
-        .filter(|c| {
-            c.kind != FragmentKind::Impl
-                || !c
-                    .symbol_name
-                    .as_deref()
-                    .is_some_and(|s| types.contains(&(c.path(), s)))
-        })
-        .collect();
-    // A deletion that only borders a definition removed whatever followed
-    // it, at its own indentation or shallower: the definitions it took are
-    // reported as removed, this one did not change — and it is no part of
-    // the diff when it calls another changed symbol. Lines removed between
-    // two lines the definition spans are its own body, at any indentation
-    // (a dedented SQL string). A core no hunk overlaps was attached to a
-    // deletion beside it: the hunks name its file, never its lines.
-    let borders_only = |core: &Fragment| -> bool {
-        let core_hunks = hunks_in(core);
-        if core_hunks.is_empty() {
-            let core_path = rel(state, core.path());
-            return state.hunk_texts.iter().any(|h| h.path == core_path);
-        }
-        let header_indent = indent_of(without_decorators(&core.content));
-        core_hunks.iter().all(|h| {
-            let interior = core.start_line() <= h.new_start && core.end_line() > h.new_start;
-            h.added.is_empty()
-                && !interior
-                && h.removed
-                    .iter()
-                    .find(|l| !l.trim().is_empty())
-                    .is_some_and(|l| indent_of(l) <= header_indent)
-        })
-    };
-    let bordering: FxHashSet<&FragmentId> = cores
-        .iter()
-        .filter(|c| borders_only(c))
-        .map(|c| &c.id)
-        .collect();
-    // A constructor is called by its class's name (`cp.ComponentModel(b, 1)`,
-    // `new Store()`): its callers are the class's (#318). Mapped after the
-    // bordering test, which a class header with no hunk of its own would fail.
-    // The span of the constructor a class stands for, so that a queried `A.__init__` is
-    // defined by the constructor (and the `super()` calls of subclasses reach it), not by
-    // the class header alone.
-    let mut constructor_spans: FxHashMap<&FragmentId, (u32, u32)> = FxHashMap::default();
-    let cores: Vec<&Fragment> = {
-        let mut seen: FxHashSet<&FragmentId> = FxHashSet::default();
-        cores
-            .into_iter()
-            .map(|c| {
-                let constructor = c
-                    .symbol_name
-                    .as_deref()
-                    .map(base_symbol)
-                    .is_some_and(|s| matches!(s, "__init__" | "constructor"));
-                let class = constructor
-                    .then(|| enclosing_class(c, file_of(c)))
-                    .flatten();
-                if let Some(class) = class {
-                    constructor_spans.insert(&class.id, (c.start_line(), c.end_line()));
-                }
-                class.unwrap_or(c)
-            })
-            .filter(|c| seen.insert(&c.id))
-            .collect()
-    };
-    // The definitions of the cells' languages are the facts layer's: one entry
-    // per changed definition, anchored on the fragment that spans it, so the
-    // roles, test links and contracts built on fragments still reach it.
-    let mut cores = cores;
-    let mut cell_defs: FxHashMap<&FragmentId, decide::changed::Changed> = FxHashMap::default();
-    let mut cell_apart: Vec<decide::changed::Changed> = Vec::new();
-    // A file over the size cap is named as such; its definitions, one per
-    // unanchored entry, are not each traced apart (gh#619).
-    let over_the_cap = state
-        .run
-        .limited_by(diffctx_snapshot::resource::LimitReason::FileTooLarge);
-    let mut cell_removed: Vec<decide::changed::Changed> = Vec::new();
-    let mut cell_untracked: Vec<&Fragment> = Vec::new();
-    // A queried name in a file its cell lost (a syntax error, a read): the
-    // definition is not in the facts, and the file's loss is the answer.
-    let mut cell_unread: Vec<(&Fragment, decide::gap::Reason)> = Vec::new();
-    let asked = query
-        .and_then(parse_symbol_query)
-        .and_then(|(_, segments)| segments.last().copied());
-    for cell in cells.iter() {
-        let mut entries: Vec<decide::changed::Changed> = Vec::new();
-        if query.is_some() {
-            for core in cores.iter().filter(|c| cell.owns(&rel(state, c.path()))) {
-                let (file, lines) = (
-                    rel(state, core.path()),
-                    (core.start_line(), core.end_line()),
-                );
-                let mut defined = cell.define(
-                    &file,
-                    core.symbol_name.as_deref().map_or("", base_symbol),
-                    lines,
-                );
-                // A second declarator on the fragment's lines is the queried
-                // name, which the fragment is not named for.
-                let own = asked.map_or_else(Vec::new, |name| {
-                    let span = constructor_spans.get(&core.id).copied().unwrap_or(lines);
-                    cell.define(&file, name, span)
-                });
-                if !own.is_empty() {
-                    defined = own;
-                }
-                // A name asked for that no definition stands for is said, not
-                // left out: an empty answer would read as "no callers".
-                if defined.is_empty() && is_module_block_binding(core, file_of(core)) {
-                    cell_untracked.push(core);
-                } else if defined.is_empty() {
-                    if let Some(reason) = cell.loss_about(&rel(state, core.path())) {
-                        let core: &Fragment = core;
-                        cell_unread.push((core, reason));
-                    }
-                }
-                entries.extend(defined);
-            }
-        } else {
-            entries.extend(cell.changed().iter().cloned());
-        }
-        let (owned, rest): (Vec<&Fragment>, Vec<&Fragment>) = std::mem::take(&mut cores)
-            .into_iter()
-            .partition(|c| cell.owns(&rel(state, c.path())));
-        cores = rest;
-        let mut seen_entries: FxHashSet<(String, String, (u32, u32))> = FxHashSet::default();
-        for entry in entries {
-            if !seen_entries.insert((entry.file.clone(), entry.name.clone(), entry.lines)) {
-                continue;
-            }
-            if entry.how == decide::changed::How::Removed {
-                cell_removed.push(entry);
-                continue;
-            }
-            let anchor = files
-                .fragments
-                .get(diffctx_base::paths::join_native(&state.root_dir, &entry.file).as_str())
-                .and_then(|frags| cell_anchor(frags, &entry));
-            match anchor {
-                Some(f) if !cell_defs.contains_key(&f.id) => {
-                    cores.push(f);
-                    cell_defs.insert(&f.id, entry);
-                }
-                None if over_the_cap.contains(&entry.file) => {}
-                _ => cell_apart.push(entry),
-            }
-        }
-        // A definition the facts layer reports no change in, whose hunks are
-        // only what a formatter makes (a trailing space, a comma), is layout.
-        if query.is_none() {
-            for core in owned {
-                if cell_defs.contains_key(&core.id) {
-                    continue;
-                }
-                let hunks = hunks_in(core);
-                if !hunks.is_empty()
-                    && hunks
-                        .iter()
-                        .all(|h| h.layout || moved_verbatim(h, &state.hunk_texts))
-                {
-                    let named = core_place(core);
-                    if !layout_only.contains(&named) {
-                        layout_only.push(named);
-                    }
-                }
-            }
-        }
-    }
-    // A family the run could not resolve: its definitions are named as not
-    // determined, never answered by the paths the cells replaced.
-    let (cell_lost, kept): (Vec<&Fragment>, Vec<&Fragment>) = std::mem::take(&mut cores)
-        .into_iter()
-        .partition(|c| cells.lost(&rel(state, c.path())));
-    cores = kept;
+    let cx = Impact::open(state, &cells, tests, diff_range, query, deadline);
+    let mut found = Findings::default();
+    let Targets {
+        cores,
+        cell_defs,
+        cell_apart,
+        cell_removed,
+        mut cell_untracked,
+        cell_unread,
+        cell_lost,
+        bordering,
+        held,
+        untraced,
+    } = targets::read(&cx, &mut found);
+    drop(setup);
+    let (state, cells, tests, by_id, files) = (cx.state, cx.cells, &cx.tests, &cx.by_id, &cx.files);
+    let (definitions, defined_in, analysed, bounds, base_texts) = (
+        &cx.definitions,
+        &cx.defined_in,
+        cx.analysed,
+        &cx.bounds,
+        &cx.base_texts,
+    );
+    let in_a_hunk = |id: &FragmentId| cx.in_a_hunk(id);
+    let hunks_in = |core: &Fragment| cx.hunks_in(core);
+    let core_place = |core: &Fragment| cx.core_place(core);
+    let one_tree = |user: &str, used: &str| cx.one_tree(user, used);
+    let file_of = |f: &Fragment| cx.file_of(f);
+    let registration = |f: &Fragment| cx.registration(f);
+    let is_tool = |f: &Fragment| cx.is_tool(f);
+    let link = |user: &Fragment, used: &Fragment| cx.link(user, used);
+    let reaches_file = |test: &Fragment, caller: &Fragment| cx.reaches_file(test, caller);
+    let test_links = |frag, core: Option<&Fragment>| cx.test_links(frag, core);
     // A queried name has no diff: a call from elsewhere in its own file is a
     // caller like any other.
     let inside_the_diff = |id: &FragmentId| {
         (state.core_ids.contains(id) && !bordering.contains(id))
             || (query.is_none() && in_a_hunk(id))
     };
-    let untraced = {
-        let _t = diffctx_base::profile::detail("impact.setup.untraced", "");
-        let removed: Vec<&str> = cell_removed
-            .iter()
-            .chain(&cell_apart)
-            .filter_map(spelled_word)
-            .collect();
-        let own: Vec<super::keys::OwnSpan> = cell_defs
-            .values()
-            .chain(&cell_apart)
-            .filter_map(|e| spelled_word(e).map(|name| (e.file.clone(), name.to_string(), e.lines)))
-            .chain(
-                cores
-                    .iter()
-                    .filter(|c| !cell_defs.contains_key(&c.id))
-                    .map(|c| {
-                        let name = c.symbol_name.as_deref().map_or("", literal_base);
-                        (
-                            rel(state, c.path()),
-                            name.to_string(),
-                            (c.start_line(), c.end_line()),
-                        )
-                    }),
-            )
-            .collect();
-        let left: Vec<&str> = cell_defs
-            .values()
-            .chain(&cell_apart)
-            .flat_map(left_words)
-            .collect();
-        UntracedNamers::build(state, &cells, &cores, &removed, &left, &own, diff_range)
-    };
-    drop(setup);
     diffctx_base::profile::count("impact.cores", cores.len() as u64);
     let stopped_early = !state.run.stops().is_empty();
     let mut unreached: Vec<&Fragment> = cell_lost;
@@ -654,14 +190,16 @@ pub fn build_impact(
             None => hunk_layout,
         };
         if query.is_none() && layout {
-            layout_only.push(core_place(core));
+            found.layout_only.push(core_place(core));
             continue;
         }
         if query.is_none() && py.is_none() && bordering.contains(&core.id) {
             continue;
         }
-        traced_definitions += 1;
-        traced_names.extend(core.symbol_name.as_deref().and_then(|s| names_of(s).pop()));
+        found.traced_definitions += 1;
+        found
+            .traced_names
+            .extend(core.symbol_name.as_deref().and_then(|s| names_of(s).pop()));
         // A function whose signature the cell found compatible is folded by its
         // rule (`check-the-default`); the text rule below stays for what the cell
         // has no signature of: the fields a class gained.
@@ -881,7 +419,8 @@ pub fn build_impact(
             .is_some_and(|text| diffctx_graph::keytable::registers_metrics(&text))
         {
             let span = core.start_line() as usize..=core.end_line() as usize;
-            for reader in metric_readers
+            for reader in cx
+                .metric_readers()
                 .iter()
                 .filter(|c| rel(state, &c.changed_path) == path && span.contains(&c.changed_line))
             {
@@ -1107,7 +646,7 @@ pub fn build_impact(
                 .then_with(|| a.path.cmp(&b.path))
                 .then_with(|| a.lines.cmp(&b.lines))
         });
-        let in_time = deadline.is_none_or(|d| Instant::now() < d);
+        let in_time = cx.deadline.is_none_or(|d| Instant::now() < d);
         let commits = match (&bounds, i < MAX_BLAMED_SYMBOLS && in_time) {
             (Some((base, head)), true) => {
                 let _t = diffctx_base::profile::detail("impact.callers.commits", "");
@@ -1138,7 +677,7 @@ pub fn build_impact(
         // A test's declarations are no API: nothing but its runner calls
         // them (#517).
         if query.is_none() && public_change && !tests.is_test(core) {
-            public_api.push((
+            found.public_api.push((
                 callers.is_empty(),
                 Contract {
                     path: rel(state, core.path()),
@@ -1437,7 +976,7 @@ pub fn build_impact(
             })
             .flatten();
         let absent = untested == Some(GuardState::None);
-        untested_definitions += usize::from(absent);
+        found.untested_definitions += usize::from(absent);
         // A test that reaches a definition no caller does (a doctest runs it, a
         // test in its own file spells it, a test of the class a dispatch route
         // goes through) is no caller: the definition is listed, its guard stated
@@ -1469,7 +1008,7 @@ pub fn build_impact(
                         .is_some_and(|cell| held_has_users(cell, def))
                 })
             {
-                traced_definitions -= 1;
+                found.traced_definitions -= 1;
                 continue;
             }
             // Counted in the header, so named: a count of nothing listed
@@ -1481,18 +1020,20 @@ pub fn build_impact(
                     None => named,
                 };
                 if called_in_diff {
-                    untested_called_in_diff.push(named);
+                    found.untested_called_in_diff.push(named);
                 } else {
-                    untested_unlisted.push(absence(named, complete));
+                    found.untested_unlisted.push(absence(named, complete));
                 }
             } else if let Some(role) = entry.as_ref() {
-                entry_unlisted.push(format!("{named} \u{2014} {role}"));
+                found
+                    .entry_unlisted
+                    .push(format!("{named} \u{2014} {role}"));
             } else if called_in_diff {
-                untested_called_in_diff.push(named);
+                found.untested_called_in_diff.push(named);
             } else {
                 // No test is in view to claim a missing link against: the search
                 // still found no caller, and the definition is named for that.
-                untested_unlisted.push(absence(named, complete));
+                found.untested_unlisted.push(absence(named, complete));
             }
             continue;
         }
@@ -1505,9 +1046,9 @@ pub fn build_impact(
             && coverage.all().witness().is_some()
             && !(also_changed.is_empty() && possibly_also_changed.is_empty());
         if only_in_diff && absent {
-            untested_called_in_diff.push(core_place(core));
+            found.untested_called_in_diff.push(core_place(core));
         }
-        changed.push(ChangedSymbol {
+        found.changed.push(ChangedSymbol {
             path: rel(state, core.path()),
             symbol: core.symbol_name.clone(),
             lines: lines_of(&core.id),
@@ -1538,7 +1079,7 @@ pub fn build_impact(
     cell_untracked.dedup_by(|a, b| a.path() == b.path() && a.start_line() == b.start_line());
     for core in cell_untracked {
         let name = core.symbol_name.as_deref().map_or("", base_symbol);
-        changed.push(ChangedSymbol {
+        found.changed.push(ChangedSymbol {
             unresolved: Some(Unknown::Untracked {
                 name: name.to_string(),
             }),
@@ -1562,7 +1103,7 @@ pub fn build_impact(
     }) {
         let name = asked.rsplit(':').next().unwrap_or(asked);
         for (path, reason) in cells.iter().flat_map(|cell| cell.lost_namers(name)) {
-            changed.push(uncovered_symbol(
+            found.changed.push(uncovered_symbol(
                 path.as_str().to_string(),
                 name,
                 String::new(),
@@ -1572,7 +1113,7 @@ pub fn build_impact(
         }
     }
     for (core, reason) in cell_unread {
-        changed.push(uncovered_symbol(
+        found.changed.push(uncovered_symbol(
             rel(state, core.path()),
             core.symbol_name.as_deref().map_or("", base_symbol),
             lines_of(&core.id),
@@ -1630,7 +1171,7 @@ pub fn build_impact(
                 decide::changed::How::Edited { layout_only: true }
             )
         {
-            layout_only.push(place(
+            found.layout_only.push(place(
                 &entry.file,
                 Some(entry.name.as_str()).filter(|_| entry.symbol().is_some()),
                 &format!("{}-{}", entry.lines.0, entry.lines.1),
@@ -1658,8 +1199,8 @@ pub fn build_impact(
         if callerless && verdict.complete() && held_has_users(cell, entry) {
             continue;
         }
-        traced_definitions += 1;
-        traced_names.push(entry.name.clone());
+        found.traced_definitions += 1;
+        found.traced_names.push(entry.name.clone());
         // A definition with no fragment has no test link computed: with tests in
         // view it keeps its row, which claims none; the list that says "no static
         // test link" is for the answer that has no tests to say it against.
@@ -1668,17 +1209,21 @@ pub fn build_impact(
         let witness = sym.coverage.all().witness();
         match witness.filter(|_| callerless && verdict.complete()) {
             Some(_) if in_a_test_file => {
-                entry_unlisted.push(format!("{named} \u{2014} test (run by the test runner)"));
+                found
+                    .entry_unlisted
+                    .push(format!("{named} \u{2014} test (run by the test runner)"));
             }
-            Some(complete) if !tests.any() => untested_unlisted.push(absence(named, complete)),
-            _ => changed.push(sym),
+            Some(complete) if !tests.any() => {
+                found.untested_unlisted.push(absence(named, complete))
+            }
+            _ => found.changed.push(sym),
         }
     }
     diffctx_base::profile::count("impact.traced_apart", traced_apart);
     {
         let stops = state.run.stops();
         for entry in apart_unreached {
-            changed.push(unfinished_symbol(
+            found.changed.push(unfinished_symbol(
                 entry.file.clone(),
                 entry.symbol(),
                 format!("{}-{}", entry.lines.0, entry.lines.1),
@@ -1695,7 +1240,7 @@ pub fn build_impact(
                             .iter()
                             .all(|h| h.layout || moved_verbatim(h, &state.hunk_texts))));
             if !skipped {
-                changed.push(unfinished_symbol(
+                found.changed.push(unfinished_symbol(
                     rel(state, core.path()),
                     core.symbol_name.clone(),
                     lines_of(&core.id),
@@ -1714,7 +1259,7 @@ pub fn build_impact(
             for path in changed_rels(state)
                 .filter(|p| is_code_file(p) && !covered.contains(p) && !unseen.contains(p.as_str()))
             {
-                changed.push(unfinished_symbol(
+                found.changed.push(unfinished_symbol(
                     path,
                     None,
                     String::new(),
@@ -1727,7 +1272,7 @@ pub fn build_impact(
     let removed = diffctx_base::profile::phase("impact.removed");
     if query.is_none() && state.run.check() {
         let mut defined: FxHashMap<&str, FxHashSet<String>> = FxHashMap::default();
-        for (n, p) in &defined_in {
+        for (n, p) in defined_in {
             defined.entry(n.as_str()).or_default().insert(rel(state, p));
         }
         let head_rev = head_of(analysed);
@@ -1822,7 +1367,7 @@ pub fn build_impact(
             if let Some(c) =
                 contract.filter(|c| !diffctx_base::testfiles::is_test_path(Path::new(&c.path)))
             {
-                contracts.push(c);
+                found.contracts.push(c);
             }
             // Unresolved is an answer too: dropped, it read as no caller.
             let alone = sym
@@ -1830,11 +1375,23 @@ pub fn build_impact(
                 .as_ref()
                 .is_some_and(|name| listed_alone.contains(&(sym.path.clone(), name.clone())));
             if !sym.callers.is_empty() || sym.unresolved.is_some() || alone {
-                changed.push(sym);
+                found.changed.push(sym);
             }
         }
     }
     drop(removed);
+    let Findings {
+        mut changed,
+        mut contracts,
+        mut public_api,
+        untested_definitions,
+        untested_unlisted,
+        untested_called_in_diff,
+        entry_unlisted,
+        layout_only,
+        traced_definitions,
+        traced_names,
+    } = found;
     // Symbols with something to say first: callers, then commit overlap.
     changed.sort_by(|a, b| {
         b.callers
