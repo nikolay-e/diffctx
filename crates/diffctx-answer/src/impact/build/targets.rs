@@ -300,7 +300,7 @@ pub(super) fn read<'a>(
             .chain(&cell_apart)
             .flat_map(left_words)
             .collect();
-        UntracedNamers::build(state, &cells, &cores, &removed, &left, &own, diff_range)
+        UntracedNamers::build(state, cells, &cores, &removed, &left, &own, diff_range)
     };
     Targets {
         cores,

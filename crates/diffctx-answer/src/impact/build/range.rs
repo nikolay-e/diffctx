@@ -80,22 +80,22 @@ pub(super) fn findings(cx: &Impact<'_>, t: &Targets<'_>, found: Findings) -> Imp
         .collect();
     let (stale, stale_omitted) = if query.is_none() {
         let _stale = diffctx_base::profile::phase("impact.stale_paths");
-        stale_references(state, &cells, analysed)
+        stale_references(state, cells, analysed)
     } else {
         (Vec::new(), 0)
     };
     let (deleted_modules, changed) = if query.is_none() {
-        dead_modules(state, &cells, changed, &stale)
+        dead_modules(state, cells, changed, &stale)
     } else {
         (Vec::new(), changed)
     };
     let (named_by, named_by_path_omitted) = {
         let _named = diffctx_base::profile::phase("impact.named_by");
-        let (mut named, omitted) = named_by_path(state, &cells, analysed);
+        let (mut named, omitted) = named_by_path(state, cells, analysed);
         if query.is_none() {
-            let by_module = untraced.module_refs(state, &cores, &named);
+            let by_module = untraced.module_refs(state, cores, &named);
             named.extend(by_module);
-            named.extend(twin_references(state, &cores));
+            named.extend(twin_references(state, cores));
         }
         (named, omitted)
     };
@@ -105,7 +105,7 @@ pub(super) fn findings(cx: &Impact<'_>, t: &Targets<'_>, found: Findings) -> Imp
         (Vec::new(), 0)
     };
     let nameless = if query.is_none() {
-        nameless_changes(state, &cells, &held)
+        nameless_changes(state, cells, held)
     } else {
         Vec::new()
     };
@@ -186,7 +186,7 @@ pub(super) fn findings(cx: &Impact<'_>, t: &Targets<'_>, found: Findings) -> Imp
                 lost_configs.push(f.path.clone());
             }
         }
-        let mut all: Vec<UnanalysedFile> = outside_definitions(&cells)
+        let mut all: Vec<UnanalysedFile> = outside_definitions(cells)
             .into_iter()
             .filter(|o| !others.iter().any(|f| f.path == o.path))
             .collect();
@@ -222,7 +222,7 @@ pub(super) fn findings(cx: &Impact<'_>, t: &Targets<'_>, found: Findings) -> Imp
             .chain(changed_files.iter().filter(|p| is_schema_file(p)).cloned())
             .collect();
         let (refs, omitted, searches, unsearched, unread) =
-            key_references(state, &cells, &untraced, &nameless);
+            key_references(state, cells, &untraced, &nameless);
         unanalysed.extend(unread);
         // A search of the names a nameless change touches is no trace of it.
         unanalysed.retain(|f| {
