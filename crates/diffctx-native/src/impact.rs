@@ -592,6 +592,9 @@ pub struct Caller {
     pub fold_share: usize,
     /// The lines that reference the definition, when known.
     pub sites: Vec<u32>,
+    /// The definition the sites sit in, when the resolver names it: its `lines` are then
+    /// the sites, not that definition's span.
+    pub(crate) within: Option<crate::facts::LocalKey>,
 }
 
 impl Caller {
@@ -2520,12 +2523,17 @@ pub(crate) const MAX_TEST_HOPS: usize = 2;
 /// The chunks of one long function (`main[88]`, `main[120]`) are one caller
 /// with several call sites, not several callers, and so is a file's
 /// module-level code split into unnamed chunks (#349); distinct functions
-/// stay distinct, and so do evidence levels and stated kinds.
+/// stay distinct, two same-named methods of one file among them (their spans
+/// are apart), and so do evidence levels and stated kinds.
 #[allow(
     clippy::disallowed_methods,
     reason = "`Caller.lines` is `a-b`, written by this module: a field that is no number has no call site to add"
 )]
 fn merge_by_symbol(callers: Vec<Caller>) -> Vec<Caller> {
+    let span = |l: &str| -> Option<(u32, u32)> {
+        let (a, b) = l.split_once('-')?;
+        Some((a.parse().ok()?, b.parse().ok()?))
+    };
     let mut merged: Vec<Caller> = Vec::new();
     for mut c in callers {
         if c.sites.is_empty() {
@@ -2537,6 +2545,15 @@ fn merge_by_symbol(callers: Vec<Caller>) -> Vec<Caller> {
                 .into_iter()
                 .collect();
         }
+        let one_definition = |m: &Caller| match (m.symbol.as_deref(), c.symbol.as_deref()) {
+            _ if m.within.is_some() || c.within.is_some() => m.within == c.within,
+            (None, None) => true,
+            (Some(a), Some(b)) if base_symbol(a) == base_symbol(b) => {
+                a != b // chunks of one function: `main`, `main[88]`
+                    || matches!((span(&m.lines), span(&c.lines)), (Some((a0, a1)), Some((b0, b1))) if a0 <= b1 && b0 <= a1)
+            }
+            _ => false,
+        };
         let same = |m: &&mut Caller| {
             m.path == c.path
                 && m.evidence == c.evidence
@@ -2544,16 +2561,12 @@ fn merge_by_symbol(callers: Vec<Caller>) -> Vec<Caller> {
                 && m.folded_by == c.folded_by
                 && m.fold_kind == c.fold_kind
                 && m.fold_share == c.fold_share
-                && m.symbol.as_deref().map(base_symbol) == c.symbol.as_deref().map(base_symbol)
+                && one_definition(m)
         };
         match merged.iter_mut().find(|m| same(m)) {
             Some(m) => {
                 // The caller spans every chunk it was split into, or a call
                 // site in a later chunk sits outside the range shown (#472).
-                let span = |l: &str| -> Option<(u32, u32)> {
-                    let (a, b) = l.split_once('-')?;
-                    Some((a.parse().ok()?, b.parse().ok()?))
-                };
                 if let (Some((a, b)), Some((c2, d))) = (span(&m.lines), span(&c.lines)) {
                     m.lines = format!("{}-{}", a.min(c2), b.max(d));
                 }
@@ -3415,11 +3428,13 @@ const REEXPORT: &str = "reexport";
 fn cell_row(u: &decide::Use) -> Caller {
     let reach = reach_of(u);
     let reexport = u.relation == crate::resolve::Relation::Reexports;
-    let caller = match &u.scope {
-        crate::facts::Scope::Def(local) => Some(local.name.as_str().to_string()),
+    let within = match &u.scope {
+        crate::facts::Scope::Def(local) => Some(local.clone()),
         _ => None,
     };
+    let caller = within.as_ref().map(|local| local.name.as_str().to_string());
     Caller {
+        within,
         reason: reach.reason().filter(|_| !reexport),
         kind: reach.stated_kind(&u.file),
         folded_by: reach.fold.map(|(rule, _, _)| rule),
