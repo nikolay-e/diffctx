@@ -241,24 +241,25 @@ dependencies = [
  "anyhow",
  "brokk-tree-sitter-kotlin",
  "clap",
+ "diffctx-answer",
  "diffctx-base",
  "diffctx-config",
  "diffctx-facts",
+ "diffctx-graph",
  "diffctx-occurrence",
  "diffctx-resolve",
+ "diffctx-select",
  "diffctx-snapshot",
  "dunce",
  "glob",
  "libc",
  "libtest-mimic",
  "mimalloc",
- "once_cell",
  "proptest",
  "pyo3",
  "rayon",
  "regex",
  "rustc-hash",
- "schemars",
  "serde",
  "serde_json",
  "serde_yaml",
@@ -307,6 +308,31 @@ dependencies = [
  "tree-sitter-yaml",
  "tree-sitter-zig",
  "walkdir",
+]
+
+[[package]]
+name = "diffctx-answer"
+version = "2.0.0-dev.0"
+dependencies = [
+ "anyhow",
+ "diffctx-base",
+ "diffctx-config",
+ "diffctx-facts",
+ "diffctx-graph",
+ "diffctx-occurrence",
+ "diffctx-resolve",
+ "diffctx-select",
+ "diffctx-snapshot",
+ "dunce",
+ "once_cell",
+ "regex",
+ "rustc-hash",
+ "schemars",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "toml",
+ "tracing",
 ]
 
 [[package]]
@@ -392,6 +418,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "diffctx-graph"
+version = "2.0.0-dev.0"
+dependencies = [
+ "diffctx-base",
+ "diffctx-config",
+ "diffctx-facts",
+ "diffctx-resolve",
+ "diffctx-snapshot",
+ "dunce",
+ "once_cell",
+ "rayon",
+ "regex",
+ "rustc-hash",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "toml",
+ "tracing",
+]
+
+[[package]]
 name = "diffctx-occurrence"
 version = "2.0.0-dev.0"
 dependencies = [
@@ -412,6 +459,19 @@ dependencies = [
  "diffctx-facts",
  "diffctx-snapshot",
  "serde_json",
+]
+
+[[package]]
+name = "diffctx-select"
+version = "2.0.0-dev.0"
+dependencies = [
+ "diffctx-base",
+ "diffctx-config",
+ "diffctx-graph",
+ "diffctx-snapshot",
+ "once_cell",
+ "regex",
+ "rustc-hash",
 ]
 
 [[package]]

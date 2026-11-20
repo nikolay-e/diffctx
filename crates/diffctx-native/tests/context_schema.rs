@@ -26,13 +26,13 @@ fn assert_pinned(file: &str, schema: &serde_json::Value) {
 fn the_checked_in_schema_is_the_generated_one() {
     assert_pinned(
         "diffctx.context.v2.json",
-        &_diffctx::render::context_schema(),
+        &diffctx_answer::render::context_schema(),
     );
 }
 
 #[test]
 fn the_checked_in_locate_schema_is_the_generated_one() {
-    let schema = _diffctx::locate::locate_schema();
+    let schema = diffctx_answer::locate::locate_schema();
     assert_pinned("diffctx.locate.v2.json", &schema);
     let required: Vec<&str> = schema["required"]
         .as_array()
@@ -68,7 +68,7 @@ fn the_checked_in_locate_schema_is_the_generated_one() {
 
 #[test]
 fn the_checked_in_impact_schema_is_the_generated_one() {
-    let schema = _diffctx::impact::impact_schema();
+    let schema = diffctx_answer::impact::impact_schema();
     assert_pinned("diffctx.impact.v2.json", &schema);
     // What every v2 impact document carries, whatever the change: who and what
     // was asked, the definitions, what was not covered, and what the cap did. A
@@ -119,7 +119,7 @@ fn the_checked_in_impact_schema_is_the_generated_one() {
 
 #[test]
 fn the_schema_names_the_artifact_and_its_required_keys() {
-    let schema = _diffctx::render::context_schema();
+    let schema = diffctx_answer::render::context_schema();
     assert_eq!(
         schema["$schema"],
         "https://json-schema.org/draft/2020-12/schema"
@@ -179,7 +179,7 @@ fn required<'a>(def: &'a serde_json::Value) -> Vec<&'a str> {
 /// what travels together.
 #[test]
 fn the_v2_impact_schema_has_the_shape_the_design_gives() {
-    let schema = _diffctx::answer::v2::impact_v2_schema();
+    let schema = diffctx_answer::answer::v2::impact_v2_schema();
     let top = schema["properties"].as_object().expect("properties");
     for section in [
         "schema",
@@ -256,7 +256,7 @@ fn the_v2_impact_schema_has_the_shape_the_design_gives() {
 /// count states its bound, a listing derives what it omits.
 #[test]
 fn v2_values_serialize_to_the_documented_shape() {
-    use _diffctx::answer::v2::{Count, DefRef, Gap, Listing, ShedRows};
+    use diffctx_answer::answer::v2::{Count, DefRef, Gap, Listing, ShedRows};
     let listing = Listing::of(vec!["a.py".to_string()], 2);
     assert_eq!(listing.omitted(), 2);
     assert_eq!(
@@ -353,7 +353,7 @@ fn a_v1_answer_maps_to_v2_field_by_field() {
         diffctx_config::config::limits::DEFAULT_PIPELINE_TIMEOUT_SECONDS,
     )
     .expect("impact");
-    let v2 = _diffctx::answer::v2::ImpactV2::from_v1(&v1, 2);
+    let v2 = diffctx_answer::answer::v2::ImpactV2::from_v1(&v1, 2);
     let json = serde_json::to_value(&v2).unwrap();
     assert_eq!(json["schema"], "diffctx.impact.v2");
     assert_eq!(json["range"]["kind"], "committed");
@@ -383,7 +383,7 @@ fn a_v1_answer_maps_to_v2_field_by_field() {
 /// to a definition comes from the cell, delta included.
 #[test]
 fn the_shed_ledger_is_filled_where_rows_are_shed() {
-    use _diffctx::answer::v2::{ChangeKind, ImpactV2};
+    use diffctx_answer::answer::v2::{ChangeKind, ImpactV2};
     let api = |k: u32| -> String {
         (0..15)
             .map(|i| format!("def op_{i:02}(x):\n    return x + {i} + {k}\n\n\n"))
@@ -428,7 +428,7 @@ fn the_shed_ledger_is_filled_where_rows_are_shed() {
         "{:?}",
         edited.change
     );
-    _diffctx::impact::deliver_framed(&mut v1, false, 400, true, "");
+    diffctx_answer::impact::deliver::deliver_framed(&mut v1, false, 400, true, "");
     assert!(v1.truncated > 0, "the budget must shed something");
     for c in v1.changed.iter().filter(|c| c.kind != "omitted") {
         assert_eq!(

@@ -14,11 +14,8 @@ answer -> resource
 answer -> run_provenance
 answer -> snapshot
 artifact -> answer
-artifact -> change_class
 artifact -> fit
-artifact -> impact
 artifact -> languages
-artifact -> pipeline
 artifact -> render
 artifact -> resource
 artifact -> tokenizer
@@ -134,7 +131,6 @@ hook -> paths
 hook -> pipeline
 hook -> profile
 hook -> resource
-hook -> run_provenance
 hook -> snapshot
 hook -> source
 hook -> tokenizer
@@ -244,7 +240,6 @@ pipeline -> select
 pipeline -> signatures
 pipeline -> snapshot
 pipeline -> source
-pipeline -> testfiles
 pipeline -> tokenizer
 pipeline -> types
 pipeline -> utility
@@ -291,10 +286,13 @@ pybridge -> types
 render -> answer
 render -> change_class
 render -> config
+render -> fit
+render -> languages
 render -> paths
 render -> resource
 render -> run_provenance
 render -> sanitize
+render -> testfiles
 render -> types
 resolve -> facts
 resolve -> paths

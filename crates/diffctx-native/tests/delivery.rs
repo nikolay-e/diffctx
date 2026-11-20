@@ -153,7 +153,7 @@ fn a_hook_profile_renders_the_automatic_answer_within_its_cap() {
     hook.profile = Profile::Hook;
     let delivery = deliver(&hook).unwrap();
     assert!(
-        count_tokens(&delivery.text) <= _diffctx::impact::AUTOMATIC_TOKEN_CAP,
+        count_tokens(&delivery.text) <= diffctx_answer::impact::deliver::AUTOMATIC_TOKEN_CAP,
         "{}",
         delivery.text
     );

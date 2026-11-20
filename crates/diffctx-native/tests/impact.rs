@@ -857,7 +857,7 @@ fn the_answer_fits_the_cap_and_says_what_it_dropped() {
     let json = String::from_utf8(out.stdout).unwrap();
     let doc: serde_json::Value = serde_json::from_str(&json).unwrap();
     assert!(
-        diffctx_base::tokenizer::count_tokens(&json) <= _diffctx::impact::IMPACT_TOKEN_CAP,
+        diffctx_base::tokenizer::count_tokens(&json) <= diffctx_answer::impact::IMPACT_TOKEN_CAP,
         "{} tokens",
         diffctx_base::tokenizer::count_tokens(&json)
     );

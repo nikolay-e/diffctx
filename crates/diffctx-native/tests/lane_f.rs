@@ -165,16 +165,22 @@ fn a_locate_run_stopped_at_any_poll_names_the_deadline_or_answers_in_full() {
 /// tests, or one function of a larger one.
 const BOUNDED_REGIONS: &[(&str, Option<&str>)] = &[
     ("../diffctx-snapshot/src/candidate_files.rs", None),
-    ("src/discovery.rs", None),
-    ("src/token_corpus.rs", Some("build")),
+    ("../diffctx-graph/src/discovery.rs", None),
+    ("../diffctx-graph/src/token_corpus.rs", Some("build")),
     ("src/pipeline.rs", Some("build_file_cache")),
-    ("src/impact.rs", Some("unanalysed_files")),
+    (
+        "../diffctx-answer/src/impact/unanalysed.rs",
+        Some("unanalysed_files"),
+    ),
     (
         "../diffctx-occurrence/src/tokens/occurrence/debug.rs",
         Some("embedded_uses"),
     ),
-    ("src/impact/mentions.rs", Some("stale_references")),
-    ("src/impact.rs", Some("fit_with")),
+    (
+        "../diffctx-answer/src/impact/mentions.rs",
+        Some("stale_references"),
+    ),
+    ("../diffctx-answer/src/impact/deliver.rs", Some("fit_with")),
     ("../diffctx-base/src/fit.rs", None),
     // The snapshot layer lists and reads the repository for every run: its
     // loops are over a listing already in memory, and each git call and
@@ -188,92 +194,92 @@ const BOUNDED_REGIONS: &[(&str, Option<&str>)] = &[
 /// cannot outlive the code it excuses.
 const NOT_OVER_THE_REPOSITORY: &[(&str, &str, &str)] = &[
     (
-        "src/discovery.rs",
+        "../diffctx-graph/src/discovery.rs",
         "for f in rare_files",
         "rare_identifier_threshold files per identifier of the diff",
     ),
     (
-        "src/discovery.rs",
+        "../diffctx-graph/src/discovery.rs",
         "for ident in &ctx.expansion_concepts",
         "the diff's identifiers",
     ),
     (
-        "src/discovery.rs",
+        "../diffctx-graph/src/discovery.rs",
         "for (_ident, files) in &ident_to_files",
         "the diff's identifiers",
     ),
     (
-        "src/discovery.rs",
+        "../diffctx-graph/src/discovery.rs",
         "for f in files",
         "rare_identifier_threshold files",
     ),
     (
-        "src/discovery.rs",
+        "../diffctx-graph/src/discovery.rs",
         "for path in &ctx.changed_files",
         "the changed files",
     ),
     (
-        "src/discovery.rs",
+        "../diffctx-graph/src/discovery.rs",
         "for f in &ctx.changed_files",
         "the changed files",
     ),
     (
-        "src/discovery.rs",
+        "../diffctx-graph/src/discovery.rs",
         "for (stem, names) in &per_file",
         "the changed files",
     ),
     (
-        "src/discovery.rs",
+        "../diffctx-graph/src/discovery.rs",
         "for name in names",
         "the names a changed file defines",
     ),
     (
-        "src/discovery.rs",
+        "../diffctx-graph/src/discovery.rs",
         "for name in &named",
         "the changed files' names one document holds",
     ),
     (
-        "src/discovery.rs",
+        "../diffctx-graph/src/discovery.rs",
         "for prefix in TEST_PREFIXES",
         "a constant",
     ),
     (
-        "src/discovery.rs",
+        "../diffctx-graph/src/discovery.rs",
         "for suffix in TEST_SUFFIXES",
         "a constant",
     ),
     (
-        "src/discovery.rs",
+        "../diffctx-graph/src/discovery.rs",
         "for suffix in diffctx_base::testfiles::JVM_TEST_SUFFIXES",
         "a constant",
     ),
     (
-        "src/discovery.rs",
+        "../diffctx-graph/src/discovery.rs",
         "for t in query_set",
         "the diff's query terms",
     ),
     (
-        "src/discovery.rs",
+        "../diffctx-graph/src/discovery.rs",
         "for term in &query_set",
         "the diff's query terms",
     ),
     (
-        "src/discovery.rs",
+        "../diffctx-graph/src/discovery.rs",
         "for term in doc.term_counts.keys()",
         "one document's terms, inside the bounded document loop",
     ),
     (
-        "src/discovery.rs",
+        "../diffctx-graph/src/discovery.rs",
         ".strategies .par_iter()",
         "the strategies",
     ),
     (
-        "src/discovery.rs",
+        "../diffctx-graph/src/discovery.rs",
         "for (source, paths) in per_strategy",
         "the strategies",
     ),
     (
-        "src/impact/mentions.rs",
+        "../diffctx-answer/src/impact/mentions.rs",
         "for (target, _) in &targets",
         "the deleted and renamed paths",
     ),

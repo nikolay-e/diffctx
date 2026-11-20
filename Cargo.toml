@@ -12,11 +12,14 @@ repository = "https://github.com/nikolay-e/diffctx"
 # Dependencies two or more crates of the workspace share: one version, one feature set.
 [workspace.dependencies]
 anyhow = "1"
+diffctx-answer = { path = "crates/diffctx-answer", version = "2.0.0-dev.0" }
 diffctx-base = { path = "crates/diffctx-base", version = "2.0.0-dev.0" }
 diffctx-config = { path = "crates/diffctx-config", version = "2.0.0-dev.0" }
 diffctx-facts = { path = "crates/diffctx-facts", version = "2.0.0-dev.0", default-features = false }
+diffctx-graph = { path = "crates/diffctx-graph", version = "2.0.0-dev.0" }
 diffctx-occurrence = { path = "crates/diffctx-occurrence", version = "2.0.0-dev.0" }
 diffctx-resolve = { path = "crates/diffctx-resolve", version = "2.0.0-dev.0" }
+diffctx-select = { path = "crates/diffctx-select", version = "2.0.0-dev.0" }
 diffctx-snapshot = { path = "crates/diffctx-snapshot", version = "2.0.0-dev.0" }
 dunce = "1"
 libc = "0.2"

@@ -37,7 +37,7 @@ use rustc_hash::FxHashMap;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant, SystemTime};
 
-use crate::impact::AUTOMATIC_TOKEN_CAP;
+use diffctx_answer::impact::deliver::AUTOMATIC_TOKEN_CAP;
 use diffctx_base::languages::file_ext;
 use diffctx_config::config::limits::{DEFAULT_PPR_ALPHA, DEFAULT_SCORING};
 use diffctx_config::mode::ScoringMode;
@@ -218,7 +218,7 @@ fn pattern_names(pattern: &str) -> Vec<String> {
         let Some(&w) = segments.last() else {
             continue;
         };
-        if (segments.len() > 1 && !crate::impact::distinctive(w))
+        if (segments.len() > 1 && !diffctx_answer::impact::unanalysed::distinctive(w))
             || w.chars().count() < 2
             || w.starts_with(|c: char| c.is_ascii_digit())
             || is_keyword(w)
@@ -1500,7 +1500,11 @@ fn seen_headline(key: &str, ttl: Duration) -> Option<String> {
 /// A manual `--mode impact` run on a range counts as that range reviewed:
 /// the hooks then stay silent on the commit or push that follows, and the
 /// strict gate opens.
-pub fn mark_range_reviewed(root: &Path, range: &str, output: &crate::impact::ImpactOutput) {
+pub fn mark_range_reviewed(
+    root: &Path,
+    range: &str,
+    output: &diffctx_answer::impact::output::ImpactOutput,
+) {
     if std::env::var_os("DIFFCTX_NO_MARKER").is_some() {
         return;
     }
@@ -1510,7 +1514,7 @@ pub fn mark_range_reviewed(root: &Path, range: &str, output: &crate::impact::Imp
         let rendered = if output.empty {
             String::new()
         } else {
-            crate::impact::render_markdown(output)
+            diffctx_answer::impact::render_markdown(output)
         };
         mark_delivered(
             &format!("id-{identity}"),
@@ -2528,7 +2532,7 @@ fn run_impact(
     range: &str,
     spec: Option<snap::RangeSpec>,
     secs: u64,
-) -> Result<crate::impact::ImpactOutput, Silence> {
+) -> Result<diffctx_answer::impact::output::ImpactOutput, Silence> {
     let scoring = ScoringMode::from_str(DEFAULT_SCORING).map_err(|_| "error:scoring")?;
     match spec {
         Some(spec) => {
@@ -2786,7 +2790,7 @@ fn named_in_unread(root: &Path, own: &Owned) -> Option<String> {
 /// or the run stopping before it reached them. `paths` are the range's,
 /// read before the review began, `None` when git refused that listing.
 fn stopped_note(
-    output: &crate::impact::ImpactOutput,
+    output: &diffctx_answer::impact::output::ImpactOutput,
     range: &str,
     paths: Option<&snap::NamedChanges>,
 ) -> String {
@@ -2813,7 +2817,7 @@ fn stopped_note(
     let listed: rustc_hash::FxHashSet<&str> = output
         .changed
         .iter()
-        .filter(|c| !crate::impact::is_unfinished(c))
+        .filter(|c| !diffctx_answer::impact::output::is_unfinished(c))
         .map(|c| c.path.as_str())
         .collect();
     let Some(paths) = paths else {
@@ -2844,14 +2848,14 @@ fn stopped_note(
 
 /// What the engine says of a range with no code in it, said without running
 /// it: nothing reached, or the files it was not allowed to read (as
-/// `impact::unread_line` words them).
+/// `impact::deliver::unread_line` words them).
 fn no_code_reply(range: &str, withheld: usize) -> Result<Reply, Silence> {
     if withheld == 0 {
         return Err("empty");
     }
     let line = format!(
         "diffctx: {range} reaches nothing outside the diff in the files it read; not analysed: {} (what they name is unknown).",
-        crate::answer::v2::Gap::Withheld { files: withheld }
+        diffctx_answer::answer::v2::Gap::Withheld { files: withheld }
     );
     Ok(Reply {
         context: line.clone(),
@@ -2882,7 +2886,9 @@ fn impact_context(
     }
     // The files it read reach nothing, and files it withheld could: said in one
     // line, never as "reaches nothing".
-    if let Some(line) = crate::impact::unread_line(&output, range).filter(|_| hedge.is_none()) {
+    if let Some(line) =
+        diffctx_answer::impact::deliver::unread_line(&output, range).filter(|_| hedge.is_none())
+    {
         return Ok(Reply {
             context: line.clone(),
             headline: line,
@@ -2894,7 +2900,7 @@ fn impact_context(
     let partial = !output.limits.is_empty();
     let check = what_to_check(&output, hedge.is_some());
     let stopped = stopped_note(&output, range, paths);
-    let text = crate::impact::render_automatic(&mut output, AUTOMATIC_TOKEN_CAP);
+    let text = diffctx_answer::impact::deliver::render_automatic(&mut output, AUTOMATIC_TOKEN_CAP);
     let headline = text.lines().next().unwrap_or("").to_string();
     Ok(Reply {
         context: format!(
@@ -2914,8 +2920,13 @@ fn impact_context(
 /// What in a review a reader must act on, named; `None` when every row is
 /// context — a caller a test reaches, a config naming the file — and a
 /// constant "check these" under it taught skipping the block (#656).
-fn what_to_check(output: &crate::impact::ImpactOutput, hedged: bool) -> Option<String> {
-    let untested = crate::answer::Tally::of(&crate::impact::v2_of(output)).untested_callers;
+fn what_to_check(
+    output: &diffctx_answer::impact::output::ImpactOutput,
+    hedged: bool,
+) -> Option<String> {
+    let untested =
+        diffctx_answer::answer::Tally::of(&diffctx_answer::impact::deliver::v2_of(output))
+            .untested_callers;
     let mut parts: Vec<String> = Vec::new();
     if untested > 0 {
         parts.push(format!(
@@ -3107,7 +3118,7 @@ fn edited_definitions(
     let mut files: Vec<PathBuf> = hunks.iter().map(|h| PathBuf::from(&*h.path)).collect();
     files.sort();
     files.dedup();
-    let fragments = crate::fragmentation::fragment_files(
+    let fragments = diffctx_graph::fragmentation::fragment_files(
         &files,
         root,
         &mut rustc_hash::FxHashSet::default(),
@@ -3152,12 +3163,14 @@ struct Known {
     layout: std::collections::BTreeSet<String>,
 }
 
-fn known_answers(mut output: crate::impact::ImpactOutput) -> Known {
-    let layout = crate::impact::layout_only_names(&output)
+fn known_answers(mut output: diffctx_answer::impact::output::ImpactOutput) -> Known {
+    let layout = diffctx_answer::impact::symbol::layout_only_names(&output)
         .map(str::to_string)
         .collect();
-    let mut by_name: std::collections::BTreeMap<String, Vec<crate::impact::ChangedSymbol>> =
-        std::collections::BTreeMap::new();
+    let mut by_name: std::collections::BTreeMap<
+        String,
+        Vec<diffctx_answer::impact::output::ChangedSymbol>,
+    > = std::collections::BTreeMap::new();
     for sym in std::mem::take(&mut output.changed) {
         if let Some(name) = sym.symbol.clone() {
             by_name.entry(name).or_default().push(sym);
@@ -3178,11 +3191,12 @@ fn known_answers(mut output: crate::impact::ImpactOutput) -> Known {
                 .any(|s| !s.callers.is_empty() || s.unresolved.is_some() || !s.missed_in.is_empty())
         })
         .map(|(name, syms)| {
-            let mut one = crate::impact::ImpactOutput {
+            let mut one = diffctx_answer::impact::output::ImpactOutput {
                 changed: syms,
                 ..output.clone()
             };
-            let text = crate::impact::render_automatic(&mut one, AUTOMATIC_TOKEN_CAP);
+            let text =
+                diffctx_answer::impact::deliver::render_automatic(&mut one, AUTOMATIC_TOKEN_CAP);
             (name, text)
         })
         .collect();
@@ -3589,7 +3603,7 @@ fn one_symbol_answer(
         if !is_lookup {
             return Err("not-a-lookup");
         }
-        if !crate::impact::distinctive(name) {
+        if !diffctx_answer::impact::unanalysed::distinctive(name) {
             return Err("no-symbol");
         }
         return Ok(format!(
@@ -3612,11 +3626,11 @@ fn one_symbol_answer(
     // in a file no model reads (an `.astro` page, a template, a class name
     // in markup) would read as none. A word match is no resolved caller:
     // the grep that led here printed those lines already.
-    if output
-        .changed
-        .iter()
-        .all(|c| c.callers.iter().all(crate::impact::is_textual))
-    {
+    if output.changed.iter().all(|c| {
+        c.callers
+            .iter()
+            .all(diffctx_answer::impact::symbol::is_textual)
+    }) {
         return Err("empty");
     }
     // A name defined all over (`main`, `run`, `new`) is no lookup a short
@@ -3632,7 +3646,7 @@ fn one_symbol_answer(
         "You searched for `{name}`; diffctx resolved it{elsewhere} (`diffctx . --symbol {name} -f md` gives the whole answer):\n"
     );
     let room = SYMBOL_TOKEN_CAP.saturating_sub(diffctx_base::tokenizer::count_tokens(&lead));
-    let text = crate::impact::render_automatic(&mut output, room);
+    let text = diffctx_answer::impact::deliver::render_automatic(&mut output, room);
     Ok(format!("{lead}{text}"))
 }
 
@@ -4326,7 +4340,7 @@ fn log_outcome(event: Event, trace: &Trace, outcome: &str, elapsed: Duration) {
                 .collect::<Vec<_>>()
                 .join(",")
         },
-        crate::run_provenance::BUILD_LABEL,
+        diffctx_answer::run_provenance::BUILD_LABEL,
     );
     let _ = std::fs::create_dir_all(&dir);
     let _ = std::fs::OpenOptions::new()

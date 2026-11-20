@@ -13,11 +13,11 @@ mod isolation_source;
 use isolation_source::without_comments;
 
 const CLAIM_PATHS: [&str; 5] = [
-    "src/impact.rs",
-    "src/impact",
-    "src/decide.rs",
-    "src/answer.rs",
-    "src/answer",
+    "../diffctx-answer/src/impact.rs",
+    "../diffctx-answer/src/impact",
+    "../diffctx-answer/src/decide.rs",
+    "../diffctx-answer/src/answer.rs",
+    "../diffctx-answer/src/answer",
 ];
 
 /// What the ranking graph answers to, which only the ranking may ask.

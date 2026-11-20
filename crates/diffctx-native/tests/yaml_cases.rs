@@ -3,7 +3,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use _diffctx::pipeline::build_diff_context_in;
-use _diffctx::render::DiffContextOutput;
+use diffctx_answer::render::DiffContextOutput;
 use diffctx_config::mode::ScoringMode;
 use libtest_mimic::{Arguments, Failed, Trial};
 use tempfile::TempDir;

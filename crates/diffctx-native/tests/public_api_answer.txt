@@ -1,0 +1,947 @@
+# Every pub item of diffctx-answer, as tests/public_api.rs reads it from the crate's src/.
+# A new item is red; so is a line the code no longer has: delete it. The count is capped by
+# public_items.diffctx-answer in budget.toml, which only goes down.
+answer mod
+answer::Answer struct
+answer::Answer.ctx field &'a RenderCtx
+answer::Answer.doc field &'a ImpactV2
+answer::Answer.tally field Tally
+answer::Answer::of fn (doc: &'a ImpactV2, ctx: &'a RenderCtx) -> Self
+answer::Answer::proves_empty fn (&self) -> bool
+answer::Answer::reaches_nothing fn (&self) -> bool
+answer::Answer::withheld_only fn (&self) -> bool
+answer::FactKey enum derive(Eq, Hash, PartialEq)
+answer::FactKey::Unread variant Unread { word: &'a str, path: &'a str, at: Option<u32>, }
+answer::FactKey::Use variant Use { definition: (&'a str, Option<&'a str>, &'a str), path: &'a str, symbol: Option<&'a str>, lines: &'a str, sites: &'a [u32], class: Class, kind: Option<&'a str>, standing: Standing, }
+answer::FactKey::Word variant Word { word: &'a str, path: &'a str, at: String, }
+answer::FactKey::of_row fn (def: &'a Definition, row: &'a Row) -> Self
+answer::Page struct
+answer::Page.shown field &'a [T]
+answer::Page.total field usize
+answer::Page::of fn (items: &'a [T], cap: usize, omitted: usize) -> Self
+answer::Page::rest fn (&self) -> usize
+answer::RenderCtx struct derive(Clone, Debug, Default)
+answer::RenderCtx.compact field bool
+answer::RenderCtx.label field Option<String>
+answer::Tally struct derive(Clone, Copy, Debug)
+answer::Tally.analysed_in_part field usize
+answer::Tally.callers field Count
+answer::Tally.changed_files field usize
+answer::Tally.collection_reads field usize
+answer::Tally.definitions field usize
+answer::Tally.deleted_files field usize
+answer::Tally.folded_callers field usize
+answer::Tally.listed field usize
+answer::Tally.not_analysed field usize
+answer::Tally.not_followed field usize
+answer::Tally.outside_definitions field usize
+answer::Tally.possible field usize
+answer::Tally.shed field usize
+answer::Tally.shed_from_listed field usize
+answer::Tally.shed_textual field usize
+answer::Tally.textual field usize
+answer::Tally.undetermined field usize
+answer::Tally.untested_callers field usize
+answer::Tally.untracked field usize
+answer::Tally::of fn (doc: &ImpactV2) -> Self
+answer::Tally::summary fn (&self, traced: usize) -> v2::Summary
+answer::envelope mod
+answer::envelope::Inventory struct derive(Clone, Debug, Default, Deserialize, JsonSchema, Serialize)
+answer::envelope::Inventory.changed field Listing<String>
+answer::envelope::Inventory.deleted field Listing<String>
+answer::envelope::Inventory.ignored field Listing<String>
+answer::envelope::Inventory.lockfiles field Listing<String>
+answer::envelope::Inventory.renamed field Listing<Rename>
+answer::envelope::Inventory.withheld field usize
+answer::envelope::Inventory::is_empty fn (&self) -> bool
+answer::envelope::Inventory::new fn ( changed: Vec<String>, deleted: Vec<String>, renamed: Vec<(String, String)>, lockfiles: Vec<String>, ignored: Vec<String>, withheld: usize, ) -> Self
+answer::envelope::Inventory::says_something_without_fragments fn (&self) -> bool
+answer::envelope::Rename struct derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)
+answer::envelope::Rename.from field String
+answer::envelope::Rename.to field String
+answer::envelope::fit_of fn (asked: Option<u32>, cap: u32) -> Fit
+answer::envelope::messages_of fn (commit_message: Option<String>, commit_messages: Vec<String>) -> Vec<String>
+answer::envelope::range_of fn ( spec: Option<&str>, index_tree: Option<&str>, commits: usize, messages: Vec<String>, ) -> Range
+answer::envelope::worktree_range fn () -> Range
+answer::one_row_per_fact fn (definitions: &mut [Definition])
+answer::render mod
+answer::render::gap_sentence fn (gap: &Gap) -> String
+answer::render::header fn (out: &mut String, a: &Answer)
+answer::render::label fn (def: &DefRef) -> String
+answer::render::layout_only fn (out: &mut String, a: &Answer)
+answer::render::place fn (path: &str, symbol: Option<&str>, lines: &str) -> String
+answer::render::tail fn (out: &mut String, a: &Answer)
+answer::render::unanalysed fn (out: &mut String, doc: &ImpactV2)
+answer::render::untested_unlisted fn (out: &mut String, a: &Answer)
+answer::v2 mod
+answer::v2::Change struct derive(Clone, Debug, JsonSchema, Serialize)
+answer::v2::Change.delta field Option<Delta>
+answer::v2::Change.kind field ChangeKind
+answer::v2::Change.origin field Option<String>
+answer::v2::Change::of fn (def: &decide::changed::Changed) -> Self
+answer::v2::ChangeKind enum derive(Clone, Copy, Debug, Eq, JsonSchema, PartialEq, Serialize)
+answer::v2::ChangeKind::Added variant Added
+answer::v2::ChangeKind::Edited variant Edited
+answer::v2::ChangeKind::LayoutOnly variant LayoutOnly
+answer::v2::ChangeKind::Removed variant Removed
+answer::v2::Class enum derive(Clone, Copy, Debug, Eq, Hash, JsonSchema, PartialEq, Serialize)
+answer::v2::Class::Call variant Call
+answer::v2::Class::Implementation variant Implementation
+answer::v2::Class::Reexports variant Reexports
+answer::v2::Class::Reference variant Reference
+answer::v2::Count impl From<decide::coverage::Count> for Count
+answer::v2::Count struct derive(Clone, Copy, Debug, Eq, JsonSchema, PartialEq, Serialize)
+answer::v2::Count.exact field bool
+answer::v2::Count.n field usize
+answer::v2::DefRef struct derive(Clone, Debug, Eq, JsonSchema, PartialEq, Serialize)
+answer::v2::DefRef.lines field String
+answer::v2::DefRef.path field String
+answer::v2::DefRef.symbol field Option<String>
+answer::v2::DefRef::holds fn (&self, path: &str, line: u32) -> bool
+answer::v2::DefRef::parse fn (text: &str) -> Self
+answer::v2::Definition struct derive(Clone, Debug, JsonSchema, Serialize)
+answer::v2::Definition.also_changed field Vec<DefRef>
+answer::v2::Definition.change field Change
+answer::v2::Definition.commits field usize
+answer::v2::Definition.coverage field Searched
+answer::v2::Definition.entry field Option<String>
+answer::v2::Definition.folded field Vec<Fold>
+answer::v2::Definition.gaps field Vec<Gap>
+answer::v2::Definition.guard field Option<Guard>
+answer::v2::Definition.kind field Option<String>
+answer::v2::Definition.lines field String
+answer::v2::Definition.local_of field Option<LocalOf>
+answer::v2::Definition.missed_in field Vec<UnanalysedFile>
+answer::v2::Definition.path field String
+answer::v2::Definition.possibly_also_changed field Vec<DefRef>
+answer::v2::Definition.rows field Vec<Row>
+answer::v2::Definition.shed field ShedRows
+answer::v2::Definition.symbol field Option<String>
+answer::v2::Definition::complete fn (&self) -> bool
+answer::v2::Definition::limit fn (&self) -> Option<&Gap>
+answer::v2::Definition::only_in_the_diff fn (&self) -> bool
+answer::v2::Definition::open_only_inside fn (&self) -> bool
+answer::v2::Definition::removed fn (&self) -> bool
+answer::v2::Definition::word fn (&self) -> &str
+answer::v2::Delta impl From<diffctx_facts::facts::Delta> for Delta
+answer::v2::Delta struct derive(Clone, Copy, Debug, Default, Eq, JsonSchema, PartialEq, Serialize)
+answer::v2::Delta.body field bool
+answer::v2::Delta.decorators field bool
+answer::v2::Delta.doc field bool
+answer::v2::Delta.signature field bool
+answer::v2::Delta.visibility field bool
+answer::v2::Entered struct derive(Clone, Debug, JsonSchema, Serialize)
+answer::v2::Entered.def field DefRef
+answer::v2::Entered.role field String
+answer::v2::Fit struct derive(Clone, Debug, Deserialize, JsonSchema, Serialize)
+answer::v2::Fit.asked field Option<u32>
+answer::v2::Fit.cap field u32
+answer::v2::Fit.exempt field u32
+answer::v2::Fit.least field Option<u32>
+answer::v2::Fit.needs field u32
+answer::v2::Fold struct derive(Clone, Debug, JsonSchema, Serialize)
+answer::v2::Fold.count field Count
+answer::v2::Fold.examples field Vec<DefRef>
+answer::v2::Fold.kind field String
+answer::v2::Fold.parameters field Vec<String>
+answer::v2::Fold.rule field String
+answer::v2::Fold.sharing field usize
+answer::v2::Gap enum derive(Clone, Debug, Eq, JsonSchema, PartialEq, Serialize)
+answer::v2::Gap impl std::fmt::Display for Gap
+answer::v2::Gap::Ambiguous variant Ambiguous { name: String, definitions: usize, language: String, }
+answer::v2::Gap::BaseUnresolved variant BaseUnresolved { reason: String, }
+answer::v2::Gap::Capped variant Capped
+answer::v2::Gap::ContextUnbound variant ContextUnbound { files: usize, }
+answer::v2::Gap::Dispatched variant Dispatched { via: String, }
+answer::v2::Gap::ExternalSource variant ExternalSource { pointers: usize, }
+answer::v2::Gap::ImplicitlyConstructed variant ImplicitlyConstructed
+answer::v2::Gap::Macros variant Macros { files: usize, what: String, }
+answer::v2::Gap::NameUnsearched variant NameUnsearched { name: String, }
+answer::v2::Gap::NotModelled variant NotModelled { language: String, }
+answer::v2::Gap::NotTraced variant NotTraced
+answer::v2::Gap::OutsideScope variant OutsideScope { files: usize, }
+answer::v2::Gap::Overridable variant Overridable { via: String, }
+answer::v2::Gap::PassedAsValue variant PassedAsValue { #[serde(default, skip_serializing_if = "Vec::is_empty")] to: Vec<String>, }
+answer::v2::Gap::RenderedElsewhere variant RenderedElsewhere { files: usize, }
+answer::v2::Gap::SourceFlag variant SourceFlag { files: usize, }
+answer::v2::Gap::Stopped variant Stopped { reasons: Vec<LimitReason>, }
+answer::v2::Gap::Templated variant Templated { files: usize, }
+answer::v2::Gap::Unaccounted variant Unaccounted { reason: decide::gap::Reason, files: usize, }
+answer::v2::Gap::Unlanded variant Unlanded { name: String, uses: usize, /// The first of them; the rest are counted in `uses`. #[serde(default, skip_serializing_if = "Vec::is_empty")] sites: Vec<decide::gap::Site>, }
+answer::v2::Gap::Unpaired variant Unpaired { name: String, }
+answer::v2::Gap::UnreadDirectories variant UnreadDirectories { directories: Vec<String>, total: usize, }
+answer::v2::Gap::Untracked variant Untracked { files: usize, /// The block-scoped binding no tracked definition stands for, when one does. #[serde(default, skip_serializing_if = "Option::is_none")] name: Option<String>, }
+answer::v2::Gap::Withheld variant Withheld { files: usize, }
+answer::v2::Gap::of fn (gap: &decide::gap::Gap, name: &str) -> Self
+answer::v2::Gap::severity fn (&self) -> u8
+answer::v2::Guard struct derive(Clone, Debug, JsonSchema, Serialize)
+answer::v2::Guard.also field Vec<GuardTest>
+answer::v2::Guard.more field u32
+answer::v2::Guard.name field Option<String>
+answer::v2::Guard.open field bool
+answer::v2::Guard.registrar field Option<String>
+answer::v2::Guard.state field GuardState
+answer::v2::Guard.test field Option<String>
+answer::v2::Guard.via field Option<String>
+answer::v2::Guard::bare fn (state: GuardState) -> Self
+answer::v2::Guard::of fn (caller: &Caller, tests_known: bool) -> Self
+answer::v2::GuardState enum derive(Clone, Copy, Debug, Eq, JsonSchema, PartialEq, Serialize)
+answer::v2::GuardState::EntryPoint variant EntryPoint
+answer::v2::GuardState::FileOnly variant FileOnly
+answer::v2::GuardState::Linked variant Linked
+answer::v2::GuardState::NoTests variant NoTests
+answer::v2::GuardState::None variant None
+answer::v2::GuardState::NotEstablished variant NotEstablished
+answer::v2::GuardState::Registered variant Registered
+answer::v2::GuardState::Unread variant Unread
+answer::v2::GuardTest struct derive(Clone, Debug, Eq, JsonSchema, PartialEq, Serialize)
+answer::v2::GuardTest.name field Option<String>
+answer::v2::GuardTest.test field String
+answer::v2::GuardTest.via field Option<String>
+answer::v2::How enum derive(Clone, Copy, Debug, Eq, JsonSchema, PartialEq, Serialize)
+answer::v2::How::Deleted variant Deleted
+answer::v2::How::Renamed variant Renamed
+answer::v2::IMPACT_SCHEMA_V2 const &str
+answer::v2::ImpactV2 struct derive(Clone, Debug, JsonSchema, Serialize)
+answer::v2::ImpactV2.contracts field Listing<Contract>
+answer::v2::ImpactV2.coverage field RunCoverage
+answer::v2::ImpactV2.definitions field Vec<Definition>
+answer::v2::ImpactV2.deleted_modules field Listing<DeletedModule>
+answer::v2::ImpactV2.empty field bool
+answer::v2::ImpactV2.fit field Fit
+answer::v2::ImpactV2.inventory field Inventory
+answer::v2::ImpactV2.name field String
+answer::v2::ImpactV2.named field Named
+answer::v2::ImpactV2.omitted field Option<Omitted>
+answer::v2::ImpactV2.provenance field Provenance
+answer::v2::ImpactV2.range field Range
+answer::v2::ImpactV2.schema field &'static str
+answer::v2::ImpactV2.spelled field Option<Spelled>
+answer::v2::ImpactV2.stale field Listing<StaleRef>
+answer::v2::ImpactV2.summary field Summary
+answer::v2::ImpactV2.symbol field Option<String>
+answer::v2::ImpactV2.tests field Tests
+answer::v2::ImpactV2.unlisted field Unlisted
+answer::v2::ImpactV2::from_v1 fn (v1: &ImpactOutput, hops: usize) -> Self
+answer::v2::Inventory struct derive(Clone, Debug, Default, JsonSchema, Serialize)
+answer::v2::Inventory.changed field Listing<String>
+answer::v2::Inventory.deleted field Listing<String>
+answer::v2::Inventory.lockfiles field Listing<String>
+answer::v2::Inventory.untracked field Listing<String>
+answer::v2::Inventory.withheld field usize
+answer::v2::Inventory::is_empty fn (&self) -> bool
+answer::v2::Listing impl Default for Listing<T>
+answer::v2::Listing struct derive(Clone, Debug, Deserialize, JsonSchema, Serialize)
+answer::v2::Listing.items field Vec<T>
+answer::v2::Listing.total field usize
+answer::v2::Listing::is_empty fn (&self) -> bool
+answer::v2::Listing::of fn (items: Vec<T>, omitted: usize) -> Self
+answer::v2::Listing::omitted fn (&self) -> usize
+answer::v2::LocalOf struct derive(Clone, Debug, JsonSchema, Serialize)
+answer::v2::LocalOf.enclosing field String
+answer::v2::Named struct derive(Clone, Debug, Default, JsonSchema, Serialize)
+answer::v2::Named.by_key field Listing<PathReference>
+answer::v2::Named.by_path field Listing<PathReference>
+answer::v2::Named.collections field Listing<crate::impact::output::CollectionRead>
+answer::v2::Named.key_searches field Vec<KeySearch>
+answer::v2::Named::is_empty fn (&self) -> bool
+answer::v2::Omitted struct derive(Clone, Debug, JsonSchema, Serialize)
+answer::v2::Omitted.definitions field Listing<OmittedDefinition>
+answer::v2::Omitted.incomplete field usize
+answer::v2::Omitted.needs field u32
+answer::v2::Omitted.shed field ShedRows
+answer::v2::OmittedDefinition struct derive(Clone, Debug, JsonSchema, Serialize)
+answer::v2::OmittedDefinition.def field DefRef
+answer::v2::OmittedDefinition.incomplete field bool
+answer::v2::OmittedDefinition.shed field ShedRows
+answer::v2::Provenance struct derive(Clone, Debug, JsonSchema, Serialize)
+answer::v2::Provenance.engine field crate::run_provenance::Engine
+answer::v2::Range struct derive(Clone, Debug, Deserialize, JsonSchema, Serialize)
+answer::v2::Range.commits field usize
+answer::v2::Range.index_tree field Option<String>
+answer::v2::Range.kind field RangeKind
+answer::v2::Range.messages field Vec<String>
+answer::v2::Range.spec field Option<String>
+answer::v2::RangeKind enum derive(Clone, Copy, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)
+answer::v2::RangeKind::Committed variant Committed
+answer::v2::RangeKind::Staged variant Staged
+answer::v2::RangeKind::Symbol variant Symbol
+answer::v2::RangeKind::Window variant Window
+answer::v2::RangeKind::Worktree variant Worktree
+answer::v2::Row struct derive(Clone, Debug, JsonSchema, Serialize)
+answer::v2::Row.class field Class
+answer::v2::Row.folded_by field Option<String>
+answer::v2::Row.guard field Guard
+answer::v2::Row.kind field Option<String>
+answer::v2::Row.lines field String
+answer::v2::Row.path field String
+answer::v2::Row.reason field Option<String>
+answer::v2::Row.sites field Vec<u32>
+answer::v2::Row.standing field Standing
+answer::v2::Row.symbol field Option<String>
+answer::v2::Row::is_caller fn (&self) -> bool
+answer::v2::Row::of fn (caller: &Caller, tests_known: bool) -> Self
+answer::v2::Row::without_link fn (&self) -> bool
+answer::v2::RunCoverage struct derive(Clone, Debug, JsonSchema, Serialize)
+answer::v2::RunCoverage.keys_unsearched field usize
+answer::v2::RunCoverage.limits field Vec<LimitReason>
+answer::v2::RunCoverage.not_searched field usize
+answer::v2::RunCoverage.scope field Search
+answer::v2::RunCoverage.unanalysed field Listing<UnanalysedFile>
+answer::v2::RunCoverage.untraced_omitted field usize
+answer::v2::Search struct derive(Clone, Debug, JsonSchema, Serialize)
+answer::v2::Search.complete field bool
+answer::v2::Search.gaps field Vec<Gap>
+answer::v2::Search::of fn (coverage: &decide::coverage::Coverage, name: &str) -> Self
+answer::v2::Searched struct derive(Clone, Debug, JsonSchema, Serialize)
+answer::v2::Searched.calls field Search
+answer::v2::Searched.reads field Search
+answer::v2::ShedRows struct derive(Clone, Copy, Debug, Default, Eq, JsonSchema, PartialEq, Serialize)
+answer::v2::ShedRows.candidate field usize
+answer::v2::ShedRows.name field usize
+answer::v2::ShedRows.resolved field usize
+answer::v2::ShedRows.untested field usize
+answer::v2::ShedRows::add fn (&mut self, row: &Caller)
+answer::v2::ShedRows::merge fn (&mut self, other: Self)
+answer::v2::ShedRows::total fn (&self) -> usize
+answer::v2::Spelled struct derive(Clone, Debug, JsonSchema, Serialize)
+answer::v2::Spelled.files field usize
+answer::v2::Spelled.gap field Option<Gap>
+answer::v2::Spelled.rows field Vec<NamedFile>
+answer::v2::StaleRef impl From<&StaleReference> for StaleRef
+answer::v2::StaleRef struct derive(Clone, Debug, JsonSchema, Serialize)
+answer::v2::StaleRef.class field crate::impact::MentionClass
+answer::v2::StaleRef.how field How
+answer::v2::StaleRef.line field u32
+answer::v2::StaleRef.path field String
+answer::v2::StaleRef.target field String
+answer::v2::StaleRef.to field Option<String>
+answer::v2::Standing enum derive(Clone, Copy, Debug, Eq, Hash, JsonSchema, PartialEq, Serialize)
+answer::v2::Standing::Candidate variant Candidate
+answer::v2::Standing::Name variant Name
+answer::v2::Standing::Resolved variant Resolved
+answer::v2::Summary struct derive(Clone, Debug, JsonSchema, Serialize)
+answer::v2::Summary.callers field Count
+answer::v2::Summary.definitions field usize
+answer::v2::Summary.files field usize
+answer::v2::Summary.folded field usize
+answer::v2::Summary.possible field usize
+answer::v2::Summary.shed field usize
+answer::v2::Summary.traced field usize
+answer::v2::Summary.untested_callers field usize
+answer::v2::TESTS_NAMED const usize
+answer::v2::Tests struct derive(Clone, Debug, JsonSchema, Serialize)
+answer::v2::Tests.definitions_without_link field Count
+answer::v2::Tests.hops field usize
+answer::v2::Tests.known field bool
+answer::v2::Unlisted struct derive(Clone, Debug, Default, JsonSchema, Serialize)
+answer::v2::Unlisted.called_in_diff field Listing<Unreached>
+answer::v2::Unlisted.entered_by field Listing<Entered>
+answer::v2::Unlisted.layout_only field Listing<DefRef>
+answer::v2::Unlisted.no_caller field Listing<Unreached>
+answer::v2::Unlisted::is_empty fn (&self) -> bool
+answer::v2::Unreached struct derive(Clone, Debug, JsonSchema, Serialize)
+answer::v2::Unreached.def field DefRef
+answer::v2::Unreached.role field Option<String>
+answer::v2::impact_v2_schema fn () -> serde_json::Value
+decide mod
+decide::changed mod
+decide::changed::Changed struct derive(Clone, Debug)
+decide::changed::Changed.api field bool
+decide::changed::Changed.delta field Option<Delta>
+decide::changed::Changed.file field String
+decide::changed::Changed.how field How
+decide::changed::Changed.kind field DefKind
+decide::changed::Changed.lines field (u32, u32)
+decide::changed::Changed.local field bool
+decide::changed::Changed.name field String
+decide::changed::Changed.not_layout field bool
+decide::changed::Changed.origin field Option<&'static str>
+decide::changed::Changed.public field bool
+decide::changed::Changed::display_name fn (&self) -> String
+decide::changed::Changed::holds fn (&self, inner: &Self) -> bool
+decide::changed::Changed::left_names fn (&self) -> impl Iterator<Item = &str>
+decide::changed::Changed::named_by_its_path fn (&self) -> bool
+decide::changed::Changed::new_parameters fn (&self) -> Vec<String>
+decide::changed::Changed::symbol fn (&self) -> Option<String>
+decide::changed::How enum derive(Clone, Copy, Debug, Eq, PartialEq)
+decide::changed::How::Added variant Added
+decide::changed::How::Edited variant Edited { layout_only: bool }
+decide::changed::How::Removed variant Removed
+decide::coverage mod
+decide::coverage::Complete struct derive(Clone, Copy, Debug, Eq, PartialEq)
+decide::coverage::Count enum derive(Clone, Copy, Debug, Eq, PartialEq)
+decide::coverage::Count::AtLeast variant AtLeast(usize)
+decide::coverage::Count::Exact variant Exact(usize, Complete)
+decide::coverage::Count::found fn (self) -> usize
+decide::coverage::Coverage enum derive(Clone, Debug, Eq, PartialEq)
+decide::coverage::Coverage::Complete variant Complete(Complete)
+decide::coverage::Coverage::Partial variant Partial(Vec<Gap>)
+decide::coverage::Coverage::both fn (self, other: Self) -> Self
+decide::coverage::Coverage::close fn (evidence: Evidence<'_>, mut gaps: Vec<Gap>) -> Self
+decide::coverage::Coverage::gaps fn (&self) -> &[Gap]
+decide::coverage::Coverage::partial fn (gap: Gap) -> Self
+decide::coverage::Coverage::with fn (self, gap: Option<Gap>) -> Self
+decide::coverage::Coverage::witness fn (&self) -> Option<Complete>
+decide::coverage::Evidence enum derive(Clone, Copy)
+decide::coverage::Evidence::Occurrences variant Occurrences(Relation, &'a [Hedge])
+decide::coverage::Evidence::Run variant Run
+decide::gap mod
+decide::gap::Gap enum derive(Clone, Debug, Eq, PartialEq)
+decide::gap::Gap impl std::fmt::Display for Gap
+decide::gap::Gap::BaseUnresolved variant BaseUnresolved { reason: String }
+decide::gap::Gap::Candidates variant Candidates { uses: usize, sites: Vec<Site> }
+decide::gap::Gap::Capped variant Capped
+decide::gap::Gap::ContextUnbound variant ContextUnbound { files: usize }
+decide::gap::Gap::Dispatched variant Dispatched { via: String }
+decide::gap::Gap::ExternalSource variant ExternalSource { pointers: usize }
+decide::gap::Gap::ImplicitlyConstructed variant ImplicitlyConstructed
+decide::gap::Gap::Macros variant Macros { files: usize, what: &'static str }
+decide::gap::Gap::NameUnsearched variant NameUnsearched
+decide::gap::Gap::NotTraced variant NotTraced
+decide::gap::Gap::OutsideScope variant OutsideScope { files: usize }
+decide::gap::Gap::PassedAsValue variant PassedAsValue { to: Vec<String> }
+decide::gap::Gap::RenderedElsewhere variant RenderedElsewhere { files: usize }
+decide::gap::Gap::SourceFlag variant SourceFlag { files: usize }
+decide::gap::Gap::Stopped variant Stopped { reasons: Vec<LimitReason> }
+decide::gap::Gap::Templated variant Templated { files: usize }
+decide::gap::Gap::Unaccounted variant Unaccounted { reason: Reason, files: usize }
+decide::gap::Gap::Unpaired variant Unpaired
+decide::gap::Gap::UnreadDirectories variant UnreadDirectories { directories: Vec<String>, total: usize, }
+decide::gap::Gap::Untracked variant Untracked { files: usize }
+decide::gap::Gap::Withheld variant Withheld { files: usize }
+decide::gap::Reason enum derive(, Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, schemars::JsonSchema, serde::Serialize)
+decide::gap::Reason impl std::fmt::Display for Reason
+decide::gap::Reason::Ambiguous variant Ambiguous
+decide::gap::Reason::Changed variant Changed
+decide::gap::Reason::Failed variant Failed
+decide::gap::Reason::Manifest variant Manifest
+decide::gap::Reason::NoExtractor variant NoExtractor
+decide::gap::Reason::NoGroup variant NoGroup
+decide::gap::Reason::NotRead variant NotRead
+decide::gap::Reason::OtherLanguage variant OtherLanguage
+decide::gap::Reason::ReadFailed variant ReadFailed
+decide::gap::Reason::TooLarge variant TooLarge
+decide::gap::Reason::Unparsed variant Unparsed
+decide::gap::Reason::lists_the_file fn (self) -> bool
+decide::gap::Reason::row_reason fn (self) -> &'static str
+decide::gap::Site struct derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd, schemars::JsonSchema, serde::Serialize)
+decide::gap::Site.line field u32
+decide::gap::Site.path field String
+decide::gap::Site.via field Via
+decide::gap::Via enum derive(, Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, schemars::JsonSchema, serde::Serialize)
+decide::gap::Via::Call variant Call
+decide::gap::Via::Embedded variant Embedded
+decide::gap::Via::Read variant Read
+decide::gap::Via::Unbound variant Unbound
+effective_config mod
+effective_config::BoltzmannParams struct derive(Clone, Debug, JsonSchema, PartialEq, Serialize)
+effective_config::BoltzmannParams.bisect_iters field u32
+effective_config::BoltzmannParams.calibration_tolerance field f64
+effective_config::EDGE_WEIGHT_PROFILE_VERSION const &str
+effective_config::EffectiveConfigV1 struct derive(Clone, Debug, JsonSchema, PartialEq, Serialize)
+effective_config::EffectiveConfigV1.alpha field f64
+effective_config::EffectiveConfigV1.bm25_discovery_top_k field usize
+effective_config::EffectiveConfigV1.boltzmann field BoltzmannParams
+effective_config::EffectiveConfigV1.commit_signal field bool
+effective_config::EffectiveConfigV1.ego field EgoParams
+effective_config::EffectiveConfigV1.file_admission field bool
+effective_config::EffectiveConfigV1.filtering field FilteringParams
+effective_config::EffectiveConfigV1.graph_depth field usize
+effective_config::EffectiveConfigV1.needs field NeedsParams
+effective_config::EffectiveConfigV1.objective field &'static str
+effective_config::EffectiveConfigV1.overrides field BTreeMap<String, String>
+effective_config::EffectiveConfigV1.pit field PitParams
+effective_config::EffectiveConfigV1.ppr field PprParams
+effective_config::EffectiveConfigV1.profiles field Profiles
+effective_config::EffectiveConfigV1.rescue field RescueParams
+effective_config::EffectiveConfigV1.resources field diffctx_snapshot::resource::ResourceBudget
+effective_config::EffectiveConfigV1.rrf_k field f64
+effective_config::EffectiveConfigV1.schema field &'static str
+effective_config::EffectiveConfigV1.scoring field &'static str
+effective_config::EffectiveConfigV1.selection field SelectionParams
+effective_config::EffectiveConfigV1.tokenizer field TokenizerParams
+effective_config::EffectiveConfigV1.utility field UtilityParams
+effective_config::EffectiveConfigV1::hash fn (&self) -> String
+effective_config::EffectiveConfigV1::resolve fn (config: &PipelineConfig, timeout_secs: u64) -> Self
+effective_config::EgoParams struct derive(Clone, Debug, JsonSchema, PartialEq, Serialize)
+effective_config::EgoParams.identifier_overlap_epsilon field f64
+effective_config::EgoParams.per_hop_decay field f64
+effective_config::FilteringParams struct derive(Clone, Debug, JsonSchema, PartialEq, Serialize)
+effective_config::FilteringParams.definition_proximity_half_decay field f64
+effective_config::FilteringParams.proximity_half_decay field f64
+effective_config::NON_SEMANTIC_ENV const &[&str]
+effective_config::NeedsParams struct derive(Clone, Debug, JsonSchema, PartialEq, Serialize)
+effective_config::NeedsParams.min_rel_for_bonus field f64
+effective_config::NeedsParams.relatedness_bonus field f64
+effective_config::PARSER_PROFILE_VERSION const &str
+effective_config::PitParams struct derive(Clone, Debug, JsonSchema, PartialEq, Serialize)
+effective_config::PitParams.agreement_bonus field f64
+effective_config::PitParams.agreement_top_k field usize
+effective_config::PitParams.blend field f64
+effective_config::PitParams.shape field String
+effective_config::PitParams.transform field String
+effective_config::PprParams struct derive(Clone, Debug, JsonSchema, PartialEq, Serialize)
+effective_config::PprParams.alpha field f64
+effective_config::PprParams.forward_blend field f64
+effective_config::Profiles struct derive(Clone, Debug, JsonSchema, PartialEq, Serialize)
+effective_config::Profiles.edge_weights field &'static str
+effective_config::Profiles.parser field &'static str
+effective_config::Profiles.scoring field &'static str
+effective_config::RescueParams struct derive(Clone, Debug, JsonSchema, PartialEq, Serialize)
+effective_config::RescueParams.budget_fraction field f64
+effective_config::RescueParams.min_score_percentile field f64
+effective_config::SCHEMA const &str
+effective_config::SCORING_PROFILE_VERSION const &str
+effective_config::SEMANTIC_ENV const &[&str]
+effective_config::SelectionParams struct derive(Clone, Debug, JsonSchema, PartialEq, Serialize)
+effective_config::SelectionParams.core_budget_fraction field f64
+effective_config::SelectionParams.per_file_budget_fraction field f64
+effective_config::SelectionParams.r_cap_min field f64
+effective_config::TokenizerParams struct derive(Clone, Debug, JsonSchema, PartialEq, Serialize)
+effective_config::TokenizerParams.id field TokenizerId
+effective_config::TokenizerParams.safety_factor field f64
+effective_config::UtilityParams struct derive(Clone, Debug, JsonSchema, PartialEq, Serialize)
+effective_config::UtilityParams.eta field f64
+effective_config::UtilityParams.proximity_decay field f64
+effective_config::UtilityParams.r_cap_sigma field f64
+effective_config::UtilityParams.structural_bonus_weight field f64
+effective_config::enforce_strict_env fn () -> anyhow::Result<()>
+effective_config::undeclared_names fn (names: impl IntoIterator<Item = String>) -> Vec<String>
+fold mod
+impact mod
+impact use crate::answer::v2::impact_v2_schema as impact_schema
+impact use mentions::Class as MentionClass
+impact use text::render_markdown
+impact::IMPACT_TOKEN_CAP const u32
+impact::build mod
+impact::build::build_impact fn ( state: &ScoredState, diff_range: Option<&str>, query: Option<&str>, deadline: Option<Instant>, ) -> ImpactOutput
+impact::deliver mod
+impact::deliver::AUTOMATIC_TOKEN_CAP const u32
+impact::deliver::deliver_framed fn ( output: &mut ImpactOutput, markdown: bool, cap: u32, unfold: bool, frame: &str, ) -> String
+impact::deliver::render_automatic fn (output: &mut ImpactOutput, cap: u32) -> String
+impact::deliver::unread_line fn (output: &ImpactOutput, range: &str) -> Option<String>
+impact::deliver::v2_of fn (output: &ImpactOutput) -> crate::answer::v2::ImpactV2
+impact::output mod
+impact::output::Caller struct derive(Clone, Default)
+impact::output::Caller.evidence field &'static str
+impact::output::Caller.file_tested field bool
+impact::output::Caller.fold_kind field Option<&'static str>
+impact::output::Caller.fold_share field usize
+impact::output::Caller.folded_by field Option<&'static str>
+impact::output::Caller.kind field Option<&'static str>
+impact::output::Caller.lines field String
+impact::output::Caller.path field String
+impact::output::Caller.reason field Option<&'static str>
+impact::output::Caller.registered_by field Option<String>
+impact::output::Caller.relation field &'static str
+impact::output::Caller.sites field Vec<u32>
+impact::output::Caller.symbol field Option<String>
+impact::output::Caller.tests field Vec<TestLink>
+impact::output::Caller.tests_open field bool
+impact::output::Caller.tests_partial field bool
+impact::output::Caller.unread_test field Option<String>
+impact::output::Caller.weight field f64
+impact::output::ChangedSymbol struct derive(Clone)
+impact::output::ChangedSymbol.also_changed field Vec<String>
+impact::output::ChangedSymbol.callers field Vec<Caller>
+impact::output::ChangedSymbol.callers_omitted field usize
+impact::output::ChangedSymbol.change field Option<crate::answer::v2::Change>
+impact::output::ChangedSymbol.commits field usize
+impact::output::ChangedSymbol.compatible_callers field usize
+impact::output::ChangedSymbol.entry field Option<String>
+impact::output::ChangedSymbol.folded field Vec<Folded>
+impact::output::ChangedSymbol.kind field String
+impact::output::ChangedSymbol.lines field String
+impact::output::ChangedSymbol.missed_in field Vec<UnanalysedFile>
+impact::output::ChangedSymbol.omitted field Vec<OmittedDefinition>
+impact::output::ChangedSymbol.path field String
+impact::output::ChangedSymbol.possibly_also_changed field Vec<String>
+impact::output::ChangedSymbol.shed field crate::answer::v2::ShedRows
+impact::output::ChangedSymbol.symbol field Option<String>
+impact::output::ChangedSymbol.unresolved field Option<Unknown>
+impact::output::ChangedSymbol.untested field Option<GuardState>
+impact::output::CollectionRead struct derive(Clone, Debug, JsonSchema, Serialize)
+impact::output::CollectionRead.collection field Option<String>
+impact::output::CollectionRead.line field u32
+impact::output::CollectionRead.path field String
+impact::output::Contract struct derive(Clone, Debug, JsonSchema, Serialize)
+impact::output::Contract.kind field &'static str
+impact::output::Contract.path field String
+impact::output::Contract.symbol field Option<String>
+impact::output::DeletedModule struct derive(Clone, Debug, JsonSchema, Serialize)
+impact::output::DeletedModule.definitions field usize
+impact::output::DeletedModule.dynamic_import field bool
+impact::output::DeletedModule.importers field Vec<String>
+impact::output::DeletedModule.listed field Option<usize>
+impact::output::DeletedModule.more_importers field Option<usize>
+impact::output::DeletedModule.path field String
+impact::output::Folded struct derive(Clone)
+impact::output::Folded.count field usize
+impact::output::Folded.exact field bool
+impact::output::Folded.examples field Vec<String>
+impact::output::Folded.kind field &'static str
+impact::output::Folded.parameters field Vec<String>
+impact::output::Folded.rule field &'static str
+impact::output::Folded.sharing field usize
+impact::output::ImpactOutput struct derive(Clone, Default)
+impact::output::ImpactOutput.budget_needed field Option<u32>
+impact::output::ImpactOutput.cap field u32
+impact::output::ImpactOutput.changed field Vec<ChangedSymbol>
+impact::output::ImpactOutput.changed_files field Vec<String>
+impact::output::ImpactOutput.changed_files_omitted field usize
+impact::output::ImpactOutput.collection_reads field Vec<CollectionRead>
+impact::output::ImpactOutput.collection_reads_omitted field usize
+impact::output::ImpactOutput.commit_count field usize
+impact::output::ImpactOutput.contracts field Vec<Contract>
+impact::output::ImpactOutput.contracts_omitted field usize
+impact::output::ImpactOutput.deleted_files field Vec<String>
+impact::output::ImpactOutput.deleted_modules field Vec<DeletedModule>
+impact::output::ImpactOutput.deleted_modules_omitted field usize
+impact::output::ImpactOutput.empty field bool
+impact::output::ImpactOutput.entry_unlisted field Vec<String>
+impact::output::ImpactOutput.index_tree field Option<String>
+impact::output::ImpactOutput.key_files_unsearched field usize
+impact::output::ImpactOutput.key_searches field Vec<KeySearch>
+impact::output::ImpactOutput.layout_only field Vec<String>
+impact::output::ImpactOutput.layout_only_omitted field usize
+impact::output::ImpactOutput.limits field Vec<diffctx_snapshot::resource::LimitReason>
+impact::output::ImpactOutput.lockfile_changes field Vec<String>
+impact::output::ImpactOutput.name field String
+impact::output::ImpactOutput.named_by field Vec<PathReference>
+impact::output::ImpactOutput.named_by_key_omitted field usize
+impact::output::ImpactOutput.named_by_path_omitted field usize
+impact::output::ImpactOutput.needs field u32
+impact::output::ImpactOutput.outside_scope_files field usize
+impact::output::ImpactOutput.range field Option<String>
+impact::output::ImpactOutput.range_name field Option<String>
+impact::output::ImpactOutput.run field Option<diffctx_snapshot::resource::RunContext>
+impact::output::ImpactOutput.stale_references field Vec<StaleReference>
+impact::output::ImpactOutput.stale_references_omitted field usize
+impact::output::ImpactOutput.symbol field Option<String>
+impact::output::ImpactOutput.symbol_named field Option<SymbolNamed>
+impact::output::ImpactOutput.tests_known field bool
+impact::output::ImpactOutput.traced_definitions field usize
+impact::output::ImpactOutput.truncated field usize
+impact::output::ImpactOutput.truncated_possible field usize
+impact::output::ImpactOutput.truncated_textual field usize
+impact::output::ImpactOutput.truncated_untested field usize
+impact::output::ImpactOutput.unanalysed_files field Vec<UnanalysedFile>
+impact::output::ImpactOutput.unanalysed_files_omitted field usize
+impact::output::ImpactOutput.unfinished_omitted field usize
+impact::output::ImpactOutput.unread_directories field Vec<String>
+impact::output::ImpactOutput.untested_called_in_diff field Vec<String>
+impact::output::ImpactOutput.untested_definitions field usize
+impact::output::ImpactOutput.untested_unlisted field Vec<String>
+impact::output::ImpactOutput.untraced_omitted field usize
+impact::output::ImpactOutput.untracked_files field Vec<String>
+impact::output::ImpactOutput.untracked_files_omitted field usize
+impact::output::ImpactOutput.withheld_files field usize
+impact::output::ImpactOutput::definitions fn (&self) -> usize
+impact::output::KeySearch struct derive(Clone, Debug, JsonSchema, Serialize)
+impact::output::KeySearch.keys field Vec<String>
+impact::output::KeySearch.named field usize
+impact::output::KeySearch.path field String
+impact::output::NamedFile struct derive(Clone, Debug, JsonSchema, Serialize)
+impact::output::NamedFile.line field u32
+impact::output::NamedFile.path field String
+impact::output::OmittedDefinition struct derive(Clone)
+impact::output::OmittedDefinition.callers_omitted field usize
+impact::output::OmittedDefinition.definition field String
+impact::output::OmittedDefinition.incomplete field bool
+impact::output::OmittedDefinition.lines field String
+impact::output::OmittedDefinition.shed field crate::answer::v2::ShedRows
+impact::output::PathReference struct derive(Clone, Debug, JsonSchema, Serialize)
+impact::output::PathReference.class field MentionClass
+impact::output::PathReference.key field Option<String>
+impact::output::PathReference.line field u32
+impact::output::PathReference.path field String
+impact::output::PathReference.target field String
+impact::output::StaleReference struct derive(Clone)
+impact::output::StaleReference.class field MentionClass
+impact::output::StaleReference.kind field String
+impact::output::StaleReference.line field u32
+impact::output::StaleReference.path field String
+impact::output::StaleReference.target field String
+impact::output::SymbolNamed struct derive(Clone, Debug)
+impact::output::SymbolNamed.files field usize
+impact::output::SymbolNamed.limits field Vec<diffctx_snapshot::resource::LimitReason>
+impact::output::SymbolNamed.rows field Vec<NamedFile>
+impact::output::SymbolNamed.unread field Vec<UnanalysedFile>
+impact::output::TestLink struct derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)
+impact::output::TestLink.name field Option<String>
+impact::output::TestLink.path field String
+impact::output::TestLink.via field Option<String>
+impact::output::UnanalysedFile struct derive(Clone, Debug, JsonSchema, Serialize)
+impact::output::UnanalysedFile.language field Option<&'static str>
+impact::output::UnanalysedFile.lines field Vec<u32>
+impact::output::UnanalysedFile.path field String
+impact::output::UnanalysedFile.reason field &'static str
+impact::output::Unknown enum derive(Clone, Debug, PartialEq)
+impact::output::Unknown::Ambiguous variant Ambiguous { name: String, definitions: usize, language: &'static str, }
+impact::output::Unknown::Candidates variant Candidates { name: String, uses: usize, sites: Vec<decide::gap::Site>, }
+impact::output::Unknown::CommonWord variant CommonWord { name: String, lines: usize }
+impact::output::Unknown::Dispatched variant Dispatched { trait_name: String }
+impact::output::Unknown::LocalOf variant LocalOf { name: String, enclosing: String }
+impact::output::Unknown::NotModelled variant NotModelled { language: &'static str }
+impact::output::Unknown::Omitted variant Omitted { needs: u32, count: usize, incomplete: usize, }
+impact::output::Unknown::Overridable variant Overridable { via: String }
+impact::output::Unknown::Uncovered variant Uncovered { why: String }
+impact::output::Unknown::Unfinished variant Unfinished { stops: Vec<diffctx_snapshot::resource::LimitReason>, }
+impact::output::Unknown::Unpaired variant Unpaired { name: String }
+impact::output::Unknown::Untracked variant Untracked { name: String }
+impact::output::is_unfinished fn (s: &ChangedSymbol) -> bool
+impact::output::named_tests fn (tests: &[TestLink]) -> Vec<&TestLink>
+impact::output::reason_names fn (reasons: &[diffctx_snapshot::resource::LimitReason]) -> String
+impact::symbol mod
+impact::symbol::LocalOf struct derive(Debug)
+impact::symbol::LocalOf.computed field bool
+impact::symbol::LocalOf.enclosing field String
+impact::symbol::LocalOf.line field u32
+impact::symbol::LocalOf.lossy field bool
+impact::symbol::LocalOf.name field String
+impact::symbol::LocalOf.path field String
+impact::symbol::LocalOf.unplaced field Vec<u32>
+impact::symbol::LocalOf.uses field Vec<LocalUse>
+impact::symbol::LocalUse struct derive(Debug)
+impact::symbol::LocalUse.call field bool
+impact::symbol::LocalUse.inside field Option<String>
+impact::symbol::LocalUse.line field u32
+impact::symbol::is_textual fn (c: &Caller) -> bool
+impact::symbol::layout_only_names fn (output: &ImpactOutput) -> impl Iterator<Item = &str>
+impact::symbol::local_blocks fn (locals: Vec<LocalOf>) -> Vec<ChangedSymbol>
+impact::symbol::parse_symbol_query fn (query: &str) -> Option<(Option<&str>, Vec<&str>)>
+impact::symbol::symbol_local_output fn (root_dir: &Path, query: &str, locals: Vec<LocalOf>) -> ImpactOutput
+impact::symbol::symbol_module_output fn ( root_dir: &Path, query: &str, deadline: Instant, ) -> anyhow::Result<Option<ImpactOutput>>
+impact::symbol::symbol_named fn ( root_dir: &Path, source: &diffctx_snapshot::source::Source, lines: Vec<(String, u32, String)>, unread: Vec<UnanalysedFile>, limits: Vec<diffctx_snapshot::resource::LimitReason>, ) -> Option<SymbolNamed>
+impact::symbol::symbol_named_output fn (root_dir: &Path, query: &str, named: SymbolNamed) -> ImpactOutput
+impact::unanalysed mod
+impact::unanalysed::distinctive fn (word: &str) -> bool
+locate mod
+locate::Coverage struct derive(Clone, Default, JsonSchema, Serialize)
+locate::Coverage.capped field Vec<diffctx_snapshot::resource::LimitReason>
+locate::Coverage.limited_files field Vec<diffctx_snapshot::resource::LimitedFile>
+locate::Coverage.limits field Vec<diffctx_snapshot::resource::LimitReason>
+locate::Coverage.selection field Selection
+locate::Coverage::is_clean fn (&self) -> bool
+locate::LOCATE_SCHEMA const &str
+locate::LocateItem struct derive(Clone, JsonSchema, Serialize)
+locate::LocateItem.group field Option<&'static str>
+locate::LocateItem.kind field String
+locate::LocateItem.lines field String
+locate::LocateItem.path field String
+locate::LocateItem.reasons field Vec<Reason>
+locate::LocateItem.role field Option<&'static str>
+locate::LocateItem.score field f64
+locate::LocateItem.symbol field Option<String>
+locate::LocateItem.tokens field u32
+locate::LocateOutput impl diffctx_base::fit::Shed for LocateOutput
+locate::LocateOutput struct derive(Clone, JsonSchema, Serialize)
+locate::LocateOutput.coverage field Coverage
+locate::LocateOutput.fit field Fit
+locate::LocateOutput.inventory field Inventory
+locate::LocateOutput.items field Vec<LocateItem>
+locate::LocateOutput.name field String
+locate::LocateOutput.overflow field Listing<OverflowItem>
+locate::LocateOutput.provenance field Option<crate::run_provenance::Provenance>
+locate::LocateOutput.range field Range
+locate::LocateOutput.redactions field Option<diffctx_base::sanitize::Redactions>
+locate::LocateOutput.schema field &'static str
+locate::LocateOutput.summary field Summary
+locate::LocateOutput::carries_nothing fn (&self) -> bool
+locate::LocateOutput::fit_to fn (&mut self, budget: u32, list_overflow: bool)
+locate::MAX_OVERFLOW_ITEMS const usize
+locate::OverflowItem struct derive(Clone, JsonSchema, Serialize)
+locate::OverflowItem.lines field String
+locate::OverflowItem.path field String
+locate::OverflowItem.score field f64
+locate::OverflowItem.tokens field u32
+locate::OverflowItem.why field String
+locate::Reason enum derive(Clone, JsonSchema, Serialize)
+locate::Reason::Changed variant Changed
+locate::Reason::Edge variant Edge { category: String, from: String, mass: f64, }
+locate::Reason::PostPass variant PostPass
+locate::Reason::Proximity variant Proximity { seed_hops: u32 }
+locate::Selection struct derive(Clone, Default, JsonSchema, Serialize)
+locate::Selection.next_up field usize
+locate::Selection.no_fragment_changed_files field Vec<String>
+locate::Selection.ppr_truncated field bool
+locate::Selection.unparsed_files field Vec<String>
+locate::Selection.unrepresented_changed_files field Vec<String>
+locate::Selection.zero_edge_files field Vec<String>
+locate::Summary struct derive(Clone, JsonSchema, Serialize)
+locate::Summary.changed field usize
+locate::Summary.context field usize
+locate::Summary.files field usize
+locate::Summary.tests field usize
+locate::build_locate fn (state: &ScoredState, outcome: &SelectionOutcome) -> LocateOutput
+locate::locate_schema fn () -> serde_json::Value
+provenance mod
+provenance::maybe_dump fn (state: &ScoredState, selected: &[Fragment])
+render mod
+render::CONTEXT_SCHEMA const &str
+render::ChangeEntry struct derive(Clone, Debug, Deserialize, JsonSchema, Serialize)
+render::ChangeEntry.class field diffctx_facts::change_class::ChangeClass
+render::ChangeEntry.no_fragments field bool
+render::ChangeEntry.path field String
+render::ChangeEntry.represented field bool
+render::ChangeSummary struct derive(Default)
+render::ChangeSummary.changed_files field Vec<String>
+render::ChangeSummary.changes field Vec<( String, diffctx_facts::change_class::ChangeClass, &'static str, )>
+render::ChangeSummary.commit_count field usize
+render::ChangeSummary.commit_message field Option<String>
+render::ChangeSummary.commit_messages field Vec<String>
+render::ChangeSummary.deleted_files field Vec<String>
+render::ChangeSummary.fragmentless field FxHashSet<String>
+render::ChangeSummary.ignored_changes field Vec<String>
+render::ChangeSummary.index_tree field Option<String>
+render::ChangeSummary.lockfile_changes field Vec<String>
+render::ChangeSummary.policy_excluded_count field usize
+render::ChangeSummary.range_spec field Option<String>
+render::ChangeSummary.renamed_files field Vec<(String, String)>
+render::DiffContextOutput struct derive(Clone, Debug, Deserialize, JsonSchema, Serialize)
+render::DiffContextOutput.changes field Vec<ChangeEntry>
+render::DiffContextOutput.coverage field Option<diffctx_snapshot::resource::CoverageReport>
+render::DiffContextOutput.fit field Option<Fit>
+render::DiffContextOutput.fragments field Vec<FragmentEntry>
+render::DiffContextOutput.inventory field Inventory
+render::DiffContextOutput.latency field Option<LatencyBreakdown>
+render::DiffContextOutput.name field String
+render::DiffContextOutput.output_type field String
+render::DiffContextOutput.provenance field Option<serde_json::Value>
+render::DiffContextOutput.range field Range
+render::DiffContextOutput.raw_diff field Option<String>
+render::DiffContextOutput.redactions field Option<PackRedactions>
+render::DiffContextOutput.schema field String
+render::DiffContextOutput::carries_nothing fn (&self) -> bool
+render::DiffContextOutput::empty fn (name: &str) -> Self
+render::FragmentEntry struct derive(Clone, Debug, Deserialize, JsonSchema, Serialize)
+render::FragmentEntry.content field Option<Arc<str>>
+render::FragmentEntry.kind field String
+render::FragmentEntry.lines field String
+render::FragmentEntry.path field String
+render::FragmentEntry.role field Option<String>
+render::FragmentEntry.symbol field Option<String>
+render::LatencyBreakdown struct derive(Clone, Debug, Serialize)
+render::LatencyBreakdown.candidate_count field usize
+render::LatencyBreakdown.discovery_ms field f64
+render::LatencyBreakdown.edge_count field usize
+render::LatencyBreakdown.edge_emissions_by_category field Vec<(&'static str, u64, u64)>
+render::LatencyBreakdown.edges_before_cap field usize
+render::LatencyBreakdown.edges_dropped_by_cap field usize
+render::LatencyBreakdown.graph_build_ms field f64
+render::LatencyBreakdown.greedy_iters field usize
+render::LatencyBreakdown.max_out_edges_per_node field usize
+render::LatencyBreakdown.nodes_capped field usize
+render::LatencyBreakdown.parse_changed_ms field f64
+render::LatencyBreakdown.parse_discovered_ms field f64
+render::LatencyBreakdown.peak_rss_bytes field u64
+render::LatencyBreakdown.ppr_backward_pushes field usize
+render::LatencyBreakdown.ppr_forward_pushes field usize
+render::LatencyBreakdown.ppr_truncated field bool
+render::LatencyBreakdown.pre_phase_ms field f64
+render::LatencyBreakdown.scoring_ms field f64
+render::LatencyBreakdown.scoring_selection_ms field f64
+render::LatencyBreakdown.selection_ms field f64
+render::LatencyBreakdown.stopping_certificate field f64
+render::LatencyBreakdown.tokenization_ms field f64
+render::LatencyBreakdown.total_ms field f64
+render::LatencyBreakdown.universe_walk_ms field f64
+render::PackRedactions impl From<diffctx_base::sanitize::Redactions> for PackRedactions
+render::PackRedactions struct derive(Clone, Debug, Default, Deserialize, Eq, JsonSchema, PartialEq, Serialize)
+render::PackRedactions.categories field Vec<String>
+render::PackRedactions.count field usize
+render::build_diff_context_output fn ( repo_root: &Path, selected: &[Fragment], no_content: bool, core_ids: &FxHashSet<FragmentId>, stand_in_ids: &FxHashSet<FragmentId>, rel_scores: &FxHashMap<FragmentId, f64>, change: ChangeSummary, ) -> DiffContextOutput
+render::context_schema fn () -> serde_json::Value
+render::provenance_value fn (record: &crate::run_provenance::Provenance) -> serde_json::Value
+render::shed mod
+render::shed::evidence_tier fn (repo_path: &str, class: diffctx_facts::change_class::ChangeClass) -> u8
+run_provenance mod
+run_provenance::BUILD_LABEL const &str
+run_provenance::Engine struct derive(Clone, Debug, JsonSchema, Serialize)
+run_provenance::Engine.build field Option<&'static str>
+run_provenance::Engine.name field &'static str
+run_provenance::Engine.version field &'static str
+run_provenance::Input struct derive(Clone, Debug, JsonSchema, Serialize)
+run_provenance::Input.base field Option<String>
+run_provenance::Input.head field Option<String>
+run_provenance::Input.working_tree field bool
+run_provenance::Provenance struct derive(Clone, Debug, JsonSchema, Serialize)
+run_provenance::Provenance.effective_config field Option<EffectiveConfigV1>
+run_provenance::Provenance.effective_config_hash field String
+run_provenance::Provenance.engine field Engine
+run_provenance::Provenance.input field Input
+run_provenance::Provenance.resource_limits field Option<diffctx_snapshot::resource::ResourceBudget>
+run_provenance::Provenance.schema field &'static str
+run_provenance::Provenance.selection field Option<Selection>
+run_provenance::RunProvenance struct derive(Clone, Debug)
+run_provenance::RunProvenance.effective_config field EffectiveConfigV1
+run_provenance::RunProvenance.input field Input
+run_provenance::RunProvenance.range field Option<String>
+run_provenance::RunProvenance::finish fn (&self, selection: Option<Selection>) -> Provenance
+run_provenance::RunProvenance::new fn ( run: &diffctx_snapshot::resource::RunContext, root_dir: &Path, diff_range: Option<&str>, effective_config: EffectiveConfigV1, ) -> diffctx_snapshot::snapshot::Result<Self>
+run_provenance::SCHEMA const &str
+run_provenance::Selection struct derive(Clone, Debug, JsonSchema, Serialize)
+run_provenance::Selection.budget_requested field Option<u32>
+run_provenance::Selection.budget_tokens field u32
+run_provenance::Selection.gate field &'static str
+run_provenance::Selection.tau field f64
+run_provenance::full_record_requested fn () -> bool
+run_provenance::state mod
+run_provenance::state::AnswerScope struct
+run_provenance::state::AnswerScope::contains fn (&self, display_path: &str) -> bool
+run_provenance::state::HeavyLatencyMs struct derive(Clone, Copy, Default)
+run_provenance::state::HeavyLatencyMs.discovery field f64
+run_provenance::state::HeavyLatencyMs.graph_build field f64
+run_provenance::state::HeavyLatencyMs.parse_changed field f64
+run_provenance::state::HeavyLatencyMs.parse_discovered field f64
+run_provenance::state::HeavyLatencyMs.pre_phase field f64
+run_provenance::state::HeavyLatencyMs.scoring field f64
+run_provenance::state::HeavyLatencyMs.tokenization field f64
+run_provenance::state::HeavyLatencyMs.universe_walk field f64
+run_provenance::state::ScoredState struct
+run_provenance::state::ScoredState.all_fragments field Vec<Fragment>
+run_provenance::state::ScoredState.analysed_range field Option<String>
+run_provenance::state::ScoredState.change_classes field Vec<( String, diffctx_facts::change_class::ChangeClass, &'static str, )>
+run_provenance::state::ScoredState.changed_files field Vec<PathBuf>
+run_provenance::state::ScoredState.changed_lines field FxHashMap<FragmentId, f64>
+run_provenance::state::ScoredState.commit_count field usize
+run_provenance::state::ScoredState.commit_message field Option<String>
+run_provenance::state::ScoredState.commit_messages field Vec<String>
+run_provenance::state::ScoredState.config field PipelineConfig
+run_provenance::state::ScoredState.core_excerpts field FxHashMap<FragmentId, Fragment>
+run_provenance::state::ScoredState.core_ids field FxHashSet<FragmentId>
+run_provenance::state::ScoredState.deleted_files field Vec<String>
+run_provenance::state::ScoredState.diffed_files field FxHashSet<PathBuf>
+run_provenance::state::ScoredState.discovery_source field FxHashMap<Arc<str>, &'static str>
+run_provenance::state::ScoredState.envelope_tokens field u32
+run_provenance::state::ScoredState.heavy_latency_ms field HeavyLatencyMs
+run_provenance::state::ScoredState.hunk_texts field Vec<diffctx_base::changed_lines::HunkText>
+run_provenance::state::ScoredState.ignored_changes field Vec<String>
+run_provenance::state::ScoredState.index_tree field Option<String>
+run_provenance::state::ScoredState.lockfile_changes field Vec<String>
+run_provenance::state::ScoredState.needs field Vec<InformationNeed>
+run_provenance::state::ScoredState.policy_excluded_count field usize
+run_provenance::state::ScoredState.provenance field crate::run_provenance::RunProvenance
+run_provenance::state::ScoredState.renamed_files field Vec<(String, String)>
+run_provenance::state::ScoredState.root_dir field PathBuf
+run_provenance::state::ScoredState.run field diffctx_snapshot::resource::RunContext
+run_provenance::state::ScoredState.scope field Vec<String>
+run_provenance::state::ScoredState.scoring_result field ScoringResult
+run_provenance::state::ScoredState.untracked_files field Vec<PathBuf>
+run_provenance::state::SelectionOutcome struct
+run_provenance::state::SelectionOutcome.budget_requested field Option<u32>
+run_provenance::state::SelectionOutcome.commit_messages field Vec<String>
+run_provenance::state::SelectionOutcome.effective_budget field u32
+run_provenance::state::SelectionOutcome.gated field bool
+run_provenance::state::SelectionOutcome.limit_reasons field Vec<diffctx_snapshot::resource::LimitReason>
+run_provenance::state::SelectionOutcome.select_ms field f64
+run_provenance::state::SelectionOutcome.selected field Vec<Fragment>
+run_provenance::state::SelectionOutcome.selection_budget field u32
+run_provenance::state::SelectionOutcome.selection_iters field usize
+run_provenance::state::SelectionOutcome.stand_in_ids field FxHashSet<FragmentId>
+run_provenance::state::SelectionOutcome.stopping_certificate field f64
+run_provenance::state::SelectionOutcome.tau field f64
+run_provenance::state::SelectionOutcome::selection_provenance fn (&self) -> crate::run_provenance::Selection
+run_provenance::state::answer_paths fn <'a>( state: &ScoredState, selected: impl Iterator<Item = &'a Fragment>, ) -> AnswerScope
+run_provenance::state::fragmentless_changed_files fn ( root_dir: &Path, changed_files: &[PathBuf], fragments: &[Fragment], ) -> FxHashSet<String>

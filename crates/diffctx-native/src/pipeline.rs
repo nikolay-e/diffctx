@@ -7,21 +7,12 @@ use anyhow::Result;
 use rayon::prelude::*;
 use rustc_hash::{FxHashMap, FxHashSet};
 
-use crate::answer::envelope::Inventory;
-use crate::answer::v2::Listing;
-use crate::core::{compute_changed_lines, compute_seed_weights, identify_core_fragments};
-use crate::discovery::{
-    BM25Discovery, DefaultDiscovery, DiscoveryContext, DiscoveryStrategy, EnsembleDiscovery,
-    ReverseReferenceDiscovery, TestFileDiscovery,
-};
-use crate::fragmentation::process_files_for_fragments;
-use crate::postpass;
-use crate::render::{self, DiffContextOutput};
-use crate::run_provenance::state::{
+use diffctx_answer::answer::envelope::Inventory;
+use diffctx_answer::answer::v2::Listing;
+use diffctx_answer::render::{self, DiffContextOutput};
+use diffctx_answer::run_provenance::state::{
     HeavyLatencyMs, ScoredState, SelectionOutcome, answer_paths, fragmentless_changed_files,
 };
-use crate::scoring::{ScoringResult, create_scoring_strategy};
-use crate::utility::InformationNeed;
 use diffctx_base::paths::is_lockfile_path;
 use diffctx_base::tokenizer::count_tokens;
 use diffctx_base::types::{Fragment, FragmentId, unquote_c_style};
@@ -31,6 +22,15 @@ use diffctx_config::config::limits::LIMITS;
 use diffctx_config::config::tokenization::TOKENIZATION;
 use diffctx_config::mode::{PipelineConfig, ScoringMode};
 use diffctx_config::signatures::generate_signature_variants;
+use diffctx_graph::core::{compute_changed_lines, compute_seed_weights, identify_core_fragments};
+use diffctx_graph::discovery::{
+    BM25Discovery, DefaultDiscovery, DiscoveryContext, DiscoveryStrategy, EnsembleDiscovery,
+    ReverseReferenceDiscovery, TestFileDiscovery,
+};
+use diffctx_graph::fragmentation::process_files_for_fragments;
+use diffctx_graph::scoring::{ScoringResult, create_scoring_strategy};
+use diffctx_select::postpass;
+use diffctx_select::utility::InformationNeed;
 use diffctx_snapshot::candidate_files;
 use diffctx_snapshot::snapshot;
 use diffctx_snapshot::source::{Admitted, Source, Why};
@@ -94,7 +94,7 @@ pub fn build_diff_context_locate(
     scoring_mode: ScoringMode,
     timeout: u64,
     include_overflow: bool,
-) -> Result<crate::locate::LocateOutput> {
+) -> Result<diffctx_answer::locate::LocateOutput> {
     let _run = diffctx_base::profile::run("locate");
     validate_tau(tau)?;
     let state = compute_scored_state(root_dir, diff_range, paths, alpha, scoring_mode, timeout)?;
@@ -117,7 +117,7 @@ pub fn build_diff_context_locate(
         run_selection(&state, budget_tokens, tau)
     };
     let _render = diffctx_base::profile::phase("render");
-    let mut output = crate::locate::build_locate(&state, &outcome);
+    let mut output = diffctx_answer::locate::build_locate(&state, &outcome);
     // The first item of every changed file stays whatever the budget: one too
     // small for the selection to hold them is cut from the answer the selection
     // would make, so the least it declares is the one every budget below it says.
@@ -132,7 +132,7 @@ pub fn build_diff_context_locate(
         whole.effective_budget = outcome.effective_budget;
         whole.budget_requested = outcome.budget_requested;
         whole.selection_budget = outcome.selection_budget;
-        output = crate::locate::build_locate(&state, &whole);
+        output = diffctx_answer::locate::build_locate(&state, &whole);
     }
     output.fit_to(outcome.effective_budget, include_overflow);
     Ok(output)
@@ -148,7 +148,7 @@ pub fn build_diff_context_impact(
     alpha: f64,
     scoring_mode: ScoringMode,
     timeout: u64,
-) -> Result<crate::impact::ImpactOutput> {
+) -> Result<diffctx_answer::impact::output::ImpactOutput> {
     impact_of(
         root_dir,
         Anchor::Diff(diff_range),
@@ -169,7 +169,7 @@ pub fn build_range_impact(
     alpha: f64,
     scoring_mode: ScoringMode,
     timeout: u64,
-) -> Result<crate::impact::ImpactOutput> {
+) -> Result<diffctx_answer::impact::output::ImpactOutput> {
     impact_of(
         root_dir,
         Anchor::Range(range),
@@ -189,7 +189,7 @@ fn impact_of(
     alpha: f64,
     scoring_mode: ScoringMode,
     timeout: u64,
-) -> Result<crate::impact::ImpactOutput> {
+) -> Result<diffctx_answer::impact::output::ImpactOutput> {
     let _run = diffctx_base::profile::run("impact");
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(timeout);
     let state =
@@ -197,7 +197,7 @@ fn impact_of(
     // A range handed in as a value names itself by what the run resolved.
     let label = label.or(state.analysed_range.as_deref());
     let _in_run = state.run.enter();
-    Ok(crate::impact::build_impact(
+    Ok(diffctx_answer::impact::build::build_impact(
         &state,
         label,
         None,
@@ -214,7 +214,7 @@ pub fn build_symbol_impact(
     alpha: f64,
     scoring_mode: ScoringMode,
     timeout: u64,
-) -> Result<crate::impact::ImpactOutput> {
+) -> Result<diffctx_answer::impact::output::ImpactOutput> {
     let _run = diffctx_base::profile::run("symbol");
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(timeout);
     let state = match compute_scored_state_anchored(
@@ -229,19 +229,23 @@ pub fn build_symbol_impact(
         Ok(state) => state,
         Err(e) => {
             return match e.downcast::<SymbolQueryError>() {
-                Ok(SymbolQueryError { locals, .. }) if !locals.is_empty() => {
-                    Ok(crate::impact::symbol_local_output(root_dir, query, locals))
-                }
+                Ok(SymbolQueryError { locals, .. }) if !locals.is_empty() => Ok(
+                    diffctx_answer::impact::symbol::symbol_local_output(root_dir, query, locals),
+                ),
                 Ok(mut q) => {
                     let module = if q.malformed {
                         None
                     } else {
-                        crate::impact::symbol_module_output(root_dir, query, deadline)?
+                        diffctx_answer::impact::symbol::symbol_module_output(
+                            root_dir, query, deadline,
+                        )?
                     };
                     match (module, q.named.take()) {
                         (Some(output), _) => Ok(output),
                         (None, Some(named)) => {
-                            Ok(crate::impact::symbol_named_output(root_dir, query, named))
+                            Ok(diffctx_answer::impact::symbol::symbol_named_output(
+                                root_dir, query, named,
+                            ))
                         }
                         (None, None) => Err(q.into()),
                     }
@@ -251,12 +255,13 @@ pub fn build_symbol_impact(
         }
     };
     let _in_run = state.run.enter();
-    let mut output = crate::impact::build_impact(&state, None, Some(query), Some(deadline));
+    let mut output =
+        diffctx_answer::impact::build::build_impact(&state, None, Some(query), Some(deadline));
     output
         .changed
-        .extend(crate::impact::local_blocks(sibling_locals(
-            root_dir, query, paths, &state.run,
-        )));
+        .extend(diffctx_answer::impact::symbol::local_blocks(
+            sibling_locals(root_dir, query, paths, &state.run),
+        ));
     Ok(output)
 }
 
@@ -268,8 +273,8 @@ fn sibling_locals(
     query: &str,
     paths: &[String],
     run: &diffctx_snapshot::resource::RunContext,
-) -> Vec<crate::impact::LocalOf> {
-    let Some((None, segments)) = crate::impact::parse_symbol_query(query) else {
+) -> Vec<diffctx_answer::impact::symbol::LocalOf> {
+    let Some((None, segments)) = diffctx_answer::impact::symbol::parse_symbol_query(query) else {
         return Vec::new();
     };
     let &[name] = segments.as_slice() else {
@@ -298,7 +303,7 @@ fn count_text_lines(source: &Source, path: &Path) -> Option<u32> {
     const CHUNK: usize = 64 * 1024;
 
     let bytes = source.read_bytes(path)?;
-    if crate::fragmentation::looks_binary(&bytes[..bytes.len().min(CHUNK)]) {
+    if diffctx_graph::fragmentation::looks_binary(&bytes[..bytes.len().min(CHUNK)]) {
         return None;
     }
     let newlines = bytes.iter().filter(|b| **b == b'\n').count() as u32;
@@ -721,10 +726,10 @@ pub struct SymbolQueryError {
     pub malformed: bool,
     /// Files that spell a name nothing defines: the answer instead of the
     /// error (Forgejo #114).
-    pub named: Option<crate::impact::SymbolNamed>,
+    pub named: Option<diffctx_answer::impact::output::SymbolNamed>,
     /// Definitions the name is a local of: the answer when no definition has
     /// it (a nested function that never leaves its function).
-    pub(crate) locals: Vec<crate::impact::LocalOf>,
+    pub(crate) locals: Vec<diffctx_answer::impact::symbol::LocalOf>,
 }
 
 impl std::fmt::Display for SymbolQueryError {
@@ -765,7 +770,7 @@ fn unanalysed_namers(
     files: &[PathBuf],
     fragments: &[Fragment],
     run: &diffctx_snapshot::resource::RunContext,
-) -> Vec<crate::impact::UnanalysedFile> {
+) -> Vec<diffctx_answer::impact::output::UnanalysedFile> {
     let source = run.source();
     let mut unread = Vec::new();
     for file in files {
@@ -782,7 +787,7 @@ fn unanalysed_namers(
         else {
             continue;
         };
-        unread.push(crate::impact::UnanalysedFile {
+        unread.push(diffctx_answer::impact::output::UnanalysedFile {
             language: diffctx_base::languages::get_language_for_file(&rel),
             path: rel,
             reason,
@@ -794,7 +799,7 @@ fn unanalysed_namers(
 
 /// What the files read as text are said to be, after "no definition found" on the
 /// command line's error.
-fn unanalysed_namers_text(unread: &[crate::impact::UnanalysedFile]) -> String {
+fn unanalysed_namers_text(unread: &[diffctx_answer::impact::output::UnanalysedFile]) -> String {
     if unread.is_empty() {
         return String::new();
     }
@@ -1021,9 +1026,9 @@ fn local_uses(
     files: &[PathBuf],
     name: &str,
     run: &diffctx_snapshot::resource::RunContext,
-) -> Vec<crate::impact::LocalOf> {
+) -> Vec<diffctx_answer::impact::symbol::LocalOf> {
     use diffctx_facts::facts::{Fact, LocalKind, Receiver};
-    let mut found: Vec<crate::impact::LocalOf> = Vec::new();
+    let mut found: Vec<diffctx_answer::impact::symbol::LocalOf> = Vec::new();
     for file in files {
         let Some(text) = run.source().read_to_string(file) else {
             continue;
@@ -1056,7 +1061,7 @@ fn local_uses(
             } else {
                 format!("{display}::{}", home.join("."))
             };
-            let mut uses: Vec<crate::impact::LocalUse> = Vec::new();
+            let mut uses: Vec<diffctx_answer::impact::symbol::LocalUse> = Vec::new();
             for r in blob.facts.iter().filter_map(|f| match f {
                 Fact::Reference(r) => Some(r),
                 _ => None,
@@ -1105,7 +1110,7 @@ fn local_uses(
                 } else {
                     None
                 };
-                uses.push(crate::impact::LocalUse {
+                uses.push(diffctx_answer::impact::symbol::LocalUse {
                     inside: inner.or_else(|| at.last().map(|s| s.to_string())),
                     line,
                     call: matches!(r.use_kind, diffctx_facts::facts::UseKind::Call),
@@ -1113,7 +1118,7 @@ fn local_uses(
             }
             uses.sort_by_key(|u| u.line);
             let unplaced = unplaced_spellings(&blob, &text, name, &local.enclosing);
-            found.push(crate::impact::LocalOf {
+            found.push(diffctx_answer::impact::symbol::LocalOf {
                 path: display.clone(),
                 name: name.to_string(),
                 enclosing,
@@ -1138,7 +1143,7 @@ fn resolve_symbol_change_set(
     run: &diffctx_snapshot::resource::RunContext,
     t_entry: Instant,
 ) -> Result<ChangeSet> {
-    let Some((path, segments)) = crate::impact::parse_symbol_query(query) else {
+    let Some((path, segments)) = diffctx_answer::impact::symbol::parse_symbol_query(query) else {
         return Err(malformed_symbol(query).into());
     };
     let full = segments.join(".");
@@ -1197,8 +1202,9 @@ fn resolve_symbol_change_set(
     }
 
     let mut seen: FxHashSet<FragmentId> = FxHashSet::default();
-    let mut fragments =
-        crate::fragmentation::process_files_for_fragments(&files, root_dir, &mut seen, true, run);
+    let mut fragments = diffctx_graph::fragmentation::process_files_for_fragments(
+        &files, root_dir, &mut seen, true, run,
+    );
     diffctx_facts::overlay::overlay_definitions(&mut fragments, &run.source());
     let indent = |f: &Fragment| {
         f.content
@@ -1351,7 +1357,7 @@ fn resolve_symbol_change_set(
             } else {
                 format!(
                     " (the run stopped ({}) before it finished looking: a definition may exist)",
-                    crate::impact::reason_names(&stops)
+                    diffctx_answer::impact::output::reason_names(&stops)
                 )
             }
         );
@@ -1366,7 +1372,7 @@ fn resolve_symbol_change_set(
                     .into_iter()
                     .filter(|(p, _, _)| !is_lockfile_path(Path::new(p)))
                     .collect();
-                crate::impact::symbol_named(
+                diffctx_answer::impact::symbol::symbol_named(
                     root_dir,
                     &run.source(),
                     lines,
@@ -1570,7 +1576,7 @@ pub fn compute_scored_state_anchored(
     reverse_references: bool,
 ) -> Result<ScoredState> {
     let t_entry = Instant::now();
-    crate::effective_config::enforce_strict_env()?;
+    diffctx_answer::effective_config::enforce_strict_env()?;
     diffctx_base::tokenizer::warm();
     snapshot::set_git_timeout(timeout);
     let run = diffctx_snapshot::resource::RunContext::for_run(timeout);
@@ -1638,7 +1644,7 @@ pub fn compute_scored_state_anchored(
     let t0 = Instant::now();
 
     let mut seen_frag_ids: FxHashSet<FragmentId> = FxHashSet::default();
-    let mut all_fragments = crate::fragmentation::fragment_files(
+    let mut all_fragments = diffctx_graph::fragmentation::fragment_files(
         &changed_files,
         &root_dir,
         &mut seen_frag_ids,
@@ -1691,11 +1697,11 @@ pub fn compute_scored_state_anchored(
     let mode = scoring_mode;
     let mut config = PipelineConfig::from_mode(mode);
     config.ppr_alpha = alpha;
-    let provenance = crate::run_provenance::RunProvenance::new(
+    let provenance = diffctx_answer::run_provenance::RunProvenance::new(
         &run,
         &root_dir,
         diff_range,
-        crate::effective_config::EffectiveConfigV1::resolve(&config, timeout),
+        diffctx_answer::effective_config::EffectiveConfigV1::resolve(&config, timeout),
     )?;
 
     let mut expansion_concepts: FxHashSet<String> = diffctx_base::types::extract_identifiers(
@@ -1925,7 +1931,7 @@ fn settle_layout(
             .map(|runs| {
                 run.check()
                     .then(|| {
-                        crate::fragmentation::changed_text(
+                        diffctx_graph::fragmentation::changed_text(
                             &root_dir.join(&runs[0].path),
                             root_dir,
                             &source,
@@ -1986,7 +1992,7 @@ pub(crate) fn classify_changes(
                 .collect();
             let generated = head_by_path
                 .get(key.as_ref())
-                .is_some_and(|f| crate::fragmentation::is_generated_file(path, &f.content));
+                .is_some_and(|f| diffctx_graph::fragmentation::is_generated_file(path, &f.content));
             let (removed, added, runs_layout) = sides_by_file
                 .get(display.as_str())
                 .map_or((&[][..], &[][..], false), |(r, a, l)| {
@@ -2057,7 +2063,8 @@ pub fn score_from_fragments(
         run,
     );
 
-    let mut needs = crate::utility::needs::needs_from_diff(&all_fragments, &core_ids, diff_text);
+    let mut needs =
+        diffctx_select::utility::needs::needs_from_diff(&all_fragments, &core_ids, diff_text);
     if needs.len() > run.budget().max_needs {
         // Highest priority first, then a total order, so the cap keeps the
         // same needs on every machine.
@@ -2125,36 +2132,10 @@ pub(crate) fn evidence_priority_of(
         .map(|(path, (display, class, _))| {
             (
                 Arc::from(path.to_string_lossy().as_ref()),
-                evidence_tier(display, *class),
+                diffctx_answer::render::shed::evidence_tier(display, *class),
             )
         })
         .collect()
-}
-
-/// The order changed files earn budget in when not all of them fit, and the
-/// renderer cuts them in reverse: production code (0), then its tests,
-/// then config and docs, then mechanical or layout-only edits, then
-/// generated files (4). A test stub printed whole while the migration it
-/// exercises was omitted is the inversion (#311). Read on the repository
-/// path: an absolute one under a `tests/` directory made every file a test.
-pub(crate) fn evidence_tier(
-    repo_path: &str,
-    class: diffctx_facts::change_class::ChangeClass,
-) -> u8 {
-    use diffctx_facts::change_class::ChangeClass;
-    let path = Path::new(repo_path);
-    let ext = diffctx_base::languages::file_ext(path);
-    match class {
-        ChangeClass::Generated => 4,
-        ChangeClass::Mechanical | ChangeClass::Layout => 3,
-        _ if diffctx_base::testfiles::is_test_path(path) => 1,
-        _ if diffctx_config::config::extensions::CONFIG_EXTENSIONS.contains(ext.as_str())
-            || matches!(ext.as_str(), ".md" | ".rst" | ".txt" | ".adoc") =>
-        {
-            2
-        }
-        _ => 0,
-    }
 }
 
 /// What `select_and_postpass` hands back: the selection plus the facts about
@@ -2207,7 +2188,7 @@ pub fn select_and_postpass(
     let t_stage = Instant::now();
     let selection_result = match objective {
         diffctx_config::mode::ObjectiveMode::BoltzmannModular => {
-            let beta = crate::utility::calibrate_beta(
+            let beta = diffctx_select::utility::calibrate_beta(
                 &scoring_result.filtered_fragments,
                 core_ids,
                 &scoring_result.rel_scores,
@@ -2215,7 +2196,7 @@ pub fn select_and_postpass(
                 diffctx_config::config::selection::boltzmann().calibration_tolerance,
             );
             tracing::debug!("diffctx: boltzmann beta calibrated to {:.6e}", beta);
-            crate::utility::boltzmann_select(
+            diffctx_select::utility::boltzmann_select(
                 &scoring_result.filtered_fragments,
                 core_ids,
                 &scoring_result.rel_scores,
@@ -2224,9 +2205,10 @@ pub fn select_and_postpass(
             )
         }
         diffctx_config::mode::ObjectiveMode::Submodular => {
-            let file_importance =
-                crate::utility::compute_file_importance(&scoring_result.filtered_fragments);
-            crate::select::lazy_greedy_select(
+            let file_importance = diffctx_select::utility::compute_file_importance(
+                &scoring_result.filtered_fragments,
+            );
+            diffctx_select::select::lazy_greedy_select(
                 scoring_result.filtered_fragments.clone(),
                 core_ids,
                 &scoring_result.rel_scores,
@@ -2411,7 +2393,7 @@ pub fn run_selection(
         );
     }
 
-    crate::provenance::maybe_dump(state, &selected);
+    diffctx_answer::provenance::maybe_dump(state, &selected);
 
     // A clipped witness is a stand-in the floor made on the spot; the
     // renderer learns it carries the change from this set.
@@ -2463,7 +2445,10 @@ pub fn select_with_params(
 ) -> DiffContextOutput {
     let outcome = run_selection(state, budget_tokens, tau);
     let selection_provenance = outcome.selection_provenance();
-    let fit = crate::answer::envelope::fit_of(outcome.budget_requested, outcome.effective_budget);
+    let fit = diffctx_answer::answer::envelope::fit_of(
+        outcome.budget_requested,
+        outcome.effective_budget,
+    );
     let selection_limits = outcome.limit_reasons.clone();
     let commit_messages = outcome.commit_messages.clone();
     let stand_in_ids = outcome.stand_in_ids;
@@ -2758,7 +2743,7 @@ fn full_empty_output(
         &diff_parse::diff_names(root_dir, diff_range, pathspec)?,
     );
     let mut output = empty_output(root_dir);
-    output.range = crate::answer::envelope::range_of(diff_range, None, 0, Vec::new());
+    output.range = diffctx_answer::answer::envelope::range_of(diff_range, None, 0, Vec::new());
     output.inventory = Inventory::new(
         Vec::new(),
         deleted,
@@ -2870,7 +2855,7 @@ fn build_diff_context_full(
     let head_rev = diff_range.and_then(|range| snapshot::split_diff_range(range).1);
     let mut seen_frag_ids: FxHashSet<FragmentId> = FxHashSet::default();
     let _in_run = run.enter();
-    let mut all_fragments = crate::fragmentation::fragment_files(
+    let mut all_fragments = diffctx_graph::fragmentation::fragment_files(
         &changed_files,
         &root_dir,
         &mut seen_frag_ids,
@@ -2988,9 +2973,9 @@ fn empty_scored_state(
     run: diffctx_snapshot::resource::RunContext,
 ) -> Result<ScoredState> {
     let config = PipelineConfig::from_mode(ScoringMode::Ego);
-    let effective = crate::effective_config::EffectiveConfigV1::resolve(&config, timeout);
+    let effective = diffctx_answer::effective_config::EffectiveConfigV1::resolve(&config, timeout);
     let provenance =
-        crate::run_provenance::RunProvenance::new(&run, &root_dir, diff_range, effective)?;
+        diffctx_answer::run_provenance::RunProvenance::new(&run, &root_dir, diff_range, effective)?;
     Ok(ScoredState {
         commit_count: 0,
         root_dir,
@@ -3009,7 +2994,7 @@ fn empty_scored_state(
             declared_admissible_files: None,
             rel_scores: FxHashMap::default(),
             filtered_fragments: Vec::new(),
-            graph: crate::graph::Graph::new(),
+            graph: diffctx_graph::graph::Graph::new(),
             graph_build_ms: 0.0,
             ppr_truncated: false,
             ppr_forward_pushes: 0,
@@ -3049,11 +3034,11 @@ fn empty_output(root_dir: &Path) -> DiffContextOutput {
 /// same lists, or MCP/benchmark consumers lose them while the CLI keeps them.
 pub(crate) fn empty_output_from_state(state: &ScoredState) -> DiffContextOutput {
     let mut output = empty_output(&state.root_dir);
-    output.range = crate::answer::envelope::range_of(
+    output.range = diffctx_answer::answer::envelope::range_of(
         state.provenance.range.as_deref(),
         state.index_tree.as_deref(),
         state.commit_count,
-        crate::answer::envelope::messages_of(
+        diffctx_answer::answer::envelope::messages_of(
             state.commit_message.clone(),
             state.commit_messages.clone(),
         ),
