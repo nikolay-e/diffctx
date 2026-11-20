@@ -708,10 +708,10 @@ fn write_resolved_callers(out: &mut String, d: &Definition, tests_known: bool) {
             continue;
         }
         *shown += 1;
-        let verb = if r.class == Class::Reference {
-            "referenced from"
-        } else {
-            "called from"
+        let verb = match r.class {
+            Class::Reference => "referenced from",
+            Class::Implementation => "implemented by",
+            _ => "called from",
         };
         let _ = writeln!(
             out,

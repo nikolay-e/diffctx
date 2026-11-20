@@ -205,8 +205,8 @@ Everything is optional; an absent field asserts nothing.
 Every impact case also renders `-f md`, and the text must say what the JSON
 says: the header's "N caller(s) outside the diff" equals the number of
 resolved caller rows (word matches, `evidence: name`, are no callers; candidates
-are counted apart as "possible"), and a "called from" or "referenced from"
-line needs a resolved row behind it. A violation fails the case.
+are counted apart as "possible"), and a "called from", "referenced from" or
+"implemented by" line needs a resolved row behind it. A violation fails the case.
 
 ## Baseline
 

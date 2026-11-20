@@ -364,6 +364,45 @@ fn methods_of_one_trait_fold_into_one_line() {
     assert!(md.contains("called from src/user.rs::run"), "{md}");
 }
 
+/// The impls of a changed trait method are its implementers: in the text answer each
+/// reads "implemented by", never "called from", and two in one file are two rows.
+#[test]
+fn the_impls_of_a_changed_trait_method_read_implemented_by() {
+    let impls = "use crate::ext::Double;\nuse crate::types::{Bar, Foo};\n\nimpl Double for Foo {\n    fn double(&self) -> i32 {\n        self.0 * 2\n    }\n}\n\nimpl Double for Bar {\n    fn double(&self) -> i32 {\n        self.0 * 3\n    }\n}\n";
+    let tmp = repo(&[
+        &[
+            (MANIFEST.0, Some(MANIFEST.1)),
+            (
+                "src/lib.rs",
+                Some("pub mod ext;\npub mod impls;\npub mod types;\n"),
+            ),
+            (
+                "src/types.rs",
+                Some("pub struct Foo(pub i32);\npub struct Bar(pub i32);\n"),
+            ),
+            (
+                "src/ext.rs",
+                Some("pub trait Double {\n    fn double(&self) -> i32;\n}\n"),
+            ),
+            ("src/impls.rs", Some(impls)),
+        ],
+        &[(
+            "src/ext.rs",
+            Some("pub trait Double {\n    fn double(&self, by: i32) -> i32;\n}\n"),
+        )],
+    ]);
+    let md = impact_markdown(tmp.path());
+    for lines in ["5-7", "11-13"] {
+        assert!(
+            md.contains(&format!(
+                "  - implemented by src/impls.rs::double ({lines})"
+            )),
+            "{md}"
+        );
+    }
+    assert!(!md.contains("called from"), "{md}");
+}
+
 /// #540: a module split moves definitions into new files and re-exports
 /// them; they are not removed. A definition truly removed, and one whose name
 /// only recurs in a new file it is not re-exported from, still are, under
