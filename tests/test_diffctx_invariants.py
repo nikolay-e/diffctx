@@ -248,7 +248,7 @@ def test_locate_token_counts_are_tiktoken_of_the_fragment_body_plus_the_overhead
     from diffctx._native.pipeline import build_locate
 
     # The 40-token envelope every fragment is charged, from
-    # crates/diffctx-native/src/config/limits.rs (`overhead_per_fragment`).
+    # crates/diffctx-config/src/config/limits.rs (`overhead_per_fragment`).
     overhead_per_fragment = 40
     enc = tiktoken.get_encoding("o200k_base")
     repo, diff_range = _make_diff_repo(tmp_path)

@@ -2,7 +2,7 @@
 //! directories the file itself puts on `sys.path`, and relative imports.
 
 use super::index::{Index, Spec, dir_of, join};
-use crate::snapshot::WorkspaceModel;
+use diffctx_snapshot::snapshot::WorkspaceModel;
 
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub(super) enum ModuleRes {

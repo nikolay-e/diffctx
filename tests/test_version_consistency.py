@@ -57,11 +57,12 @@ class TestWhatThisTreeIs:
         match = re.search(r'^version = "([^"]+)"', manifest, re.MULTILINE)
         assert match, "no [workspace.package] version key found in Cargo.toml"
         assert match.group(1) == tree_version.cargo_spelling(__version__)
-        dependency = re.search(r'^diffctx-base = \{[^}\n]*version = "([^"]+)"', manifest, re.MULTILINE)
-        assert dependency, "no diffctx-base dependency version found in Cargo.toml"
-        assert dependency.group(1) == match.group(1)
+        for crate in tree_version.INTERNAL_CRATES:
+            dependency = re.search(rf'^{crate} = \{{[^}}\n]*version = "([^"]+)"', manifest, re.MULTILINE)
+            assert dependency, f"no {crate} dependency version found in Cargo.toml"
+            assert dependency.group(1) == match.group(1)
 
-    @pytest.mark.parametrize("crate", ["diffctx", "diffctx-base"])
+    @pytest.mark.parametrize("crate", ["diffctx", *tree_version.INTERNAL_CRATES])
     def test_cargo_lock_entry_version(self, crate):
         match = re.search(rf'name = "{crate}"\nversion = "([^"]+)"', _load_text("Cargo.lock"))
         assert match, f"no {crate} package entry found in Cargo.lock"

@@ -30,7 +30,8 @@ use super::{
     UnresolvedReason, unresolved,
 };
 use crate::facts::{DefKey, DefKind, Fact, FactsCache, FileFacts, Language, Name, Scope};
-use crate::snapshot::{AnalysisContext, RepoPath, Result, SideTag, normalize_lexical};
+use diffctx_base::paths::normalize_lexical;
+use diffctx_snapshot::snapshot::{AnalysisContext, RepoPath, Result, SideTag};
 
 /// The bindings of one snapshot's Dockerfiles.
 pub struct DockerfileResolver {

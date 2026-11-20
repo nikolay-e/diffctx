@@ -6,10 +6,10 @@ use rayon::prelude::*;
 use rustc_hash::{FxHashMap, FxHashSet};
 use serde::{Deserialize, Serialize};
 
-use crate::config::bm25::BM25;
-use crate::config::tokenization::TOKENIZATION;
 use crate::discovery::DiscoveryContext;
-use crate::snapshot;
+use diffctx_config::config::bm25::BM25;
+use diffctx_config::config::tokenization::TOKENIZATION;
+use diffctx_snapshot::snapshot;
 
 // The digest of the sources that make tokens (`build.rs`: identifier extraction,
 // its configuration, the stopword lists): it is part of the on-disk cache key,
@@ -132,7 +132,7 @@ fn resolve_cacheable_oids(root_dir: &Path) -> FxHashMap<PathBuf, String> {
     };
     let dirty: FxHashSet<PathBuf> = dirty_parts
         .into_iter()
-        .map(|p| crate::paths::repo_join(root_dir, &p))
+        .map(|p| diffctx_base::paths::repo_join(root_dir, &p))
         .collect();
 
     let mut oids: FxHashMap<PathBuf, String> = FxHashMap::default();
@@ -148,7 +148,7 @@ fn resolve_cacheable_oids(root_dir: &Path) -> FxHashMap<PathBuf, String> {
         if stage != "0" || !(mode == "100644" || mode == "100755") {
             continue;
         }
-        let path = crate::paths::repo_join(root_dir, rel);
+        let path = diffctx_base::paths::repo_join(root_dir, rel);
         if dirty.contains(&path) {
             continue;
         }

@@ -28,6 +28,7 @@ const LAYERS: &[(&str, &[&str])] = &[
     (
         "base",
         &[
+            "paths",
             "types",
             "languages",
             "canon",
@@ -48,7 +49,6 @@ const LAYERS: &[(&str, &[&str])] = &[
         "input",
         &[
             "snapshot",
-            "paths",
             "resource",
             "source",
             "grep",

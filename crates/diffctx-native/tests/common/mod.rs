@@ -222,7 +222,7 @@ pub(crate) fn evaluate_oracle(case: &TestCase, output: &DiffContextOutput) -> Or
 }
 
 pub(crate) fn calculate_budget(case: &TestCase) -> u32 {
-    let overhead = _diffctx::config::limits::LIMITS.overhead_per_fragment;
+    let overhead = diffctx_config::config::limits::LIMITS.overhead_per_fragment;
     let mut all_files: BTreeMap<String, String> = case.repo.initial_files.clone();
     for (k, v) in &case.repo.changed_files {
         all_files.insert(k.clone(), v.clone());

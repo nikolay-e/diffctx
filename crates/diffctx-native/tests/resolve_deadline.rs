@@ -11,7 +11,9 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
 use _diffctx::facts::{BlobFacts, Extractor, FactsCache, Language};
 use _diffctx::resolve::{GoResolver, PythonResolver, RustResolver, TypeScriptResolver};
-use _diffctx::snapshot::{AnalysisContext, Loss, RangeSpec, RunBudget, Side, SideTag, Stage};
+use diffctx_snapshot::snapshot::{
+    AnalysisContext, Loss, RangeSpec, RunBudget, Side, SideTag, Stage,
+};
 use snapshot_fixture::Repo;
 
 /// The shipped extractor of a language, and the run's cancellation raised once

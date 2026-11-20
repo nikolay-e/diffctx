@@ -5,16 +5,16 @@ use pyo3::create_exception;
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyList};
 
-use crate::config::limits::{
-    DEFAULT_PIPELINE_TIMEOUT_SECONDS, DEFAULT_PPR_ALPHA, DEFAULT_SCORING,
-    DEFAULT_STOPPING_THRESHOLD,
-};
 use crate::delivery::{Delivery, Mode, Note, Request};
-use crate::mode::ScoringMode;
 use crate::pipeline;
 use crate::render::DiffContextOutput;
 use crate::run_provenance::state::ScoredState;
-use crate::snapshot::SnapshotError as RustGitError;
+use diffctx_config::config::limits::{
+    DEFAULT_PIPELINE_TIMEOUT_SECONDS, DEFAULT_PPR_ALPHA, DEFAULT_SCORING,
+    DEFAULT_STOPPING_THRESHOLD,
+};
+use diffctx_config::mode::ScoringMode;
+use diffctx_snapshot::snapshot::SnapshotError as RustGitError;
 
 #[pyclass(unsendable)]
 pub struct PyScoredState {
@@ -75,7 +75,7 @@ impl PyCancelToken {
     }
 
     fn scope<'py>(&self, work: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyAny>> {
-        crate::resource::with_cancel(self.flag.clone(), || work.call0())
+        diffctx_snapshot::resource::with_cancel(self.flag.clone(), || work.call0())
     }
 }
 
@@ -620,7 +620,7 @@ fn get_language_for_file(path: &str) -> Option<String> {
 /// The engine's secret-path policy, for tree mode and the MCP tools (#227).
 #[pyfunction]
 fn is_secret_path(path: &str) -> bool {
-    crate::source::is_secret_path(Path::new(path))
+    diffctx_snapshot::source::is_secret_path(Path::new(path))
 }
 
 /// Which of `rel_paths` the engine withholds — secret by name or ignored as
@@ -967,14 +967,17 @@ pub fn _diffctx(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("DEFAULT_ALPHA", DEFAULT_PPR_ALPHA)?;
     m.add(
         "DEFAULT_CORE_BUDGET_FRACTION",
-        crate::config::selection::DEFAULT_CORE_BUDGET_FRACTION,
+        diffctx_config::config::selection::DEFAULT_CORE_BUDGET_FRACTION,
     )?;
     m.add("DEFAULT_SCORING", DEFAULT_SCORING)?;
     m.add("DEFAULT_TIMEOUT", DEFAULT_PIPELINE_TIMEOUT_SECONDS)?;
     // Same reason as the constants above: the Python CLI enumerated the accepted
     // --scoring values in its own literal and fell out of step the moment a mode
     // was added, so `pit` parsed everywhere except the two CLIs.
-    m.add("SCORING_MODES", crate::mode::SCORING_MODE_NAMES.to_vec())?;
+    m.add(
+        "SCORING_MODES",
+        diffctx_config::mode::SCORING_MODE_NAMES.to_vec(),
+    )?;
     m.add("BUILD_LABEL", crate::run_provenance::BUILD_LABEL)?;
     m.add("GitError", m.py().get_type::<GitError>())?;
     m.add(

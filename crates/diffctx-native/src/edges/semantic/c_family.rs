@@ -5,11 +5,11 @@ use once_cell::sync::Lazy;
 use regex::Regex;
 use rustc_hash::{FxHashMap, FxHashSet};
 
-use crate::config::edge_weights::{C_FAMILY_SEMANTIC, SEMANTIC_DISCOVERY};
-use crate::config::extensions::C_FAMILY_EXTENSIONS;
-use crate::config::weights::EDGE_WEIGHTS;
 use diffctx_base::languages::file_ext;
 use diffctx_base::types::{Fragment, FragmentId};
+use diffctx_config::config::edge_weights::{C_FAMILY_SEMANTIC, SEMANTIC_DISCOVERY};
+use diffctx_config::config::extensions::C_FAMILY_EXTENSIONS;
+use diffctx_config::config::weights::EDGE_WEIGHTS;
 
 use super::super::EdgeDict;
 use super::super::base::{self, EdgeBuilder, add_edge, add_edges_from_ids};
@@ -201,7 +201,12 @@ impl EdgeBuilder for CFamilyEdgeBuilder {
             // The envoy shape (520 files sharing one stem) made a single
             // c_family build outrun the whole timeout; the between-builders
             // check cannot interrupt it, so poll inside the loop (#210).
-            if !crate::resource::poll_emissions(i, 256, edges.len() as u64, &mut reported) {
+            if !diffctx_snapshot::resource::poll_emissions(
+                i,
+                256,
+                edges.len() as u64,
+                &mut reported,
+            ) {
                 break;
             }
             for inc in extract_includes(&f.content) {
@@ -333,7 +338,7 @@ impl EdgeBuilder for CFamilyEdgeBuilder {
                 .collect();
             for h in &headers {
                 for imp in &impls {
-                    if !crate::resource::poll_emissions(
+                    if !diffctx_snapshot::resource::poll_emissions(
                         pairs,
                         4096,
                         edges.len() as u64,
@@ -363,7 +368,7 @@ impl EdgeBuilder for CFamilyEdgeBuilder {
         if c_changed.is_empty() {
             return vec![];
         }
-        let source = crate::resource::current_source();
+        let source = diffctx_snapshot::resource::current_source();
 
         let changed_set: FxHashSet<PathBuf> = changed.iter().cloned().collect();
         let mut discovered: FxHashSet<PathBuf> = FxHashSet::default();

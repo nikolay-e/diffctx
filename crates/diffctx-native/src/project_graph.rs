@@ -4,12 +4,12 @@ use anyhow::{Context, Result};
 use rustc_hash::FxHashSet;
 use tracing::info;
 
-use crate::candidate_files::collect_candidate_files;
-use crate::config::limits::LIMITS;
 use crate::edges;
 use crate::fragmentation::process_files_for_fragments;
 use crate::graph::{self, Graph};
 use diffctx_base::types::{Fragment, FragmentId};
+use diffctx_config::config::limits::LIMITS;
+use diffctx_snapshot::candidate_files::collect_candidate_files;
 
 pub(crate) struct ProjectGraph {
     pub fragments: Vec<Fragment>,
@@ -22,8 +22,8 @@ pub(crate) fn build_project_graph(root_dir: &Path) -> Result<ProjectGraph> {
         .with_context(|| format!("failed to canonicalize root_dir '{}'", root_dir.display()))?;
 
     // The checkout as it is: one snapshot, read through its reader alone.
-    let run = crate::resource::RunContext::unbounded();
-    let analysis = crate::source::Analysis::at_working_tree(&resolved_root, &run)?;
+    let run = diffctx_snapshot::resource::RunContext::unbounded();
+    let analysis = diffctx_snapshot::source::Analysis::at_working_tree(&resolved_root, &run)?;
     run.set_source(analysis.head());
 
     let included_set: FxHashSet<PathBuf> = FxHashSet::default();
@@ -72,7 +72,7 @@ pub(crate) fn build_project_graph(root_dir: &Path) -> Result<ProjectGraph> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::snapshot::testing::{commit_all, init_git_repo, write_file};
+    use diffctx_snapshot::snapshot::testing::{commit_all, init_git_repo, write_file};
     use tempfile::TempDir;
 
     #[test]

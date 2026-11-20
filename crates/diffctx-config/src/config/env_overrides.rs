@@ -177,7 +177,12 @@ mod override_name_consistency {
         )
         .unwrap();
         let mut files = Vec::new();
-        collect_rs_files(&crate_root().join("src"), &mut files);
+        for krate in std::fs::read_dir(crate_root().join(".."))
+            .unwrap()
+            .flatten()
+        {
+            collect_rs_files(&krate.path().join("src"), &mut files);
+        }
         let mut set = BTreeSet::new();
         for file in files {
             if file.file_name().and_then(|n| n.to_str()) == Some("env_overrides.rs") {

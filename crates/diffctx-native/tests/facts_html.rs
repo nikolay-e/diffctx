@@ -5,7 +5,7 @@ use _diffctx::facts::lang::html::{AstroExtractor, HtmlExtractor};
 use _diffctx::facts::{
     BlobFacts, DefKind, Extractor, Fact, Import, ImportKind, Language, Ref, UseKind,
 };
-use _diffctx::snapshot::RunBudget;
+use diffctx_snapshot::snapshot::RunBudget;
 
 fn page(source: &str) -> BlobFacts {
     HtmlExtractor.extract(source.as_bytes(), &RunBudget::default())

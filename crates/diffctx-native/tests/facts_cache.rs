@@ -12,7 +12,7 @@ use _diffctx::facts::{
     CacheKey, FINGERPRINT, Fact, FactsCache, Import, ImportKind, Language, ModulePath, Name,
     SCHEMA, Scope, Span, Star, blob_oid, facts_of, hash_tokens, lang,
 };
-use _diffctx::snapshot::{Loss, RangeSpec, RepoPath, SideTag};
+use diffctx_snapshot::snapshot::{Loss, RangeSpec, RepoPath, SideTag};
 use facts_fixture::{Toy, cache_in, context, entries, leftovers, review};
 use snapshot_fixture::Repo;
 
@@ -22,7 +22,7 @@ fn path(text: &str) -> RepoPath {
     RepoPath::new(text).expect("a path")
 }
 
-fn one_commit(files: &[(&str, &str)]) -> (Repo, _diffctx::snapshot::Oid) {
+fn one_commit(files: &[(&str, &str)]) -> (Repo, diffctx_snapshot::snapshot::Oid) {
     let repo = Repo::init();
     for (name, text) in files {
         repo.write(name, text);
@@ -627,7 +627,7 @@ fn every_registered_extractors_facts_equal_themselves_after_the_caches_round_tri
 
 fn answer(repo: &Repo, cache: &Path) -> Vec<u8> {
     let mut command = Command::new(env!("CARGO_BIN_EXE_diffctx"));
-    for name in _diffctx::snapshot::REPO_LOCATING_ENV {
+    for name in diffctx_snapshot::snapshot::REPO_LOCATING_ENV {
         command.env_remove(name);
     }
     let out = command

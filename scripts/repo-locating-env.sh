@@ -3,7 +3,7 @@
 # hook exports them (from a linked worktree GIT_DIR names the shared repository's worktree
 # directory); a child that inherits them reads and writes the hook's repository: `git init` in
 # a temporary directory then rewrites the shared .git/config (core.bare = true, fj#199).
-# crates/diffctx-native/src/snapshot/git.rs and tests/conftest.py carry the same list.
+# crates/diffctx-snapshot/src/snapshot/git.rs and tests/conftest.py carry the same list.
 # shellcheck disable=SC2034  # read by the scripts that source this file
 REPO_LOCATING_ENV=(
   GIT_DIR

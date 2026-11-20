@@ -13,8 +13,8 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use crate::facts::EntryKind;
 use crate::facts::framework::jvm;
 use crate::facts::{Fact, ImportKind, Scope};
-use crate::snapshot::workspace::dir_of;
 use diffctx_base::testfiles::{Bound, DeclaredTests};
+use diffctx_snapshot::snapshot::workspace::dir_of;
 
 use super::mentions::{Naming, basename_of, commented, naming, path_search, starts_a_program};
 use super::rust;
@@ -552,7 +552,8 @@ fn python_scripts(text: &str, dir: &str, paths: &FxHashSet<String>) -> Vec<Scrip
         &["project", "scripts"][..],
         &["tool", "poetry", "scripts"][..],
     ] {
-        let Some(toml::Value::Table(entries)) = crate::snapshot::workspace::toml_at(&table, at)
+        let Some(toml::Value::Table(entries)) =
+            diffctx_snapshot::snapshot::workspace::toml_at(&table, at)
         else {
             continue;
         };
@@ -1294,7 +1295,9 @@ pub(super) fn literal_runs(
     needles.sort();
     needles.dedup();
     if needles.len() > MAX_LITERAL_NEEDLES {
-        state.run.note(crate::resource::LimitReason::CandidateLimit);
+        state
+            .run
+            .note(diffctx_snapshot::resource::LimitReason::CandidateLimit);
         needles.truncate(MAX_LITERAL_NEEDLES);
     }
     if needles.is_empty() {

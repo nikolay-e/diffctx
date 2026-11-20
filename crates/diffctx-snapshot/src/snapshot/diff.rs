@@ -13,7 +13,7 @@ use crate::snapshot::git::Exec;
 use crate::snapshot::reader::hash_objects;
 use crate::snapshot::repo::reject_option_like;
 use crate::snapshot::run::{run_git, run_git_z};
-use crate::snapshot::types::contains_lexically;
+use diffctx_base::paths::contains_lexically;
 
 // The prefix and color flags are not cosmetic: the diff parser keys off the
 // literal `--- a/` / `+++ b/` headers, so a user's `diff.noprefix`,

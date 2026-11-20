@@ -5,7 +5,7 @@ mod snapshot_fixture;
 
 use std::sync::Arc;
 
-use _diffctx::snapshot::{
+use diffctx_snapshot::snapshot::{
     Admission, AdmissionPolicy, Decision, Loss, NotAnalysedReason, Side, SnapshotError,
     SnapshotReader, UntrackedPolicy, WithholdReason,
 };
@@ -19,8 +19,8 @@ const CANARIES: [&str; 4] = [
     "debug.log",
 ];
 
-fn path(p: &str) -> _diffctx::snapshot::RepoPath {
-    _diffctx::snapshot::RepoPath::new(p).expect("a path")
+fn path(p: &str) -> diffctx_snapshot::snapshot::RepoPath {
+    diffctx_snapshot::snapshot::RepoPath::new(p).expect("a path")
 }
 
 fn policy_repo() -> Repo {

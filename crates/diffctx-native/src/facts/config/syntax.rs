@@ -8,7 +8,7 @@ use std::cell::RefCell;
 use tree_sitter::{Language as TsLanguage, Node as TsNode, ParseOptions, ParseState, Parser, Tree};
 
 use crate::facts::{Span, expired};
-use crate::snapshot::RunBudget;
+use diffctx_snapshot::snapshot::RunBudget;
 
 use super::Flaw;
 

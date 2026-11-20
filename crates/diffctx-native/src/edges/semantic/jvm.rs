@@ -4,12 +4,12 @@ use once_cell::sync::Lazy;
 use regex::Regex;
 use rustc_hash::{FxHashMap, FxHashSet};
 
-use crate::config::edge_weights::SEMANTIC_DISCOVERY;
-use crate::config::extensions::{
+use diffctx_base::types::{Fragment, FragmentId, FragmentKind};
+use diffctx_config::config::edge_weights::SEMANTIC_DISCOVERY;
+use diffctx_config::config::extensions::{
     JAVA_EXTENSIONS, JVM_EXTENSIONS, KOTLIN_EXTENSIONS, SCALA_EXTENSIONS,
 };
-use crate::config::weights::EDGE_WEIGHTS;
-use diffctx_base::types::{Fragment, FragmentId, FragmentKind};
+use diffctx_config::config::weights::EDGE_WEIGHTS;
 
 use super::super::EdgeDict;
 use super::super::base::{self, EdgeBuilder, add_edge, add_edges_from_ids};
@@ -496,7 +496,7 @@ impl EdgeBuilder for JVMEdgeBuilder {
         else {
             return FxHashMap::default();
         };
-        let source = crate::resource::current_source();
+        let source = diffctx_snapshot::resource::current_source();
 
         let import_weight = EDGE_WEIGHTS["jvm_import"].forward;
         let inheritance_weight = EDGE_WEIGHTS["jvm_inheritance"].forward;
@@ -801,7 +801,7 @@ impl EdgeBuilder for JVMEdgeBuilder {
                 // One user fragment can cost seconds on a large Kotlin
                 // repository: past the deadline the edges found so far are
                 // the graph, and the run says it is partial.
-                if !crate::resource::current_check() {
+                if !diffctx_snapshot::resource::current_check() {
                     break;
                 }
                 let user = rel(jf.path());

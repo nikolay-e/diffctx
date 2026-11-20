@@ -6,7 +6,7 @@
 //! rooted or outside the repository selects nothing here.
 
 use crate::facts::Span;
-use crate::snapshot::RunBudget;
+use diffctx_snapshot::snapshot::RunBudget;
 
 use super::pointer::{PointerKind, Resolved, SourcePointer, directory_of};
 use super::tree::FieldPath;

@@ -11,7 +11,7 @@ use crate::facts::{
     DefKey, Fact, FactsCache, FileFacts, Language, ModulePath, Name, Namespace, ProjectId, expired,
     facts_of,
 };
-use crate::snapshot::{
+use diffctx_snapshot::snapshot::{
     AnalysisContext, Entry, Listing, Loss, RepoPath, Result, SideTag, SnapshotReader, Stage,
 };
 

@@ -9,7 +9,7 @@ use _diffctx::facts::{
     BlobFacts, Def, DefKind, Disambig, EntryKind, Export, Extractor, Fact, Import, LocalKey,
     Receiver, Ref, Scope, UseKind, Visibility,
 };
-use _diffctx::snapshot::{Loss, RunBudget, Stage};
+use diffctx_snapshot::snapshot::{Loss, RunBudget, Stage};
 
 fn extract(source: &str) -> BlobFacts {
     RustExtractor.extract(source.as_bytes(), &RunBudget::default())

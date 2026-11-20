@@ -15,7 +15,7 @@ use crate::source::Source;
 /// and withheld (repo-relative): an answer built on `rows` counts `withheld`,
 /// since what those files say was never read (#392).
 #[derive(Default)]
-pub(crate) struct Grepped<T> {
+pub struct Grepped<T> {
     pub rows: Vec<T>,
     pub withheld: Vec<String>,
 }
@@ -46,7 +46,7 @@ fn admitted_files(source: &Source, repo_root: &Path, rels: Vec<String>) -> Grepp
         rows: found
             .rows
             .iter()
-            .map(|p| crate::paths::repo_join(repo_root, p))
+            .map(|p| diffctx_base::paths::repo_join(repo_root, p))
             .collect(),
         withheld: found.withheld,
     }
@@ -54,7 +54,7 @@ fn admitted_files(source: &Source, repo_root: &Path, rels: Vec<String>) -> Grepp
 
 /// Every line matching the extended regex `pattern` at `rev` (the working
 /// tree when `None`) in the files `pathspec` names: (path, line, text).
-pub(crate) fn grep_lines_matching(
+pub fn grep_lines_matching(
     repo_root: &Path,
     source: &Source,
     pattern: &str,
@@ -66,7 +66,7 @@ pub(crate) fn grep_lines_matching(
 }
 
 /// Tracked and unignored untracked files holding `word` as a whole word.
-pub(crate) fn grep_files_with_word(
+pub fn grep_files_with_word(
     repo_root: &Path,
     source: &Source,
     word: &str,
@@ -78,7 +78,7 @@ pub(crate) fn grep_files_with_word(
 
 /// The files holding `word` as a whole word in any case: where a name a language
 /// folds (SQL: `NET_TOTAL` calls `Net_Total`) may be spelled another way.
-pub(crate) fn grep_files_with_word_any_case(
+pub fn grep_files_with_word_any_case(
     repo_root: &Path,
     source: &Source,
     word: &str,
@@ -89,7 +89,7 @@ pub(crate) fn grep_files_with_word_any_case(
 }
 
 /// The files with a line that declares `name`.
-pub(crate) fn grep_files_with_declaration(
+pub fn grep_files_with_declaration(
     repo_root: &Path,
     source: &Source,
     name: &str,
@@ -102,7 +102,7 @@ pub(crate) fn grep_files_with_declaration(
 /// Lines of code files at `rev` that hold one of `words` as a whole word, at
 /// most `per_file` per file: where a removed definition's callers are read
 /// from. Past the run's deadline the rows found are the answer.
-pub(crate) fn grep_code_words(
+pub fn grep_code_words(
     repo_root: &Path,
     source: &Source,
     words: &[String],
@@ -112,7 +112,7 @@ pub(crate) fn grep_code_words(
     if words.is_empty() {
         return Ok(Grepped::default());
     }
-    let globs: Vec<String> = crate::config::extensions::CODE_EXTENSIONS
+    let globs: Vec<String> = diffctx_config::config::extensions::CODE_EXTENSIONS
         .iter()
         .map(|ext| format!(":(glob,icase)**/*{ext}"))
         .collect();
@@ -129,7 +129,7 @@ pub(crate) fn grep_code_words(
 
 /// The first line of each file that holds `word` as a whole word, in the
 /// working tree: where a name nothing defines is spelled.
-pub(crate) fn grep_word_first_lines(
+pub fn grep_word_first_lines(
     repo_root: &Path,
     source: &Source,
     word: &str,
@@ -142,7 +142,7 @@ pub(crate) fn grep_word_first_lines(
 /// working tree when `rev` is `None`: (repo-relative path, line, text). Past
 /// the run's deadline the rows found are the answer, and the run says it is
 /// partial.
-pub(crate) fn grep_lines(
+pub fn grep_lines(
     repo_root: &Path,
     source: &Source,
     needles: &[String],

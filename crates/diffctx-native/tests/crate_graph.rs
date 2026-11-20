@@ -10,7 +10,14 @@ use std::process::Command;
 use serde_json::Value;
 
 /// `(dependent, dependency)` by package name. The base depends on no workspace crate.
-const EDGES: &[(&str, &str)] = &[("diffctx", "diffctx-base")];
+const EDGES: &[(&str, &str)] = &[
+    ("diffctx-config", "diffctx-base"),
+    ("diffctx-snapshot", "diffctx-base"),
+    ("diffctx-snapshot", "diffctx-config"),
+    ("diffctx", "diffctx-snapshot"),
+    ("diffctx", "diffctx-config"),
+    ("diffctx", "diffctx-base"),
+];
 
 fn workspace_edges() -> BTreeSet<(String, String)> {
     let manifest = Path::new(env!("CARGO_MANIFEST_DIR")).join("Cargo.toml");

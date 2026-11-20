@@ -55,7 +55,7 @@ use crate::facts::{
     HeldString, Import, ImportKind, Language, Local, LocalKey, LocalKind, ModulePath, Name,
     Namespace, Receiver, Ref, Scope, Star, TypeName, UseKind, Visibility, expired,
 };
-use crate::snapshot::RunBudget;
+use diffctx_snapshot::snapshot::RunBudget;
 
 /// The calls that resolve a name given as a string at run time: `plugin.Lookup`,
 /// `reflect.Value.MethodByName`, `reflect.Value.FieldByName`.

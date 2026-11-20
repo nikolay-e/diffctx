@@ -17,17 +17,17 @@ use std::sync::Arc;
 
 use rustc_hash::{FxHashMap, FxHashSet};
 
-use crate::config::edge_weights::{
+use crate::facts::{DefKey, Language};
+use crate::resolve::{Binding, Relation, Resolution, UnresolvedReason};
+use crate::vocabulary::family::{self, Family, HeadFamily};
+use diffctx_base::types::{Fragment, FragmentId};
+use diffctx_config::config::edge_weights::{
     C_FAMILY_SEMANTIC, CELL_EDGES, CellEdgeWeights, DOCKER, GO_SEMANTIC, HELM, JAVASCRIPT_SEMANTIC,
     KUBERNETES, PYTHON_SEMANTIC, SEMANTIC_DISCOVERY, TERRAFORM_SEMANTIC,
 };
-use crate::config::weights::{EDGE_WEIGHTS, EdgeWeightConfig, LANG_WEIGHTS};
-use crate::facts::{DefKey, Language};
-use crate::resolve::{Binding, Relation, Resolution, UnresolvedReason};
-use crate::resource::{LimitReason, current_source, note_current};
-use crate::snapshot::RepoPath;
-use crate::vocabulary::family::{self, Family, HeadFamily};
-use diffctx_base::types::{Fragment, FragmentId};
+use diffctx_config::config::weights::{EDGE_WEIGHTS, EdgeWeightConfig, LANG_WEIGHTS};
+use diffctx_snapshot::resource::{LimitReason, current_source, note_current};
+use diffctx_snapshot::snapshot::RepoPath;
 
 use super::EdgeDict;
 use super::base::{self, EdgeBuilder, add_edge};
@@ -358,7 +358,7 @@ fn concerns(family: Family, rel: &str) -> bool {
 }
 
 fn rel_of(root: &Path, path: &str) -> String {
-    crate::paths::display_rel_or_abs(root, Path::new(path))
+    diffctx_base::paths::display_rel_or_abs(root, Path::new(path))
 }
 
 impl CellEdgeBuilder {
@@ -447,7 +447,7 @@ impl CellEdgeBuilder {
         let mut link =
             |edges: &mut EdgeDict, a: &str, b: &str, forward: f64, reverse: f64| -> bool {
                 pairs += 1;
-                if !crate::resource::poll_current_every(pairs, 4096) {
+                if !diffctx_snapshot::resource::poll_current_every(pairs, 4096) {
                     return false;
                 }
                 if let (Some(x), Some(y)) = (representative.get(a), representative.get(b)) {
@@ -582,7 +582,12 @@ impl EdgeBuilder for CellEdgeBuilder {
         };
         let mut reported = 0u64;
         for (at, b) in head.bindings().iter().enumerate() {
-            if !crate::resource::poll_emissions(at, 4096, edges.len() as u64, &mut reported) {
+            if !diffctx_snapshot::resource::poll_emissions(
+                at,
+                4096,
+                edges.len() as u64,
+                &mut reported,
+            ) {
                 break;
             }
             let Some(src) = by_rel
@@ -794,7 +799,7 @@ fn landings<'a>(b: &'a Binding, defs: &Defs<'a>, cfg: &CellEdgeWeights) -> Vec<L
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::edge_weights::CELL_EDGE_GROUPS;
+    use diffctx_config::config::edge_weights::CELL_EDGE_GROUPS;
 
     #[test]
     fn the_groups_are_the_tables_groups() {

@@ -6,7 +6,7 @@ use _diffctx::facts::lang::sql::SqlExtractor;
 use _diffctx::facts::{
     BlobFacts, Def, DefKind, Extractor, Fact, Language, Namespace, Ref, Scope, UseKind,
 };
-use _diffctx::snapshot::RunBudget;
+use diffctx_snapshot::snapshot::RunBudget;
 
 fn extract(source: &str) -> BlobFacts {
     SqlExtractor.extract(source.as_bytes(), &RunBudget::default())

@@ -41,7 +41,7 @@ use crate::facts::{
     Lexical, Local, LocalKey, LocalKind, Name, Namespace, Receiver, Ref, Scope, Span, UseKind,
     Visibility, expired, hash_text,
 };
-use crate::snapshot::RunBudget;
+use diffctx_snapshot::snapshot::RunBudget;
 
 pub struct ShellExtractor;
 

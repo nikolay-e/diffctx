@@ -63,7 +63,7 @@ pub enum LimitReason {
 /// Semantic — it changes the artifact.
 pub const TEST_READ_FAULT_ENV: &str = "DIFFCTX_TEST_READ_FAULT";
 
-pub(crate) fn test_read_fault() -> Option<std::sync::Arc<crate::snapshot::ReadFault>> {
+pub fn test_read_fault() -> Option<std::sync::Arc<crate::snapshot::ReadFault>> {
     crate::snapshot::ReadFault::parse(&std::env::var(TEST_READ_FAULT_ENV).ok()?)
 }
 
@@ -74,7 +74,7 @@ pub(crate) fn test_read_fault() -> Option<std::sync::Arc<crate::snapshot::ReadFa
 pub const TEST_LOSS_ENV: &str = "DIFFCTX_TEST_LOSS";
 
 /// The kind and the place `TEST_LOSS_ENV` names; a malformed knob names none.
-pub(crate) fn test_loss() -> Option<(String, usize)> {
+pub fn test_loss() -> Option<(String, usize)> {
     let spec = std::env::var(TEST_LOSS_ENV).ok()?;
     let (kind, at) = spec.rsplit_once(':')?;
     Some((kind.to_string(), at.parse().ok()?))
@@ -132,7 +132,7 @@ pub const TEST_HOOK_CEILING_SECS_ENV: &str = "DIFFCTX_TEST_HOOK_CEILING_SECS";
 
 impl ResourceBudget {
     pub fn resolve(timeout_secs: u64) -> Self {
-        let limits = &*crate::config::limits::LIMITS;
+        let limits = &*diffctx_config::config::limits::LIMITS;
         let max_wall_secs = if std::env::var(TEST_DEADLINE_EXPIRED_ENV).as_deref() == Ok("1") {
             0
         } else {
@@ -152,7 +152,7 @@ impl ResourceBudget {
                 "DIFFCTX_MAX_EDGE_CONTRIBUTIONS",
                 DEFAULT_MAX_EDGE_CONTRIBUTIONS,
             ),
-            max_out_edges_per_node: crate::config::limits::read_max_out_edges_per_node(),
+            max_out_edges_per_node: diffctx_config::config::limits::read_max_out_edges_per_node(),
             max_needs: env_u64("DIFFCTX_MAX_NEEDS", DEFAULT_MAX_NEEDS as u64) as usize,
         }
     }
@@ -584,7 +584,7 @@ impl RunContext {
     /// `bounded` for a loop whose item costs microseconds (a kind test, a map
     /// insert): one poll per `SCAN_STRIDE` items, so a logical-clock sweep, which
     /// reruns the whole engine once per poll, is not made as long as the input.
-    pub(crate) fn scan<'a, I>(&'a self, items: I) -> impl Iterator<Item = I::Item> + 'a
+    pub fn scan<'a, I>(&'a self, items: I) -> impl Iterator<Item = I::Item> + 'a
     where
         I: IntoIterator,
         I::IntoIter: 'a,
@@ -773,6 +773,12 @@ where
         .unwrap()
         .insert(slot, Arc::new(value.clone()));
     Ok(value)
+}
+
+/// The root as `canonicalize` resolves it, once per run: every file read
+/// resolved it again (`fragmentation`), at up to a third of a run's CPU.
+pub fn canonical_root(root: &std::path::Path) -> Option<std::path::PathBuf> {
+    memoized("canonical_root", root, || dunce::canonicalize(root)).ok()
 }
 
 /// A run that something it owns can note into without keeping it alive: the

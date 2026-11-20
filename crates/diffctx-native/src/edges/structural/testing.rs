@@ -4,11 +4,11 @@ use once_cell::sync::Lazy;
 use regex::Regex;
 use rustc_hash::{FxHashMap, FxHashSet};
 
-use crate::config::weights::EDGE_WEIGHTS;
 use diffctx_base::testfiles::{
     JVM_TEST_SUFFIX_EXTENSIONS, JVM_TEST_SUFFIXES, is_test_file, naming_links, target_name_of_test,
 };
 use diffctx_base::types::Fragment;
+use diffctx_config::config::weights::EDGE_WEIGHTS;
 
 use super::super::EdgeDict;
 use super::super::base::{self, EdgeBuilder, add_edge_unidirectional, path_to_module};

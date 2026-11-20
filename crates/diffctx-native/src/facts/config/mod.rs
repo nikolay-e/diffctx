@@ -42,7 +42,7 @@ mod yaml;
 
 use serde::{Deserialize, Serialize};
 
-use crate::snapshot::RunBudget;
+use diffctx_snapshot::snapshot::RunBudget;
 
 pub use candidates::{Candidate, candidates};
 pub use globs::{PathGlob, Selects, globs_of, may_select};

@@ -2,9 +2,9 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use _diffctx::mode::ScoringMode;
 use _diffctx::pipeline::build_diff_context_in;
 use _diffctx::render::DiffContextOutput;
+use diffctx_config::mode::ScoringMode;
 use libtest_mimic::{Arguments, Failed, Trial};
 use tempfile::TempDir;
 use walkdir::WalkDir;
@@ -226,7 +226,7 @@ fn stratified_sample(cases: Vec<DiscoveredCase>, target: usize) -> Vec<Discovere
 }
 
 fn run_git(repo: &Path, args: &[&str]) -> Result<(), String> {
-    let out = _diffctx::snapshot::git_command(repo)
+    let out = diffctx_snapshot::snapshot::git_command(repo)
         .args(args)
         .env("GIT_AUTHOR_NAME", "test")
         .env("GIT_AUTHOR_EMAIL", "test@example.com")
@@ -256,7 +256,7 @@ fn write_files(repo: &Path, files: &BTreeMap<String, String>) -> Result<(), Stri
 }
 
 fn rev_parse_head(repo: &Path) -> Result<String, String> {
-    let out = _diffctx::snapshot::git_command(repo)
+    let out = diffctx_snapshot::snapshot::git_command(repo)
         .args(["rev-parse", "HEAD"])
         .output()
         .map_err(|e| format!("spawn git: {e}"))?;
@@ -532,7 +532,7 @@ fn run_case_with_scoring(
         Some(&diff_range),
         &[],
         Some(budget),
-        _diffctx::config::limits::DEFAULT_PPR_ALPHA,
+        diffctx_config::config::limits::DEFAULT_PPR_ALPHA,
         tau,
         false,
         false,
@@ -547,8 +547,8 @@ fn run_case_with_scoring(
         c.limits.iter().find(|r| {
             matches!(
                 r,
-                _diffctx::resource::LimitReason::Deadline
-                    | _diffctx::resource::LimitReason::Cancelled
+                diffctx_snapshot::resource::LimitReason::Deadline
+                    | diffctx_snapshot::resource::LimitReason::Cancelled
             )
         })
     }) {

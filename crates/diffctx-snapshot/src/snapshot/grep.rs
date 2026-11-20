@@ -10,7 +10,7 @@ use regex::escape;
 use crate::snapshot::diff::validate_pathspec;
 use crate::snapshot::error::Result;
 use crate::snapshot::git::{Exec, git_command, refusal};
-use crate::snapshot::types::contains_lexically;
+use diffctx_base::paths::contains_lexically;
 
 /// One matching line: repo-relative path, line number, text.
 pub type Row = (String, u32, String);

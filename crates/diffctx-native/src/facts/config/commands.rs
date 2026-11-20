@@ -4,7 +4,7 @@
 //! shell's to read; the tree says only that it is one.
 
 use super::{Dialect, Node, Options, Value, dockerfile, read};
-use crate::snapshot::RunBudget;
+use diffctx_snapshot::snapshot::RunBudget;
 
 /// A command and the lines of the file it spans.
 #[derive(Clone, PartialEq, Eq, Debug)]

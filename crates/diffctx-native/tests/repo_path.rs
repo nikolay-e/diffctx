@@ -3,7 +3,7 @@
 //! or share) is refused where it is made, so no later layer has to guess
 //! whether it was handed a place or a name.
 
-use _diffctx::snapshot::RepoPath;
+use diffctx_snapshot::snapshot::RepoPath;
 
 #[test]
 fn a_relative_name_is_a_repository_path() {

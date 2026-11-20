@@ -28,7 +28,7 @@ use crate::facts::{
     BlobFacts, Def, DefKind, Extractor, Fact, Language, Lexical, LocalKey, Name, Namespace,
     Receiver, Ref, Scope, Span, UseKind, Visibility, expired, hash_text, hash_tokens,
 };
-use crate::snapshot::RunBudget;
+use diffctx_snapshot::snapshot::RunBudget;
 
 pub struct SqlExtractor;
 

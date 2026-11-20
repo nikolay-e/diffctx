@@ -3,8 +3,8 @@ use std::sync::Arc;
 use once_cell::sync::Lazy;
 use regex::Regex;
 
-use crate::config::tokenization::TOKENIZATION;
 use diffctx_base::types::{Fragment, FragmentId, FragmentKind, extract_identifiers};
+use diffctx_config::config::tokenization::TOKENIZATION;
 
 use super::FragmentationStrategy;
 

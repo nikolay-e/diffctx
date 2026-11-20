@@ -6,7 +6,7 @@ mod snapshot_fixture;
 
 use std::sync::Arc;
 
-use _diffctx::snapshot::{
+use diffctx_snapshot::snapshot::{
     Admission, AnalysisContext, Loss, RangeSpec, RepoPath, RunBudget, Side, SideTag, SnapshotReader,
 };
 use snapshot_fixture::Repo;

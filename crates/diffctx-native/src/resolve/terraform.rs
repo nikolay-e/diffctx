@@ -24,7 +24,7 @@ use crate::facts::config::{PointerKind, Resolved, SourcePointer};
 use crate::facts::{
     DefKey, DefKind, Fact, FactsCache, FileFacts, Language, Name, Ref, Span, UseKind,
 };
-use crate::snapshot::{AnalysisContext, RepoPath, Result, SideTag};
+use diffctx_snapshot::snapshot::{AnalysisContext, RepoPath, Result, SideTag};
 
 pub struct TerraformResolver {
     solved: Solved,

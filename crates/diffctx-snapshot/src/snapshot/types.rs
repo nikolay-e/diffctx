@@ -67,7 +67,7 @@ impl RepoPath {
 
     /// A name that is not a valid path, kept for disclosure only (an
     /// unaddressable tree entry): never to be joined or read.
-    pub(crate) fn unchecked(path: String) -> Self {
+    pub fn unchecked(path: String) -> Self {
         Self(path)
     }
 
@@ -210,49 +210,4 @@ pub(crate) fn fnv64(parts: &[&[u8]]) -> u64 {
         }
     }
     hash
-}
-
-/// Containment for a repo-relative name that need not exist on disk — what `git ls-files`,
-/// `git diff --name-only` and the deleted-file query hand back. Purely
-/// lexical: it normalises `.` and `..` against the root and asks whether the
-/// result is still under it, touching no filesystem, so a deleted path and a
-/// bare clone's tracked files answer the same as a present one.
-///
-/// It cannot see a symlink — that is not its job. A working-tree name that
-/// passes here and is then READ goes through `Containment` at the point of
-/// the read.
-pub fn contains_lexically(relative: &Path) -> bool {
-    use std::path::Component;
-
-    let mut depth: i32 = 0;
-    for component in relative.components() {
-        match component {
-            Component::Prefix(_) | Component::RootDir => return false,
-            Component::ParentDir => {
-                depth -= 1;
-                if depth < 0 {
-                    return false;
-                }
-            }
-            Component::CurDir => {}
-            Component::Normal(_) => depth += 1,
-        }
-    }
-    true
-}
-
-/// `.` and `..` folded lexically out of a slash path; `None` when it climbs
-/// above its start.
-pub fn normalize_lexical(path: &str) -> Option<String> {
-    let mut parts: Vec<&str> = Vec::new();
-    for part in path.split('/') {
-        match part {
-            "" | "." => {}
-            ".." => {
-                parts.pop()?;
-            }
-            p => parts.push(p),
-        }
-    }
-    Some(parts.join("/"))
 }

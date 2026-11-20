@@ -69,7 +69,7 @@ use crate::facts::{
     ImportKind, Language, Local, LocalKey, LocalKind, ModulePath, Name, Namespace, Receiver, Ref,
     Scope, Span, Star, TypeName, UseKind, Visibility, expired, hash_text,
 };
-use crate::snapshot::RunBudget;
+use diffctx_snapshot::snapshot::RunBudget;
 
 const MAX_DEPTH: u16 = 256;
 /// How far below a prototype its `alias(...)` call is looked for.

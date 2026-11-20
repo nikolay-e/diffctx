@@ -13,7 +13,7 @@ use crate::impact::{
     MAX_REMOVED_NAME_HITS, MAX_TEST_HOPS, MAX_TEXTUAL_SHOWN, MAX_UNTESTED_NAMED,
     OUTSIDE_DEFINITIONS, TEXTUAL_MATCH, UNANALYSED_EXAMPLES, base_symbol, reason_names, stops_of,
 };
-use crate::resource::LimitReason;
+use diffctx_snapshot::resource::LimitReason;
 
 /// A definition as the text names it: `path::symbol (lines)`, or `path:lines`.
 pub fn place(path: &str, symbol: Option<&str>, lines: &str) -> String {
@@ -134,7 +134,7 @@ fn range_label(range: &Range) -> String {
     match (range.spec.as_deref(), range.index_tree.as_deref()) {
         // `A..T` names a tree its caller built — the hook's set of edited files —
         // which is no more the index than any other tree (#463).
-        (Some(spec), Some(t)) if !crate::snapshot::is_staged_keyword(spec) => {
+        (Some(spec), Some(t)) if !diffctx_snapshot::snapshot::is_staged_keyword(spec) => {
             format!("the snapshot tree {}", tree(t))
         }
         (_, Some(t)) => format!("staged changes (index tree {})", tree(t)),

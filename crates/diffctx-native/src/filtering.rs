@@ -4,11 +4,11 @@ use std::sync::Arc;
 use rayon::prelude::*;
 use rustc_hash::{FxHashMap, FxHashSet};
 
-use crate::config::extensions::CODE_EXTENSIONS;
-use crate::config::filtering::FILTERING;
 use crate::graph::Graph;
 use diffctx_base::languages::file_ext;
 use diffctx_base::types::{DiffHunk, EdgeCategory, Fragment, FragmentId, FragmentKind};
+use diffctx_config::config::extensions::CODE_EXTENSIONS;
+use diffctx_config::config::filtering::FILTERING;
 
 fn fragment_hunk_gap(frag_start: u32, frag_end: u32, hunk_start: u32, hunk_end: u32) -> u32 {
     if frag_end < hunk_start {

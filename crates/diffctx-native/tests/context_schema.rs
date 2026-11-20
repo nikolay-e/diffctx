@@ -345,10 +345,12 @@ fn a_v1_answer_maps_to_v2_field_by_field() {
         tmp.path(),
         Some("HEAD~1..HEAD"),
         &[],
-        _diffctx::config::limits::DEFAULT_PPR_ALPHA,
-        _diffctx::mode::ScoringMode::from_str(_diffctx::config::limits::DEFAULT_SCORING)
-            .expect("the default scoring"),
-        _diffctx::config::limits::DEFAULT_PIPELINE_TIMEOUT_SECONDS,
+        diffctx_config::config::limits::DEFAULT_PPR_ALPHA,
+        diffctx_config::mode::ScoringMode::from_str(
+            diffctx_config::config::limits::DEFAULT_SCORING,
+        )
+        .expect("the default scoring"),
+        diffctx_config::config::limits::DEFAULT_PIPELINE_TIMEOUT_SECONDS,
     )
     .expect("impact");
     let v2 = _diffctx::answer::v2::ImpactV2::from_v1(&v1, 2);
@@ -405,10 +407,12 @@ fn the_shed_ledger_is_filled_where_rows_are_shed() {
         tmp.path(),
         Some("HEAD~1..HEAD"),
         &[],
-        _diffctx::config::limits::DEFAULT_PPR_ALPHA,
-        _diffctx::mode::ScoringMode::from_str(_diffctx::config::limits::DEFAULT_SCORING)
-            .expect("the default scoring"),
-        _diffctx::config::limits::DEFAULT_PIPELINE_TIMEOUT_SECONDS,
+        diffctx_config::config::limits::DEFAULT_PPR_ALPHA,
+        diffctx_config::mode::ScoringMode::from_str(
+            diffctx_config::config::limits::DEFAULT_SCORING,
+        )
+        .expect("the default scoring"),
+        diffctx_config::config::limits::DEFAULT_PIPELINE_TIMEOUT_SECONDS,
     )
     .expect("impact");
     // What the cell read of each edit, before the cap drops the definitions with

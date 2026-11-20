@@ -4,18 +4,18 @@ use std::time::Instant;
 
 use rustc_hash::{FxHashMap, FxHashSet};
 
-use crate::config::bm25::BM25;
-use crate::config::edge_weights::SEMANTIC_DISCOVERY;
-use crate::config::limits::{LIMITS, PPR};
-use crate::config::scoring::{EGO, PIT, RRF};
-use crate::config::tokenization::TOKENIZATION;
-use crate::config::weights::EDGE_WEIGHTS;
 use crate::edges;
 use crate::filtering;
 use crate::graph::{self, Graph};
-use crate::mode::{PipelineConfig, ScoringMode};
 use crate::ppr::personalized_pagerank;
 use diffctx_base::types::{DiffHunk, Fragment, FragmentId, extract_identifier_list};
+use diffctx_config::config::bm25::BM25;
+use diffctx_config::config::edge_weights::SEMANTIC_DISCOVERY;
+use diffctx_config::config::limits::{LIMITS, PPR};
+use diffctx_config::config::scoring::{EGO, PIT, RRF};
+use diffctx_config::config::tokenization::TOKENIZATION;
+use diffctx_config::config::weights::EDGE_WEIGHTS;
+use diffctx_config::mode::{PipelineConfig, ScoringMode};
 
 /// Per-file naming admission (#65) is the default since the v5 cycle:
 /// screening (12-cell grid), calibration + held-out validation, and the
@@ -104,7 +104,7 @@ pub(crate) trait ScoringStrategy: Send + Sync {
         repo_root: Option<&Path>,
         seed_weights: Option<&FxHashMap<FragmentId, f64>>,
         discovered_paths: Option<&FxHashSet<Arc<str>>>,
-        ctx: &crate::resource::RunContext,
+        ctx: &diffctx_snapshot::resource::RunContext,
     ) -> ScoringResult;
 }
 
@@ -127,7 +127,7 @@ impl ScoringStrategy for PPRScoring {
         repo_root: Option<&Path>,
         seed_weights: Option<&FxHashMap<FragmentId, f64>>,
         _discovered_paths: Option<&FxHashSet<Arc<str>>>,
-        ctx: &crate::resource::RunContext,
+        ctx: &diffctx_snapshot::resource::RunContext,
     ) -> ScoringResult {
         let skip_expensive = all_fragments.len() > LIMITS.skip_expensive_threshold;
         let t_graph = Instant::now();
@@ -146,7 +146,7 @@ impl ScoringStrategy for PPRScoring {
         );
         let mut rel_scores = ppr.scores;
         if ppr.truncated {
-            ctx.note(crate::resource::LimitReason::DiffusionTruncated);
+            ctx.note(diffctx_snapshot::resource::LimitReason::DiffusionTruncated);
             tracing::warn!(
                 "PPR push-cap hit on {} nodes (fwd_pushes={}, bwd_pushes={}); rel_scores biased",
                 g.node_count(),
@@ -230,7 +230,7 @@ impl ScoringStrategy for EgoGraphScoring {
         repo_root: Option<&Path>,
         _seed_weights: Option<&FxHashMap<FragmentId, f64>>,
         _discovered_paths: Option<&FxHashSet<Arc<str>>>,
-        ctx: &crate::resource::RunContext,
+        ctx: &diffctx_snapshot::resource::RunContext,
     ) -> ScoringResult {
         let skip_expensive = all_fragments.len() > LIMITS.skip_expensive_threshold;
         let t_graph = Instant::now();
@@ -287,7 +287,7 @@ impl ScoringStrategy for BM25Scoring {
         _repo_root: Option<&Path>,
         _seed_weights: Option<&FxHashMap<FragmentId, f64>>,
         _discovered_paths: Option<&FxHashSet<Arc<str>>>,
-        _ctx: &crate::resource::RunContext,
+        _ctx: &diffctx_snapshot::resource::RunContext,
     ) -> ScoringResult {
         let query_tokens: Vec<String> = all_fragments
             .iter()
@@ -480,7 +480,7 @@ fn run_fusion_components(
     repo_root: Option<&Path>,
     seed_weights: Option<&FxHashMap<FragmentId, f64>>,
     discovered_paths: Option<&FxHashSet<Arc<str>>>,
-    ctx: &crate::resource::RunContext,
+    ctx: &diffctx_snapshot::resource::RunContext,
 ) -> FusionComponents {
     let ego = EgoGraphScoring::new(ego_depth).score_and_filter(
         all_fragments,
@@ -571,7 +571,7 @@ impl ScoringStrategy for RrfFusionScoring {
         repo_root: Option<&Path>,
         seed_weights: Option<&FxHashMap<FragmentId, f64>>,
         discovered_paths: Option<&FxHashSet<Arc<str>>>,
-        ctx: &crate::resource::RunContext,
+        ctx: &diffctx_snapshot::resource::RunContext,
     ) -> ScoringResult {
         let c = run_fusion_components(
             self.ego_depth,
@@ -798,7 +798,7 @@ impl ScoringStrategy for PitFusionScoring {
         repo_root: Option<&Path>,
         seed_weights: Option<&FxHashMap<FragmentId, f64>>,
         discovered_paths: Option<&FxHashSet<Arc<str>>>,
-        ctx: &crate::resource::RunContext,
+        ctx: &diffctx_snapshot::resource::RunContext,
     ) -> ScoringResult {
         let c = run_fusion_components(
             self.ego_depth,
@@ -1202,10 +1202,10 @@ mod tests {
     fn a_strategy_is_created_for_every_scoring_kind() {
         // A new mode that forgets its arm here would silently score as another.
         for mode in [
-            crate::mode::ScoringMode::Ego,
-            crate::mode::ScoringMode::Ppr,
-            crate::mode::ScoringMode::Bm25,
-            crate::mode::ScoringMode::Rrf,
+            diffctx_config::mode::ScoringMode::Ego,
+            diffctx_config::mode::ScoringMode::Ppr,
+            diffctx_config::mode::ScoringMode::Bm25,
+            diffctx_config::mode::ScoringMode::Rrf,
         ] {
             let config = PipelineConfig::from_mode(mode);
             let strategy = create_scoring_strategy(&config);
@@ -1217,7 +1217,7 @@ mod tests {
                 None,
                 None,
                 None,
-                &crate::resource::RunContext::unbounded(),
+                &diffctx_snapshot::resource::RunContext::unbounded(),
             );
             assert!(
                 result.filtered_fragments.is_empty(),

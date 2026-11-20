@@ -4,9 +4,9 @@ use once_cell::sync::Lazy;
 use regex::Regex;
 use rustc_hash::{FxHashMap, FxHashSet};
 
-use crate::config::edge_weights::OPENAPI_SEMANTIC;
-use crate::config::weights::EDGE_WEIGHTS;
 use diffctx_base::types::Fragment;
+use diffctx_config::config::edge_weights::OPENAPI_SEMANTIC;
+use diffctx_config::config::weights::EDGE_WEIGHTS;
 
 use super::super::EdgeDict;
 use super::super::base::{self, EdgeBuilder, discover_by_refs};

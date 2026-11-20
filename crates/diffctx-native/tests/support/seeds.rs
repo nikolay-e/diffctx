@@ -3,7 +3,7 @@
 // is a difference between two knob sets. The expected callers come from
 // reading the generated files, never from running diffctx.
 
-use _diffctx::snapshot::git_command;
+use diffctx_snapshot::snapshot::git_command;
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
 use std::path::Path;

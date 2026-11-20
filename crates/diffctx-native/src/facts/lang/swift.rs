@@ -18,7 +18,7 @@ use crate::facts::kotlin::{
 };
 use crate::facts::lang::kotlin::{Dialect, blob_of};
 use crate::facts::{BlobFacts, Extractor, Language, expired};
-use crate::snapshot::RunBudget;
+use diffctx_snapshot::snapshot::RunBudget;
 
 pub struct SwiftExtractor;
 

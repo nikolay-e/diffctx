@@ -5,7 +5,7 @@ use _diffctx::facts::config::{ConfigUse, UseOf};
 use _diffctx::facts::lang::config::ConfigExtractor;
 use _diffctx::facts::lang::helm::{HelmTemplateExtractor, HelmValuesExtractor};
 use _diffctx::facts::{BlobFacts, Def, DefKind, Extractor, Fact, Language, Scope};
-use _diffctx::snapshot::{Loss, RepoPath, RunBudget};
+use diffctx_snapshot::snapshot::{Loss, RepoPath, RunBudget};
 
 fn language_of(path: &str) -> Option<Language> {
     Language::from_path(&RepoPath::new(path).expect("a path"))

@@ -8,10 +8,10 @@ use once_cell::sync::Lazy;
 use regex::Regex;
 use rustc_hash::{FxHashMap, FxHashSet};
 
-use crate::config::edge_weights::{GO_SEMANTIC, SEMANTIC_DISCOVERY};
-use crate::config::extensions::GO_EXTENSIONS;
-use crate::config::weights::EDGE_WEIGHTS;
 use diffctx_base::types::{Fragment, FragmentId};
+use diffctx_config::config::edge_weights::{GO_SEMANTIC, SEMANTIC_DISCOVERY};
+use diffctx_config::config::extensions::GO_EXTENSIONS;
+use diffctx_config::config::weights::EDGE_WEIGHTS;
 
 use super::super::EdgeDict;
 use super::super::base::{self, EdgeBuilder, add_edge, add_edges_from_ids};
@@ -204,7 +204,9 @@ impl GoEdgeBuilder {
                     if let Some(parent) = rel.parent() {
                         if is_rep {
                             path_to_frags
-                                .entry(crate::paths::to_posix_display(parent.to_string_lossy()))
+                                .entry(diffctx_base::paths::to_posix_display(
+                                    parent.to_string_lossy(),
+                                ))
                                 .or_default()
                                 .push(f.id.clone());
                         }
@@ -315,7 +317,12 @@ impl EdgeBuilder for GoEdgeBuilder {
 
         let mut reported = 0u64;
         for (i, gf) in go_frags.iter().enumerate() {
-            if !crate::resource::poll_emissions(i, 256, edges.len() as u64, &mut reported) {
+            if !diffctx_snapshot::resource::poll_emissions(
+                i,
+                256,
+                edges.len() as u64,
+                &mut reported,
+            ) {
                 break;
             }
             let is_rep = reps.get(gf.path()) == Some(&gf.id);

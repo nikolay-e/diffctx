@@ -1,0 +1,12 @@
+# The configuration layer reads no repository: bytes come in as arguments. A justified use carries
+# `#[allow(clippy::disallowed_methods, reason = "...")]`.
+disallowed-methods = [
+    { path = "std::fs::read", reason = "repository bytes come through the snapshot reader" },
+    { path = "std::fs::read_to_string", reason = "repository bytes come through the snapshot reader" },
+    { path = "std::fs::read_dir", reason = "a repository is listed through the snapshot reader" },
+    { path = "std::fs::read_link", reason = "a repository's links are read through the snapshot reader" },
+    { path = "std::fs::metadata", reason = "a repository's files are stat'ed through the snapshot reader" },
+    { path = "std::fs::symlink_metadata", reason = "a repository's files are stat'ed through the snapshot reader" },
+    { path = "std::fs::File::open", reason = "repository bytes come through the snapshot reader" },
+    { path = "std::process::Command::new", reason = "git is started by the snapshot module alone" },
+]

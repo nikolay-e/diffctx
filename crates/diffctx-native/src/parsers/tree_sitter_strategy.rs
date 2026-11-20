@@ -7,9 +7,9 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use std::time::{Duration, Instant};
 use tree_sitter::{Language, Node, ParseOptions, Parser, Tree};
 
-use crate::config::parsers::PARSERS;
-use crate::config::tokenization::TOKENIZATION;
 use diffctx_base::types::{Fragment, FragmentId, FragmentKind, extract_identifiers};
+use diffctx_config::config::parsers::PARSERS;
+use diffctx_config::config::tokenization::TOKENIZATION;
 
 use super::{FragmentationStrategy, create_code_gap_fragments, create_snippet};
 

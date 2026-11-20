@@ -10,7 +10,7 @@ use crate::facts::config::{ConfigRef, ConfigUse, Labels, Release, Selector, Sour
 use crate::facts::ids::{ModulePath, Name, ProjectId, Span, TypeName};
 use crate::facts::language::Language;
 use crate::facts::shell::ShellPath;
-use crate::snapshot::{Loss, RepoPath, Stage};
+use diffctx_snapshot::snapshot::{Loss, RepoPath, Stage};
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Debug, Serialize, Deserialize)]
 pub enum Namespace {

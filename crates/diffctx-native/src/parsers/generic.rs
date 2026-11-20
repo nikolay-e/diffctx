@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
-use crate::config::parsers::PARSERS;
-use crate::config::tokenization::TOKENIZATION;
 use diffctx_base::types::{Fragment, FragmentId, FragmentKind, extract_identifiers};
+use diffctx_config::config::parsers::PARSERS;
+use diffctx_config::config::tokenization::TOKENIZATION;
 
 use super::FragmentationStrategy;
 

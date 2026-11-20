@@ -8,7 +8,7 @@ use std::str::Utf8Error;
 
 use tree_sitter::Node;
 
-use crate::source::Source;
+use diffctx_snapshot::source::Source;
 
 pub(super) fn is_rust(path: &str) -> bool {
     Path::new(path)

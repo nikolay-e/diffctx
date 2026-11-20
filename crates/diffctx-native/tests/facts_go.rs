@@ -9,7 +9,7 @@ use _diffctx::facts::{
     BlobFacts, Def, DefKind, EntryKind, Export, Extractor, Fact, Import, ImportKind, LocalKey,
     ModulePath, Receiver, Ref, Scope, Star, TypeName, Visibility,
 };
-use _diffctx::snapshot::{Loss, RunBudget, Stage};
+use diffctx_snapshot::snapshot::{Loss, RunBudget, Stage};
 
 fn extract(source: &str) -> BlobFacts {
     GoExtractor.extract(source.as_bytes(), &RunBudget::default())

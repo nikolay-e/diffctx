@@ -11,9 +11,9 @@ use rayon::prelude::*;
 use rustc_hash::FxHashMap;
 use serde::Serialize;
 
-use _diffctx::config::limits::DEFAULT_PPR_ALPHA;
 use _diffctx::in_memory_harness::{MemoryRepo, build_diff_context_in_memory};
-use _diffctx::mode::ScoringMode;
+use diffctx_config::config::limits::DEFAULT_PPR_ALPHA;
+use diffctx_config::mode::ScoringMode;
 
 #[path = "../tests/common/mod.rs"]
 mod common;

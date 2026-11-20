@@ -6,7 +6,7 @@ mod snapshot_fixture;
 
 use std::fmt::Write as _;
 
-use _diffctx::snapshot::{
+use diffctx_snapshot::snapshot::{
     AnalysisContext, ChangeKind, ChangeSet, Decision, RangeSpec, RunBudget, Side, SnapshotError,
     WithholdReason, commits, resolve,
 };
@@ -158,7 +158,7 @@ fn staged_and_working_tree_ranges_are_deltas_against_head() {
 
     let staged = context(
         &repo,
-        _diffctx::snapshot::staged(&repo.root).expect("staged"),
+        diffctx_snapshot::snapshot::staged(&repo.root).expect("staged"),
     );
     assert_eq!(
         changed(&staged.changes),
@@ -167,7 +167,7 @@ fn staged_and_working_tree_ranges_are_deltas_against_head() {
 
     let worktree = context(
         &repo,
-        _diffctx::snapshot::working_tree(&repo.root).expect("working tree"),
+        diffctx_snapshot::snapshot::working_tree(&repo.root).expect("working tree"),
     );
     assert_eq!(
         changed(&worktree.changes),
@@ -205,7 +205,9 @@ fn a_withheld_change_is_counted_and_its_name_stays_inside_the_crate() {
     assert_eq!(ctx.changes.withheld, 1);
     assert_eq!(
         ctx.head
-            .decision(&_diffctx::snapshot::RepoPath::new("deploy/id_ed25519").expect("path"))
+            .decision(
+                &diffctx_snapshot::snapshot::RepoPath::new("deploy/id_ed25519").expect("path")
+            )
             .expect("decision"),
         Some(Decision::Withhold(WithholdReason::Secret))
     );
@@ -286,7 +288,7 @@ fn a_change_only_gitignore_excludes_keeps_its_name_and_a_policy_one_does_not() {
     );
     assert_eq!(
         ctx.changes.gitignored,
-        [_diffctx::snapshot::RepoPath::new("a.log").expect("path")]
+        [diffctx_snapshot::snapshot::RepoPath::new("a.log").expect("path")]
     );
     assert_eq!(ctx.changes.withheld, 1);
     assert!(!format!("{:?}", ctx.changes).contains("hush.txt"));

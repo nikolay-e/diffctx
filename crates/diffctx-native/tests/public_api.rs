@@ -19,7 +19,11 @@ mod graph_reader;
 use graph_reader::{Source, budget_number, crate_file, parse, ratchet};
 
 /// `(crate, its list)`: the crate's source is `crates/<crate>/src`.
-const CRATES: &[(&str, &str)] = &[("diffctx-base", "tests/public_api_base.txt")];
+const CRATES: &[(&str, &str)] = &[
+    ("diffctx-base", "tests/public_api_base.txt"),
+    ("diffctx-config", "tests/public_api_config.txt"),
+    ("diffctx-snapshot", "tests/public_api_snapshot.txt"),
+];
 
 fn collapsed(text: &str) -> String {
     text.split_whitespace().collect::<Vec<_>>().join(" ")
@@ -49,7 +53,15 @@ fn items<'t>(node: Node<'t>, source: &Source) -> Vec<(Node<'t>, Vec<String>)> {
             "line_comment" | "block_comment" | "inner_attribute_item" => {}
             _ => {
                 let compact = |a: &String| a.split_whitespace().collect::<String>();
-                if !attributes.iter().any(|a| compact(a) == "#[cfg(test)]") {
+                let test_only = |a: &String| {
+                    matches!(
+                        compact(a).as_str(),
+                        "#[cfg(test)]"
+                            | "#[cfg(feature=\"test-support\")]"
+                            | "#[cfg(any(test,feature=\"test-support\"))]"
+                    )
+                };
+                if !attributes.iter().any(test_only) {
                     found.push((child, std::mem::take(&mut attributes)));
                 }
                 attributes.clear();

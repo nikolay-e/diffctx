@@ -11,7 +11,7 @@ use _diffctx::facts::config::{
     SourcePointer, Strength, Templating, Value, directory_of, extract, objects, read,
 };
 use _diffctx::facts::{Scope, Span, config::FieldPath};
-use _diffctx::snapshot::RunBudget;
+use diffctx_snapshot::snapshot::RunBudget;
 
 fn load(dialect: Dialect, text: &str) -> Reading {
     read(

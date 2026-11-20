@@ -55,6 +55,16 @@ languages::FILENAME_TO_LANGUAGE static Lazy<FxHashMap<&'static str, &'static str
 languages::file_ext fn (path: &Path) -> String
 languages::get_language_for_file fn (path: &str) -> Option<&'static str>
 languages::sniff_language fn (path: &str, content: &str) -> Option<&'static str>
+paths mod
+paths::contains_lexically fn (relative: &Path) -> bool
+paths::display_rel fn (root: &Path, path: &Path) -> Option<String>
+paths::display_rel_or_abs fn (root: &Path, path: &Path) -> String
+paths::index_key_of fn (path: &str, repo_root: Option<&Path>) -> String
+paths::is_lockfile_path fn (path: &Path) -> bool
+paths::join_native fn (base: &Path, rel: &str) -> String
+paths::normalize_lexical fn (path: &str) -> Option<String>
+paths::repo_join fn (base: &Path, rel: &str) -> PathBuf
+paths::to_posix_display fn (s: Cow<'_, str>) -> String
 peak_rss mod
 peak_rss::peak_rss_bytes fn () -> u64
 profile mod

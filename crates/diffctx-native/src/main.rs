@@ -13,11 +13,11 @@ use clap::{Parser, Subcommand, ValueEnum};
 use tracing_subscriber::EnvFilter;
 
 use _diffctx::artifact::Format;
-use _diffctx::config::limits::{
+use _diffctx::delivery::{Delivery, Mode, Note, Request};
+use diffctx_config::config::limits::{
     DEFAULT_PIPELINE_TIMEOUT_SECONDS, DEFAULT_PPR_ALPHA, DEFAULT_SCORING,
 };
-use _diffctx::delivery::{Delivery, Mode, Note, Request};
-use _diffctx::mode::ScoringMode;
+use diffctx_config::mode::ScoringMode;
 
 /// Mirrors the Python CLI: a closed stdout pipe ends the run as SIGPIPE would.
 const EXIT_BROKEN_PIPE: i32 = 141;
@@ -113,7 +113,7 @@ struct Cli {
     full: bool,
 
     /// Relevance scoring mode
-    #[arg(long, default_value = DEFAULT_SCORING, value_parser = _diffctx::mode::SCORING_MODE_NAMES.to_vec())]
+    #[arg(long, default_value = DEFAULT_SCORING, value_parser = diffctx_config::mode::SCORING_MODE_NAMES.to_vec())]
     scoring: String,
 
     /// Output mode: `pack` = context with source bodies; `locate` = ranked
@@ -325,7 +325,7 @@ fn main() {
         // failures (not a repo, unknown revision, no commits); anyhow's
         // default is 1, which made the two binaries disagree on the one code
         // a wrapper script keys on.
-        if let Some(git_err) = err.downcast_ref::<_diffctx::snapshot::SnapshotError>() {
+        if let Some(git_err) = err.downcast_ref::<diffctx_snapshot::snapshot::SnapshotError>() {
             eprintln!("diffctx: {err}");
             std::process::exit(if git_err.is_usage() { EXIT_USAGE } else { 3 });
         }

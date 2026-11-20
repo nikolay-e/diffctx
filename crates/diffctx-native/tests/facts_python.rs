@@ -9,7 +9,7 @@ use _diffctx::facts::{
     BlobFacts, Def, Disambig, Export, Extractor, Fact, Import, ImportKind, Language, Local,
     LocalKey, Receiver, Ref, Scope, TypeName,
 };
-use _diffctx::snapshot::{Loss, RunBudget, Stage};
+use diffctx_snapshot::snapshot::{Loss, RunBudget, Stage};
 
 fn extract(source: &str) -> BlobFacts {
     PythonExtractor.extract(source.as_bytes(), &RunBudget::default())
@@ -988,7 +988,7 @@ fn facts_come_in_source_order_and_the_same_every_time() {
 
 #[test]
 fn a_script_without_extension_reads_as_python() {
-    let bin = _diffctx::snapshot::RepoPath::new("bin/tool").expect("a path");
+    let bin = diffctx_snapshot::snapshot::RepoPath::new("bin/tool").expect("a path");
     for head in [
         "#!/usr/bin/env python3\n",
         "#!/usr/bin/python\n",

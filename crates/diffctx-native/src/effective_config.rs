@@ -15,12 +15,12 @@ use std::collections::BTreeSet;
 use schemars::JsonSchema;
 use serde::Serialize;
 
-use crate::config::filtering::FILTERING;
-use crate::config::limits::{PPR, UTILITY};
-use crate::config::needs::NEEDS;
-use crate::config::scoring::{EGO, PIT, RRF};
-use crate::mode::{ObjectiveMode, PipelineConfig, ScoringMode};
 use diffctx_base::tokenizer::{TokenCounter, TokenizerId};
+use diffctx_config::config::filtering::FILTERING;
+use diffctx_config::config::limits::{PPR, UTILITY};
+use diffctx_config::config::needs::NEEDS;
+use diffctx_config::config::scoring::{EGO, PIT, RRF};
+use diffctx_config::mode::{ObjectiveMode, PipelineConfig, ScoringMode};
 
 pub const SCHEMA: &str = "diffctx.effective_config.v1";
 
@@ -126,7 +126,7 @@ pub struct EffectiveConfigV1 {
     pub commit_signal: bool,
     /// Every cap the run is held to. A cap that binds changes the artifact,
     /// so the caps are part of the configuration and of its hash.
-    pub resources: crate::resource::ResourceBudget,
+    pub resources: diffctx_snapshot::resource::ResourceBudget,
     pub selection: SelectionParams,
     pub rescue: RescueParams,
     pub boltzmann: BoltzmannParams,
@@ -246,9 +246,9 @@ impl EffectiveConfigV1 {
     /// Reads the environment through the same accessors the phases use, so a
     /// value recorded here is the value that ran.
     pub fn resolve(config: &PipelineConfig, timeout_secs: u64) -> Self {
-        let selection = crate::config::selection::selection();
-        let rescue = crate::config::selection::rescue();
-        let boltzmann = crate::config::selection::boltzmann();
+        let selection = diffctx_config::config::selection::selection();
+        let rescue = diffctx_config::config::selection::rescue();
+        let boltzmann = diffctx_config::config::selection::boltzmann();
         let overrides: BTreeMap<String, String> = std::env::vars()
             .filter(|(name, _)| SEMANTIC_ENV.contains(&name.as_str()))
             .collect();
@@ -264,7 +264,7 @@ impl EffectiveConfigV1 {
             bm25_discovery_top_k: config.bm25_top_k,
             file_admission: crate::scoring::file_admission_enabled(),
             commit_signal: std::env::var("DIFFCTX_NO_COMMIT_SIGNAL").as_deref() != Ok("1"),
-            resources: crate::resource::ResourceBudget::resolve(timeout_secs),
+            resources: diffctx_snapshot::resource::ResourceBudget::resolve(timeout_secs),
             selection: SelectionParams {
                 core_budget_fraction: selection.core_budget_fraction,
                 r_cap_min: selection.r_cap_min,
@@ -441,9 +441,14 @@ mod tests {
     #[test]
     fn every_env_name_the_crate_reads_is_declared() {
         let re = regex::Regex::new(r#""(DIFFCTX_[A-Z0-9_]+)""#).unwrap();
-        let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src");
         let mut files = Vec::new();
-        collect(&root, &mut files);
+        for krate in
+            std::fs::read_dir(std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(".."))
+                .unwrap()
+                .flatten()
+        {
+            collect(&krate.path().join("src"), &mut files);
+        }
         let mut read: BTreeSet<String> = BTreeSet::new();
         for file in files {
             if file.ends_with("effective_config.rs") {

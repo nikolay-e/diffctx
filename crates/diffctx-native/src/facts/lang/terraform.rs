@@ -38,7 +38,7 @@ use crate::facts::{
     BlobFacts, Def, DefKind, Disambig, Extractor, Fact, Hasher, Language, Local, LocalKey,
     LocalKind, Name, Namespace, Receiver, Ref, Scope, UseKind, Visibility, expired, hash_text,
 };
-use crate::snapshot::RunBudget;
+use diffctx_snapshot::snapshot::RunBudget;
 
 const MAX_DEPTH: u16 = 256;
 const POLL_EVERY: usize = 256;

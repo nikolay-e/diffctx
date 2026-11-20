@@ -19,7 +19,7 @@ use super::{
     UnresolvedReason,
 };
 use crate::facts::{DefKey, DefKind, Fact, FactsCache, FileFacts, Language, Name, Ref, UseKind};
-use crate::snapshot::{AnalysisContext, Result, SideTag};
+use diffctx_snapshot::snapshot::{AnalysisContext, Result, SideTag};
 
 /// The bindings of one snapshot's SQL files.
 pub struct SqlResolver {

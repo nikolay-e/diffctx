@@ -30,8 +30,8 @@ mod range;
 mod reader;
 mod repo;
 mod run;
-#[cfg(test)]
-pub(crate) mod testing;
+#[cfg(any(test, feature = "test-support"))]
+pub mod testing;
 mod types;
 mod untracked;
 pub mod workspace;
@@ -68,10 +68,7 @@ pub use run::{
     commit_count, commit_message, commit_messages, hash_object_paths, run_git, run_git_or_none,
     run_git_z,
 };
-pub use types::{
-    Bytes, ContentId, Cursor, Mode, Oid, RefName, ReflogEntry, Remote, RepoPath,
-    contains_lexically, normalize_lexical,
-};
+pub use types::{Bytes, ContentId, Cursor, Mode, Oid, RefName, ReflogEntry, Remote, RepoPath};
 pub use untracked::{Untracked, untracked};
 pub use workspace::WorkspaceModel;
 

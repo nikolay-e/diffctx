@@ -26,7 +26,7 @@ use _diffctx::facts::lang::swift::SwiftExtractor;
 use _diffctx::facts::{
     BlobFacts, Disambig, Export, Extractor, Fact, LocalKey, Receiver, Ref, Scope,
 };
-use _diffctx::snapshot::RunBudget;
+use diffctx_snapshot::snapshot::RunBudget;
 
 struct Seed {
     family: &'static str,

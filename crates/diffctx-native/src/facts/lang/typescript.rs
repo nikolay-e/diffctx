@@ -23,7 +23,7 @@ use crate::facts::{
     Receiver, Ref, Scope, Span, Star, TypeName, UseKind, Visibility, expired, hash_text,
     hash_tokens,
 };
-use crate::snapshot::RunBudget;
+use diffctx_snapshot::snapshot::RunBudget;
 
 /// A blob names no path: the path of a loss is bound by whoever holds the file.
 const POLL_EVERY: u32 = 256;
