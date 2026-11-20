@@ -5,7 +5,7 @@ use std::path::Path;
 
 use diffctx_base::types::Fragment;
 
-use diffctx_facts::facts::{Import, Star, framework};
+use diffctx_facts::facts::{Import, ImportKind, ModulePath, Name, Scope, Span, Star, framework};
 
 use super::callers::calls_word;
 use super::changes::declaration_head;
@@ -146,6 +146,51 @@ pub(super) fn is_jvm_path(path: &str) -> bool {
     [".kt", ".kts", ".java", ".scala"]
         .iter()
         .any(|e| p.ends_with(e))
+}
+
+/// The imports of a Scala file, which no cell reads, in the shape the facts give
+/// a Java file: the prefix is the module, each selector a name with its alias,
+/// a wildcard a star. A text that does not parse cleanly has none.
+pub(super) fn scala_imports(text: &str) -> Vec<Import> {
+    let Some(facts) = diffctx_facts::parsers::scala::facts(text) else {
+        return Vec::new();
+    };
+    facts
+        .imports
+        .into_iter()
+        .map(|fact| {
+            let names = fact
+                .selectors
+                .iter()
+                .filter_map(|name| {
+                    let alias = fact
+                        .renamed
+                        .iter()
+                        .find(|(from, _)| from == name)
+                        .map(|(_, alias)| alias.as_str());
+                    match alias {
+                        // `C => _` hides the name.
+                        Some("_") => None,
+                        alias => Some((Name::new(name.as_str()), alias.map(Name::new))),
+                    }
+                })
+                .collect();
+            Import {
+                site: Span::default(),
+                enclosing: Scope::Module,
+                module: ModulePath::new(fact.prefix),
+                relative: 0,
+                kind: ImportKind::Static,
+                names,
+                star: if fact.wildcard {
+                    Star::Glob
+                } else {
+                    Star::None
+                },
+                default: None,
+            }
+        })
+        .collect()
 }
 
 /// What an annotation of the JVM definition says of who calls it: a framework
