@@ -1,0 +1,53 @@
+name: rs_an_impl_the_range_adds_is_no_caller_of_its_trait_outside_the_diff
+mode: impact
+source: synthetic
+issue_state: open
+tags: [rust, trait, impl, in-diff]
+repo:
+  initial_files:
+    Cargo.toml: |
+      [package]
+      name = "app"
+      version = "0.1.0"
+      edition = "2021"
+    src/lib.rs: |
+      pub mod ext;
+      pub mod types;
+    src/types.rs: |
+      pub struct Foo(pub i32);
+    src/ext.rs: |
+      use crate::types::Foo;
+
+      pub fn wrap(x: i32) -> Foo {
+          Foo(x)
+      }
+  changed_files:
+    src/ext.rs: |
+      use crate::types::Foo;
+
+      pub fn wrap(x: i32) -> Foo {
+          Foo(x)
+      }
+
+      pub trait Double {
+          fn double(&self) -> i32;
+      }
+
+      impl Double for Foo {
+          fn double(&self) -> i32 {
+              self.0 * 2
+          }
+      }
+
+      impl Double for i32 {
+          fn double(&self) -> i32 {
+              self * 2
+          }
+      }
+  commit_message: add a trait and its impls
+expect:
+  changed: ['src/ext.rs::Double', 'src/ext.rs::double']
+  callers:
+    src/ext.rs::Double: []
+  partial:
+    src/ext.rs::double: {calls: dispatched, reads: dispatched}
