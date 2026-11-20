@@ -1,0 +1,23 @@
+name: fj262_a_compact_json_list_names_the_script_spelling_its_old_word
+mode: impact
+source: fj#262
+issue_state: open
+tags: [config, json, textual, quoted]
+repo:
+  initial_files:
+    config/plugins.json: |
+      {
+        "plugins": ["auditlogger","ratelimiter"]
+      }
+    scripts/check.sh: |
+      #!/bin/sh
+      grep -q ratelimiter build/manifest.txt
+  changed_files:
+    config/plugins.json: |
+      {
+        "plugins": ["auditlogger","throttler"]
+      }
+expect:
+  exact: false
+  relations:
+    - {from: scripts/check.sh, to: config/plugins.json, kind: references_path, resolution: candidate, site: 2}

@@ -1,0 +1,19 @@
+name: fj262_a_compact_json_value_followed_by_a_key_names_its_reader
+mode: impact
+source: fj#262
+issue_state: open
+tags: [config, json, textual, quoted]
+repo:
+  initial_files:
+    config/rollout.json: |
+      {"strategy":"canary legacyflow","replicas":2}
+    bin/start.sh: |
+      #!/bin/sh
+      exec server --flow streamflow
+  changed_files:
+    config/rollout.json: |
+      {"strategy":"canary streamflow","replicas":2}
+expect:
+  exact: false
+  relations:
+    - {from: bin/start.sh, to: config/rollout.json, kind: references_path, resolution: candidate, site: 2}
