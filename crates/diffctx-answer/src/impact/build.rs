@@ -2,6 +2,7 @@
 //! unknowns.
 
 use std::path::Path;
+use std::rc::Rc;
 
 use std::time::Instant;
 
@@ -20,7 +21,7 @@ use diffctx_base::container::{innermost, named_container_of, within};
 
 use diffctx_base::types::{Fragment, FragmentId, FragmentKind};
 
-use diffctx_facts::facts::{EntryKind, framework};
+use diffctx_facts::facts::{EntryKind, Import, framework};
 
 use diffctx_facts::parsers::code_text;
 
@@ -55,7 +56,7 @@ use super::deliver::{proves_empty, relation_rank};
 use super::dispatch::{base_symbol, dispatch_route, enclosing_class, indent_of, merge_by_symbol};
 use super::entry::{
     Entered, compatible_extension, entered_by, http_handler_base, is_jvm_path, is_program_main,
-    is_pytest_fixture, jvm_entry_point, registering_decorator,
+    is_pytest_fixture, jvm_entry_point, registering_decorator, scala_imports,
 };
 use super::key_search::{key_references, read_by_collection};
 use super::output::{Caller, ChangedSymbol, Contract, ImpactOutput, UnanalysedFile, Unknown};
@@ -237,6 +238,8 @@ pub fn build_impact(
             state.run.changed_lines(),
         )
     });
+    let scala_import_memo: std::cell::RefCell<FxHashMap<String, Rc<Vec<Import>>>> =
+        std::cell::RefCell::default();
     let registration = |f: &Fragment| -> Option<String> {
         let path = rel(state, f.path());
         let stated_entry = f.symbol_name.as_deref().map(base_symbol).and_then(|name| {
@@ -258,7 +261,25 @@ pub fn build_impact(
                     (f.start_line(), f.end_line()),
                 )
             });
-            jvm_entry_point(f, &cells.imports_at(&path), stated.as_deref()).or_else(|| {
+            let imports = if Path::new(&path)
+                .extension()
+                .is_some_and(|ext| ext.eq_ignore_ascii_case("scala"))
+            {
+                scala_import_memo
+                    .borrow_mut()
+                    .entry(path.clone())
+                    .or_insert_with(|| {
+                        Rc::new(
+                            cells
+                                .head_text(state, &path)
+                                .map_or_else(Vec::new, |text| scala_imports(&text)),
+                        )
+                    })
+                    .clone()
+            } else {
+                Rc::new(cells.imports_at(&path))
+            };
+            jvm_entry_point(f, imports.as_slice(), stated.as_deref()).or_else(|| {
                 let name = f.symbol_name.as_deref().map(base_symbol)?;
                 cells
                     .of(&path)?
