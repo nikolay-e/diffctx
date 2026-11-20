@@ -1,0 +1,33 @@
+name: py_two_methods_of_one_name_in_one_file_are_two_callers
+mode: impact
+source: synthetic
+issue_state: open
+tags: [python, same-name]
+repo:
+  initial_files:
+    shop/__init__.py: ""
+    shop/util.py: |
+      def helper():
+          return 1
+    shop/models.py: |
+      from shop.util import helper
+
+
+      class A:
+          def run(self):
+              return helper()
+
+
+      class B:
+          def run(self):
+              return helper() + 1
+  changed_files:
+    shop/util.py: |
+      def helper():
+          return 2
+  commit_message: change the helper
+expect:
+  changed: ['shop/util.py::helper']
+  relations:
+  - {from: 'shop/models.py::A.run', to: 'shop/util.py::helper', kind: calls}
+  - {from: 'shop/models.py::B.run', to: 'shop/util.py::helper', kind: calls}
