@@ -496,3 +496,47 @@ class TestLandingPageDiscoverability:
             assert loc.startswith(origin + "/"), loc
             target = self.DOCS / (loc.removeprefix(origin + "/") or "index.html")
             assert target.is_file() or target.with_suffix(".md").is_file(), loc
+
+
+class TestLicenseSurfaces:
+    """Every distribution surface declares PolyForm Shield 1.0.0 and preserves
+    the required attribution and line-of-business notices."""
+
+    def test_license_file_carries_shield_terms_and_required_notices(self):
+        text = (PROJECT_ROOT / "LICENSE").read_text(encoding="utf-8")
+        assert text.startswith("# PolyForm Shield License 1.0.0\n")
+        assert "\nRequired Notice: Copyright (c) 2024-2026 Nikolay Eremeev (https://diffctx.com)\n" in text
+        assert "\nLicensor Line of Business: " in text
+
+    def test_every_package_and_doc_surface_matches_the_license(self):
+        tomllib = pytest.importorskip("tomllib" if sys.version_info >= (3, 11) else "tomli")
+        project = tomllib.loads((PROJECT_ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]
+        assert project["license"] == "LicenseRef-PolyForm-Shield-1.0.0"
+        assert project["license-files"] == ["LICENSE"]
+
+        cargo = tomllib.loads((PROJECT_ROOT / "crates/diffctx-native/Cargo.toml").read_text(encoding="utf-8"))["package"]
+        assert "license" not in cargo
+        assert cargo["license-file"] == "../../LICENSE"
+
+        assert _load("packaging/npm/package.json")["license"] == "SEE LICENSE IN LICENSE"
+        assert _load("plugin/.claude-plugin/plugin.json")["license"] == "LicenseRef-PolyForm-Shield-1.0.0"
+        assert _load("bucket/diffctx.json")["license"] == {
+            "identifier": "PolyForm-Shield-1.0.0",
+            "url": "https://polyformproject.org/licenses/shield/1.0.0",
+        }
+        cff = yaml.safe_load((PROJECT_ROOT / "CITATION.cff").read_text(encoding="utf-8"))
+        assert "license" not in cff
+        assert cff["license-url"] == "https://polyformproject.org/licenses/shield/1.0.0"
+
+        for rel in (
+            "Dockerfile",
+            "Dockerfile.eval",
+            "README.md",
+            "plugin/README.md",
+            "docs/index.html",
+            "docs/llms.txt",
+            "scripts/render_packaging.py",
+        ):
+            content = (PROJECT_ROOT / rel).read_text(encoding="utf-8")
+            assert "Apache" not in content, f"{rel} still names Apache"
+            assert "PolyForm" in content, f"{rel} does not name PolyForm"

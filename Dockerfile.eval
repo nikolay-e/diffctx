@@ -125,7 +125,7 @@ ENV PYTHONUNBUFFERED=1
 
 LABEL org.opencontainers.image.source="https://github.com/nikolay-e/diffctx"
 LABEL org.opencontainers.image.description="diffctx evaluation runtime image (repo cache mounted separately)"
-LABEL org.opencontainers.image.licenses="Apache-2.0"
+LABEL org.opencontainers.image.licenses="LicenseRef-PolyForm-Shield-1.0.0"
 
 ENTRYPOINT ["python", "-m", "eval"]
 CMD ["cb", "--help"]

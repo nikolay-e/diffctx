@@ -45,7 +45,10 @@ def render_scoop(version: str, checksums: dict[str, str]) -> str:
         "version": version,
         "description": DESCRIPTION,
         "homepage": SITE_URL,
-        "license": "Apache-2.0",
+        "license": {
+            "identifier": "PolyForm-Shield-1.0.0",
+            "url": "https://polyformproject.org/licenses/shield/1.0.0",
+        },
         "architecture": {
             arch: {
                 "url": f"{REPO_URL}/releases/download/v{version}/{asset_name(version, target)}",

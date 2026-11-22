@@ -4311,54 +4311,53 @@ fn a_local_closure_named_like_a_definition_is_no_caller() {
     assert_eq!(callers, vec!["src/c.rs"], "{doc}");
 }
 
-/// #536: a deleted function whose name survives only as a parameter, a local
-/// variable, or a word inside a multiline docstring has no remaining callers.
+/// Removing a Python function whose identifier still appears in docstrings,
+/// parameter names, or local bindings leaves zero callers for it, while a
+/// deleted sibling that is genuinely called still reports its live caller.
 #[test]
-fn a_removed_function_is_not_linked_to_a_parameter_or_docstring_word() {
-    let head_doc =
-        "\"\"\"Evaluation helpers.\n\nSplits audio into regions and scores alignment.\n\"\"\"\n";
-    let base_eval = format!(
-        "{head_doc}\ndef utterances(run_dir):\n    return [run_dir]\n\n\ndef regions(session):\n    return [session]\n\n\ndef score_wer(hyp, ref):\n    return len(hyp) - len(ref)\n\n\ndef align(reference, utterances):\n    return (reference, utterances)\n\n\ndef summarize(session):\n    regions = []\n    return regions\n\n\ndef evaluate(hyp, ref):\n    return score_wer(hyp, ref)\n"
+fn deleted_python_function_ignores_parameter_local_and_docstring_words() {
+    let doc_header =
+        "\"\"\"Billing helpers.\n\nComputes rebates and ledgerbuckets for invoices.\n\"\"\"\n";
+    let before = format!(
+        "{doc_header}\ndef rebates(account):\n    return [account]\n\n\ndef ledgerbuckets(tenant):\n    return [tenant]\n\n\ndef round_cents(subtotal, tax):\n    return subtotal + tax\n\n\ndef apply_promo(invoice, rebates):\n    return (invoice, rebates)\n\n\ndef close_period(tenant):\n    ledgerbuckets = []\n    return ledgerbuckets\n\n\ndef finalize_bill(subtotal, tax):\n    return round_cents(subtotal, tax)\n"
     );
-    let head_eval = format!(
-        "{head_doc}\ndef align(reference, utterances):\n    return (reference, utterances)\n\n\ndef summarize(session):\n    regions = []\n    return regions\n\n\ndef evaluate(hyp, ref):\n    return score_wer(hyp, ref)\n"
+    let after = format!(
+        "{doc_header}\ndef apply_promo(invoice, rebates):\n    return (invoice, rebates)\n\n\ndef close_period(tenant):\n    ledgerbuckets = []\n    return ledgerbuckets\n\n\ndef finalize_bill(subtotal, tax):\n    return round_cents(subtotal, tax)\n"
     );
     let tmp = repo(
-        &[("pkg/__init__.py", ""), ("pkg/eval.py", &base_eval)],
-        &[("pkg/eval.py", &head_eval)],
+        &[("billing/__init__.py", ""), ("billing/calc.py", &before)],
+        &[("billing/calc.py", &after)],
     );
-    let doc = impact(tmp.path(), "HEAD~1..HEAD");
-    let removed: Vec<(String, Vec<String>)> = doc["changed"]
+    let out = impact(tmp.path(), "HEAD~1..HEAD");
+    let surviving: Vec<(String, Vec<String>)> = out["changed"]
         .as_array()
         .unwrap()
         .iter()
-        .filter(|c| c["kind"] == "removed")
-        .map(|c| {
-            (
-                c["symbol"].as_str().unwrap().to_string(),
-                c["callers"]
-                    .as_array()
-                    .cloned()
-                    .unwrap_or_default()
-                    .iter()
-                    .map(|k| {
-                        format!(
-                            "{}::{}",
-                            k["path"].as_str().unwrap(),
-                            k["symbol"].as_str().unwrap_or("")
-                        )
-                    })
-                    .collect(),
-            )
+        .filter(|entry| entry["kind"] == "removed")
+        .map(|entry| {
+            let sym = entry["symbol"].as_str().unwrap().to_string();
+            let refs = entry["callers"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .map(|r| {
+                    format!(
+                        "{}::{}",
+                        r["path"].as_str().unwrap(),
+                        r["symbol"].as_str().unwrap_or("")
+                    )
+                })
+                .collect();
+            (sym, refs)
         })
         .collect();
     assert_eq!(
-        removed,
+        surviving,
         [(
-            "score_wer".to_string(),
-            vec!["pkg/eval.py::evaluate".to_string()]
+            "round_cents".to_string(),
+            vec!["billing/calc.py::finalize_bill".to_string()]
         )],
-        "{doc:#}"
+        "{out:#}"
     );
 }
 

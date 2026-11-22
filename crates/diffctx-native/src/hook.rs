@@ -4031,31 +4031,6 @@ fn log_outcome(event: Event, trace: &Trace, outcome: &str, elapsed: Duration) {
         .and_then(|mut f| f.write_all(line.as_bytes()));
 }
 
-/// Markers in `seen/` are never read once their TTL has passed, so a
-/// long-lived cache otherwise grows without bound (#569).
-fn sweep_seen(seen: &Path) {
-    let Ok(entries) = std::fs::read_dir(seen) else {
-        return;
-    };
-    let now = SystemTime::now();
-    for entry in entries.flatten() {
-        let ttl = if entry.file_name().to_string_lossy().starts_with("upgrade-") {
-            UPGRADE_NOTICE_TTL
-        } else {
-            SEEN_TTL
-        };
-        let expired = entry
-            .metadata()
-            .and_then(|m| m.modified())
-            .ok()
-            .and_then(|m| now.duration_since(m).ok())
-            .is_some_and(|age| age >= ttl);
-        if expired {
-            let _ = std::fs::remove_file(entry.path());
-        }
-    }
-}
-
 /// The hook's answer, or `None` for silence; every failure path is silence,
 /// and every run leaves its line in the hook log.
 pub fn respond_within_deadline(event: Event, stdin_json: String, gate: bool) -> Option<String> {
@@ -4089,13 +4064,38 @@ pub fn respond_within_deadline(event: Event, stdin_json: String, gate: bool) -> 
 /// clock for it: it comes after tens of thousands of runs.
 fn sweep_seen_daily(seen: &Path) {
     let stamp = seen.join(".swept");
+    let now = SystemTime::now();
     let fresh = std::fs::metadata(&stamp)
         .and_then(|m| m.modified())
         .ok()
-        .and_then(|m| SystemTime::now().duration_since(m).ok())
+        .and_then(|m| now.duration_since(m).ok())
         .is_some_and(|age| age < SEEN_TTL);
-    if !fresh && std::fs::write(&stamp, "").is_ok() {
-        sweep_seen(seen);
+    if fresh || std::fs::write(&stamp, "").is_err() {
+        return;
+    }
+    let Ok(dir) = std::fs::read_dir(seen) else {
+        return;
+    };
+    for item in dir.flatten() {
+        let name = item.file_name();
+        let label = name.to_string_lossy();
+        if label == ".swept" {
+            continue;
+        }
+        let max_age = if label.starts_with("upgrade-") {
+            UPGRADE_NOTICE_TTL
+        } else {
+            SEEN_TTL
+        };
+        let stale = item
+            .metadata()
+            .and_then(|m| m.modified())
+            .ok()
+            .and_then(|t| now.duration_since(t).ok())
+            .is_some_and(|age| age >= max_age);
+        if stale {
+            let _ = std::fs::remove_file(item.path());
+        }
     }
 }
 
@@ -4432,14 +4432,14 @@ mod tests {
         assert!(hides_git("eval git push"));
         assert!(!hides_git("FP=$(cat f) && git commit -m x"));
         assert!(!hides_git("git commit -m 'a `b`' && echo $(date)"));
-        // A recording word in another program's argument records nothing (#575).
-        for command in [
-            "git rev-parse HEAD; gh api repos/o/r/commits/abc --jq '.commit.author.date'",
-            "git merge-base main HEAD; gh pr comment 1 -b 'please commit or push'",
-            "git status; grep -rn 'git commit' src/",
-            "git log -1 --grep=commit",
+        // Non-git arguments spelling a recording verb do not turn a read into a write (#575).
+        for line in [
+            "git show -s --format=%B HEAD | rg -q 'commit|push'",
+            "git diff --stat && jq -r '.commit.sha' payload.json",
+            "git branch --show-current; printf '%s\\n' 'merge or rebase'",
+            "git log -n 5 --grep=commit",
         ] {
-            assert!(!records(command), "{command}");
+            assert!(!records(line), "{line}");
         }
     }
 

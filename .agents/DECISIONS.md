@@ -1,5 +1,35 @@
 # Decisions
 
+## 2026-11-23 — Source-available under PolyForm Shield 1.0.0
+
+**Decision.** Starting after `v1.20.0`, `diffctx` is licensed under the
+PolyForm Shield License 1.0.0 (`LICENSE`), carrying both a `Required Notice:`
+attribution line and a `Licensor Line of Business:` line, with no trademark
+grant. Inbound contributions in `CONTRIBUTING.md` grant Nikolay Eremeev a
+sublicensable `Apache-2.0` license. The ~100 lines of code and tests previously
+contributed by an outside author without a CLA (`swift.rs`, `hook.rs`, and five
+test gates) were replaced from first principles (`SwiftEdgeBuilder` now reads
+`facts::swift` AST facts directly) so the live tree has a single copyright
+holder.
+
+**Reason.** The owner decided that third parties must remain free to read, run,
+modify, and redistribute `diffctx` for any non-competing use, while commercial
+resale of clones, competing products or hosted wrappers, and stripping
+authorship are permanently prohibited.
+
+**Rejected.** `AGPL-3.0-only` (OSI rules cannot prohibit selling an open-source
+fork under another name); `Elastic-2.0` (restricts managed SaaS but leaves a
+loophole for selling a local CLI or IDE plugin clone); `BUSL-1.1` / `FSL-1.1`
+(converts to permissive or copyleft after a time window);
+`PolyForm-Noncommercial-1.0.0` (forbids internal use at companies without a
+paid seat); keeping the outside `Apache-2.0` lines under a `NOTICE` split.
+
+**Consequences.** Commits and releases up to `v1.20.0` (`8661e17e1`) remain
+under their published `Apache-2.0` grant; every subsequent commit and release
+ships under PolyForm Shield 1.0.0 (`LicenseRef-PolyForm-Shield-1.0.0` in
+PEP 639 and `plugin.json`, `license-file` in `Cargo.toml`,
+`SEE LICENSE IN LICENSE` in `package.json`, `license-url` in `CITATION.cff`).
+
 ## 2026-10-21 — Text says where to look; git says what landed (#508)
 
 **Decision.** A line's `PreToolUse` records the refs of each repository

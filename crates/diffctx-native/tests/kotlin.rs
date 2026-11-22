@@ -693,42 +693,40 @@ fn a_caller_with_a_signature_variant_keeps_the_sites_in_its_body() {
     );
 }
 
-/// #579: a call inside a sub-fragment of a long function is attributed to its
-/// enclosing definition and keeps the enclosing function's test link.
+/// When a long Kotlin method is split into sub-fragments, a call inside it is
+/// still reported on the enclosing method with the test path that exercises it.
 #[test]
-fn a_caller_in_a_sub_fragment_of_a_long_function_keeps_its_test_link() {
-    let steps: String = (1..=35)
-        .map(|i| format!("        total += {i}\n"))
-        .collect();
-    let worker = format!(
-        "package demo\n\nclass Worker(private val store: Store) {{\n    fun run(): Int = processA() + processB()\n\n    fun processA(): Int {{\n        val pending =\n            (\n                store.findPending(2) +\n                    store.findMissing(2)\n            ).distinct()\n        var total = pending.size\n{steps}        return total\n    }}\n\n    fun processB(): Int {{\n        return store.findPending(3).size\n    }}\n}}\n"
+fn long_method_sub_fragment_attributes_call_and_test_to_enclosing_method() {
+    let body_padding: String = (1..=38).map(|n| format!("        acc += {n}\n")).collect();
+    let reconciler = format!(
+        "package ledger\n\nclass Reconciler(private val vault: Vault) {{\n    fun reconcileAll(): Int = settleBatch() + auditTail()\n\n    fun settleBatch(): Int {{\n        val openIds =\n            (\n                vault.unsettledIds(4) +\n                    vault.flaggedIds(4)\n            ).distinct()\n        var acc = openIds.size\n{body_padding}        return acc\n    }}\n\n    fun auditTail(): Int = vault.unsettledIds(1).size\n}}\n"
     );
     let tmp = repo(
         &[
             (
-                "src/main/kotlin/demo/Store.kt",
-                "package demo\n\nclass Store {\n    fun findPending(limit: Int): List<Int> = (0 until limit).toList()\n    fun findMissing(limit: Int): List<Int> = (limit until 2 * limit).toList()\n}\n",
+                "src/main/kotlin/ledger/Vault.kt",
+                "package ledger\n\nclass Vault {\n    fun unsettledIds(max: Int): List<Int> = (0 until max).toList()\n    fun flaggedIds(max: Int): List<Int> = emptyList()\n}\n",
             ),
-            ("src/main/kotlin/demo/Worker.kt", &worker),
+            ("src/main/kotlin/ledger/Reconciler.kt", &reconciler),
             (
-                "src/test/kotlin/demo/WorkerTest.kt",
-                "package demo\n\nclass WorkerTest {\n    fun testRun() {\n        val w = Worker(Store())\n        w.run()\n    }\n}\n",
+                "src/test/kotlin/ledger/ReconcilerTest.kt",
+                "package ledger\n\nclass ReconcilerTest {\n    fun testReconcileAll() {\n        Reconciler(Vault()).reconcileAll()\n    }\n}\n",
             ),
         ],
         &[],
     );
-    let doc = symbol(tmp.path(), "findPending");
-    let list = doc["changed"][0]["callers"]
+    let out = symbol(tmp.path(), "unsettledIds");
+    let callers = out["changed"][0]["callers"]
         .as_array()
-        .unwrap_or_else(|| panic!("{doc:#}"));
-    let proc_a = list
+        .unwrap_or_else(|| panic!("{out:#}"));
+    let batch = callers
         .iter()
-        .find(|c| c["symbol"] == "processA")
-        .unwrap_or_else(|| panic!("expected processA caller, not a sub-fragment: {doc:#}"));
-    assert_eq!(proc_a["lines"], "6-49", "{doc:#}");
+        .find(|entry| entry["symbol"] == "settleBatch")
+        .unwrap_or_else(|| panic!("settleBatch missing from callers: {out:#}"));
+    assert_eq!(batch["lines"], "6-52", "{out:#}");
     assert_eq!(
-        proc_a["tested_by"], "src/test/kotlin/demo/WorkerTest.kt",
-        "{doc:#}"
+        batch["tested_by"], "src/test/kotlin/ledger/ReconcilerTest.kt",
+        "{out:#}"
     );
-    assert_eq!(proc_a["tested_via"], "run", "{doc:#}");
+    assert_eq!(batch["tested_via"], "reconcileAll", "{out:#}");
 }

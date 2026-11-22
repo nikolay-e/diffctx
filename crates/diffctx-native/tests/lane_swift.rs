@@ -498,3 +498,37 @@ fn a_cast_with_a_default_in_a_trailing_closure_parses() {
         .collect();
     assert!(unanalysed.is_empty(), "{doc}");
 }
+
+/// Optional-chained, singleton-chained, and implicit-`self` calls to a Swift
+/// method resolve to its owning type without pulling in same-named methods on
+/// unrelated classes.
+#[test]
+fn optional_chained_singleton_and_implicit_self_calls_resolve_on_owner() {
+    let feed_v1 = "class FeedStore {\n    static let live = FeedStore()\n\n    func pull() -> Int {\n        return 10\n    }\n\n    @objc private func refresh() -> Int {\n        return pull()\n    }\n\n    func warmUp() -> Int {\n        return self.pull() + refresh()\n    }\n}\n";
+    let tmp = repo(
+        &[
+            ("App/FeedStore.swift", feed_v1),
+            (
+                "App/TimelineScreen.swift",
+                "class TimelineScreen {\n    var optionalStore: FeedStore?\n    let ownedStore = FeedStore()\n\n    func render() -> Int {\n        let a = optionalStore?.pull() ?? 0\n        let b = ownedStore.pull()\n        return a + b + FeedStore.live.pull()\n    }\n}\n",
+            ),
+            (
+                "App/AudioQueue.swift",
+                "class AudioQueue {\n    func pull() -> Int { return 0 }\n}\n\nclass PlayerBar {\n    let queue = AudioQueue()\n    func step() -> Int { return queue.pull() }\n}\n",
+            ),
+        ],
+        &[(
+            "App/FeedStore.swift",
+            &feed_v1.replace("return 10", "return 20"),
+        )],
+    );
+    let doc = impact(tmp.path());
+    assert_eq!(
+        callers(&doc, "App/FeedStore.swift", "pull"),
+        [
+            "App/FeedStore.swift::refresh resolved",
+            "App/FeedStore.swift::warmUp resolved",
+            "App/TimelineScreen.swift::render resolved",
+        ]
+    );
+}

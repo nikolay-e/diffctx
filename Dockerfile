@@ -5,7 +5,7 @@
 FROM dhi.io/rust:1.99.1-debian13-dev@sha256:be6c6ec91c61ae15b80521052df1c7f60fefd303293563b3dbd9f57e58783809 AS builder
 
 WORKDIR /build
-COPY README.md ./
+COPY LICENSE README.md ./
 COPY Cargo.toml Cargo.lock ./
 COPY crates/diffctx-native/Cargo.toml ./crates/diffctx-native/
 COPY crates/diffctx-native/src ./crates/diffctx-native/src
@@ -39,7 +39,7 @@ ARG VERSION=0.0.0
 LABEL org.opencontainers.image.title="diffctx" \
       org.opencontainers.image.description="Selects the minimum code an LLM needs to review a git diff" \
       org.opencontainers.image.source="https://github.com/nikolay-e/diffctx" \
-      org.opencontainers.image.licenses="Apache-2.0" \
+      org.opencontainers.image.licenses="LicenseRef-PolyForm-Shield-1.0.0" \
       org.opencontainers.image.version="${VERSION}"
 
 # No passwd entry for the uid: git needs no home, and HOME points at a path nothing writes.

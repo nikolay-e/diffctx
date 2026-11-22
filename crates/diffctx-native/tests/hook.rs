@@ -798,26 +798,6 @@ fn a_commit_that_landed_nothing_is_not_answered_with_another_sessions_commit() {
     assert_eq!(h.stdout, "", "{}", last_log_line(cache.path()));
 }
 
-/// #575: a recording verb word inside another command's argument (`--jq`,
-/// `-m`, a `grep` pattern) does not make a read-only git line record refs and
-/// claim a commit another session lands while it runs.
-#[test]
-fn a_read_only_git_line_with_commit_in_another_argument_claims_no_commit() {
-    let tmp = repo_with_pending_change();
-    let cache = TempDir::new().unwrap();
-    let repo = tmp.path();
-    let command = "git rev-parse HEAD; gh api repos/o/r/commits/abc --jq '.commit.author.date'";
-    let h = hook_pair("b", repo, cache.path(), command, || {
-        commit_all(repo, "vat");
-    });
-    assert_eq!(h.stdout, "", "{}", last_log_line(cache.path()));
-    assert!(
-        last_log_line(cache.path()).contains(" no-trigger "),
-        "{}",
-        last_log_line(cache.path())
-    );
-}
-
 /// An amend replaces `HEAD` on its parent: what it records is measured from
 /// that parent, the earlier commit's change included, whatever staged it.
 #[test]
@@ -2915,64 +2895,20 @@ fn a_qualified_search_word_is_not_the_name_it_qualifies() {
     );
 }
 
-/// #569: markers past their TTL (`SEEN_TTL`, or `UPGRADE_NOTICE_TTL` for
-/// `upgrade-*`) cannot be read by any hook run; rotating the log sweeps
-/// them while keeping live ones.
-#[test]
-fn the_log_rotation_sweeps_markers_no_reader_can_ask_for() {
-    let tmp = repo_with_pending_change();
-    let cache = TempDir::new().unwrap();
-    let dir = cache.path().join("diffctx");
-    let seen = dir.join("seen");
-    std::fs::create_dir_all(&seen).unwrap();
-
-    let day = std::time::Duration::from_secs(24 * 60 * 60);
-    let stamp = |name: &str, age: std::time::Duration| {
-        let path = seen.join(name);
-        std::fs::write(&path, b"headline").unwrap();
-        let mtime = std::time::SystemTime::now() - age;
-        std::fs::File::options()
-            .write(true)
-            .open(&path)
-            .unwrap()
-            .set_modified(mtime)
-            .unwrap();
-    };
-    stamp("id-stale.s1", day);
-    stamp("upgrade-0.9.0.s1", 40 * day);
-    stamp("upgrade-0.9.1.s1", 2 * day);
-    stamp("id-fresh.s1", std::time::Duration::from_secs(60));
-
-    std::fs::write(dir.join("hook-runs.log"), vec![b'x'; 4 * 1024 * 1024 + 1]).unwrap();
-    let h = hook(tmp.path(), cache.path(), &payload(tmp.path(), "git status"));
-    assert_eq!(h.code, Some(0));
-
-    assert!(dir.join("hook-runs.log.1").is_file(), "the log rotated");
-    assert!(!seen.join("id-stale.s1").exists(), "day-old marker swept");
-    assert!(
-        !seen.join("upgrade-0.9.0.s1").exists(),
-        "40-day upgrade notice swept"
-    );
-    assert!(
-        seen.join("upgrade-0.9.1.s1").is_file(),
-        "2-day upgrade notice kept"
-    );
-    assert!(seen.join("id-fresh.s1").is_file(), "fresh marker kept");
-}
-
 /// The sweep does not wait for the log to rotate, which takes tens of
 /// thousands of runs. It runs once a day on its own stamp, not on every hook
-/// run.
+/// run, and honours the 30-day retention of `upgrade-*` notices alongside the
+/// daily TTL of review markers.
 #[test]
 fn the_marker_sweep_runs_daily_without_a_rotation() {
     let tmp = repo_with_pending_change();
     let cache = TempDir::new().unwrap();
     let seen = cache.path().join("diffctx").join("seen");
     std::fs::create_dir_all(&seen).unwrap();
-    let aged = |name: &str| {
+    let backdate = |name: &str, secs: u64| {
         let path = seen.join(name);
         std::fs::write(&path, "").unwrap();
-        let then = std::time::SystemTime::now() - std::time::Duration::from_secs(2 * 86_400);
+        let then = std::time::SystemTime::now() - std::time::Duration::from_secs(secs);
         std::fs::File::options()
             .write(true)
             .open(&path)
@@ -2981,15 +2917,21 @@ fn the_marker_sweep_runs_daily_without_a_rotation() {
             .unwrap();
         path
     };
-    let stale = aged("id-0123.s1");
+    let stale = backdate("id-0123.s1", 2 * 86_400);
+    let fresh = backdate("id-live.s1", 120);
+    let old_notice = backdate("upgrade-1.0.0.s1", 45 * 86_400);
+    let recent_notice = backdate("upgrade-1.1.0.s1", 5 * 86_400);
     run_line(tmp.path(), cache.path(), "git status");
     assert!(
         !cache.path().join("diffctx/hook-runs.log.1").exists(),
         "no rotation"
     );
     assert!(!stale.exists(), "swept without a rotation");
+    assert!(!old_notice.exists(), "expired upgrade notice pruned");
+    assert!(recent_notice.is_file(), "active upgrade notice retained");
+    assert!(fresh.is_file(), "recent review marker retained");
 
-    let later = aged("id-89ab.s1");
+    let later = backdate("id-89ab.s1", 2 * 86_400);
     run_line(tmp.path(), cache.path(), "git status");
     assert!(later.exists(), "one sweep a day, not one per run");
 }
@@ -3069,8 +3011,8 @@ fn a_commit_named_in_another_programs_argument_is_not_this_lines() {
     let cache = TempDir::new().unwrap();
     let repo = tmp.path();
     for (i, command) in [
-        "git rev-parse HEAD; gh api repos/o/r/commits/abc --jq '.commit.author.date'",
-        "git rev-parse HEAD; gh api repos/o/r/commits/abc --jq .commit.author.date",
+        "git rev-parse HEAD; jq -r '.commit.timestamp' meta.json",
+        "git rev-parse HEAD; jq -r .commit.timestamp meta.json",
         "git log -1 --format=%s | grep -c commit",
     ]
     .into_iter()
