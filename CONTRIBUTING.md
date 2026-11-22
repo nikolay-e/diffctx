@@ -58,7 +58,7 @@ Use the [bug report template](https://github.com/nikolay-e/diffctx/issues/new?te
 
 ## Licensing and Contributions
 
-`diffctx` is source-available under the [PolyForm Shield License 1.0.0](LICENSE).
+`diffctx` is source-available under the [PolyForm Shield License 1.0.0](LICENSE.md).
 No rights or licenses to the `diffctx` or `treemapper` names, logos, or
 trademarks are granted.
 
@@ -67,5 +67,5 @@ is your original work (and that you have the right to grant these terms) and
 you grant Nikolay Eremeev a perpetual, worldwide, irrevocable, royalty-free,
 non-exclusive, transferable, sublicensable copyright and patent license (under
 the terms of the Apache License 2.0) to use, modify, relicense, and distribute
-your contribution as part of `diffctx` under [LICENSE](LICENSE) or any other
-license terms.
+your contribution as part of `diffctx` under [LICENSE.md](LICENSE.md) or any
+other license terms.

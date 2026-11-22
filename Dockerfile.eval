@@ -70,7 +70,7 @@ RUN pip install --no-cache-dir --only-binary :all: "maturin==1.10.2"
 # Maturin builds the top-level package from the repo root: python source in
 # src/, Rust crate in crates/diffctx-native/ (see [tool.maturin] in pyproject.toml).
 WORKDIR /build
-COPY pyproject.toml README.md LICENSE Cargo.toml Cargo.lock ./
+COPY pyproject.toml README.md LICENSE.md Cargo.toml Cargo.lock ./
 COPY src ./src
 COPY crates/diffctx-native/Cargo.toml ./crates/diffctx-native/
 COPY crates/diffctx-native/src ./crates/diffctx-native/src

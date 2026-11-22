@@ -587,7 +587,7 @@ jobs:
         run: |
           mkdir -p out
           cp "./repo/target/${TARGET}/release/diffctx" out/
-          cp ./repo/LICENSE ./repo/README.md out/
+          cp ./repo/LICENSE.md ./repo/README.md out/
           tar -czf "diffctx-${VERSION}-${TARGET}.tar.gz" -C out .
           ls -la ./*.tar.gz
 
@@ -600,7 +600,7 @@ jobs:
         run: |
           mkdir -p out
           cp "./repo/target/${TARGET}/release/diffctx.exe" out/
-          cp ./repo/LICENSE ./repo/README.md out/
+          cp ./repo/LICENSE.md ./repo/README.md out/
           7z a "diffctx-${VERSION}-${TARGET}.zip" ./out/*
           ls -la ./*.zip
 

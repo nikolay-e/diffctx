@@ -5,7 +5,7 @@
 FROM dhi.io/rust:1.99.1-debian13-dev@sha256:be6c6ec91c61ae15b80521052df1c7f60fefd303293563b3dbd9f57e58783809 AS builder
 
 WORKDIR /build
-COPY LICENSE README.md ./
+COPY LICENSE.md README.md ./
 COPY Cargo.toml Cargo.lock ./
 COPY crates/diffctx-native/Cargo.toml ./crates/diffctx-native/
 COPY crates/diffctx-native/src ./crates/diffctx-native/src

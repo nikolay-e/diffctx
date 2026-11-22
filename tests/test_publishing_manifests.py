@@ -503,7 +503,8 @@ class TestLicenseSurfaces:
     the required attribution and line-of-business notices."""
 
     def test_license_file_carries_shield_terms_and_required_notices(self):
-        text = (PROJECT_ROOT / "LICENSE").read_text(encoding="utf-8")
+        assert not (PROJECT_ROOT / "LICENSE").exists()
+        text = (PROJECT_ROOT / "LICENSE.md").read_text(encoding="utf-8")
         assert text.startswith("# PolyForm Shield License 1.0.0\n")
         assert "\nRequired Notice: Copyright (c) 2024-2026 Nikolay Eremeev (https://diffctx.com)\n" in text
         assert "\nLicensor Line of Business: " in text
@@ -512,13 +513,19 @@ class TestLicenseSurfaces:
         tomllib = pytest.importorskip("tomllib" if sys.version_info >= (3, 11) else "tomli")
         project = tomllib.loads((PROJECT_ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]
         assert project["license"] == "LicenseRef-PolyForm-Shield-1.0.0"
-        assert project["license-files"] == ["LICENSE"]
+        assert project["license-files"] == ["LICENSE.md"]
 
         cargo = tomllib.loads((PROJECT_ROOT / "crates/diffctx-native/Cargo.toml").read_text(encoding="utf-8"))["package"]
         assert "license" not in cargo
-        assert cargo["license-file"] == "../../LICENSE"
+        assert cargo["license-file"] == "../../LICENSE.md"
 
-        assert _load("packaging/npm/package.json")["license"] == "SEE LICENSE IN LICENSE"
+        assert _load("packaging/npm/package.json")["license"] == "SEE LICENSE IN LICENSE.md"
+        assert "!LICENSE.md" in (PROJECT_ROOT / ".dockerignore").read_text(encoding="utf-8").splitlines()
+        assert "LICENSE.md" in (PROJECT_ROOT / ".markdownlintignore").read_text(encoding="utf-8").splitlines()
+        for wf in (".github/workflows/cd.yml", ".github/workflows/publish-extras.yml"):
+            wf_text = (PROJECT_ROOT / wf).read_text(encoding="utf-8")
+            assert "LICENSE.md" in wf_text, wf
+            assert "LICENSE " not in wf_text, wf
         assert _load("plugin/.claude-plugin/plugin.json")["license"] == "LicenseRef-PolyForm-Shield-1.0.0"
         assert _load("bucket/diffctx.json")["license"] == {
             "identifier": "PolyForm-Shield-1.0.0",

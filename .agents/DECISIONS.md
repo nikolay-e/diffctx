@@ -3,7 +3,7 @@
 ## 2026-11-23 — Source-available under PolyForm Shield 1.0.0
 
 **Decision.** Starting after `v1.20.0`, `diffctx` is licensed under the
-PolyForm Shield License 1.0.0 (`LICENSE`), carrying both a `Required Notice:`
+PolyForm Shield License 1.0.0 (`LICENSE.md`), carrying both a `Required Notice:`
 attribution line and a `Licensor Line of Business:` line, with no trademark
 grant. Inbound contributions in `CONTRIBUTING.md` grant Nikolay Eremeev a
 sublicensable `Apache-2.0` license. The ~100 lines of code and tests previously
@@ -28,7 +28,7 @@ paid seat); keeping the outside `Apache-2.0` lines under a `NOTICE` split.
 under their published `Apache-2.0` grant; every subsequent commit and release
 ships under PolyForm Shield 1.0.0 (`LicenseRef-PolyForm-Shield-1.0.0` in
 PEP 639 and `plugin.json`, `license-file` in `Cargo.toml`,
-`SEE LICENSE IN LICENSE` in `package.json`, `license-url` in `CITATION.cff`).
+`SEE LICENSE IN LICENSE.md` in `package.json`, `license-url` in `CITATION.cff`).
 
 ## 2026-10-21 — Text says where to look; git says what landed (#508)
 

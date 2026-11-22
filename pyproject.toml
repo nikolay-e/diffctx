@@ -32,7 +32,7 @@ keywords = [
   "yaml",
 ]
 license = "LicenseRef-PolyForm-Shield-1.0.0"
-license-files = [ "LICENSE" ]
+license-files = [ "LICENSE.md" ]
 authors = [
   { name = "Nikolay Eremeev", email = "nikolay.eremeev@outlook.com" },
 ]
@@ -120,7 +120,7 @@ manifest-path = "crates/diffctx-native/Cargo.toml"
 # The version is patched in every surface by the cd.yml release bump; that
 # step is the single list of where it lives.
 include = [
-  { path = "LICENSE", format = "sdist" },
+  { path = "LICENSE.md", format = "sdist" },
   { path = "README.md", format = "sdist" },
   { path = "CHANGELOG.md", format = "sdist" },
   { path = "Cargo.toml", format = "sdist" },

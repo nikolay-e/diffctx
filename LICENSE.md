@@ -91,4 +91,5 @@ A **product** can be a good or service, or a combination of them.
 ---
 
 Required Notice: Copyright (c) 2024-2026 Nikolay Eremeev (https://diffctx.com)
+
 Licensor Line of Business: Developer tools, code-context selection, static impact analysis, MCP servers, and coding-agent plugins and integrations (https://diffctx.com)

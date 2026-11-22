@@ -51,4 +51,6 @@ calls, no telemetry, no API keys, no model calls. When asked to, it can copy
 its output to the local clipboard. [Privacy](https://diffctx.com/product/privacy.html).
 
 Source, benchmarks and the paper: <https://github.com/nikolay-e/diffctx> ·
-<https://diffctx.com>. Licensed under the PolyForm Shield License 1.0.0.
+<https://diffctx.com>. Licensed under the [PolyForm Shield License 1.0.0][license].
+
+[license]: https://github.com/nikolay-e/diffctx/blob/main/LICENSE.md

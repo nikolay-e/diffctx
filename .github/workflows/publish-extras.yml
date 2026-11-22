@@ -160,7 +160,7 @@ jobs:
           data["version"] = os.environ["VERSION"]
           path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
           PY
-          cp README.md LICENSE packaging/npm/
+          cp README.md LICENSE.md packaging/npm/
 
       - name: Set up Node
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1  # v7.1.0

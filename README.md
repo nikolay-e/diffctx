@@ -5,6 +5,7 @@
 [![crates.io](https://img.shields.io/crates/v/diffctx)](https://crates.io/crates/diffctx)
 [![npm](https://img.shields.io/npm/v/diffctx)](https://www.npmjs.com/package/diffctx)
 [![MCP Registry](https://img.shields.io/badge/MCP_Registry-io.github.nikolay--e%2Fdiffctx-blue)](https://registry.modelcontextprotocol.io/v0/servers?search=io.github.nikolay-e/diffctx)
+[![License: PolyForm Shield 1.0.0][license-badge]][license]
 
 **diffctx tells an agent or a reviewer what a change reaches outside its
 diff** — the callers, the tests that reach them, the contracts it crosses —
@@ -105,10 +106,13 @@ the other two fit better: [COMPARISON.md](COMPARISON.md).
 - [Changelog](CHANGELOG.md) · [Security](SECURITY.md)
 - [Parameter strategy](docs/engineering/parameter-strategy.md)
 
-[PolyForm Shield 1.0.0](LICENSE) — free to use, modify, and redistribute for
+[PolyForm Shield 1.0.0][license] — free to use, modify, and redistribute for
 any non-competing purpose; selling clones, offering competing products or
 services, and removing attribution are prohibited. No trademark rights in
 `diffctx` or `treemapper` are granted.
+
+[license]: https://github.com/nikolay-e/diffctx/blob/main/LICENSE.md
+[license-badge]: https://img.shields.io/badge/license-PolyForm_Shield_1.0.0-blue
 
 <!-- mcp-name: io.github.nikolay-e/diffctx -->
 <!-- Ownership marker read from the PyPI description by the MCP registry. -->
