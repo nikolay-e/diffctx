@@ -1,8 +1,10 @@
 mod config_parser;
+mod def_kinds;
 pub mod embedded;
 mod generic;
 pub mod keyword_calls;
 mod markdown;
+pub(crate) mod python_decls;
 pub mod rust_tests;
 pub mod scala;
 mod tree_sitter_strategy;
