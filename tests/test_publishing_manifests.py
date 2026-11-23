@@ -527,9 +527,13 @@ class TestLicenseSurfaces:
         assert project["license"] == "LicenseRef-PolyForm-Shield-1.0.0"
         assert project["license-files"] == ["LICENSE.md"]
 
-        cargo = tomllib.loads((PROJECT_ROOT / "crates/diffctx-native/Cargo.toml").read_text(encoding="utf-8"))["package"]
-        assert "license" not in cargo
-        assert cargo["license-file"] == "../../LICENSE.md"
+        ws_cargo = tomllib.loads((PROJECT_ROOT / "Cargo.toml").read_text(encoding="utf-8"))["workspace"]["package"]
+        assert "license" not in ws_cargo
+        assert ws_cargo["license-file"] == "LICENSE.md"
+        for crate_toml in sorted((PROJECT_ROOT / "crates").glob("*/Cargo.toml")):
+            pkg = tomllib.loads(crate_toml.read_text(encoding="utf-8"))["package"]
+            assert "license" not in pkg, crate_toml
+            assert pkg["license-file"] == {"workspace": True}, crate_toml
 
         assert _load("packaging/npm/package.json")["license"] == "SEE LICENSE IN LICENSE.md"
         assert "!LICENSE.md" in (PROJECT_ROOT / ".dockerignore").read_text(encoding="utf-8").splitlines()

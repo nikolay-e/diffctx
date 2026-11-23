@@ -1,8 +1,9 @@
-# `cargo deny check` (ci.yml) over the whole workspace. The licenses are the free ones the tree
-# carries today (every dual-licensed crate has one of them as an alternative); a crate under any
-# other terms fails until the owner's word, with the issue naming why and its replacement
-# (AGENTS.md: free software). What a layer may not depend on is that layer's own deny.toml
-# (crates/diffctx-base/deny.toml).
+# `cargo deny check` (ci.yml) over the whole workspace. Third-party dependencies stay on the free
+# SPDX licenses below (every dual-licensed crate has one of them as an alternative); a dependency
+# under any other terms fails until the owner's word, with the issue naming why and its replacement
+# (AGENTS.md: free software). Our own workspace crates carry PolyForm Shield 1.0.0 in LICENSE.md
+# and get crate-scoped clarifications and exceptions so no outside crate can ride that allowance.
+# What a layer may not depend on is that layer's own deny.toml (crates/diffctx-base/deny.toml).
 
 [licenses]
 allow = [
@@ -15,6 +16,96 @@ allow = [
     "Unlicense",
     "Zlib",
 ]
+
+[[licenses.clarify]]
+crate = "diffctx"
+expression = "LicenseRef-PolyForm-Shield-1.0.0"
+license-files = [{ path = "../../LICENSE.md", hash = 0xe190e5e3 }]
+
+[[licenses.clarify]]
+crate = "diffctx-answer"
+expression = "LicenseRef-PolyForm-Shield-1.0.0"
+license-files = [{ path = "../../LICENSE.md", hash = 0xe190e5e3 }]
+
+[[licenses.clarify]]
+crate = "diffctx-base"
+expression = "LicenseRef-PolyForm-Shield-1.0.0"
+license-files = [{ path = "../../LICENSE.md", hash = 0xe190e5e3 }]
+
+[[licenses.clarify]]
+crate = "diffctx-config"
+expression = "LicenseRef-PolyForm-Shield-1.0.0"
+license-files = [{ path = "../../LICENSE.md", hash = 0xe190e5e3 }]
+
+[[licenses.clarify]]
+crate = "diffctx-facts"
+expression = "LicenseRef-PolyForm-Shield-1.0.0"
+license-files = [{ path = "../../LICENSE.md", hash = 0xe190e5e3 }]
+
+[[licenses.clarify]]
+crate = "diffctx-graph"
+expression = "LicenseRef-PolyForm-Shield-1.0.0"
+license-files = [{ path = "../../LICENSE.md", hash = 0xe190e5e3 }]
+
+[[licenses.clarify]]
+crate = "diffctx-occurrence"
+expression = "LicenseRef-PolyForm-Shield-1.0.0"
+license-files = [{ path = "../../LICENSE.md", hash = 0xe190e5e3 }]
+
+[[licenses.clarify]]
+crate = "diffctx-resolve"
+expression = "LicenseRef-PolyForm-Shield-1.0.0"
+license-files = [{ path = "../../LICENSE.md", hash = 0xe190e5e3 }]
+
+[[licenses.clarify]]
+crate = "diffctx-select"
+expression = "LicenseRef-PolyForm-Shield-1.0.0"
+license-files = [{ path = "../../LICENSE.md", hash = 0xe190e5e3 }]
+
+[[licenses.clarify]]
+crate = "diffctx-snapshot"
+expression = "LicenseRef-PolyForm-Shield-1.0.0"
+license-files = [{ path = "../../LICENSE.md", hash = 0xe190e5e3 }]
+
+[[licenses.exceptions]]
+crate = "diffctx"
+allow = ["LicenseRef-PolyForm-Shield-1.0.0"]
+
+[[licenses.exceptions]]
+crate = "diffctx-answer"
+allow = ["LicenseRef-PolyForm-Shield-1.0.0"]
+
+[[licenses.exceptions]]
+crate = "diffctx-base"
+allow = ["LicenseRef-PolyForm-Shield-1.0.0"]
+
+[[licenses.exceptions]]
+crate = "diffctx-config"
+allow = ["LicenseRef-PolyForm-Shield-1.0.0"]
+
+[[licenses.exceptions]]
+crate = "diffctx-facts"
+allow = ["LicenseRef-PolyForm-Shield-1.0.0"]
+
+[[licenses.exceptions]]
+crate = "diffctx-graph"
+allow = ["LicenseRef-PolyForm-Shield-1.0.0"]
+
+[[licenses.exceptions]]
+crate = "diffctx-occurrence"
+allow = ["LicenseRef-PolyForm-Shield-1.0.0"]
+
+[[licenses.exceptions]]
+crate = "diffctx-resolve"
+allow = ["LicenseRef-PolyForm-Shield-1.0.0"]
+
+[[licenses.exceptions]]
+crate = "diffctx-select"
+allow = ["LicenseRef-PolyForm-Shield-1.0.0"]
+
+[[licenses.exceptions]]
+crate = "diffctx-snapshot"
+allow = ["LicenseRef-PolyForm-Shield-1.0.0"]
 
 [sources]
 unknown-registry = "deny"

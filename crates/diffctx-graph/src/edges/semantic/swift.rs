@@ -4,9 +4,13 @@ use once_cell::sync::Lazy;
 use regex::Regex;
 use rustc_hash::{FxHashMap, FxHashSet};
 
-use crate::facts::kotlin::{KotlinFacts, UseKind};
 use diffctx_base::types::{Fragment, FragmentId};
 use diffctx_config::config::weights::EDGE_WEIGHTS;
+use diffctx_facts::facts::lang::swift::SwiftExtractor;
+use diffctx_facts::facts::{
+    BlobFacts, Def, DefKind, Disambig, Extractor, Fact, Namespace, UseKind,
+};
+use diffctx_snapshot::snapshot::{Loss, RunBudget};
 
 use super::super::EdgeDict;
 use super::super::base::{self, EdgeBuilder, add_edges_from_ids, discover_by_refs};
@@ -23,13 +27,12 @@ fn extract_imports(content: &str) -> FxHashSet<String> {
     base::captures1(&IMPORT_RE, content).collect()
 }
 
-fn reconstruct_file<'a>(frags: &[&'a Fragment]) -> String {
-    let max_line = frags.iter().map(|f| f.end_line()).max().unwrap_or(0) as usize;
-    let mut lines = vec![""; max_line];
+fn reconstruct_file(frags: &[&Fragment]) -> String {
+    let mut lines = vec![""; frags.iter().map(|f| f.end_line()).max().unwrap_or(0) as usize];
     for f in frags {
-        let base_idx = f.start_line().saturating_sub(1) as usize;
-        for (offset, line) in f.content.lines().enumerate() {
-            if let Some(slot) = lines.get_mut(base_idx + offset) {
+        let start = f.start_line().saturating_sub(1) as usize;
+        for (i, line) in f.content.lines().enumerate() {
+            if let Some(slot) = lines.get_mut(start + i) {
                 *slot = line;
             }
         }
@@ -37,26 +40,84 @@ fn reconstruct_file<'a>(frags: &[&'a Fragment]) -> String {
     lines.join("\n")
 }
 
-fn covering<'a>(frags: &[&'a Fragment], line: u32) -> Vec<&'a Fragment> {
-    frags
+fn at_line<'a>(frags: &[&'a Fragment], line: u32, tight: bool) -> Vec<&'a Fragment> {
+    let hits: Vec<_> = frags
         .iter()
         .copied()
-        .filter(|f| line >= f.start_line() && line <= f.end_line())
+        .filter(|f| (f.start_line()..=f.end_line()).contains(&line))
+        .collect();
+    if !tight {
+        return hits;
+    }
+    let Some(min_w) = hits.iter().map(|f| f.end_line() - f.start_line()).min() else {
+        return hits;
+    };
+    hits.into_iter()
+        .filter(|f| f.end_line() - f.start_line() == min_w)
         .collect()
 }
 
-fn narrowest_covering<'a>(frags: &[&'a Fragment], line: u32) -> Vec<&'a Fragment> {
-    let hits = covering(frags, line);
-    let Some(min_span) = hits
-        .iter()
-        .map(|f| f.end_line().saturating_sub(f.start_line()))
-        .min()
-    else {
-        return Vec::new();
-    };
-    hits.into_iter()
-        .filter(|f| f.end_line().saturating_sub(f.start_line()) == min_span)
-        .collect()
+fn is_ext(d: &Def) -> bool {
+    matches!(d.local.disambig, Some(Disambig::ImplOf(_))) && d.local.container.is_empty()
+}
+
+#[derive(Default)]
+struct SwiftIndex<'a> {
+    blobs: FxHashMap<&'a str, BlobFacts>,
+    defs: FxHashMap<String, Vec<FragmentId>>,
+    types: FxHashMap<&'a str, FxHashSet<String>>,
+    used: FxHashMap<&'a str, FxHashSet<String>>,
+    own: FxHashMap<FragmentId, FxHashSet<String>>,
+}
+
+impl<'a> SwiftIndex<'a> {
+    fn add(&mut self, path: &'a str, fset: &[&Fragment], budget: &RunBudget) {
+        let blob = SwiftExtractor.extract(reconstruct_file(fset).as_bytes(), budget);
+        if blob
+            .losses
+            .iter()
+            .any(|l| matches!(l, Loss::Unsupported { .. }))
+        {
+            return;
+        }
+        for fact in &blob.facts {
+            if let Fact::Definition(d) = fact {
+                let name = d.local.name.as_str();
+                if is_ext(d) {
+                    self.types.entry(path).or_default().insert(name.to_string());
+                    continue;
+                }
+                let is_t = d.local.ns == Namespace::Type;
+                if !is_t && !matches!(d.kind, DefKind::Function | DefKind::Method) {
+                    continue;
+                }
+                if is_t {
+                    self.types.entry(path).or_default().insert(name.to_string());
+                }
+                let list = self.defs.entry(name.to_ascii_lowercase()).or_default();
+                for f in at_line(fset, d.span.lines.0, !is_t) {
+                    self.own
+                        .entry(f.id.clone())
+                        .or_default()
+                        .insert(name.to_string());
+                    if !list.contains(&f.id) {
+                        list.push(f.id.clone());
+                    }
+                }
+            } else if let Fact::Reference(r) = fact
+                && (matches!(
+                    r.use_kind,
+                    UseKind::TypeUse | UseKind::Override | UseKind::Instantiate
+                ) || r.name.as_str().starts_with(char::is_uppercase))
+            {
+                self.used
+                    .entry(path)
+                    .or_default()
+                    .insert(r.name.as_str().to_string());
+            }
+        }
+        self.blobs.insert(path, blob);
+    }
 }
 
 pub(crate) struct SwiftEdgeBuilder;
@@ -67,170 +128,109 @@ impl EdgeBuilder for SwiftEdgeBuilder {
         else {
             return FxHashMap::default();
         };
-
-        let import_w = EDGE_WEIGHTS["swift_import"].forward;
-        let conform_w = EDGE_WEIGHTS["swift_conformance"].forward;
-        let ext_w = EDGE_WEIGHTS["swift_extension"].forward;
-        let type_w = EDGE_WEIGHTS["swift_type"].forward;
-        let reverse_factor = EDGE_WEIGHTS["swift_import"].reverse_factor;
-
+        let (import_w, rev) = (
+            EDGE_WEIGHTS["swift_import"].forward,
+            EDGE_WEIGHTS["swift_import"].reverse_factor,
+        );
+        let (conform_w, ext_w, type_w) = (
+            EDGE_WEIGHTS["swift_conformance"].forward,
+            EDGE_WEIGHTS["swift_extension"].forward,
+            EDGE_WEIGHTS["swift_type"].forward,
+        );
         let idx = base::FragmentIndex::new(fragments, repo_root);
+        let budget = RunBudget::default();
         let mut by_path: FxHashMap<&str, Vec<&Fragment>> = FxHashMap::default();
         for f in &frags {
             by_path.entry(f.path()).or_default().push(*f);
         }
-
-        let mut parsed: FxHashMap<&str, KotlinFacts> = FxHashMap::default();
-        let mut defs_by_name: FxHashMap<String, Vec<FragmentId>> = FxHashMap::default();
-        let mut file_types: FxHashMap<&str, FxHashSet<String>> = FxHashMap::default();
-        let mut file_type_uses: FxHashMap<&str, FxHashSet<String>> = FxHashMap::default();
-        let mut frag_own_defs: FxHashMap<FragmentId, FxHashSet<String>> = FxHashMap::default();
-
-        for (&path, file_frags) in &by_path {
-            let source = reconstruct_file(file_frags);
-            let Some(facts) = crate::facts::swift::facts(&source) else {
-                continue;
-            };
-            for decl in &facts.declarations {
-                if decl.kind == "extension" {
-                    file_types
-                        .entry(path)
-                        .or_default()
-                        .insert(decl.name.clone());
-                    continue;
-                }
-                let owners = if decl.is_type() {
-                    file_types
-                        .entry(path)
-                        .or_default()
-                        .insert(decl.name.clone());
-                    covering(file_frags, decl.start_line)
-                } else if decl.kind == "fun" {
-                    narrowest_covering(file_frags, decl.start_line)
-                } else {
-                    continue;
-                };
-                let key = decl.name.to_ascii_lowercase();
-                for f in owners {
-                    frag_own_defs
-                        .entry(f.id.clone())
-                        .or_default()
-                        .insert(decl.name.clone());
-                    let bucket = defs_by_name.entry(key.clone()).or_default();
-                    if !bucket.contains(&f.id) {
-                        bucket.push(f.id.clone());
-                    }
-                }
-            }
-            for u in &facts.uses {
-                if u.kind == UseKind::TypeUse
-                    || u.name.chars().next().is_some_and(char::is_uppercase)
-                {
-                    file_type_uses
-                        .entry(path)
-                        .or_default()
-                        .insert(u.name.clone());
-                }
-            }
-            parsed.insert(path, facts);
+        let mut sx = SwiftIndex::default();
+        for (&path, fset) in &by_path {
+            sx.add(path, fset, &budget);
         }
-
         let mut edges: EdgeDict = FxHashMap::default();
-
-        for (&path, file_frags) in &by_path {
-            let Some(facts) = parsed.get(path) else {
-                for f in file_frags {
+        for (&path, fset) in &by_path {
+            let Some(blob) = sx.blobs.get(path) else {
+                for f in fset {
                     for imp in extract_imports(&f.content) {
-                        base::link_by_name(&f.id, &imp, &idx, &mut edges, import_w, reverse_factor);
+                        base::link_by_name(&f.id, &imp, &idx, &mut edges, import_w, rev);
                     }
                 }
                 continue;
             };
-
-            for imp in &facts.imports {
-                for f in covering(file_frags, imp.line) {
-                    base::link_by_name(
-                        &f.id,
-                        &imp.path,
-                        &idx,
-                        &mut edges,
-                        import_w,
-                        reverse_factor,
-                    );
-                }
-            }
-
-            let super_map: FxHashMap<&str, &[String]> = facts
-                .supertypes
-                .iter()
-                .map(|(n, s)| (n.as_str(), s.as_slice()))
-                .collect();
-
-            for decl in &facts.declarations {
-                if decl.kind == "extension" {
-                    if let Some(targets) = defs_by_name.get(&decl.name.to_ascii_lowercase()) {
-                        for f in covering(file_frags, decl.start_line) {
-                            add_edges_from_ids(&mut edges, &f.id, targets, ext_w, reverse_factor);
+            let used = sx.used.get(path);
+            for fact in &blob.facts {
+                match fact {
+                    Fact::Import(imp) => {
+                        for f in at_line(fset, imp.site.lines.0, false) {
+                            base::link_by_name(
+                                &f.id,
+                                imp.module.as_str(),
+                                &idx,
+                                &mut edges,
+                                import_w,
+                                rev,
+                            );
                         }
                     }
-                }
-                if let Some(supers) = super_map.get(decl.name.as_str()) {
-                    for sup in *supers {
-                        if let Some(targets) = defs_by_name.get(&sup.to_ascii_lowercase()) {
-                            for f in covering(file_frags, decl.start_line) {
-                                add_edges_from_ids(
-                                    &mut edges,
-                                    &f.id,
-                                    targets,
-                                    conform_w,
-                                    reverse_factor,
-                                );
+                    Fact::Definition(d) if is_ext(d) => {
+                        if let Some(t) = sx.defs.get(&d.local.name.as_str().to_ascii_lowercase()) {
+                            for f in at_line(fset, d.span.lines.0, false) {
+                                add_edges_from_ids(&mut edges, &f.id, t, ext_w, rev);
                             }
                         }
                     }
-                }
-            }
-
-            let mentioned_types = file_type_uses.get(path);
-            for u in &facts.uses {
-                if !matches!(u.kind, UseKind::TypeUse | UseKind::Call) {
-                    continue;
-                }
-                let Some(targets) = defs_by_name.get(&u.name.to_ascii_lowercase()) else {
-                    continue;
-                };
-                for f in narrowest_covering(file_frags, u.line) {
-                    if frag_own_defs
-                        .get(&f.id)
-                        .is_some_and(|own| own.contains(&u.name))
+                    Fact::Reference(r)
+                        if matches!(
+                            r.use_kind,
+                            UseKind::TypeUse
+                                | UseKind::Override
+                                | UseKind::Call
+                                | UseKind::Instantiate
+                        ) =>
                     {
-                        continue;
-                    }
-                    if u.kind == UseKind::TypeUse {
-                        add_edges_from_ids(&mut edges, &f.id, targets, type_w, reverse_factor);
-                    } else {
-                        let scoped: Vec<FragmentId> = targets
-                            .iter()
-                            .filter(|t| {
-                                t.path.as_ref() == path
-                                    || file_types.get(t.path.as_ref()).is_some_and(|declared| {
-                                        mentioned_types
-                                            .is_some_and(|used| !declared.is_disjoint(used))
-                                    })
-                            })
-                            .cloned()
-                            .collect();
-                        let chosen = if scoped.is_empty() {
-                            targets.as_slice()
-                        } else {
-                            scoped.as_slice()
+                        let Some(t) = sx.defs.get(&r.name.as_str().to_ascii_lowercase()) else {
+                            continue;
                         };
-                        add_edges_from_ids(&mut edges, &f.id, chosen, type_w, reverse_factor);
+                        let (w, direct) = (
+                            if r.use_kind == UseKind::Override {
+                                conform_w
+                            } else {
+                                type_w
+                            },
+                            matches!(r.use_kind, UseKind::TypeUse | UseKind::Override),
+                        );
+                        let scoped: Vec<_> = if direct {
+                            Vec::new()
+                        } else {
+                            t.iter()
+                                .filter(|id| {
+                                    id.path.as_ref() == path
+                                        || sx.types.get(id.path.as_ref()).is_some_and(|dt| {
+                                            used.is_some_and(|u| !dt.is_disjoint(u))
+                                        })
+                                })
+                                .cloned()
+                                .collect()
+                        };
+                        let chosen = if direct || scoped.is_empty() {
+                            t.as_slice()
+                        } else {
+                            &scoped
+                        };
+                        for f in at_line(fset, r.site.lines.0, true) {
+                            if !sx
+                                .own
+                                .get(&f.id)
+                                .is_some_and(|o| o.contains(r.name.as_str()))
+                            {
+                                add_edges_from_ids(&mut edges, &f.id, chosen, w, rev);
+                            }
+                        }
                     }
+                    _ => {}
                 }
             }
         }
-
         edges
     }
 

@@ -70,9 +70,9 @@ jobs:
         run: echo "ORACLE_CACHE=${RUNNER_TEMP}/oracle-cache" >> "$GITHUB_ENV"
 
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
         with:
-          toolchain: "1.99.1"
+          toolchain: "1.100.0"
 
       - name: Cache Cargo
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
