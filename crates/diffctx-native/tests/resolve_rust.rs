@@ -678,18 +678,6 @@ fn cases_root() -> PathBuf {
 /// does a red case that is not listed.
 const RED: &[(&str, &str)] = &[
     (
-        "impact/rust/gh747_macro_body_in_another_file_calls_the_changed_method",
-        "the macro body's `self.lookup(..)` is no use of the definition: the body is never read",
-    ),
-    (
-        "impact/rust/rust_macro_body_expanded_in_two_impls_calls_each_impls_own_method",
-        "the macro body's `self.type_ent(..)` is no use of the definition: the body is never read",
-    ),
-    (
-        "impact/rust/rust_untyped_closure_parameter_takes_the_element_type_of_its_iterator",
-        "a closure parameter or loop variable without a stated type is a local of unknown type, so its call is a candidate by the method name",
-    ),
-    (
         "impact/rust/rust_removed_field_read_in_the_middle_of_a_chain_is_not_absent",
         "the candidate is the removal side's: a read through a receiver nothing types is `UntypedRead` for the resolver, and decide() names the surviving read of a removed member's name as a possible use; no binding states it",
     ),

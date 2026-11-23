@@ -117,10 +117,6 @@ synthetic/balanced/suite-4/cross-module/bal4_crossmod_013_java_service_calls_rep
 
 # Other languages, triaged.
 impact/rust/rust_constant_read_by_its_own_files_function  # gh#503 regression
-impact/rust/gh747_macro_body_in_another_file_calls_the_changed_method  # gh#747: the macro body's `self.lookup(..)` is an unlanded use, not a resolved call of the `impl` that expands the macro
-impact/rust/rust_macro_body_expanded_in_two_impls_calls_each_impls_own_method  # the macro body's `self.type_ent(..)` is an unlanded use, not a call of each expanding impl's own method
-impact/rust/rust_macro_body_expanded_in_one_type_is_no_call_of_its_namesake  # the macro body's `self.lookup(..)` is an unlanded use that stands against the namesake `Cache::lookup` no impl expands it in
-impact/rust/rust_untyped_closure_parameter_takes_the_element_type_of_its_iterator  # a closure parameter or loop variable over a typed slice, Vec or Option is a candidate by the name alone, not its element type's method
 impact/other/csharp_record_method_has_a_caller  # gh#424 open
 impact/other/scala_same_file_caller_of_a_changed_method  # gh#604 open
 symbol/other/erlang_symbol_module_qualified_call_is_a_caller  # gh#616 open
