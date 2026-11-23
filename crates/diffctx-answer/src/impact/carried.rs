@@ -6,7 +6,6 @@ use std::ops::Range;
 
 use once_cell::sync::Lazy;
 use regex::Regex;
-use rustc_hash::FxHashMap;
 
 use super::ScoredState;
 use super::keys::{called, word_char};
@@ -14,7 +13,12 @@ use crate::decide::cells::Cells;
 
 /// The lines that hand code to an interpreter: the flag as an argument of its own
 /// (`"-c"`), or `python -c` spelled inside a shell string.
-const CARRIER_LINES: &str = r#"["'](-c|-e|-r|-p|--eval|--command)["']|(python[0-9.]*|nodejs|node|ruby|perl|php)[[:space:]]+(-[cer]|--eval)[[:space:]]"#;
+static CARRIER_LINES: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(
+        r#"["'](-c|-e|-r|-p|--eval|--command)["']|(python[0-9.]*|nodejs|node|ruby|perl|php)[[:space:]]+(-[cer]|--eval)[[:space:]]"#,
+    )
+    .expect("a constant pattern is valid")
+});
 
 /// `python -c ` in a string: what follows is the code.
 static SPELLED: Lazy<Regex> = Lazy::new(|| {
@@ -143,37 +147,53 @@ fn mentions(code: &str, name: &str) -> bool {
 
 /// The files that hand a string to an interpreter and name one of `names` in it,
 /// as `(name, path, line)`: the string is another language's code, which no
-/// reader here parses, so what it names is only ever a candidate.
+/// reader here parses, so what it names is only ever a candidate. A file that
+/// names none of them in any line carries none of their code, so the candidates
+/// are the files the run's shared search of the names already found, and the
+/// carrying lines are read off their text.
 pub(super) fn names_in_carried_code(
     state: &ScoredState,
     cells: &Cells,
     head: Option<&str>,
     names: &[&str],
 ) -> Vec<(String, String, u32)> {
-    let grepped = super::removed::read_or_note(
+    if names.is_empty() {
+        return Vec::new();
+    }
+    let needles: Vec<String> = names.iter().map(|name| (*name).to_string()).collect();
+    let namers = super::removed::read_or_note(
         state,
-        diffctx_snapshot::grep::grep_lines_matching(
-            &state.root_dir,
-            &state.run.source(),
-            CARRIER_LINES,
-            head,
-            &[],
-        ),
+        diffctx_snapshot::grep::grep_lines(&state.root_dir, &state.run.source(), &needles, head),
     );
-    state.run.note_withheld(grepped.withheld);
-    let mut files: FxHashMap<&str, Option<Strings>> = FxHashMap::default();
+    let mut candidates: Vec<&str> = namers.rows.iter().map(|(path, ..)| path.as_str()).collect();
+    candidates.sort_unstable();
+    candidates.dedup();
     let mut found = Vec::new();
-    for (path, line, text) in state.run.bounded(&grepped.rows) {
-        if super::callers::is_document(path) || super::mentions::commented_in(path, text) {
+    for path in state.run.bounded(candidates) {
+        if super::callers::is_document(path) {
             continue;
         }
-        let strings = files
-            .entry(path.as_str())
-            .or_insert_with(|| Strings::of(state, cells, path));
-        let Some(strings) = strings else { continue };
-        for code in strings.code_at(*line) {
-            for name in names.iter().filter(|name| mentions(&code, name)) {
-                found.push(((*name).to_string(), path.clone(), *line));
+        let Some(text) = cells.head_text(state, path) else {
+            continue;
+        };
+        let carrying: Vec<(u32, &str)> = (1..)
+            .zip(text.lines())
+            .filter(|(_, line)| CARRIER_LINES.is_match(line))
+            .collect();
+        if carrying.is_empty() {
+            continue;
+        }
+        let Some(strings) = Strings::of(state, cells, path) else {
+            continue;
+        };
+        for (line, text) in carrying {
+            if super::mentions::commented_in(path, text) {
+                continue;
+            }
+            for code in strings.code_at(line) {
+                for name in names.iter().filter(|name| mentions(&code, name)) {
+                    found.push(((*name).to_string(), path.to_string(), line));
+                }
             }
         }
     }
