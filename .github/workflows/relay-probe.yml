@@ -1,0 +1,549 @@
+# Checks of a chain of commits proposed into relay/arch, run by a draft PR from a ci/* branch whose last commit
+# carries this file. ci.yml gates the chain's head on every platform; this adds what it does not run:
+#   step     - per commit: structure suites, budget, release clippy, bitcheck against the base, instructions
+#   corpus   - every YAML corpus answer of the base and of the head, compared byte for byte; the head's impact and
+#              symbol cases also against the 1.20.0 binary, which cases each side fails (not a gate)
+#   vs120    - the head against the 1.20.0 binary: blocker probes, instructions, git processes (not a gate)
+#   coverage - product lines the whole suite never executes, on the head
+#   determinism - the head's symbol cell run several times under callgrind: instruction spread by function and
+#              answer identity (not a gate)
+#   symbolize=<sha>@<run> - rebuild <sha> with symbols and name the stripped base binary that probe run <run>
+#              profiled, when their code sections match byte for byte
+name: relay probe
+
+'on':
+  pull_request:
+    branches: [relay/arch, 'ci-base/**']
+
+concurrency:
+  group: relay-probe-${{ github.head_ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: never
+
+# An explicit bash runs with -eo pipefail: a check piped into tee fails its step when the check fails (the default
+# shell let a perf.sh that died at the deadline read green).
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  plan:
+    if: startsWith(github.head_ref, 'ci/')
+    runs-on: ubuntu-latest
+    outputs:
+      steps: ${{ steps.p.outputs.steps }}
+      head: ${{ steps.p.outputs.head }}
+      head_verified: ${{ steps.p.outputs.head_verified }}
+      sides: ${{ steps.p.outputs.sides }}
+      corpus120: ${{ steps.p.outputs.corpus120 }}
+      vs120: ${{ steps.p.outputs.vs120 }}
+      coverage: ${{ steps.p.outputs.coverage }}
+      determinism: ${{ steps.p.outputs.determinism }}
+      corpus: ${{ steps.p.outputs.corpus }}
+      symbolize: ${{ steps.p.outputs.symbolize }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+      - id: p
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          # Every commit of the chain except the one that only carries these checks.
+          git rev-list --reverse "$BASE..HEAD" -- . ':(exclude).github/relay-probe' \
+            ':(exclude).github/workflows/relay-probe.yml' ':(exclude).github/workflows/ci.yml' > chain.txt
+          # A tree that passed every step check locally (verified.txt) is not stepped again; corpus and coverage
+          # still read the chain's head.
+          : > steps.txt
+          while read -r c; do
+            if grep -qx "$(git rev-parse "$c^{tree}")" .github/relay-probe/verified.txt; then
+              echo "verified locally, not stepped: $c"
+            else
+              echo "$c" >> steps.txt
+            fi
+          done < chain.txt
+          cat chain.txt
+          # jobs.txt picks the probe's jobs: steps=head steps only the head, steps=none no commit; corpus120, vs120,
+          # coverage and determinism run those jobs; nocorpus skips the corpus. A probe without the file runs
+          # everything but determinism.
+          jobs=" $(tr '\n' ' ' < .github/relay-probe/jobs.txt 2>/dev/null || echo 'steps=all corpus120 vs120 coverage') "
+          echo "jobs:$jobs"
+          if [[ $jobs == *" steps=head "* ]]; then tail -1 steps.txt > steps.head; mv steps.head steps.txt; fi
+          if [[ $jobs == *" steps=none "* ]]; then : > steps.txt; fi
+          if [[ $jobs == *" corpus120 "* ]]; then sides='["base","head","v1.20.0"]'; else sides='["base","head"]'; fi
+          # A head whose tree already passed corpus and coverage (verified-head.txt) runs only what is new.
+          if grep -qx "$(git rev-parse "$(tail -1 chain.txt)^{tree}")" .github/relay-probe/verified-head.txt; then
+            head_verified=true; echo "head tree verified: corpus and coverage skipped"
+          else
+            head_verified=false
+          fi
+          {
+            for j in corpus120 vs120 coverage determinism; do
+              if [[ $jobs == *" $j "* ]]; then echo "$j=true"; else echo "$j=false"; fi
+            done
+            if [[ $jobs == *" nocorpus "* ]]; then echo "corpus=false"; else echo "corpus=true"; fi
+            echo "symbolize=$(tr ' ' '\n' <<< "$jobs" | sed -n 's/^symbolize=//p' | head -1)"
+            echo "sides=$sides"
+            echo "steps=$(jq -R . steps.txt | jq -cs .)"
+            echo "head=$(tail -1 chain.txt)"
+            echo "head_verified=$head_verified"
+          } >> "$GITHUB_OUTPUT"
+          mkdir -p "$RUNNER_TEMP/probe" && cp .github/relay-probe/* "$RUNNER_TEMP/probe/"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        with:
+          name: probe-scripts
+          path: ${{ runner.temp }}/probe
+
+  base:
+    needs: plan
+    if: needs.plan.outputs.steps != '[]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+          ref: ${{ github.event.pull_request.base.sha }}
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
+        with:
+          toolchain: "1.100.0"
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: probe-base-${{ github.event.pull_request.base.sha }}
+          restore-keys: cargo-${{ runner.os }}-
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333  # v8.0.2
+        with:
+          name: probe-scripts
+          path: ${{ runner.temp }}/probe
+      - name: Record the base's 30 cells
+        run: |
+          REPO_ROOT=$PWD BITCHECK_DIR=$RUNNER_TEMP/bc bash "$RUNNER_TEMP/probe/bitcheck.sh" record
+          cp target/release/diffctx "$RUNNER_TEMP/bc/diffctx-base"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        with:
+          name: base-cells
+          path: |
+            ${{ runner.temp }}/bc/diffctx-bitcheck/base
+            ${{ runner.temp }}/bc/diffctx-base
+
+  step:
+    needs: [plan, base]
+    if: needs.plan.outputs.steps != '[]'
+    strategy:
+      fail-fast: false
+      matrix:
+        sha: ${{ fromJSON(needs.plan.outputs.steps) }}
+    name: step ${{ matrix.sha }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+          ref: ${{ matrix.sha }}
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
+        with:
+          toolchain: "1.100.0"
+          components: clippy
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2  # v10.3.3
+        with:
+          python-version: '3.12'
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: probe-step-${{ matrix.sha }}
+          restore-keys: |
+            probe-base-${{ github.event.pull_request.base.sha }}
+            cargo-${{ runner.os }}-
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333  # v8.0.2
+        with:
+          name: probe-scripts
+          path: ${{ runner.temp }}/probe
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333  # v8.0.2
+        with:
+          name: base-cells
+          path: ${{ runner.temp }}/base-cells
+      - run: sudo apt-get update -qq && sudo apt-get install -y -qq valgrind >/dev/null
+      - name: Structure suites
+        if: ${{ !cancelled() }}
+        run: >-
+          cargo test --release --locked -p diffctx --test module_graph --test crate_graph --test public_api
+          --test budget_contract --test claim_isolation --test lane_f
+      - name: Budget
+        if: ${{ !cancelled() }}
+        # pyproject's addopts ask for xdist; one file needs no workers
+        run: >-
+          uv run --no-project --with pytest python -m pytest -q --noconftest -p no:cacheprovider -o addopts=
+          tests/test_product_budget.py
+      - name: Release clippy
+        if: ${{ !cancelled() }}
+        run: cargo clippy --release --locked --workspace --all-targets
+      - name: Bitcheck against the base
+        if: ${{ !cancelled() }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/bc/diffctx-bitcheck"
+          cp -r "$RUNNER_TEMP/base-cells/diffctx-bitcheck/base" "$RUNNER_TEMP/bc/diffctx-bitcheck/base"
+          REPO_ROOT=$PWD BITCHECK_DIR=$RUNNER_TEMP/bc bash "$RUNNER_TEMP/probe/bitcheck.sh" check
+      # The check prints 40 lines of each moved cell; a Q-class move is judged on the whole answer.
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        if: ${{ !cancelled() }}
+        with:
+          name: bitcheck-${{ matrix.sha }}
+          path: ${{ runner.temp }}/bc/diffctx-bitcheck/new
+          retention-days: 7
+      - name: Instructions against the base
+        if: ${{ !cancelled() }}
+        run: |
+          chmod +x "$RUNNER_TEMP/base-cells/diffctx-base"
+          bash "$RUNNER_TEMP/probe/perf.sh" "$RUNNER_TEMP/base-cells/diffctx-base" target/release/diffctx \
+            "$RUNNER_TEMP/bc/diffctx-bitcheck/fixture" "$RUNNER_TEMP/perf" | tee -a "$GITHUB_STEP_SUMMARY"
+      # The same base binary counted 51.5G to 64.6G on the symbol cell across jobs: the profiles say which functions move.
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        if: ${{ !cancelled() }}
+        with:
+          name: callgrind-${{ matrix.sha }}
+          path: ${{ runner.temp }}/perf/*.cg
+          retention-days: 7
+
+  corpus:
+    needs: plan
+    if: needs.plan.outputs.head_verified != 'true' && needs.plan.outputs.corpus != 'false'
+    strategy:
+      fail-fast: false
+      matrix:
+        side: ${{ fromJSON(needs.plan.outputs.sides) }}
+    name: corpus answers (${{ matrix.side }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          ref: ${{ matrix.side == 'base' && github.event.pull_request.base.sha || needs.plan.outputs.head }}
+          fetch-depth: ${{ matrix.side == 'v1.20.0' && '0' || '1' }}
+          fetch-tags: ${{ matrix.side == 'v1.20.0' }}
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
+        with:
+          toolchain: "1.100.0"
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: probe-corpus-${{ matrix.side }}-${{ github.event.pull_request.head.sha }}
+          restore-keys: cargo-${{ runner.os }}-
+      - name: The 1.20.0 binary
+        if: matrix.side == 'v1.20.0'
+        run: |
+          git worktree add --detach "$RUNNER_TEMP/v120" v1.20.0
+          CARGO_TARGET_DIR=$RUNNER_TEMP/v120-target cargo build --release --locked --manifest-path "$RUNNER_TEMP/v120/Cargo.toml"
+          echo "DIFFCTX_BIN=$RUNNER_TEMP/v120-target/release/diffctx" >> "$GITHUB_ENV"
+          echo "DIFFCTX_NATIVE_BIN=$RUNNER_TEMP/v120-target/release/diffctx" >> "$GITHUB_ENV"
+      - name: Every case, baseline ignored, answers dumped
+        env:
+          # Fixture commits get fixed dates, so their ids (and the tokens an answer spends on them) match across sides.
+          GIT_AUTHOR_DATE: '2026-01-01T00:00:00+00:00'
+          GIT_COMMITTER_DATE: '2026-01-01T00:00:00+00:00'
+        working-directory: crates/diffctx-native
+        run: |
+          # Cases below threshold fail here by design; the answers are what this job is for.
+          DIFFCTX_YAML_IGNORE_BASELINE=1 DIFFCTX_ORACLE_DUMP=$RUNNER_TEMP/dump \
+            cargo test --release --locked --test yaml_cases > "$RUNNER_TEMP/yaml_cases.log" 2>&1 || true
+          grep -E '^test .* \.\.\. FAILED$' "$RUNNER_TEMP/yaml_cases.log" | sort > "$RUNNER_TEMP/dump/_failed.txt" || true
+          echo "answers: $(find "$RUNNER_TEMP/dump" -name '*.json' | wc -l), failed cases: $(wc -l < "$RUNNER_TEMP/dump/_failed.txt")" \
+            | tee -a "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        with:
+          name: corpus-${{ matrix.side }}
+          path: |
+            ${{ runner.temp }}/dump
+            ${{ runner.temp }}/yaml_cases.log
+
+  corpus-compare:
+    needs: [plan, corpus]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333  # v8.0.2
+        with:
+          name: probe-scripts
+          path: probe
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333  # v8.0.2
+        with:
+          name: corpus-base
+          path: base
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333  # v8.0.2
+        with:
+          name: corpus-head
+          path: head
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333  # v8.0.2
+        if: needs.plan.outputs.corpus120 == 'true'
+        with:
+          name: corpus-v1.20.0
+          path: v120
+      - name: 1.20.0 against the head (not a gate)
+        if: needs.plan.outputs.corpus120 == 'true'
+        continue-on-error: true
+        run: |
+          # A file, not `comm | head`: head closing the pipe fails comm under pipefail and skipped the gate below.
+          comm -3 v120/dump/_failed.txt head/dump/_failed.txt > "$RUNNER_TEMP/flips.txt"
+          {
+            echo "### 1.20.0 binary on the head's corpus"
+            echo "failed by 1.20.0 only: $(comm -23 v120/dump/_failed.txt head/dump/_failed.txt | wc -l)"
+            echo "failed by the head only: $(comm -13 v120/dump/_failed.txt head/dump/_failed.txt | wc -l)"
+            echo; echo '```'; sed -n '1,200p' "$RUNNER_TEMP/flips.txt"; echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Same answers, same failing cases
+        run: |
+          # Both comparisons always print: a differing failed list (diff exits 1) once hid the moved answers.
+          set +e -o pipefail
+          diff base/dump/_failed.txt head/dump/_failed.txt | tee -a "$GITHUB_STEP_SUMMARY"
+          failed=$?
+          python3 -I probe/compare.py base/dump head/dump | tee -a "$GITHUB_STEP_SUMMARY"
+          answers=$?
+          exit $(( failed || answers ))
+
+  vs120:
+    needs: plan
+    if: needs.plan.outputs.vs120 == 'true'
+    name: head against 1.20.0 (probes, instructions, git processes)
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+          ref: ${{ needs.plan.outputs.head }}
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
+        with:
+          toolchain: "1.100.0"
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: probe-vs120-${{ github.event.pull_request.head.sha }}
+          restore-keys: cargo-${{ runner.os }}-
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333  # v8.0.2
+        with:
+          name: probe-scripts
+          path: ${{ runner.temp }}/probe
+      - run: sudo apt-get update -qq && sudo apt-get install -y -qq valgrind strace >/dev/null
+      - name: Both binaries
+        env:
+          # The shipped profile strips symbols and packs line tables away: callgrind then names every function
+          # `???`. Kept in the binary they cost no instructions.
+          CARGO_PROFILE_RELEASE_STRIP: none
+          CARGO_PROFILE_RELEASE_SPLIT_DEBUGINFO: "off"
+        run: |
+          cargo build --release --locked
+          git worktree add --detach "$RUNNER_TEMP/v120src" v1.20.0
+          CARGO_TARGET_DIR=$RUNNER_TEMP/v120-target cargo build --release --locked --manifest-path "$RUNNER_TEMP/v120src/Cargo.toml"
+          mkdir -p "$RUNNER_TEMP/bin/head" "$RUNNER_TEMP/bin/v1.20.0"
+          cp target/release/diffctx "$RUNNER_TEMP/bin/head/diffctx"
+          cp "$RUNNER_TEMP/v120-target/release/diffctx" "$RUNNER_TEMP/bin/v1.20.0/diffctx"
+          git worktree add --detach "$RUNNER_TEMP/fixture" 99ff4abc
+      - name: Blocker probes, both binaries (not a gate)
+        if: ${{ !cancelled() }}
+        run: |
+          P=$RUNNER_TEMP/probe; O=$RUNNER_TEMP/probes; mkdir -p "$O"
+          for tag in v1.20.0 head; do
+            b=$RUNNER_TEMP/bin/$tag/diffctx
+            python3 -I "$P/ledger.py" "$b" "$O/ledger-$tag" > "$O/ledger.$tag.txt" 2>&1 || true
+            python3 -I "$P/ledger2.py" "$b" "$O/ledger2-$tag" > "$O/ledger2.$tag.txt" 2>&1 || true
+          done
+          python3 -I "$P/shapes.py" "$O/shapes" "$RUNNER_TEMP/bin/v1.20.0/diffctx" "$RUNNER_TEMP/bin/head/diffctx" > /dev/null 2>&1 || true
+          {
+            echo "### Ledger shapes: 1.20.0 | head"
+            echo '```'; paste -d'|' "$O/ledger.v1.20.0.txt" "$O/ledger.head.txt"; echo '```'
+            echo "### Answers that differ between 1.20.0 and the head"
+            for f in "$O"/shapes/*.head.md; do
+              s=${f%.head.md}; cmp -s "$f" "$s.v1.20.0.md" || echo "- $(basename "$s")"
+            done
+            diff -q "$O/ledger2.v1.20.0.txt" "$O/ledger2.head.txt" >/dev/null || echo "- ledger2 (fj#240, fj#252, fj#253, literal cap)"
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Instructions, 1.20.0 against the head (speed gate, condition 1)
+        if: ${{ !cancelled() }}
+        run: |
+          bash "$RUNNER_TEMP/probe/perf.sh" "$RUNNER_TEMP/bin/v1.20.0/diffctx" "$RUNNER_TEMP/bin/head/diffctx" \
+            "$RUNNER_TEMP/fixture" "$RUNNER_TEMP/perf" | sed 's/base Ir/1.20.0 Ir/; s/step Ir/head Ir/' \
+            | tee -a "$GITHUB_STEP_SUMMARY" || true
+      - name: git processes, 1.20.0 against the head
+        if: ${{ !cancelled() }}
+        run: |
+          bash "$RUNNER_TEMP/probe/gitcount.sh" "$RUNNER_TEMP/bin/v1.20.0/diffctx" "$RUNNER_TEMP/bin/head/diffctx" \
+            "$RUNNER_TEMP/fixture" "$RUNNER_TEMP/gitcount" | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Where the instructions and git processes go (profile, not a gate)
+        if: ${{ !cancelled() }}
+        run: |
+          python3 -I "$RUNNER_TEMP/probe/profile.py" "$RUNNER_TEMP/perf" "$RUNNER_TEMP/gitcount" | tee -a "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        if: ${{ !cancelled() }}
+        with:
+          name: vs120-profile
+          path: |
+            ${{ runner.temp }}/perf/*.cg
+            ${{ runner.temp }}/gitcount/*.st
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        if: ${{ !cancelled() }}
+        with:
+          name: vs120
+          path: |
+            ${{ runner.temp }}/probes/*.txt
+            ${{ runner.temp }}/probes/shapes
+            ${{ runner.temp }}/probes/ledger-*/*.md
+            ${{ runner.temp }}/probes/ledger2-*/*.md
+
+  determinism:
+    needs: plan
+    if: needs.plan.outputs.determinism == 'true'
+    name: symbol cell of one binary, six callgrind runs
+    runs-on: ubuntu-latest
+    timeout-minutes: 200
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 0
+          ref: ${{ needs.plan.outputs.head }}
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
+        with:
+          toolchain: "1.100.0"
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: probe-det-${{ github.event.pull_request.head.sha }}
+          restore-keys: cargo-${{ runner.os }}-
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333  # v8.0.2
+        with:
+          name: probe-scripts
+          path: ${{ runner.temp }}/probe
+      - run: sudo apt-get update -qq && sudo apt-get install -y -qq valgrind >/dev/null
+      - name: The head's binary, symbols kept
+        env:
+          CARGO_PROFILE_RELEASE_STRIP: none
+          CARGO_PROFILE_RELEASE_SPLIT_DEBUGINFO: "off"
+        run: |
+          cargo build --release --locked
+          mkdir -p "$RUNNER_TEMP/bin" && cp target/release/diffctx "$RUNNER_TEMP/bin/diffctx"
+          sha256sum "$RUNNER_TEMP/bin/diffctx"
+          git worktree add --detach "$RUNNER_TEMP/fixture" 99ff4abc
+      - name: Four concurrent runs, as perf.sh runs its cells
+        run: |
+          bash "$RUNNER_TEMP/probe/determinism.sh" "$RUNNER_TEMP/bin/diffctx" "$RUNNER_TEMP/fixture" \
+            "$RUNNER_TEMP/det/par" 4 4 | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Two runs one at a time
+        if: ${{ !cancelled() }}
+        run: |
+          bash "$RUNNER_TEMP/probe/determinism.sh" "$RUNNER_TEMP/bin/diffctx" "$RUNNER_TEMP/fixture" \
+            "$RUNNER_TEMP/det/seq" 2 1 | tee -a "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        if: ${{ !cancelled() }}
+        with:
+          name: determinism
+          retention-days: 30
+          path: |
+            ${{ runner.temp }}/det/*/*.cg
+            ${{ runner.temp }}/det/*/*.json
+            ${{ runner.temp }}/det/*/*.log
+
+  symbolize:
+    needs: plan
+    if: needs.plan.outputs.symbolize != ''
+    name: name the functions of a stripped base binary
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      actions: read
+    env:
+      SYM: ${{ needs.plan.outputs.symbolize }}
+    steps:
+      - id: s
+        run: echo "sha=${SYM%@*}" >> "$GITHUB_OUTPUT"; echo "run=${SYM#*@}" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          ref: ${{ steps.s.outputs.sha }}
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333  # v8.0.2
+        with:
+          name: base-cells
+          path: ${{ runner.temp }}/profiled
+          run-id: ${{ steps.s.outputs.run }}
+          github-token: ${{ github.token }}
+      - name: The same commit, symbols kept (its rust-toolchain.toml picks the compiler, as bitcheck's build did)
+        env:
+          CARGO_PROFILE_RELEASE_STRIP: none
+          CARGO_PROFILE_RELEASE_SPLIT_DEBUGINFO: "off"
+        run: |
+          rustc --version
+          cargo build --release --quiet
+      - name: Same code as the profiled binary?
+        run: |
+          O=$RUNNER_TEMP/sym; mkdir -p "$O"
+          objcopy -O binary --only-section=.text target/release/diffctx "$O/text.rebuilt"
+          objcopy -O binary --only-section=.text "$RUNNER_TEMP/profiled/diffctx-base" "$O/text.profiled"
+          readelf -S -W target/release/diffctx "$RUNNER_TEMP/profiled/diffctx-base" | grep -E ' \.text ' > "$O/sections.txt"
+          ( cd "$O" && sha256sum text.rebuilt text.profiled ) | tee "$O/text.sha256"
+          cat "$O/sections.txt"
+          nm -n --defined-only target/release/diffctx > "$O/nm.txt"
+          rm "$O/text.rebuilt" "$O/text.profiled"
+          if [ "$(cut -d' ' -f1 "$O/text.sha256" | sort -u | wc -l)" = 1 ]; then
+            echo "code sections match" | tee -a "$GITHUB_STEP_SUMMARY"
+          else
+            echo "code sections DIFFER: addresses cannot be named" | tee -a "$GITHUB_STEP_SUMMARY"
+          fi
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        with:
+          name: symbolize
+          path: ${{ runner.temp }}/sym
+
+  coverage:
+    needs: plan
+    if: needs.plan.outputs.head_verified != 'true' && needs.plan.outputs.coverage == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          ref: ${{ needs.plan.outputs.head }}
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
+        with:
+          toolchain: "1.100.0"
+          components: llvm-tools-preview
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333  # v8.0.2
+        with:
+          name: probe-scripts
+          path: ${{ runner.temp }}/probe
+      - run: cargo install cargo-llvm-cov --locked
+      - name: Every suite, instrumented
+        run: |
+          # A failing suite still leaves its profile; the report covers what ran.
+          cargo llvm-cov --release --workspace --no-fail-fast --no-report > "$RUNNER_TEMP/tests.log" 2>&1 || true
+          grep -E '^test result|FAILED' "$RUNNER_TEMP/tests.log" | sort | uniq -c | tail -20
+          cargo llvm-cov report --release --lcov --output-path lcov.info
+          python3 -I "$RUNNER_TEMP/probe/cov.py" lcov.info | tee -a "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        with:
+          name: coverage
+          path: |
+            lcov.info
+            uncovered.txt
+            ${{ runner.temp }}/tests.log
