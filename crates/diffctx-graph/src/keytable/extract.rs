@@ -235,6 +235,29 @@ pub(crate) fn worth_reading<'a>(
     }
 }
 
+pub(super) fn raw_record(
+    kind: Kind,
+    key: String,
+    strength: Strength,
+    role: Role,
+    mechanism: &'static str,
+    line: usize,
+) -> RawRecord {
+    RawRecord {
+        kind,
+        key,
+        strength,
+        role,
+        mechanism,
+        line,
+        end: line,
+        anchor: None,
+        artifact: None,
+        router: None,
+        mount: None,
+    }
+}
+
 /// Names the platform sets for every process: not the project's settings.
 const PLATFORM_ENV: &[&str] = &[
     "path",
@@ -264,19 +287,14 @@ fn env_record(name: &str, role: Role, mechanism: &'static str, line: usize) -> O
     if key.len() < 2 || PLATFORM_ENV.contains(&key.as_str()) {
         return None;
     }
-    Some(RawRecord {
-        kind: Kind::Env,
+    Some(raw_record(
+        Kind::Env,
         key,
-        strength: Strength::Strong,
+        Strength::Strong,
         role,
         mechanism,
         line,
-        end: line,
-        anchor: None,
-        artifact: None,
-        router: None,
-        mount: None,
-    })
+    ))
 }
 
 /// A setting that answers to several keys (a Spring property and the variable
@@ -289,19 +307,7 @@ fn env_records(
 ) -> Vec<RawRecord> {
     keys.into_iter()
         .filter(|k| !PLATFORM_ENV.contains(&k.as_str()))
-        .map(|key| RawRecord {
-            kind: Kind::Env,
-            key,
-            strength: Strength::Strong,
-            role,
-            mechanism,
-            line,
-            end: line,
-            anchor: None,
-            artifact: None,
-            router: None,
-            mount: None,
-        })
+        .map(|key| raw_record(Kind::Env, key, Strength::Strong, role, mechanism, line))
         .collect()
 }
 
@@ -486,17 +492,9 @@ fn image_records(
     };
     for (key, strength) in [(strong, Strength::Strong), (weak, Strength::Weak)] {
         out.push(RawRecord {
-            kind: Kind::Image,
-            key,
-            strength,
-            role,
-            mechanism,
-            line,
-            end: line,
             anchor: anchor.map(str::to_string),
             artifact: artifact.map(str::to_string),
-            router: None,
-            mount: None,
+            ..raw_record(Kind::Image, key, strength, role, mechanism, line)
         });
     }
 }
@@ -505,17 +503,15 @@ fn image_records(
 /// image. It carries no key: only [`builds`] reads it.
 fn build_site(line: usize, artifact: &str, out: &mut Vec<RawRecord>) {
     out.push(RawRecord {
-        kind: Kind::Image,
-        key: String::new(),
-        strength: Strength::Strong,
-        role: Role::Build,
-        mechanism: "build-site",
-        line,
-        end: line,
-        anchor: None,
         artifact: Some(artifact.to_string()),
-        router: None,
-        mount: None,
+        ..raw_record(
+            Kind::Image,
+            String::new(),
+            Strength::Strong,
+            Role::Build,
+            "build-site",
+            line,
+        )
     });
 }
 
@@ -1422,19 +1418,14 @@ pub(crate) fn route_shape(raw: &str) -> Option<String> {
 }
 
 fn route_record(raw: &str, role: Role, mechanism: &'static str, line: usize) -> Option<RawRecord> {
-    Some(RawRecord {
-        kind: Kind::Route,
-        key: route_key(raw)?,
-        strength: Strength::Strong,
+    Some(raw_record(
+        Kind::Route,
+        route_key(raw)?,
+        Strength::Strong,
         role,
         mechanism,
         line,
-        end: line,
-        anchor: None,
-        artifact: None,
-        router: None,
-        mount: None,
-    })
+    ))
 }
 
 static NGINX_LOCATION: Lazy<Regex> =
@@ -1615,19 +1606,14 @@ fn table_record(
         Some(s) if !DEFAULT_SCHEMAS.contains(&s) => format!("{s}.{name}"),
         _ => name.to_string(),
     };
-    Some(RawRecord {
-        kind: Kind::Table,
+    Some(raw_record(
+        Kind::Table,
         key,
-        strength: Strength::Strong,
+        Strength::Strong,
         role,
         mechanism,
         line,
-        end: line,
-        anchor: None,
-        artifact: None,
-        router: None,
-        mount: None,
-    })
+    ))
 }
 
 const TABLE_PATH: &str = r#"([`"\[]?\w+[`"\]]?\.[`"\[]?\w+[`"\]]?|[`"\[]?\w+)"#;
@@ -1736,18 +1722,15 @@ fn metric_record(
         .iter()
         .find_map(|suffix| name.strip_suffix(suffix))
         .unwrap_or(name);
-    (key.len() >= 4 && key.contains('_') && !key.contains(':')).then(|| RawRecord {
-        kind: Kind::Metric,
-        key: key.to_string(),
-        strength: Strength::Strong,
-        role,
-        mechanism,
-        line,
-        end: line,
-        anchor: None,
-        artifact: None,
-        router: None,
-        mount: None,
+    (key.len() >= 4 && key.contains('_') && !key.contains(':')).then(|| {
+        raw_record(
+            Kind::Metric,
+            key.to_string(),
+            Strength::Strong,
+            role,
+            mechanism,
+            line,
+        )
     })
 }
 
@@ -1831,19 +1814,7 @@ fn proto_record(
     mechanism: &'static str,
     line: usize,
 ) -> RawRecord {
-    RawRecord {
-        kind: Kind::Proto,
-        key,
-        strength,
-        role,
-        mechanism,
-        line,
-        end: line,
-        anchor: None,
-        artifact: None,
-        router: None,
-        mount: None,
-    }
+    raw_record(Kind::Proto, key, strength, role, mechanism, line)
 }
 
 /// `Order` of `order_pb2.Order`, `OrdersServicer` of the generated gRPC
