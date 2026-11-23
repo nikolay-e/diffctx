@@ -205,6 +205,27 @@ mod tests {
     }
 
     #[test]
+    fn only_a_canonical_name_is_its_own_key() {
+        assert_eq!(canon_key("max_pool_size"), "max_pool_size");
+        assert_eq!(canon_key("sha256"), "sha256");
+        assert_eq!(canon_key("_max__pool_"), "max_pool");
+        assert_eq!(canon_key("max_Pool"), "max_pool");
+        assert_eq!(canon_key("naïve_name"), "naïve_name");
+        assert_eq!(canon_key(""), "");
+    }
+
+    #[test]
+    fn a_lone_word_offers_its_key_unless_it_has_none() {
+        let mut cache = KeyCache::default();
+        let mut keys = Vec::new();
+        for_each_name_key("x y1 _ Z", &mut cache, |k| keys.push(k.to_string()));
+        assert_eq!(
+            keys,
+            vec!["x".to_string(), "y1".to_string(), "z".to_string()]
+        );
+    }
+
+    #[test]
     fn a_dotted_run_offers_its_sub_runs() {
         let mut cache = KeyCache::default();
         let mut keys = Vec::new();

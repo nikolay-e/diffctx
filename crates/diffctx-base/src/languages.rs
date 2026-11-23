@@ -352,6 +352,13 @@ mod tests {
     use super::*;
 
     #[test]
+    fn an_extension_is_lowercased_as_a_whole_word() {
+        assert_eq!(file_ext(Path::new("a.PY")), ".py");
+        assert_eq!(file_ext(Path::new("a.ΑΣ")), ".ας");
+        assert_eq!(file_ext(Path::new("a")), "");
+    }
+
+    #[test]
     fn known_extension_resolves_to_its_language() {
         assert_eq!(get_language_for_file("foo.py"), Some("python"));
         assert_eq!(get_language_for_file("src/lib.rs"), Some("rust"));
