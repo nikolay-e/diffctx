@@ -39,7 +39,5 @@ expect:
     - src/layouts/Other.astro
   definitions:
   - src/styles/global.css::btn-outline
-  partial:
-    src/styles/global.css::btn-outline:
-      calls: [not_traced, name_unsearched]
-      reads: [not_traced, name_unsearched]
+  # No partial: Base.astro spells the class as a literal token and no script composes
+  # class names, so its read is certain and nothing is left open.
