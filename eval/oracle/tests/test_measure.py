@@ -1,11 +1,18 @@
 import argparse
 import json
+import os
+import subprocess
 import sys
 from pathlib import Path
 
 import pytest
+from test_indexshare import commit
 
+import gitrepo
+import indexing
 import measure
+import runners
+from corpus import Repo, load_corpus
 from model import Relation
 
 
@@ -204,3 +211,33 @@ def test_a_scored_impact_answer_writes_one_silent_loss_row_with_every_missing_de
     assert (first["commit"], first["missing"], first["unnamed_omitted"], first["silent"]) == ("c1", 2, 1, 1)
     assert [d["target"] for d in first["definitions"]] == [lost.key, other.key]
     assert (second["missing"], second["silent"], second["definitions"]) == (0, 0, [])  # a witnessed zero
+
+
+def test_a_measure_run_that_excludes_a_commit_keeps_the_failed_build_log_under_its_out(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+):
+    repo_dir = tmp_path / "repo"
+    repo_dir.mkdir()
+    subprocess.run(["git", "init", "-q", "-b", "main"], cwd=repo_dir, env=gitrepo.git_env(), check=True)
+    for n in range(2):
+        commit(repo_dir, {"go.mod": "module t\n", "a.go": f"package a // {n}\n"}, f"c{n}")
+    head = gitrepo.git("rev-parse", "HEAD", cwd=repo_dir).strip()
+    base = gitrepo.parent_of(repo_dir / ".git", head)
+    monkeypatch.setattr(indexing, "CACHE", tmp_path / "cache")
+    monkeypatch.setattr(measure, "CACHE", tmp_path / "cache")
+    script = "echo What went wrong >&2; i=0; while [ $i -lt 100 ]; do echo padding-$i; i=$((i+1)); done; exit 1"
+    monkeypatch.setitem(runners.PLANNERS, "go", lambda ctx: runners.Plan(["sh", "-c", script], {"PATH": os.environ["PATH"]}))
+    out = tmp_path / "out"
+    run = measure.RepoRun(
+        load_corpus(), Repo("t", "", "go", head, "MIT"), repo_dir / ".git", measure.Sink(out), Path("engine"), False, False, 0
+    )
+    record: dict = {}
+
+    assert measure.prepare(run, base, head, record) is None
+
+    assert record["reason"].startswith("base: indexer exited 1") and "; head: indexer exited 1" in record["reason"]
+    said = capsys.readouterr().err
+    for side, sha in (("base", base), ("head", head)):
+        kept = out / "stderr" / f"t-{sha[:12]}-{side}.log"
+        assert "What went wrong" in kept.read_text() and "padding-99" in kept.read_text()
+        assert f"the index build's log is kept at {kept}" in said

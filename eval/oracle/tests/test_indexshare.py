@@ -1,3 +1,4 @@
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -104,3 +105,27 @@ def test_a_round_installs_dependencies_as_measure_does_and_can_drop_each_tree_on
     indexshare.index_sample(corpus, repo, repo_dir / ".git", count=2, install=False, drop_trees=True)
     assert seen and not any(seen)
     assert not any((tmp_path / "second" / "trees" / "t").iterdir())
+
+
+def test_a_failed_index_build_leaves_its_log_under_out_and_the_round_says_where(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+):
+    repo_dir = tmp_path / "repo"
+    repo_dir.mkdir()
+    subprocess.run(["git", "init", "-q", "-b", "main"], cwd=repo_dir, env=gitrepo.git_env(), check=True)
+    for n in range(2):
+        commit(repo_dir, {"go.mod": "module t\n", "a.go": f"package a // {n}\n"}, f"c{n}")
+    head = gitrepo.git("rev-parse", "HEAD", cwd=repo_dir).strip()
+    cache = tmp_path / "cache"
+    monkeypatch.setattr(indexing, "CACHE", cache)
+    monkeypatch.setattr(indexshare, "CACHE", cache)
+    script = "echo What went wrong >&2; i=0; while [ $i -lt 100 ]; do echo padding-$i; i=$((i+1)); done; exit 1"
+    monkeypatch.setitem(runners.PLANNERS, "go", lambda ctx: runners.Plan(["sh", "-c", script], {"PATH": os.environ["PATH"]}))
+    logs = tmp_path / "out" / "stderr"
+
+    rows = indexshare.index_sample(load_corpus(), Repo("t", "", "go", head, "MIT"), repo_dir / ".git", count=1, logs=logs)
+
+    assert rows[0]["causes"] == {"base": "indexer exited 1", "head": "indexer exited 1"}
+    kept = logs / f"t-{head[:12]}-head.log"
+    assert "What went wrong" in kept.read_text() and "padding-99" in kept.read_text()
+    assert f"the index build's log is kept at {kept}" in capsys.readouterr().err

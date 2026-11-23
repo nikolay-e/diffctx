@@ -8,7 +8,9 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
+import sys
 import tempfile
 import time
 from dataclasses import asdict, dataclass, field
@@ -121,6 +123,21 @@ def _lint(corpus: corpus_config.Corpus, index_path: Path, env: dict[str, str]) -
     return subprocess.run([str(scip), "lint", str(index_path)], env=env, capture_output=True, check=False).returncode == 0
 
 
+def slot_of(repo: corpus_config.Repo, sha: str, package: str, version: str) -> Path:
+    return CACHE / "index" / repo.name / sha / f"{package}-{version}"
+
+
+def keep_failure_log(result: IndexResult, repo: corpus_config.Repo, sha: str, side: str, logs: Path | None) -> None:
+    """A failed build's `failure.log` outlives its cache slot: copied to `logs/<repo>-<commit12>-<side>.log`, and named once."""
+    failure = slot_of(repo, sha, result.indexer, result.version) / FAILURE_LOG
+    if logs is None or result.ok or not failure.is_file():
+        return
+    kept = logs / f"{repo.name}-{sha[:12]}-{side}.log"
+    kept.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(failure, kept)
+    print(f"{repo.name} {sha[:12]} {side}: the index build's log is kept at {kept}", file=sys.stderr, flush=True)
+
+
 def index_snapshot(
     corpus: corpus_config.Corpus,
     repo: corpus_config.Repo,
@@ -131,7 +148,7 @@ def index_snapshot(
     retry_failed: bool = False,
 ) -> IndexResult:
     package, version = corpus_config.indexer_pin(corpus, repo.language)
-    slot = CACHE / "index" / repo.name / sha / f"{package}-{version}"
+    slot = slot_of(repo, sha, package, version)
     meta = slot / "meta.json"
     if meta.exists():
         cached = json.loads(meta.read_text(encoding="utf-8"))

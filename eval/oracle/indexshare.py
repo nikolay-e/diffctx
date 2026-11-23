@@ -2,7 +2,8 @@
 
 A commit is excluded when either of its two snapshots is not indexed ok, or it has no single parent: the rule of
 `measure.prepare`, without asking the engine anything. The indexes land in the cache `measure` reads, so a later
-`measure --no-install` finds them. Each failure's full output is in `failure.log` beside its slot.
+`measure --no-install` finds them. Each failure's full output is in `failure.log` beside its slot, and with --out
+copied to `stderr/` beside the rows file.
 
   python indexshare.py --repo NAME [--repo NAME]... [--commits 24] [--seed N] [--retry-failed] [--no-install] [--drop-trees] [--out rows.jsonl]
   python indexshare.py --adhoc NAME URL LANGUAGE [--sha SHA]     # a repository that is not in corpus.toml
@@ -20,7 +21,7 @@ from pathlib import Path
 
 import gitrepo
 from corpus import CACHE, Corpus, Repo, load_corpus
-from indexing import IndexResult, index_snapshot, setup_tools
+from indexing import IndexResult, index_snapshot, keep_failure_log, setup_tools
 from sampling import sample_commits
 
 THRESHOLD = 0.20  # a repository whose excluded share is above this is replaced
@@ -44,6 +45,7 @@ def index_sample(
     install: bool = True,
     retry_failed: bool = False,
     drop_trees: bool = False,
+    logs: Path | None = None,
 ) -> list[dict]:
     rows = []
     for commit in sample_commits(corpus, repo, git_dir, count):
@@ -68,6 +70,7 @@ def index_sample(
                     shutil.rmtree(tree, ignore_errors=True)
                 if not result.ok:
                     row["causes"][side] = cause(result)
+                    keep_failure_log(result, repo, snapshot, side, logs)
         row["excluded"] = bool(row["causes"])
         rows.append(row)
     return rows
@@ -125,6 +128,7 @@ def main(argv: list[str] | None = None) -> int:
             install=options.install,
             retry_failed=options.retry_failed,
             drop_trees=options.drop_trees,
+            logs=options.out.parent / "stderr" if options.out else None,
         )
         if sink:
             sink.writelines(json.dumps(row) + "\n" for row in rows)

@@ -27,7 +27,7 @@ from compare import CONSTRUCTORS, compare, make_resolver, missing_definition, pa
 from corpus import Corpus, Repo, load_corpus
 from delta import Delta, classify
 from folding import mark_folding
-from indexing import CACHE, index_snapshot
+from indexing import CACHE, index_snapshot, keep_failure_log
 from model import UNCAPPED_BUDGET, Definition, Relation, without_span
 from sampling import sample_commits
 from scipindex import read_index
@@ -248,6 +248,7 @@ def prepare(run: RepoRun, base: str, sha: str, record: dict) -> Prepared | None:
         tree = gitrepo.export_tree(run.git_dir, commit, CACHE / "trees" / run.repo.name / commit)
         result = index_snapshot(run.corpus, run.repo, commit, tree, install=run.install, retry_failed=run.retry_failed)
         indexed[side] = (tree, result)
+        keep_failure_log(result, run.repo, commit, side, run.sink.out / "stderr")
         run.sink.write("indexes.jsonl", [{"repo": run.repo.name, "commit": commit, "side": side, **result.summary()}])
     failed = [f"{side}: {indexed[side][1].reason}" for side in indexed if not indexed[side][1].ok]
     if failed:
