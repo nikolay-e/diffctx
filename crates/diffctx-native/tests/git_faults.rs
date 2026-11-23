@@ -1180,6 +1180,11 @@ fn callers_named(row: &serde_json::Value) -> usize {
 /// head's `stale_uses` turns it into a gap that names the stop, and a build that
 /// drops it (`(Vec::new(), None)`, the swallow) answers with the callers whose
 /// text was read, no gap and no limit, which this fails.
+///
+/// A clean run (nothing disclosed) names the stop on the row itself, as a
+/// `stopped` gap of `read_failed` that the cell takes from the base's own losses
+/// (m7): the file-level gap the same read leaves on the row does not stand in for
+/// it, and every callers-named count is whole here, so only the row can say it.
 #[test]
 fn a_removed_method_is_never_unreferenced_when_a_read_of_the_base_side_failed() {
     let fx = removed_method();
@@ -1241,15 +1246,21 @@ fn a_removed_method_is_never_unreferenced_when_a_read_of_the_base_side_failed() 
             if !told {
                 broken.push(format!("base read {struck}: {doc}"));
             }
-            named_by_the_cell |= !disclosed
-                && row.is_some_and(|r| {
-                    r["gaps"].as_array().is_some_and(|gaps| {
-                        gaps.iter().any(|g| {
-                            g["kind"] == "stopped"
-                                && g["reasons"] == serde_json::json!(["read_failed"])
-                        })
+            // The row's own gap for a base that lost a read (`base_gap`): another gap
+            // on the row (the file the read failed on) is no stand-in for it.
+            let names_the_stop = row.is_some_and(|r| {
+                r["gaps"].as_array().is_some_and(|gaps| {
+                    gaps.iter().any(|g| {
+                        g["kind"] == "stopped" && g["reasons"] == serde_json::json!(["read_failed"])
                     })
-                });
+                })
+            });
+            if !disclosed && row.is_some() && !names_the_stop {
+                broken.push(format!(
+                    "base read {struck}: the run is clean and the row names no stop of the base: {doc}"
+                ));
+            }
+            named_by_the_cell |= !disclosed && names_the_stop;
             let md = run(&md_args, Some(struck));
             let md = String::from_utf8_lossy(&md.stdout);
             if md.contains("nothing references it") {
