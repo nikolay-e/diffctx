@@ -1,0 +1,55 @@
+name: rust_macro_body_invoked_outside_an_impl_keeps_its_self_call_hedged
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [rust, macro, macro-body, other-file, decoy]
+repo:
+  initial_files:
+    Cargo.toml: |
+      [package]
+      name = "demo"
+      version = "0.1.0"
+      edition = "2021"
+    src/lib.rs: |
+      mod shared;
+      pub mod engine;
+      pub mod run;
+    src/shared.rs: |
+      macro_rules! report {
+          ($name:expr) => {
+              self.lookup($name)
+          };
+      }
+      pub(crate) use report;
+    src/engine.rs: |
+      pub struct Engine;
+
+      impl Engine {
+          pub fn lookup(&self, name: &str) -> String {
+              name.to_uppercase()
+          }
+      }
+    src/run.rs: |
+      use crate::shared::report;
+
+      pub fn run() -> usize {
+          report!("a");
+          1
+      }
+  changed_files:
+    src/engine.rs: |
+      pub struct Engine;
+
+      impl Engine {
+          pub fn lookup(&self, name: &str) -> String {
+              name.to_lowercase()
+          }
+      }
+  commit_message: "engine: lookup folds to lower case"
+expect:
+  changed: [src/engine.rs::lookup]
+  # The macro is invoked in a function, not in an `impl`: the `self` of its body
+  # is no `Engine`, so the call is attributed to no type and stays a hedge.
+  relations: []
+  partial:
+    "src/engine.rs::lookup": {calls: unlanded, reads: unlanded}

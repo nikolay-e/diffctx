@@ -1,0 +1,59 @@
+name: rust_closure_parameter_over_an_iterator_of_unknown_items_stays_hedged
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [rust, closure, closure-parameter, receiver, decoy]
+repo:
+  initial_files:
+    Cargo.toml: |
+      [package]
+      name = "demo"
+      version = "0.1.0"
+      edition = "2021"
+    src/lib.rs: |
+      pub mod cell;
+      pub mod scan;
+    src/cell.rs: |
+      pub struct Cell {
+          pub target: String,
+      }
+
+      impl Cell {
+          pub fn points_to(&self, name: &str) -> bool {
+              self.target == name
+          }
+      }
+    src/scan.rs: |
+      use crate::cell::Cell;
+
+      pub struct Walk(pub Vec<Cell>);
+
+      impl Iterator for Walk {
+          type Item = Cell;
+
+          fn next(&mut self) -> Option<Cell> {
+              self.0.pop()
+          }
+      }
+
+      pub fn walked(walk: Walk, name: &str) -> bool {
+          walk.into_iter().any(|cell| cell.points_to(name))
+      }
+  changed_files:
+    src/cell.rs: |
+      pub struct Cell {
+          pub target: String,
+      }
+
+      impl Cell {
+          pub fn points_to(&self, name: &str) -> bool {
+              self.target.eq_ignore_ascii_case(name)
+          }
+      }
+  commit_message: "cell: points_to ignores case"
+expect:
+  changed: [src/cell.rs::points_to]
+  # `Walk` is a user iterator whose element type this table does not read, so
+  # the closure parameter stays a local of unknown type: a possible caller.
+  relations:
+    - {from: "src/scan.rs::walked", to: "src/cell.rs::points_to", kind: calls, resolution: candidate, site: 14}
