@@ -377,8 +377,8 @@ def _write_scored(sink: Sink, context: dict, target: Definition, relations: list
     sink.write("relations.jsonl", details)
 
 
-def measure_repo(run: RepoRun, count: int) -> int:
-    """Measure the sampled commits of one repository; returns how many ended `measured`."""
+def measure_repo(run: RepoRun, count: int) -> tuple[int, int]:
+    """Measure the sampled commits of one repository; returns how many ended `measured`, and how many were tried."""
     commits = sample_commits(run.corpus, run.repo, run.git_dir, count)
     rng = random.Random(f"{run.corpus.sampling.seed}:{run.repo.name}:symbols")
     measured = 0
@@ -390,7 +390,7 @@ def measure_repo(run: RepoRun, count: int) -> int:
         measured += record["status"] == "measured"
         run.sink.write("commits.jsonl", [record])
         print(f"[{run.repo.name} {number}/{len(commits)}] {sha[:10]} {record['status']} {record.get('reason', '')}", flush=True)
-    return measured
+    return measured, len(commits)
 
 
 def replayed_repositories(run: Path) -> list[str]:
@@ -454,10 +454,12 @@ def main(argv: list[str] | None = None) -> int:
                 raise SystemExit(f"--replay: {options.replay} was made by {stored.get('binary')}, not {binary.name}")
         copy_unfresh(options.replay, options.out)
     measured: dict[str, int] = {}
+    tried: dict[str, int] = {}
     selected = options.repo or (replayed_repositories(options.replay) if options.replay else None)
     for repo in corpus.select(selected, options.fast):
         count = options.commits or (corpus.sampling.fast_commits if options.fast else corpus.sampling.commits)
         measured.setdefault(repo.language, 0)
+        tried.setdefault(repo.language, 0)
         try:  # one repository that cannot be fetched or indexed is counted in the output files; the round goes on
             git_dir = gitrepo.mirror(repo.url, CACHE / "mirrors" / f"{repo.name}.git", repo.sha)
             run = RepoRun(
@@ -473,12 +475,17 @@ def main(argv: list[str] | None = None) -> int:
                 options.replay,
                 engine_args,
             )
-            measured[repo.language] += measure_repo(run, count)
+            done, attempted = measure_repo(run, count)
+            measured[repo.language] += done
+            tried[repo.language] += attempted
         except Exception as error:
             reason = f"{type(error).__name__}: {error}"
             sink.write("commits.jsonl", [{"repo": repo.name, "language": repo.language, "status": "error", "reason": reason}])
             print(f"[{repo.name}] failed: {reason}", flush=True)
-    print("measured commits per language: " + ", ".join(f"{lang} {n}" for lang, n in sorted(measured.items())), flush=True)
+    print(
+        "measured commits per language: " + ", ".join(f"{lang} {n}/{tried[lang]}" for lang, n in sorted(measured.items())),
+        flush=True,
+    )
     missing = unmeasured_languages(measured)
     if missing:
         print(f"FAILED: no {' and no '.join(missing)} commit was measured", file=sys.stderr)

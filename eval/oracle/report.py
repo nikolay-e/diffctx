@@ -253,6 +253,7 @@ def completeness_rows(indexes: list[dict], commits: list[dict]) -> list[dict]:
                 "repo": repo,
                 "snapshots": len(entries),
                 "indexed_ok": len(ok),
+                "indexed_share": _ratio(len(ok), len(entries)),
                 "mean_file_ratio": _ratio(sum(e["completeness"]["file_ratio"] for e in ok), len(ok)),
                 "mean_resolved_ratio": _ratio(sum(e["completeness"]["resolved_ratio"] for e in ok), len(ok)),
                 "failures": dict(reasons),
@@ -261,6 +262,25 @@ def completeness_rows(indexes: list[dict], commits: list[dict]) -> list[dict]:
             }
         )
     return rows
+
+
+def lane_rows(commits: list[dict], languages: dict[str, str]) -> list[dict]:
+    """Per language, the commits that ended measured over every commit the round tried: the denominator a lane is judged by."""
+    total: Counter = Counter()
+    measured: Counter = Counter()
+    for commit in commits:
+        language = languages.get(commit["repo"], commit.get("language", "unknown"))
+        total[language] += 1
+        measured[language] += commit.get("status") == "measured"
+    return [
+        {
+            "language": language,
+            "commits_measured": measured[language],
+            "commits_total": total[language],
+            "measured_share": measured[language] / total[language],
+        }
+        for language in sorted(total)
+    ]
 
 
 def harness_rows(records: list[dict]) -> dict[str, list[dict]]:
@@ -355,6 +375,13 @@ def observations(report: dict, states: list[cellstate.CellState], gates: dict[st
             f"{found['missing'] - found['silent']} of them covered by an answer's count of definitions it shed unnamed"
         )
         seen["safety.silent_loss"].append(("oracle answers", found["silent"], detail))
+    for row in report["index_completeness"]:
+        seen["coverage.indexed_share"].append(
+            (row["repo"], row["indexed_share"], f"{row['indexed_ok']}/{row['snapshots']} snapshots indexed")
+        )
+    for lane in report["lanes"]:
+        found = f"{lane['commits_measured']}/{lane['commits_total']} commits measured"
+        seen["coverage.measured_share"].append((lane["language"], lane["measured_share"], found))
     impact = ((report.get("bench") or {}).get("all") or {}).get("impact") or {}
     if impact.get("p95") is not None:
         seen["speed.impact_p95_seconds"].append(("bench", impact["p95"], f"{impact.get('n')} runs"))
@@ -393,6 +420,8 @@ def _status(gate: Threshold, value: object, fresh: bool) -> str:
         return NOT_MEASURED
     if not fresh and gate.gate.startswith("safety."):
         return NOT_DECIDED
+    if gate.gate.startswith("coverage."):
+        return "pass" if holds(gate, value) else NOT_MEASURED  # a thin lane is no pass and no failure of the engine
     if gate.gate in INFORMATIONAL:
         return "info"
     if gate.op == "read":
@@ -505,11 +534,18 @@ COMPLETENESS_COLUMNS = [
     ("Repo", "repo"),
     ("Snapshots", "snapshots"),
     ("Indexed", "indexed_ok"),
+    ("Indexed share", "indexed_share"),
     ("File ratio", "mean_file_ratio"),
     ("Resolved ratio", "mean_resolved_ratio"),
     ("Failures", "failures"),
     ("Commits measured", "commits_measured"),
     ("Commits excluded", "commits_excluded"),
+]
+LANE_COLUMNS = [
+    ("Language", "language"),
+    ("Commits measured", "commits_measured"),
+    ("Commits tried", "commits_total"),
+    ("Measured share", "measured_share"),
 ]
 HARNESS_CASE_COLUMNS = [
     ("Tier", "tier"),
@@ -612,6 +648,12 @@ def render_verdict(lines: list[dict]) -> list[str]:
     ]
     failed = [line["gate"] for line in lines if line["status"] == "fail"]
     summary = f"Failing: {', '.join(failed)}." if failed else "No threshold fails; NOT MEASURED lines had no input in this run."
+    thin = [
+        f"{line['source']} ({line['detail']})"
+        for line in lines
+        if line["gate"].startswith("coverage.") and line["status"] == NOT_MEASURED and line["value"] is not None
+    ]
+    summary += f" Below the coverage floor, so not measured: {'; '.join(thin)}." * bool(thin)
     summary += " Safety rows of a run without the fresh mark decide nothing." * any(
         line["status"] == NOT_DECIDED for line in lines
     )
@@ -668,6 +710,7 @@ def render(report: dict) -> str:
     for entry in report.get("paired") or []:
         parts += render_paired(entry)
     parts += ["", "## Index completeness", "", table_of(COMPLETENESS_COLUMNS, report["index_completeness"], "No indexes.")]
+    parts += ["", "## Lane coverage", "", table_of(LANE_COLUMNS, report["lanes"], "No commits.")]
     parts += ["", f"Changed definitions with no SCIP symbol (not scored): {report['unmapped_definitions']}."]
     if report.get("filtered_references"):
         parts += ["", f"SCIP references dropped by the truth filters (see filters.py): {report['filtered_references']}."]
@@ -720,6 +763,7 @@ def build(
         "incomplete_complete": incomplete_complete_report(scip, relations),
         "silent_loss": silent_loss_report(read_json_lines(run / "silent_loss.jsonl")),
         "index_completeness": completeness_rows(optional("indexes.jsonl"), optional("commits.jsonl")),
+        "lanes": lane_rows(optional("commits.jsonl"), repo_languages()),
         "unmapped_definitions": len(optional("unmapped.jsonl")),
         "filtered_references": dict(sum((Counter(c.get("filtered", {})) for c in optional("commits.jsonl")), Counter())),
         "harness": harness_rows(read_records(harness)) if harness else None,

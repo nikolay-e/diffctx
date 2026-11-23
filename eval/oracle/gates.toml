@@ -4,6 +4,13 @@
 # `<name>_max` is an inclusive ceiling, `<name>_min` an inclusive floor, `<name>_below` an exclusive ceiling, `true`
 # a condition the run must meet, and "read" a row set with no limit: each row is read and classified.
 
+[coverage]
+# "Indexed" and "measured" are shares with a denominator, never a directory that exists: a repository whose snapshots
+# were indexed below the floor, or a language lane whose tried commits were measured below it, is `not measured`,
+# whatever the cells that did get measured say.
+indexed_share_min = 0.8            # per repository: snapshots indexed ok over snapshots tried
+measured_share_min = 0.8           # per language lane: commits measured over commits tried
+
 [safety]
 incomplete_complete_max = 0        # an answer complete for a definition and relation that lists no truth site of it
 not_ours_by_place_max = 0          # a truth site the engine ruled `not_ours` or `declaration`

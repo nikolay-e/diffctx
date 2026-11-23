@@ -558,3 +558,55 @@ def test_only_a_fresh_measure_run_writes_the_mark_and_a_replay_copies_the_record
 
     copied = json.loads((replay / "run.json").read_text())
     assert "fresh" not in copied and copied["budget"] == 2000
+
+
+def index_entry(repo: str, ok: bool) -> dict:
+    return {
+        "repo": repo,
+        "ok": ok,
+        "reason": "ok" if ok else "indexer exited 1: [ERROR] x",
+        "completeness": {"file_ratio": 1.0, "resolved_ratio": 1.0},
+    }
+
+
+def test_a_repository_indexed_at_zero_of_n_and_a_thin_lane_are_not_measured_and_never_a_pass(tmp_path: Path):
+    run = write_run(tmp_path / "run", [cell(truth=1, tp=1)])
+    entries = [index_entry("HikariCP", False) for _ in range(71)] + [index_entry("jsoup", True) for _ in range(10)]
+    (run / "indexes.jsonl").write_text("".join(json.dumps(e) + "\n" for e in entries))
+    rows = [{"repo": "HikariCP", "commit": f"h{n}", "status": "excluded"} for n in range(5)]
+    rows += [{"repo": "jsoup", "commit": f"j{n}", "status": "measured"} for n in range(5)]
+    (run / "commits.jsonl").write_text("".join(json.dumps(r) + "\n" for r in rows))
+    out = tmp_path / "out"
+
+    assert report.main(["--run", str(run), "--out", str(out)]) == 0
+
+    data = json.loads((out / "report.json").read_text())
+    lines = {(line["gate"], line["source"]): line for line in data["verdict"]}
+    assert lines[("coverage.indexed_share", "HikariCP")]["status"] == "not measured"
+    assert lines[("coverage.indexed_share", "HikariCP")]["detail"] == "0/71 snapshots indexed"
+    assert lines[("coverage.indexed_share", "jsoup")]["status"] == "pass"
+    assert lines[("coverage.measured_share", "java")]["status"] == "not measured"  # 5 of 10 tried commits
+    assert lines[("coverage.measured_share", "java")]["detail"] == "5/10 commits measured"
+    [lane] = data["lanes"]
+    assert (lane["commits_measured"], lane["commits_total"], lane["measured_share"]) == (5, 10, 0.5)
+    markdown = (out / "report.md").read_text()
+    assert "| coverage.indexed_share | HikariCP | 0.0 | >= 0.8 | NOT MEASURED | 0/71 snapshots indexed |" in markdown
+    assert "Below the coverage floor, so not measured: HikariCP (0/71 snapshots indexed)" in markdown
+
+
+def test_the_coverage_floors_come_from_the_gates_file_alone(tmp_path: Path):
+    run = write_run(tmp_path / "run", [cell(truth=1, tp=1)])
+    (run / "commits.jsonl").write_text(
+        "".join(json.dumps({"repo": "jsoup", "commit": n, "status": s}) + "\n" for n, s in (("a", "measured"), ("b", "error")))
+    )
+    relaxed = edited_gates(tmp_path, "measured_share_min = 0.8", "measured_share_min = 0.5")
+
+    assert report.main(["--run", str(run), "--out", str(tmp_path / "strict")]) == 0
+    assert report.main(["--run", str(run), "--out", str(tmp_path / "relaxed"), "--gates", str(relaxed)]) == 0
+
+    status = lambda out: next(  # noqa: E731
+        line["status"]
+        for line in json.loads((out / "report.json").read_text())["verdict"]
+        if line["gate"] == "coverage.measured_share"
+    )
+    assert (status(tmp_path / "strict"), status(tmp_path / "relaxed")) == ("not measured", "pass")
