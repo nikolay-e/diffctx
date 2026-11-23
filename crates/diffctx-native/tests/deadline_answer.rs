@@ -125,8 +125,8 @@ exec "$REAL_GIT" "$@"
             Self { dir }
         }
 
-        /// One impact run on `repo` whose `nth` git call with `rev-parse --verify
-        /// --quiet` in its arguments never answers (`0`: none does), the calls the
+        /// One impact run on `repo` whose `nth` git call with `rev-parse` in its
+        /// arguments never answers (`0`: none does), the calls the
         /// run made in order, and whether that stall was reached.
         fn run(&self, repo: &Path, nth: usize) -> (Output, Vec<String>, bool) {
             let slots: PathBuf = self.dir.path().join(format!("slots-{nth}"));
@@ -147,7 +147,7 @@ exec "$REAL_GIT" "$@"
                 .env("PATH", path)
                 .env("REAL_GIT", String::from_utf8_lossy(&real.stdout).trim())
                 .env("SLOTS", &slots)
-                .env("STALL_MATCH", "rev-parse --verify --quiet")
+                .env("STALL_MATCH", "rev-parse")
                 .env("STALL_NTH", nth.to_string())
                 .env("STALLED", &stalled)
                 .env("DIFFCTX_TEST_GIT_STALL_FILE", &stalled)
@@ -198,7 +198,7 @@ exec "$REAL_GIT" "$@"
         let shim = Shim::new();
         let (whole, calls, _) = shim.run(repo, 0);
         assert!(whole.status.success(), "{whole:?}");
-        let revision = |c: &String| c.contains("rev-parse --verify --quiet");
+        let revision = |c: &String| c.contains("rev-parse");
         let listed = calls
             .iter()
             .position(|c| c.contains(" diff "))

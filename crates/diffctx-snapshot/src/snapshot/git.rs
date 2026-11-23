@@ -18,6 +18,8 @@ use crate::snapshot::error::{Result, SnapshotError};
 use crate::snapshot::grep::Searches;
 use crate::snapshot::loss::SideTag;
 
+mod together;
+
 pub const DEFAULT_TIMEOUT_SECONDS: u64 = 60;
 const CATFILE_TERMINATION_SECONDS: u64 = 2;
 /// The exit status of every git `fatal:`: a usage error, a missing revision, an
@@ -104,6 +106,8 @@ pub(crate) struct GitMemo {
     derived: Mutex<std::collections::HashMap<Vec<u8>, Arc<Mutex<Option<Derived>>>>>,
     searches: Mutex<std::collections::HashMap<(PathBuf, Option<String>), Arc<Mutex<Searches>>>>,
     batches: Mutex<std::collections::HashMap<(PathBuf, usize), Arc<Mutex<CatBatch>>>>,
+    /// Combined commands that were refused: their questions run alone.
+    refused: Mutex<std::collections::HashSet<Asked>>,
 }
 
 type Derived = Arc<dyn std::any::Any + Send + Sync>;
@@ -129,7 +133,7 @@ const READ_ONLY: [&str; 11] = [
     "grep",
 ];
 
-#[derive(Debug, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 struct Asked {
     dir: Option<PathBuf>,
     args: Vec<OsString>,
@@ -194,15 +198,30 @@ impl GitMemo {
             return Ok(known.clone());
         }
         let output = ask()?;
-        let kept = output.stdout.len() + output.stderr.len();
-        let answered = output.status.success() || output.status.code() == Some(1);
-        if answered
-            && kept <= KEPT_ANSWER_BYTES
-            && self.kept_bytes.fetch_add(kept, Ordering::Relaxed) + kept <= KEPT_TOTAL_BYTES
-        {
+        if self.keeps(&output) {
             *slot = Some(output.clone());
         }
         Ok(output)
+    }
+
+    /// An answer given to a question nobody has asked yet, by a command that
+    /// answered several. A question being answered right now keeps its own.
+    fn offer(&self, asked: Asked, output: Output) {
+        let cell = Arc::clone(self.answers.lock().unwrap().entry(asked).or_default());
+        let Ok(mut slot) = cell.try_lock() else {
+            return;
+        };
+        if slot.is_none() && self.keeps(&output) {
+            *slot = Some(output);
+        }
+    }
+
+    fn keeps(&self, output: &Output) -> bool {
+        let kept = output.stdout.len() + output.stderr.len();
+        let answered = output.status.success() || output.status.code() == Some(1);
+        answered
+            && kept <= KEPT_ANSWER_BYTES
+            && self.kept_bytes.fetch_add(kept, Ordering::Relaxed) + kept <= KEPT_TOTAL_BYTES
     }
 }
 
@@ -437,8 +456,55 @@ impl Exec {
     /// its exit status: the caller reads the status.
     pub(crate) fn output(&self, cmd: Command) -> Result<Output> {
         match self.memo.as_deref().zip(Asked::of(&cmd)) {
-            Some((memo, asked)) => memo.answer(asked, || self.spawned(cmd)),
+            Some((memo, asked)) => {
+                let own = asked.clone();
+                memo.answer(asked, || match together::of(&cmd) {
+                    Some(together) => self.together(memo, &own, together, cmd),
+                    None => self.spawned(cmd),
+                })
+            }
             None => self.spawned(cmd),
+        }
+    }
+
+    /// `cmd`'s answer from the command that answers it with its companions,
+    /// whose other answers the memo keeps; `cmd` itself when that command
+    /// refuses or answers in a shape not expected.
+    fn together(
+        &self,
+        memo: &GitMemo,
+        own: &Asked,
+        together: together::Together,
+        cmd: Command,
+    ) -> Result<Output> {
+        let together::Together { command, answers } = together;
+        let Some(combined_asked) = Asked::of(&command) else {
+            return self.spawned(cmd);
+        };
+        if memo.refused.lock().unwrap().contains(&combined_asked) {
+            return self.spawned(cmd);
+        }
+        let combined = self.spawned(command)?;
+        let answered = combined.status.success()
+            || (combined.status.code() == Some(1)
+                && combined.stdout.is_empty()
+                && combined.stderr.is_empty());
+        let mut mine = None;
+        if let Some(parts) = answered.then(|| answers.of(&combined)).flatten() {
+            for (asked, output) in parts {
+                if asked == *own {
+                    mine = Some(output);
+                } else {
+                    memo.offer(asked, output);
+                }
+            }
+        }
+        match mine {
+            Some(output) => Ok(output),
+            None => {
+                memo.refused.lock().unwrap().insert(combined_asked);
+                self.spawned(cmd)
+            }
         }
     }
 
