@@ -196,6 +196,11 @@ SANDBOX_IMAGE = (
 # The JDK with Maven 3.9 for a Maven project, pinned by digest: maven:3.9-eclipse-temurin-21 of 2026-09-26.
 MAVEN_IMAGE = "maven@sha256:99e61abcff91a9b1333463bd8451fb18495d6eba9250ac66a338b518f8278320"  # pragma: allowlist secret
 GRADLE_OPTS = "-Dorg.gradle.daemon=false -Xmx4g"
+# scip-java's own Maven command (`--batch-mode clean verify -DskipTests`) with the plugins that only run something:
+# a pom's literal `<skipTests>${...}</skipTests>` overrides -DskipTests, so Surefire still ran the tests of older
+# snapshots (`maven.test.skip.exec` wins over it), and docker-maven-plugin needs a daemon the build container lacks.
+# Test sources are still compiled: callers live there (`maven.test.skip` would drop them).
+MAVEN_BUILD_COMMAND = ["--batch-mode", "clean", "verify", "-DskipTests", "-Dmaven.test.skip.exec=true", "-Ddocker.skip=true"]
 
 
 GRADLE_VERSIONS_BUDGET = 1 << 30  # bytes the per-version Gradle files may take before they are dropped
@@ -229,6 +234,12 @@ def plan_java(ctx: Context) -> Plan:
     return _plan_jvm(ctx, "maven" if (ctx.tree / "pom.xml").exists() and not gradle else "gradle")
 
 
+def index_arguments(build_tool: str, out: Path) -> list[str]:
+    """What follows `scip-java index`: a Maven build gets its command after `--` (the clikt option parser takes `-D...`
+    for an option), a Gradle build keeps scip-java's own tasks, which compile every source set and run no test."""
+    return [f"--build-tool={build_tool}", "--output", str(out), *(["--", *MAVEN_BUILD_COMMAND] if build_tool == "maven" else [])]
+
+
 def _plan_jvm(ctx: Context, build_tool: str) -> Plan:
     """scip-java indexes through the repository's build, which runs third-party code.
 
@@ -246,7 +257,7 @@ def _plan_jvm(ctx: Context, build_tool: str) -> Plan:
         env = {**ctx.env, "GRADLE_USER_HOME": str(gradle), "GRADLE_OPTS": GRADLE_OPTS}
         if "JAVA_HOME" in os.environ:
             env["JAVA_HOME"] = os.environ["JAVA_HOME"]
-        return Plan([*start, "index", f"--build-tool={build_tool}", "--output", str(ctx.out)], env, runs_third_party_code=True)
+        return Plan([*start, "index", *index_arguments(build_tool, ctx.out)], env, runs_third_party_code=True)
     docker = shutil.which("docker")
     if docker is None:
         return Plan(
@@ -267,7 +278,7 @@ def _plan_jvm(ctx: Context, build_tool: str) -> Plan:
         "-e", f"GRADLE_OPTS={GRADLE_OPTS}",
         "-w", "/work",
         MAVEN_IMAGE if build_tool == "maven" else SANDBOX_IMAGE,
-        "java", "-jar", "/scip-java.jar", "index", f"--build-tool={build_tool}", "--output", f"/out/{ctx.out.name}",
+        "java", "-jar", "/scip-java.jar", "index", *index_arguments(build_tool, Path("/out") / ctx.out.name),
     ]  # fmt: skip
     # The client needs its own configuration to find the daemon; nothing of it reaches the container.
     client = {k: v for k, v in os.environ.items() if k in {"PATH", "HOME", "DOCKER_HOST", "DOCKER_CONTEXT"}}

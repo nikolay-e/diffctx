@@ -1,0 +1,27 @@
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Could not open cp_init generic class cache for initialization script '/tmp/scip-java2631621415897954966/init-script.gradle' (/gradle-home/caches/8.0.2/scripts/90nywrykl89ijznmqdejry25k).
+> BUG! exception in phase 'semantic analysis' in source unit '_BuildScript_' Unsupported class file major version 65
+
+* Try:
+> Run with --stacktrace option to get the stack trace.
+> Run with --info or --debug option to get more log output.
+> Run with --scan to get full insights.
+
+* Get more help at https://help.gradle.org
+
+BUILD FAILED in 6s
+$ /work/gradlew --no-daemon --init-script /tmp/scip-java2631621415897954966/init-script.gradle -Dscip.targetroot=/work/build/scip-targetroot clean scipPrintDependencies scipCompileAll --no-configuration-cache
+Downloading https://services.gradle.org/distributions/gradle-8.0.2-all.zip
+...............10%................20%................30%................40%................50%................60%................70%................80%................90%................100%
+
+Welcome to Gradle 8.0.2!
+
+Here are the highlights of this release:
+ - Improvements to the Kotlin DSL
+ - Fine-grained parallelism from the first build with configuration cache
+ - Configurable Gradle user home cache cleanup
+
+For more details see https://docs.gradle.org/8.0.2/release-notes.html

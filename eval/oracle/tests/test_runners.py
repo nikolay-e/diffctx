@@ -336,3 +336,82 @@ def test_a_failed_indexer_leaves_its_output_beside_the_slot_not_only_the_last_40
 
     assert not failed.ok and failed.reason.startswith("indexer exited 3") and "first-line" not in failed.reason
     assert "first-line" in (slot / indexing.FAILURE_LOG).read_text()
+
+
+def maven_and_gradle_plans(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, sandboxed: bool) -> dict[str, runners.Plan]:
+    launcher = tmp_path / "scip-java"
+    launcher.write_bytes(b"#!/bin/sh\n")
+    monkeypatch.setattr(runners, "tool_path", lambda tool: launcher)
+    monkeypatch.setattr(runners, "CACHE", tmp_path / "cache")
+    monkeypatch.setattr(runners, "sandboxed", lambda: sandboxed)
+    monkeypatch.setattr(runners.shutil, "which", lambda name: "/usr/bin/docker")
+    plans = {}
+    for name, file in (("maven", "pom.xml"), ("gradle", "build.gradle.kts")):
+        ctx = context(tmp_path, "java", name=name)
+        ctx.tree.mkdir()
+        (ctx.tree / file).write_text("")
+        plans[name] = runners.plan_java(ctx)
+    return plans
+
+
+@pytest.mark.parametrize("sandboxed", [False, True], ids=["container", "in place"])
+def test_a_maven_index_build_compiles_the_tests_and_runs_no_test_and_no_docker_plugin(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, sandboxed: bool
+):
+    plans = maven_and_gradle_plans(tmp_path, monkeypatch, sandboxed)
+
+    command = plans["maven"].command
+    build = command[command.index("--") + 1 :]
+    assert command[command.index("index") + 1].startswith("--build-tool=maven")
+    assert build == ["--batch-mode", "clean", "verify", "-DskipTests", "-Dmaven.test.skip.exec=true", "-Ddocker.skip=true"]
+    assert not any(argument.startswith("-Dmaven.test.skip=") for argument in command)  # that one drops the test sources
+    assert "--" not in plans["gradle"].command  # scip-java's own Gradle tasks compile every source set and run no test
+
+
+JVM_FAILURES = Path(__file__).parent / "fixtures"
+
+
+@pytest.mark.parametrize(
+    ("log", "first"),
+    [
+        (
+            "maven_test_compile_failure.log",
+            "[ERROR] /work/src/test/java/org/jsoup/integration/SafelistExtensionTest.java:[36,26] error: "
+            "isSafeAttribute(String,Element,Attribute) in OpenSafelist cannot override isSafeAttribute(String,Element,Attribute) in Safelist",
+        ),
+        (
+            "gradle_toolchain_failure.log",
+            "Could not determine the dependencies of task ':action-binding-generator:compileJava'.",
+        ),
+        (
+            "gradle_init_script_failure.log",
+            "Could not open cp_init generic class cache for initialization script "
+            "'/tmp/scip-java2631621415897954966/init-script.gradle' (/gradle-home/caches/8.0.2/scripts/90nywrykl89ijznmqdejry25k).",
+        ),
+    ],
+    ids=["maven", "gradle", "gradle build script"],
+)
+def test_a_failed_jvm_build_names_the_first_error_not_the_banner_at_the_end_of_its_output(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, log: str, first: str
+):
+    corpus = load_corpus()
+    repo = next(r for r in corpus.repos if r.language == "java")
+    plan = runners.Plan(["sh", "-c", 'cat "$0" >&2; exit 1', str(JVM_FAILURES / log)], {"PATH": os.environ["PATH"]})
+    monkeypatch.setitem(runners.PLANNERS, "java", lambda ctx: plan)
+    slot = tmp_path / "slot"
+
+    failed = indexing._run_indexer(corpus, repo, "a" * 40, tmp_path, slot / "index.scip", tmp_path, {}, False)
+
+    assert not failed.ok and failed.reason == f"indexer exited 1: {first}"
+    assert (slot / indexing.FAILURE_LOG).read_text() == (JVM_FAILURES / log).read_text()  # the whole log stays
+
+
+def test_a_kotlin_compiler_error_is_the_first_error_ahead_of_gradles_own_report():
+    output = (
+        "> Task :compileTestKotlin FAILED\n"
+        "e: file:///work/src/test/kotlin/A.kt:3:1 Module was compiled with an incompatible version of Kotlin.\n"
+        "\nFAILURE: Build failed with an exception.\n\n* What went wrong:\nExecution failed for task ':compileTestKotlin'.\n"
+    )
+
+    assert indexing.first_error(output).startswith("e: file:///work/src/test/kotlin/A.kt:3:1 Module was compiled")
+    assert indexing.first_error("nothing here blames anything\n") == ""

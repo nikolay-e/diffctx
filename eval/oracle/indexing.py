@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -25,6 +26,10 @@ CACHE = corpus_config.CACHE
 TOOLS = corpus_config.ROOT / "tools"
 FAILURE_LOG = "failure.log"  # beside the index slot: the end of what a failed indexer printed
 FAILURE_LOG_CHARS = 200_000
+REASON_CHARS = 400
+# The first line a failed build blames: Maven `[ERROR] ...`, Kotlin `e: ...`, javac `error: ...` or `File.java:3: error: ...`.
+ERROR_LINE = re.compile(r"\[ERROR\]\s+\S|e: |error: |\S+\.java:\d+: error: ")
+WHAT_WENT_WRONG = "* What went wrong:"  # Gradle's report: the next line names the failure
 EXCLUDED_PARTS = ("node_modules", ".git", "dist", "build", "vendor", ".venv", "site-packages", "__pycache__", "target", ".gradle")
 
 
@@ -177,6 +182,27 @@ def index_snapshot(
     return result
 
 
+def first_error(output: str) -> str:
+    """The first line of `output` that a build tool reports as an error, or "" when it reports none.
+
+    A Gradle build ends with a deprecation banner and Maven with a help text, so the end of the output says nothing
+    about the cause; the first error does. A Maven header that only introduces the list (`COMPILATION ERROR :`) is
+    passed over for the line it introduces.
+    """
+    lines = output.splitlines()
+    headers = []
+    for number, line in enumerate(lines):
+        if line.strip() == WHAT_WENT_WRONG:
+            blamed = next((later.strip() for later in lines[number + 1 :] if later.strip()), "")
+            return blamed[:REASON_CHARS]
+        if ERROR_LINE.match(line):
+            if line.rstrip().endswith(":"):
+                headers.append(line.strip())
+                continue
+            return line.strip()[:REASON_CHARS]
+    return headers[0][:REASON_CHARS] if headers else ""
+
+
 def _run_indexer(
     corpus: corpus_config.Corpus,
     repo: corpus_config.Repo,
@@ -206,9 +232,9 @@ def _run_indexer(
     if done.returncode != 0 or not out.exists():
         output = (done.stderr + done.stdout).decode(errors="replace")
         out.parent.mkdir(parents=True, exist_ok=True)
-        (out.parent / FAILURE_LOG).write_text(output[-FAILURE_LOG_CHARS:], encoding="utf-8")  # the reason keeps 400 characters
-        tail = output[-400:].strip().replace("\n", " | ")
-        result.reason = f"indexer exited {done.returncode}: {tail}"
+        (out.parent / FAILURE_LOG).write_text(output[-FAILURE_LOG_CHARS:], encoding="utf-8")
+        blamed = first_error(output) or output[-REASON_CHARS:].strip().replace("\n", " | ")
+        result.reason = f"indexer exited {done.returncode}: {blamed}"
         return result
     result.ok, result.reason = True, "ok"
     if repo.language in ("kotlin", "java"):
