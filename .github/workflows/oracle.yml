@@ -1,27 +1,32 @@
 # .github/workflows/oracle.yml
 name: oracle
 
-# Measures diffctx against the SCIP oracle in eval/oracle (T10, T23), on the
-# cells that migrate next: Python, TypeScript/JavaScript, Rust and Kotlin (Go
-# returns with its cell). The run fails only when a selected language has no
-# measured commit.
+# Measures diffctx against the SCIP oracle in eval/oracle: the YAML corpus, the metamorphic suite and the fault sweep,
+# and one measure job per corpus repository (the names come from corpus.toml through the plan job, never from this
+# file). The last job joins the parts and runs report.py with --gate: its exit is the verdict, red on a failed
+# threshold, a safety row nobody decided, or a repository or language lane below the coverage floor of gates.toml.
 #
-# Before 2.0.0 it runs on pull_request events that carry the label `oracle`
-# (fast subset: one repository per language, ten commits) or `oracle:full`
-# (the whole corpus). workflow_dispatch and schedule are declared for later:
-# GitHub fires both only for a workflow file on the default branch, and main
-# stays frozen until 2.0.0.
+# On pull_request it runs for the label `oracle` (fast subset: one repository per language, ten commits) or
+# `oracle:full` (the whole corpus). A push to relay/arch runs the full set too: GitHub shares a cache only down from a
+# branch to the pull requests into it, so that run is what fills the per-repository index caches a PR then restores.
+# workflow_dispatch and schedule are declared for later: GitHub fires both only for a workflow file on the default
+# branch.
 #
-# Kotlin is indexed through the repository's Gradle build, which runs its build scripts: the oracle starts it in a
-# throwaway container (the runner's Docker) and never runs Gradle on the runner itself.
+# The full set is cancelled by nothing but its own timeout; only a fast run gives way to the next push.
 #
-# Nothing here has a secret. Indexing runs third-party tooling, so the job
-# holds a read-only token that is not persisted into the checkout, and the
-# oracle hands its indexers a scrubbed environment.
+# Kotlin and Java are indexed through the repository's own build, which executes build scripts and downloaded code:
+# the oracle starts it in a throwaway container (the runner's Docker) and never runs it on the runner itself. The JDKs
+# the toolchains name come from actions/setup-java and reach the container by read-only mount.
+#
+# Nothing here has a secret. Indexing runs third-party tooling, so every job holds a read-only token that is not
+# persisted into the checkout, and the oracle hands its indexers a scrubbed environment. The cargo target directory is
+# never cached: the indexes alone come close to the 10 GB a repository's caches share.
 
 'on':
   pull_request:
     types: [labeled, synchronize, reopened]
+  push:
+    branches: [relay/arch]
   workflow_dispatch:
     inputs:
       scope:
@@ -35,59 +40,34 @@ name: oracle
 
 concurrency:
   group: oracle-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: >-
+    ${{ github.event_name == 'pull_request'
+    && !contains(github.event.pull_request.labels.*.name, 'oracle:full') }}
 
 permissions:
   contents: read
 
+defaults:
+  run:
+    shell: bash
+
 jobs:
-  oracle:
-    name: Oracle (${{ contains(github.event.pull_request.labels.*.name, 'oracle:full') && 'full' || 'fast' }})
+  plan:
+    name: Plan
     if: >-
       github.event_name != 'pull_request'
       || contains(github.event.pull_request.labels.*.name, 'oracle')
       || contains(github.event.pull_request.labels.*.name, 'oracle:full')
     runs-on: ubuntu-latest
-    timeout-minutes: 350
-    permissions:
-      contents: read
-    defaults:
-      run:
-        shell: bash
-    env:
-      SCOPE: >-
-        ${{ (contains(github.event.pull_request.labels.*.name, 'oracle:full')
-        || github.event.inputs.scope == 'full'
-        || github.event_name == 'schedule') && 'full' || 'fast' }}
-      REPORT_DIR: ${{ github.workspace }}/oracle-out
+    timeout-minutes: 15
+    outputs:
+      scope: ${{ steps.plan.outputs.scope }}
+      matrix: ${{ steps.plan.outputs.matrix }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           fetch-depth: 1
           persist-credentials: false
-
-      - name: Keep the oracle's cache outside the Cargo workspace
-        run: echo "ORACLE_CACHE=${RUNNER_TEMP}/oracle-cache" >> "$GITHUB_ENV"
-
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
-        with:
-          toolchain: "1.100.0"
-
-      # Restore only: ci.yml saves the release profile under this key, and one
-      # saver per key keeps a second job from racing it. The old prefix is the
-      # entry a run before the rename left.
-      - name: Restore Cargo
-        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: cargo-rust-${{ runner.os }}-release-${{ hashFiles('Cargo.lock') }}
-          restore-keys: |
-            cargo-rust-${{ runner.os }}-release-
-            cargo-${{ runner.os }}-
 
       - name: Set up uv
         uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2  # v10.3.3
@@ -96,30 +76,85 @@ jobs:
           enable-cache: true
           cache-dependency-glob: eval/oracle/uv.lock
 
-      - name: Set up Node
-        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1  # v7.1.0
-        with:
-          node-version: '24'
+      - name: One matrix entry per corpus repository
+        id: plan
+        env:
+          FULL_LABEL: ${{ contains(github.event.pull_request.labels.*.name, 'oracle:full') }}
+          REQUESTED: ${{ github.event.inputs.scope }}
+        run: |
+          scope=fast
+          if [ "$FULL_LABEL" = true ] || [ "$REQUESTED" = full ]; then scope=full; fi
+          case "$GITHUB_EVENT_NAME" in schedule | push) scope=full ;; esac
+          echo "scope=$scope" >> "$GITHUB_OUTPUT"
+          matrix="$(uv run --frozen --directory eval/oracle python run.py plan --scope "$scope")"
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
 
-      - name: Cache the oracle's indexes
+  build:
+    name: Build diffctx
+    needs: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
+        with:
+          toolchain: "1.100.0"
+
+      - name: Cache the Cargo registry (never the target directory)
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
-          path: ${{ runner.temp }}/oracle-cache
-          key: oracle-${{ hashFiles('eval/oracle/corpus.toml', 'eval/oracle/tools/package-lock.json') }}
-          restore-keys: oracle-
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: cargo-registry-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: cargo-registry-${{ runner.os }}-
 
       - name: Build the release binary from this head
         run: cargo build --release --locked --bin diffctx
 
-      - name: Oracle self-test
-        run: |
-          uv run --frozen --directory eval/oracle python run.py selftest \
-            --bin "$GITHUB_WORKSPACE/target/release/diffctx"
+      - name: Hand the binary to the measure jobs
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        with:
+          name: diffctx-bin
+          path: target/release/diffctx
+          retention-days: 2
+          if-no-files-found: error
+
+  suites:
+    name: YAML corpus, metamorphic and fault suites
+    needs: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    env:
+      SCOPE: ${{ needs.plan.outputs.scope }}
+      REPORT_DIR: ${{ github.workspace }}/oracle-out
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
+        with:
+          toolchain: "1.100.0"
+
+      - name: Cache the Cargo registry (never the target directory)
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: cargo-registry-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: cargo-registry-${{ runner.os }}-
 
       - name: YAML corpus (impact and symbol strata)
-        if: ${{ !cancelled() }}
         env:
-          DIFFCTX_BIN: ${{ github.workspace }}/target/release/diffctx
           DIFFCTX_ORACLE_REPORT: ${{ github.workspace }}/oracle-out/harness.json
         run: |
           mkdir -p "$REPORT_DIR"
@@ -141,28 +176,174 @@ jobs:
           mkdir -p "$REPORT_DIR"
           cargo test --release --test git_faults 2>&1 | tee "$REPORT_DIR/faults.log"
 
-      - name: SCIP oracle, performance baseline and report
+      - name: Upload the suite logs
         if: ${{ !cancelled() }}
-        env:
-          DIFFCTX_BIN: ${{ github.workspace }}/target/release/diffctx
-          ORACLE_METAMORPHIC_REPORT: ${{ github.workspace }}/oracle-out/metamorphic.log
-          ORACLE_FAULTS_REPORT: ${{ github.workspace }}/oracle-out/faults.log
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        with:
+          name: oracle-suites
+          path: |
+            oracle-out/*.json
+            oracle-out/*.log
+          retention-days: 30
+          if-no-files-found: warn
+
+  measure:
+    name: Measure ${{ matrix.repo }}
+    needs: [plan, build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Keep the oracle's cache and the binary outside the Cargo workspace
         run: |
-          if [ -f "$REPORT_DIR/harness.json" ]; then export DIFFCTX_ORACLE_REPORT="$REPORT_DIR/harness.json"; fi
-          flags=(--out "$REPORT_DIR/oracle")
-          if [ "$SCOPE" = fast ]; then flags+=(--fast); fi
-          eval/oracle/run.sh "${flags[@]}"
-          cat "$REPORT_DIR/oracle/report.md" >> "$GITHUB_STEP_SUMMARY"
+          echo "ORACLE_CACHE=${RUNNER_TEMP}/oracle-cache" >> "$GITHUB_ENV"
+          echo "DIFFCTX_BIN=${RUNNER_TEMP}/bin/diffctx" >> "$GITHUB_ENV"
+
+      - name: Get the binary built from this head
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333  # v8.0.2
+        with:
+          name: diffctx-bin
+          path: ${{ runner.temp }}/bin
+
+      - name: Make it executable
+        run: chmod +x "$DIFFCTX_BIN" && "$DIFFCTX_BIN" --version
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2  # v10.3.3
+        with:
+          python-version: '3.12'
+          enable-cache: true
+          cache-dependency-glob: eval/oracle/uv.lock
+
+      - name: Set up Node
+        if: ${{ matrix.language == 'typescript' }}
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1  # v7.1.0
+        with:
+          node-version: '24'
+
+      - name: Install Rust
+        if: ${{ matrix.language == 'rust' }}
+        uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
+        with:
+          toolchain: "1.100.0"
+
+      - name: JDK 8, 11, 17 and 21 for the toolchains of the builds
+        if: ${{ matrix.language == 'java' || matrix.language == 'kotlin' }}
+        uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880  # v6.3.0
+        with:
+          distribution: temurin
+          java-version: |
+            8
+            11
+            17
+            21
+
+      - name: Restore this repository's index
+        id: index-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: ${{ runner.temp }}/oracle-cache/index/${{ matrix.repo }}
+          key: oracle-index-${{ matrix.repo }}-${{ matrix.pin }}
+
+      - name: Index and measure
+        env:
+          FAST: ${{ matrix.fast }}
+        run: |
+          mkdir -p "$ORACLE_CACHE"
+          flags=(--budgets default)
+          if [ "$FAST" = true ]; then flags+=(--fast); fi
+          uv run --frozen --directory eval/oracle python run.py lane \
+            --lane "${{ matrix.lane }}" --repos "${{ matrix.repo }}" \
+            --job "$RUNNER_TEMP/job" --out "$RUNNER_TEMP/part" "${flags[@]}"
+
+      - name: Sizes
+        if: ${{ !cancelled() }}
+        run: |
+          {
+            echo "### ${{ matrix.repo }}"
+            size="$(du -sh "$ORACLE_CACHE/index/${{ matrix.repo }}" 2>/dev/null | cut -f1)"
+            echo "- index cache: ${size:-none} (restored: ${{ steps.index-cache.outputs.cache-hit || 'false' }})"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Save this repository's index, restored or not, so a failed round still keeps what it built
+        if: ${{ always() && steps.index-cache.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: ${{ runner.temp }}/oracle-cache/index/${{ matrix.repo }}
+          key: oracle-index-${{ matrix.repo }}-${{ matrix.pin }}
+
+      - name: Upload the part
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        with:
+          name: oracle-part-${{ matrix.repo }}
+          path: ${{ runner.temp }}/part/default/${{ matrix.lane }}
+          retention-days: 30
+          if-no-files-found: warn
+
+  report:
+    name: Report and gate
+    needs: [plan, build, suites, measure]
+    if: ${{ !cancelled() && needs.plan.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2  # v10.3.3
+        with:
+          python-version: '3.12'
+          enable-cache: true
+          cache-dependency-glob: eval/oracle/uv.lock
+
+      - name: Get the binary, the parts and the suite logs
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333  # v8.0.2
+        with:
+          path: ${{ runner.temp }}/artifacts
+
+      - name: Oracle self-test
+        run: |
+          chmod +x "$RUNNER_TEMP/artifacts/diffctx-bin/diffctx"
+          bin="$RUNNER_TEMP/artifacts/diffctx-bin/diffctx"
+          uv run --frozen --directory eval/oracle python run.py selftest --bin "$bin"
+
+      - name: Join the parts, report and gate
+        env:
+          ARTIFACTS: ${{ runner.temp }}/artifacts
+          OUT: ${{ github.workspace }}/oracle-out
+        run: |
+          mkdir -p "$OUT"
+          cd eval/oracle
+          uv run --frozen python run.py merge --out "$OUT/run" "$ARTIFACTS"/oracle-part-*
+          flags=(--run "$OUT/run")
+          suites="$ARTIFACTS/oracle-suites"
+          [ -f "$suites/harness.json" ] && flags+=(--harness "$suites/harness.json")
+          [ -f "$suites/metamorphic.log" ] && flags+=(--metamorphic "$suites/metamorphic.log")
+          [ -f "$suites/faults.log" ] && flags+=(--faults "$suites/faults.log")
+          status=0
+          uv run --frozen python run.py report "${flags[@]}" --gate || status=$?
+          cat "$OUT/run/report.md" >> "$GITHUB_STEP_SUMMARY"
+          exit "$status"
 
       - name: Upload the report
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
         with:
-          name: oracle-report-${{ env.SCOPE }}
+          name: oracle-report-${{ needs.plan.outputs.scope }}
           path: |
             oracle-out/**/*.json
             oracle-out/**/*.jsonl
             oracle-out/**/*.md
-            oracle-out/*.log
           retention-days: 30
           if-no-files-found: warn
