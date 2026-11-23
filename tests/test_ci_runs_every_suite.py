@@ -173,7 +173,15 @@ def test_the_suites_script_reads_every_suite_off_the_tree(tmp_path):
 
 
 @POSIX_ONLY
-@pytest.mark.parametrize("parts", [["rest:1/2", "rest:2/2", "corpus"], ["rest:1/2", "rest:2/2", "corpus:1/2", "corpus:2/2"]])
+@pytest.mark.parametrize(
+    "parts",
+    [
+        ["rest:1/2", "rest:2/2", "corpus"],
+        ["rest:1/2", "rest:2/2", "corpus:1/2", "corpus:2/2"],
+        ["rest:1/3", "rest:2/3", "rest:3/3", "corpus:1/2", "corpus:2/2"],
+        ["rest:1/4", "rest:2/4", "rest:3/4", "rest:4/4", "corpus:1/2", "corpus:2/2"],
+    ],
+)
 def test_the_parts_of_the_suites_script_run_each_suite_once(tmp_path, parts):
     """CI runs the script in parts: together they are the whole, and nothing
     runs twice."""
