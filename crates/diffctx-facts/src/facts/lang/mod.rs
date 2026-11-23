@@ -70,6 +70,11 @@ pub fn builtin() -> Registry {
     registry
 }
 
+pub(crate) fn builtin_shared() -> &'static Registry {
+    static REGISTRY: OnceLock<Registry> = OnceLock::new();
+    REGISTRY.get_or_init(builtin)
+}
+
 static DIGESTS: [OnceLock<u64>; 21] = [const { OnceLock::new() }; 21];
 
 const fn slot(language: Language) -> usize {

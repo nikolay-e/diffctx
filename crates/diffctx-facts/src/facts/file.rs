@@ -33,7 +33,8 @@ pub fn facts_of(
         SideTag::Base => &ctx.base,
         SideTag::Head => &ctx.head,
     };
-    let listing = cache.listing(reader)?;
+    let cached = cache.cached_listing(reader)?;
+    let listing = &cached.listing;
     let Ok(at) = listing
         .entries
         .binary_search_by(|entry| entry.path.cmp(path))
@@ -74,7 +75,7 @@ pub fn facts_of(
             let Some(read) = load(reader, path, &mut bytes)? else {
                 return Ok(None);
             };
-            blob_oid(&read)?
+            cached.oid_or_try_init(at, || blob_oid(&read))?
         }
     };
     let key = CacheKey {

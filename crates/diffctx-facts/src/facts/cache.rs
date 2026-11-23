@@ -5,16 +5,16 @@
 //! unwritable costs a re-extraction and is counted in [`CacheStats`], and never
 //! fails the answer.
 
-use std::collections::HashMap;
 use std::ffi::OsString;
 use std::fs;
 use std::ops::Range;
 use std::path::{Path, PathBuf};
 use std::process;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use rustc_hash::FxHashMap;
 use serde::{Deserialize, Serialize};
 
 use crate::facts::extractor::Registry;
@@ -37,6 +37,9 @@ pub const DEFAULT_CAP_BYTES: u64 = 256 * 1024 * 1024;
 const ENTRY_SUFFIX: &str = ".json";
 const TEMP_PREFIX: &str = ".tmp-";
 const LISTINGS_KEPT: usize = 4;
+const MEMORY_LIMIT: usize = 16_384;
+
+type Memory = Mutex<FxHashMap<CacheKey, Arc<BlobFacts>>>;
 
 static TEMP_SEQ: AtomicU64 = AtomicU64::new(0);
 
@@ -122,7 +125,7 @@ struct Store {
     cap: u64,
     /// The bytes the directory holds, as far as this process knows; `None` until
     /// the first write measures it.
-    used: Mutex<Option<u64>>,
+    used: Arc<Mutex<Option<u64>>>,
 }
 
 impl Store {
@@ -185,6 +188,62 @@ impl Store {
     }
 }
 
+pub(crate) struct CachedListing {
+    pub(crate) listing: Arc<Listing>,
+    oids: Vec<OnceLock<Oid>>,
+}
+
+impl CachedListing {
+    pub(crate) fn oid_or_try_init(
+        &self,
+        at: usize,
+        compute: impl FnOnce() -> Result<Oid>,
+    ) -> Result<Oid> {
+        if let Some(slot) = self.oids.get(at) {
+            if let Some(oid) = slot.get() {
+                return Ok(oid.clone());
+            }
+            let oid = compute()?;
+            let _ = slot.set(oid.clone());
+            return Ok(oid);
+        }
+        compute()
+    }
+}
+
+struct UserShared {
+    dir: Option<PathBuf>,
+    memory: Arc<Memory>,
+    used: Arc<Mutex<Option<u64>>>,
+}
+
+static USER_SHARED: OnceLock<Mutex<Option<UserShared>>> = OnceLock::new();
+
+fn shared_for(dir: Option<&Path>) -> (Arc<Memory>, Arc<Mutex<Option<u64>>>) {
+    let mutex = USER_SHARED.get_or_init(|| Mutex::new(None));
+    let mut guard = lock(mutex);
+    if let Some(shared) = guard.as_ref().filter(|s| s.dir.as_deref() == dir) {
+        return (Arc::clone(&shared.memory), Arc::clone(&shared.used));
+    }
+    let memory = Arc::default();
+    let used = Arc::new(Mutex::new(None));
+    *guard = Some(UserShared {
+        dir: dir.map(Path::to_path_buf),
+        memory: Arc::clone(&memory),
+        used: Arc::clone(&used),
+    });
+    drop(guard);
+    (memory, used)
+}
+
+fn remember_in(memory: &Memory, key: CacheKey, blob: Arc<BlobFacts>) {
+    let mut map = lock(memory);
+    if map.len() >= MEMORY_LIMIT {
+        map.clear();
+    }
+    map.insert(key, blob);
+}
+
 /// Facts by [`CacheKey`], in memory and on disk. Hands out the same `Arc` to every
 /// path and snapshot holding the blob.
 pub struct FactsCache {
@@ -194,8 +253,8 @@ pub struct FactsCache {
     store: Option<Store>,
     /// Off for a cache that must not remember anything (`disabled`).
     remember: bool,
-    memory: Mutex<HashMap<String, Arc<BlobFacts>>>,
-    listings: Mutex<Vec<(ContentId, Arc<Listing>)>>,
+    memory: Arc<Memory>,
+    listings: Mutex<Vec<(ContentId, u64, Arc<CachedListing>)>>,
     counters: Counters,
 }
 
@@ -206,7 +265,7 @@ impl FactsCache {
             store: Some(Store {
                 dir,
                 cap: DEFAULT_CAP_BYTES,
-                used: Mutex::new(None),
+                used: Arc::new(Mutex::new(None)),
             }),
             remember: true,
             ..Self::disabled()
@@ -216,7 +275,22 @@ impl FactsCache {
     /// The user's cache directory ([`default_dir`]); in memory for the process
     /// when the environment names none.
     pub fn user() -> Self {
-        default_dir(|name| std::env::var_os(name)).map_or_else(Self::in_memory, Self::new)
+        let dir = default_dir(|name| std::env::var_os(name));
+        let (memory, used) = shared_for(dir.as_deref());
+        let store = dir.map(|dir| Store {
+            dir,
+            cap: DEFAULT_CAP_BYTES,
+            used,
+        });
+        Self {
+            registry: lang::builtin_shared().clone(),
+            fingerprint: FINGERPRINT,
+            store,
+            remember: true,
+            memory,
+            listings: Mutex::default(),
+            counters: Counters::default(),
+        }
     }
 
     /// Remembers within the process and writes nothing.
@@ -230,11 +304,11 @@ impl FactsCache {
     /// Remembers nothing and writes nothing: every file is extracted every time.
     pub fn disabled() -> Self {
         Self {
-            registry: lang::builtin(),
+            registry: lang::builtin_shared().clone(),
             fingerprint: FINGERPRINT,
             store: None,
             remember: false,
-            memory: Mutex::default(),
+            memory: Arc::default(),
             listings: Mutex::default(),
             counters: Counters::default(),
         }
@@ -253,6 +327,7 @@ impl FactsCache {
     #[must_use]
     pub fn with_registry(mut self, registry: Registry) -> Self {
         self.registry = registry;
+        self.memory = Arc::default();
         self
     }
 
@@ -291,20 +366,19 @@ impl FactsCache {
     }
 
     pub(crate) fn get(&self, key: &CacheKey) -> Option<Arc<BlobFacts>> {
-        let name = key.file_name();
-        let remembered = lock(&self.memory).get(&name).cloned();
+        let remembered = lock(&self.memory).get(key).cloned();
         if remembered.is_some() {
             bump(&self.counters.memory_hits);
             return remembered;
         }
-        let loaded = self
-            .store
-            .as_ref()
-            .and_then(|store| self.read_entry(store, key, &name));
+        let loaded = self.store.as_ref().and_then(|store| {
+            let name = key.file_name();
+            self.read_entry(store, key, &name)
+        });
         if let Some(blob) = loaded {
             bump(&self.counters.disk_hits);
             if self.remember {
-                lock(&self.memory).insert(name, Arc::clone(&blob));
+                remember_in(&self.memory, key.clone(), Arc::clone(&blob));
             }
             Some(blob)
         } else {
@@ -348,15 +422,15 @@ impl FactsCache {
     /// shared. A blob cut short by the budget or a panic is returned and not kept.
     pub(crate) fn put(&self, key: &CacheKey, blob: BlobFacts) -> Arc<BlobFacts> {
         let kept = blob.is_complete();
-        let name = key.file_name();
         let blob = Arc::new(blob);
         if !kept {
             return blob;
         }
         if self.remember {
-            lock(&self.memory).insert(name.clone(), Arc::clone(&blob));
+            remember_in(&self.memory, key.clone(), Arc::clone(&blob));
         }
         if let Some(store) = &self.store {
+            let name = key.file_name();
             self.write_entry(store, &name, &blob);
         }
         blob
@@ -401,20 +475,35 @@ impl FactsCache {
     /// The listing of a snapshot, taken once per snapshot: it names each file's
     /// blob, which is what a lookup keys on.
     pub fn listing(&self, reader: &SnapshotReader) -> Result<Arc<Listing>> {
+        self.cached_listing(reader)
+            .map(|cached| Arc::clone(&cached.listing))
+    }
+
+    pub(crate) fn cached_listing(&self, reader: &SnapshotReader) -> Result<Arc<CachedListing>> {
+        let admission = reader.admission().hash();
         let known = lock(&self.listings)
             .iter()
-            .find(|(id, _)| id == reader.id())
-            .map(|(_, listing)| Arc::clone(listing));
-        if let Some(listing) = known {
-            return Ok(listing);
+            .find(|(id, hash, _)| id == reader.id() && *hash == admission)
+            .map(|(_, _, cached)| Arc::clone(cached));
+        if let Some(cached) = known {
+            return Ok(cached);
         }
-        let listing = Arc::new(reader.list()?);
+        let raw = reader.list()?;
+        let oids = if raw.entries.iter().any(|entry| entry.oid.is_none()) {
+            (0..raw.entries.len()).map(|_| OnceLock::new()).collect()
+        } else {
+            Vec::new()
+        };
+        let cached = Arc::new(CachedListing {
+            listing: Arc::new(raw),
+            oids,
+        });
         let mut listings = lock(&self.listings);
-        listings.push((reader.id().clone(), Arc::clone(&listing)));
+        listings.push((reader.id().clone(), admission, Arc::clone(&cached)));
         if listings.len() > LISTINGS_KEPT {
             listings.remove(0);
         }
-        Ok(listing)
+        Ok(cached)
     }
 }
 
