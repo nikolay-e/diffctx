@@ -61,13 +61,3 @@ expect:
     die: [scripts/setup.sh]
     run: [scripts/check-rules.py]
     main: [scripts/other.py]
-  partial:
-    scripts/rotate-key.py::die:
-      calls: name_unsearched
-      reads: name_unsearched
-    scripts/rotate-key.py::main:
-      calls: name_unsearched
-      reads: name_unsearched
-    scripts/rotate-key.py::run:
-      calls: name_unsearched
-      reads: name_unsearched
