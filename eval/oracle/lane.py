@@ -16,7 +16,8 @@ import sys
 from pathlib import Path
 
 import jvmtoolchains
-from corpus import CACHE
+from corpus import CACHE, load_corpus
+from indexing import setup_tools
 from runners import JDK_HOMES_VARIABLE, SANDBOX_VARIABLE, in_container
 
 MEASURE = Path(__file__).with_name("measure.py")
@@ -51,7 +52,7 @@ def prepare_environment(lane: str, job: Path, shared_index: Path | None) -> dict
     return env
 
 
-def measure_command(repo: str, budget: str, out: Path, script: Path = MEASURE) -> list[str]:
+def measure_command(repo: str, budget: str, out: Path, script: Path = MEASURE, fast: bool = False) -> list[str]:
     return [
         sys.executable,
         str(script),
@@ -65,7 +66,13 @@ def measure_command(repo: str, budget: str, out: Path, script: Path = MEASURE) -
 
 
 def run_lane(
-    lane: str, repos: list[str], out: Path, env: dict[str, str], script: Path = MEASURE, budgets: tuple[str, ...] = BUDGETS
+    lane: str,
+    repos: list[str],
+    out: Path,
+    env: dict[str, str],
+    script: Path = MEASURE,
+    budgets: tuple[str, ...] = BUDGETS,
+    fast: bool = False,
 ) -> int:
     """Measure each repository once per budget into `out/<budget>/<lane>`; 1 when any repository failed, the rest still run."""
     failed = 0
@@ -74,7 +81,9 @@ def run_lane(
         (out / budget).mkdir(parents=True, exist_ok=True)
         for repo in repos:
             print(f"=== measure {budget} {repo} ===", flush=True)
-            done = subprocess.run(measure_command(repo, budget, target, script), env=env, stdin=subprocess.DEVNULL, check=False)
+            done = subprocess.run(
+                measure_command(repo, budget, target, script, fast), env=env, stdin=subprocess.DEVNULL, check=False
+            )
             if done.returncode != 0:
                 print(f"FAILED {budget} {repo}", flush=True)
                 failed = 1
@@ -90,7 +99,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--repos", nargs="+", required=True)
     parser.add_argument("--job", type=Path, required=True, help="the claim that keeps downloaded toolchains between runs")
     parser.add_argument("--out", type=Path, required=True, help="the round's directory: <out>/<budget>/<lane>")
+    parser.add_argument("--budgets", nargs="+", choices=BUDGETS, default=list(BUDGETS))
+    parser.add_argument("--fast", action="store_true", help="the fast subset's commit count")
     parser.add_argument("--shared-index", type=Path, help="an index cache shared between rounds, linked into the oracle cache")
     options = parser.parse_args(argv)
+    corpus = load_corpus()
+    setup_tools(corpus, {repo.language for repo in corpus.select(options.repos)})
     env = prepare_environment(options.lane, options.job, options.shared_index)
-    return run_lane(options.lane, options.repos, options.out, env)
+    return run_lane(options.lane, options.repos, options.out, env, budgets=tuple(options.budgets), fast=options.fast)

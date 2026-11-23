@@ -205,3 +205,40 @@ def test_the_throwaway_container_mounts_the_runner_jdks_read_only(tmp_path: Path
         "/opt/jdk8:/opt/jdk8:ro",
         "/opt/jdk11:/opt/jdk11:ro",
     ]
+
+
+def test_the_plan_names_every_corpus_repository_once_with_a_pin_that_moves_with_its_own_record_and_the_recipe(tmp_path: Path):
+    import plan
+
+    corpus = load_corpus()
+    full = plan.plan(corpus, "full")["include"]
+    fast = plan.plan(corpus, "fast")["include"]
+
+    assert [entry["repo"] for entry in full] == [repo.name for repo in corpus.repos]
+    assert {entry["repo"] for entry in fast} == {repo.name for repo in corpus.repos if repo.fast} and all(e["fast"] for e in fast)
+    assert all(entry["lane"] == entry["language"] and len(entry["pin"]) == 16 for entry in full)
+    assert len({entry["pin"] for entry in full}) == len(full)
+    recipe = tmp_path / "recipe"
+    recipe.mkdir()
+    for name in plan.RECIPE_FILES:
+        (recipe / name).write_text("one")
+    before = plan.plan(corpus, "full", recipe)["include"]
+    (recipe / "runners.py").write_text("two")
+    assert [a["pin"] == b["pin"] for a, b in zip(before, plan.plan(corpus, "full", recipe)["include"], strict=True)] == [
+        False
+    ] * len(before)
+
+
+def test_merge_joins_the_parts_and_refuses_parts_of_two_engines(tmp_path: Path):
+    import merge
+
+    for name, engine, row in (("a", "diffctx 9", "1"), ("b", "diffctx 9", "2"), ("c", "diffctx 8", "3")):
+        (tmp_path / name).mkdir()
+        (tmp_path / name / "run.json").write_text(json.dumps({"engine": engine, "budget": None, "fresh": True}))
+        (tmp_path / name / "commits.jsonl").write_text(json.dumps({"repo": row}))  # no trailing newline, as a part may end
+
+    merge.merge([tmp_path / "a", tmp_path / "b"], tmp_path / "merged")
+
+    assert [json.loads(line)["repo"] for line in (tmp_path / "merged" / "commits.jsonl").read_text().splitlines()] == ["1", "2"]
+    with pytest.raises(SystemExit, match="one engine"):
+        merge.merge([tmp_path / "a", tmp_path / "c"], tmp_path / "bad")

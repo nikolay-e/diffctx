@@ -9,6 +9,8 @@ import adjudicate
 import bench
 import lane
 import measure
+import merge
+import plan
 import report
 import runners
 import selftest
@@ -32,6 +34,8 @@ COMMANDS = {
     "setup": setup,
     "measure": measure.main,
     "lane": lane.main,
+    "plan": plan.main,
+    "merge": merge.main,
     "bench": bench.main,
     "report": report.main,
     "adjudicate": adjudicate.main,

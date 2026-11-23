@@ -17,6 +17,7 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import sys
 from collections import Counter, defaultdict
 from dataclasses import dataclass
 from pathlib import Path
@@ -789,6 +790,17 @@ def build(
     return report
 
 
+def gate_failures(lines: list[dict]) -> list[str]:
+    """What stops a round that gates: a threshold that fails, a safety row nobody decided, a coverage floor not met."""
+    return [
+        f"{line['gate']} {line['source']}: {line['status']} ({line['detail'] or line['value']})"
+        for line in lines
+        if line["status"] == "fail"
+        or (line["gate"].startswith("coverage.") and line["status"] != "pass")
+        or (line["gate"].startswith("safety.") and line["status"] == NOT_DECIDED)
+    ]
+
+
 def repo_languages() -> dict[str, str]:
     from corpus import load_corpus
 
@@ -833,6 +845,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--ac5-head", type=Path, help="the AC5 scorer's totals.json for the head")
     parser.add_argument("--ac5-base", type=Path, help="the same for the base, scored on the same material")
     parser.add_argument("--out", type=Path, help="directory for report.md and report.json (default: --run)")
+    parser.add_argument("--gate", action="store_true", help="exit 1 when a threshold fails or a coverage floor is not met")
     options = parser.parse_args(argv)
     if options.cell_facts and not options.against:
         parser.error("--cell-facts needs --against: a cell is measured by a paired run")
@@ -855,7 +868,10 @@ def main(argv: list[str] | None = None) -> int:
     (out / "report.json").write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     (out / "report.md").write_text(render(report), encoding="utf-8")
     print(f"wrote {out / 'report.md'} and {out / 'report.json'}")
-    return 0
+    stopped = gate_failures(report["verdict"]) if options.gate else []
+    for reason in stopped:
+        print(f"GATE: {reason}", file=sys.stderr)
+    return 1 if stopped else 0
 
 
 if __name__ == "__main__":

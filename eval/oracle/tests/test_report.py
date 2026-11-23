@@ -610,3 +610,17 @@ def test_the_coverage_floors_come_from_the_gates_file_alone(tmp_path: Path):
         if line["gate"] == "coverage.measured_share"
     )
     assert (status(tmp_path / "strict"), status(tmp_path / "relaxed")) == ("not measured", "pass")
+
+
+def test_the_gate_exits_one_for_a_thin_repository_and_for_a_false_fold_and_zero_for_a_covered_clean_round(tmp_path: Path):
+    def round_of(name: str, ok: int, folds: int) -> int:
+        run = write_run(tmp_path / name, [cell(truth=1, tp=1, folded=folds, false_fold=folds)])
+        (run / "indexes.jsonl").write_text("".join(json.dumps(index_entry("jsoup", n < ok)) + "\n" for n in range(10)))
+        (run / "commits.jsonl").write_text(
+            "".join(json.dumps({"repo": "jsoup", "commit": n, "status": "measured"}) + "\n" for n in range(10))
+        )
+        return report.main(["--run", str(run), "--out", str(tmp_path / f"out-{name}"), "--gate"])
+
+    assert round_of("covered", 10, 0) == 0
+    assert round_of("thin", 5, 0) == 1
+    assert round_of("false-fold", 10, 1) == 1
