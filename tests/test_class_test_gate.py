@@ -1,4 +1,4 @@
-"""The class-test gate (T9): a fix ships with a test that is red on the base and
+"""The class-test gate: a fix ships with a test that is red on the base and
 green on the head, or says in the PR body why it needs none.
 
 Real git repositories and the real script. Only `cargo` is replaced: building

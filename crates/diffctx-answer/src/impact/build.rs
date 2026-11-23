@@ -902,7 +902,7 @@ pub fn build_impact(
         sources = lifted;
         sources.retain(|(f, _, _)| !within(&f.id, core));
         // The module's own guard and a registration call run the definition;
-        // they are no callers of it (R3).
+        // they are no callers of it.
         let entered = symbol.and_then(|name| {
             let name = base_symbol(name);
             file_of(core)
@@ -1106,7 +1106,7 @@ pub fn build_impact(
                 })
             })
             .flatten();
-        // The role that gives the definition an implicit caller (R3): where a
+        // The role that gives the definition an implicit caller: where a
         // static test link exists it is shown, otherwise the role is named.
         let test_link = |frag| {
             let found = tests.tested_by(frag, state, &by_id, &link);

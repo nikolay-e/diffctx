@@ -835,7 +835,7 @@ fn a_commit_that_landed_nothing_is_not_answered_with_another_sessions_commit() {
 
 /// Git's record cannot tell a commit a peer makes in the same checkout while
 /// a line ran from the line's own: a line that only reads is answered with
-/// it, and the answer says it covers what changed during the call (T19).
+/// it, and the answer says it covers what changed during the call.
 #[test]
 fn a_peer_commit_during_a_read_only_line_is_read_as_changed_during_the_call() {
     let tmp = repo_with_pending_change();

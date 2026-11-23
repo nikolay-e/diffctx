@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The class-test gate (T9). A pull request that carries a `fix` commit touching
+# The class-test gate. A pull request that carries a `fix` commit touching
 # engine source (crates/*/src, src) must carry the test that would have caught
 # the fix's class: an added or changed case under tests/cases/{diff,impact,symbol},
 # a case whose row it takes off known_below_threshold.txt or known_false_hedges.txt,

@@ -439,7 +439,7 @@ fn groups(fixture: &Fixture, node: &Node, changed: &Changed) -> Vec<Group> {
     let mut groups: Vec<Group> = Vec::new();
     for named in definitions_of(fixture, node) {
         for binding in named.resolver.references_to(&named.key) {
-            // A type use is its own relation (R9), never a read of the type it names.
+            // A type use is its own relation, never a read of the type it names.
             let relation = binding.relation;
             if !relation.uses()
                 && !matches!(
@@ -669,7 +669,7 @@ fn build(case: &Case) -> Fixture {
     open(repo, RangeSpec::Review { base, head })
 }
 
-/// Revision 12.3: a case tagged `local-of-definition` names a local of a
+/// A case tagged `local-of-definition` names a local of a
 /// definition (a nested function that never leaves it). The resolver holds no
 /// definition of the name, and each use the case lists answers
 /// `unresolved(Local)`: the engine's `--symbol` lists those uses from the
@@ -1856,7 +1856,7 @@ fn a_function_typed_property_called_through_a_typed_chain_is_called() {
     );
 }
 
-/// gh#554, as ruled in Revision 12.3: a function declared inside another that
+/// gh#554: a function declared inside another that
 /// never leaves it is a local of the enclosing definition. A call of it from
 /// its siblings is a use of that local, not of a definition, and the
 /// module-level function of the same name is not what it lands on.
@@ -2067,7 +2067,7 @@ fn every_export_form_reexports_the_definition_it_names() {
     }
 }
 
-/// W5-R1 (R1): `const {f} = Class` and `const {f: g} = Class` bind the name to
+/// `const {f} = Class` and `const {f: g} = Class` bind the name to
 /// the member `f` of the class: a call through it is a call of that member,
 /// resolved as aliased. A name destructured from something that is no class of
 /// the repository stays the variable it is.
@@ -2100,7 +2100,7 @@ fn a_destructured_static_is_called_as_the_member_it_names() {
     );
 }
 
-/// W5-R1 (R3): `const x = a.b` holds what the chain holds (a typed member, `this`
+/// `const x = a.b` holds what the chain holds (a typed member, `this`
 /// and `#private` ones too), `const x = a.b as T` the asserted type; the alias
 /// of an `any` stays an untyped read.
 #[test]
@@ -2136,7 +2136,7 @@ fn a_local_assigned_a_member_chain_reads_through_the_type_of_that_chain() {
     );
 }
 
-/// W5-R1 (R5): the keys of an object literal the code types write the members
+/// The keys of an object literal the code types write the members
 /// of that type: `const o: T = {…}` and `{…} as T`. An untyped literal, a key of
 /// a type the repository does not hold and a computed key name nothing.
 #[test]

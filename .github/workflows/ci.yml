@@ -98,7 +98,7 @@ jobs:
 
   # ============================================================================
   # A fix ships with the test that would have caught its class, red on the pull
-  # request's base and green on its head (T9). The base build is cached by the
+  # request's base and green on its head. The base build is cached by the
   # base commit, so a frozen main is built once. The epoch pull request carries
   # work that was gated stream by stream and is not judged again, and neither
   # does the architecture migration's integration branch, which is that work

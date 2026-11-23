@@ -4,7 +4,7 @@
 
 pub mod family;
 
-/// How far an answer about a language is promised (T5). Tier 1 is the
+/// How far an answer about a language is promised. Tier 1 is the
 /// declared set whose definitions, callers and test reach are being made
 /// precise. Tier 2 is read by a cell or by the ranking graph and answers with
 /// candidates. Every other language is Tier 3: not modelled, and no answer about

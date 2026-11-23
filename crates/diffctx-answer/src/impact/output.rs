@@ -242,7 +242,7 @@ pub struct ChangedSymbol {
     pub callers: Vec<Caller>,
     /// The role that gives this definition an implicit caller: a test its
     /// runner runs, a script's own guard, a program's `main`, a handler a
-    /// framework registers or dispatches (R3). Such a definition is no test
+    /// framework registers or dispatches. Such a definition is no test
     /// gap and its callers are not hedged.
     pub entry: Option<String>,
     /// Why callers could not be resolved at all: a name defined in many

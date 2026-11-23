@@ -3,7 +3,7 @@ mode: symbol
 source: synthetic
 issue_state: closed
 tags: [python, nested-function, local-of-definition]
-# Revision 12.3 (W5-N): `tax` never leaves `total`, so it is a local of
+# `tax` never leaves `total`, so it is a local of
 # `src/pricing.py::total`; `--symbol tax` says so and lists its uses inside it.
 repo:
   initial_files:

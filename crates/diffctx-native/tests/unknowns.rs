@@ -2183,7 +2183,7 @@ fn a_verdict_needs_a_model() {
     );
 }
 
-/// Tier 3 never claims an absence (T5): a changed function nothing calls, in
+/// Tier 3 never claims an absence: a changed function nothing calls, in
 /// a language no model reads, is named as not modelled, and neither the
 /// impact answer nor `--symbol` says that nothing calls it.
 #[test]

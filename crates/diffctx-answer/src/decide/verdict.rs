@@ -214,7 +214,7 @@ pub(super) enum Reach {
     Every,
     /// Building the class: what a constructor's callers do.
     Construction,
-    /// What a changed or removed constructor reaches (R11): the class's
+    /// What a changed or removed constructor reaches: the class's
     /// instantiations, the class handed on as a value (whoever receives it builds
     /// it: `map(Point, rows)`, `raise Error`, `kind = Cat`) and the explicit and
     /// `super()` calls of the constructor. Annotations and `isinstance` are uses

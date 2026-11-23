@@ -397,7 +397,7 @@ def test_a_session_waiting_on_a_background_line_launches_on_any_event(tmp_path, 
 @pytest.mark.parametrize("bash", _bashes())
 def test_the_plugin_script_launches_on_any_line_in_a_repository(tmp_path, pending_change, bash):
     # A script that commits shows no git on its line; git's record of the
-    # repository the call runs in says what it did (T19).
+    # repository the call runs in says what it did.
     calls = tmp_path / "calls"
     launcher = tmp_path / "diffctx"
     launcher.write_text(f'#!/bin/sh\necho >> "{calls}"\ncat >/dev/null\n', encoding="utf-8")

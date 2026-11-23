@@ -276,7 +276,7 @@ fn callers_phrase(a: &Answer, scope: &str) -> String {
         p
     };
     // Word matches are no callers, and no zero either: they are counted where the
-    // reader looks first (R1).
+    // reader looks first.
     if tally.textual > 0 {
         phrase.push_str(&format!(
             ", {} named only textually (not resolved)",
@@ -593,7 +593,7 @@ pub fn untested_unlisted(out: &mut String, a: &Answer) {
     );
 }
 
-/// Word matches, listed as text and never counted as callers (R1).
+/// Word matches, listed as text and never counted as callers.
 fn textual_rows(doc: &ImpactV2) -> Vec<String> {
     let mut rows = Vec::new();
     for d in &doc.definitions {

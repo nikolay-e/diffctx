@@ -864,7 +864,7 @@ export async function play() {
 }
 ";
 
-/// #554, as ruled in Revision 12.3: a function declared in a factory closure
+/// #554: a function declared in a factory closure
 /// that never leaves it is a local of the definition around it, not a
 /// definition. `--symbol` on it answers whose local it is and lists its uses
 /// inside that definition, each with the inner local or definition it sits

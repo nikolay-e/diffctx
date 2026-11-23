@@ -154,7 +154,7 @@ class TestPluginEvalMock:
         (an old description, `mode` defaulting to locate, no `symbol`).
 
         `plugin/` follows the published engine, and the post-publish finalize
-        moves it (the relay's T1): the mock is the server's own listing only
+        moves it: the mock is the server's own listing only
         while the plugin pins this tree's engine version."""
         pytest.importorskip("mcp")
         import asyncio
@@ -167,7 +167,7 @@ class TestPluginEvalMock:
         if pinned != __version__:
             pytest.skip(
                 f"plugin/ pins engine {pinned}, this tree is {__version__}: the mock follows the published engine "
-                "and the post-publish finalize moves it (T1, Revision 11 item 11)"
+                "and the post-publish finalize moves it"
             )
 
         # Compared by name: other tests in the same process register the

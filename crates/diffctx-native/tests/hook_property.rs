@@ -14,7 +14,7 @@
 //! the hook now reviews fails the suite until it moves to green, and a green
 //! one that fails is a regression. A red family is built so that every line
 //! in it shows the miss, so the baseline does not depend on the seed. The
-//! hook decides from git's record (T19) and watches the repository the call
+//! hook decides from git's record and watches the repository the call
 //! starts in with its linked work trees: the green families are lines run
 //! from their own repository, however they spell the way to it, and what is
 //! red is a repository the call does not start in (T21, fj#127).

@@ -435,7 +435,7 @@ fn groups(fixture: &Fixture, node: &Node, changed: &Changed) -> Vec<Group> {
             continue;
         }
         for binding in named.resolver.references_to(&named.key) {
-            // A type use is its own relation (R9), never a read of the type it names.
+            // A type use is its own relation, never a read of the type it names.
             let relation = binding.relation;
             if !relation.uses()
                 && !matches!(

@@ -632,7 +632,7 @@ fn build(case: &Case) -> Fixture {
     open(repo, RangeSpec::Review { base, head })
 }
 
-/// Revision 12.3: a case tagged `local-of-definition` names a local of a
+/// A case tagged `local-of-definition` names a local of a
 /// definition (a nested function that never leaves it). The resolver holds no
 /// definition of the name, and each use the case lists answers
 /// `unresolved(Local)`: the engine's `--symbol` lists those uses from the
@@ -1800,7 +1800,7 @@ fn candidate_reasons_and_unresolved_reasons_are_told_apart() {
     );
 }
 
-/// W5-R1 (R3): a variable assigned an attribute chain holds what the chain
+/// A variable assigned an attribute chain holds what the chain
 /// holds, so a read through it is a read of the member of that type, resolved
 /// as aliased; the alias of an untyped name stays an untyped read, and a module
 /// variable assigned a chain is an alias too.
@@ -1834,7 +1834,7 @@ fn a_variable_assigned_an_attribute_chain_reads_through_the_type_of_that_chain()
     );
 }
 
-/// W5-R1 (R4): a function handed to `functools.partial` is passed as a value,
+/// A function handed to `functools.partial` is passed as a value,
 /// resolved, from the function that builds the partial; the same name of
 /// another module is not it.
 #[test]
@@ -1861,7 +1861,7 @@ fn a_function_handed_to_functools_partial_is_passed_as_a_value() {
     assert_eq!(fx.lands(local), "pkg/cli.py::print_local");
 }
 
-/// W5-R1 (R6): `from .decorators import command as command` in a package's
+/// `from .decorators import command as command` in a package's
 /// `__init__` is a re-export of the definition, resolved through the overloads
 /// to the one name; it is no import and no caller.
 #[test]

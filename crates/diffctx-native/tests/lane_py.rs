@@ -771,8 +771,8 @@ fn a_uv_package_reexporting_from_its_init_passes_the_name_on() {
     );
 }
 
-/// #546: a function defined inside another and never returned is a local of it
-/// (Revision 12.3), named only there, so a file over the size cap that spells
+/// #546: a function defined inside another and never returned is a local of it,
+/// named only there, so a file over the size cap that spells
 /// its name is no possible caller of it. A
 /// module-level function of the same commit, which such a file imports and
 /// calls, lists that call.
@@ -809,7 +809,7 @@ fn a_nested_function_has_no_callers_outside_its_function() {
             )
         })
         .collect();
-    // The nested function never leaves `value_of` (Revision 12.3): it is a local,
+    // The nested function never leaves `value_of`: it is a local,
     // its change is `value_of`'s, and the answer has no entry for it. `value_of`
     // has no caller, so it is listed only if the answer lists a change nothing
     // calls. The file over the size cap is read whole by the facts layer, so it

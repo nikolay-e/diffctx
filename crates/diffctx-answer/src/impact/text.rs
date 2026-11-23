@@ -169,7 +169,7 @@ fn stalled(d: &Definition) -> bool {
     quiet(d) && matches!(d.limit(), Some(Gap::Stopped { .. }))
 }
 
-/// A changed definition every use of which is itself changed in the range (R14),
+/// A changed definition every use of which is itself changed in the range,
 /// complete in what it searched but for candidates there: the diff already shows its
 /// users. A removed one is never among them, since a line that still names it is a
 /// broken reference.

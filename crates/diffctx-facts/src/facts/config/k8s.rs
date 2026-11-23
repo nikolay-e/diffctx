@@ -1,8 +1,7 @@
 //! The Kubernetes reference table: which field of which kind names an object of
 //! which kind, and which kinds stand in a namespace.
 //!
-//! The table is data, and a field is a reference because a row says so
-//! (Revision 11 of the migration plan, item 13). The sources are the API
+//! The table is data, and a field is a reference because a row says so. The sources are the API
 //! reference of each kind (`PodSpec`, `Volume`, `EnvVarSource`, `IngressBackend`,
 //! `RoleBinding`, `CrossVersionObjectReference`) and the Flux and Argo CD
 //! resource definitions; a row is added with a fixture that reads it.

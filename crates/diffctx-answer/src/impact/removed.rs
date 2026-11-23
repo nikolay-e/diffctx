@@ -276,7 +276,7 @@ pub(super) fn removed_definitions(
             let modelled = reads_imports(&path) && reads_imports(&path_removed);
             // No model binds a name across files: of the files a removed
             // definition's language reads, only its own lines are known readers,
-            // and a row no model checked is a word match (R1).
+            // and a row no model checked is a word match.
             if modelled {
                 if path != path_removed {
                     continue;

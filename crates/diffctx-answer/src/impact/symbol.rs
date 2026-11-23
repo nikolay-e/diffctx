@@ -26,7 +26,7 @@ pub(crate) fn without_test_link(c: &Caller) -> bool {
 }
 
 /// A row that rests on a word match alone: listed as text, never counted or
-/// rendered as a caller (R1).
+/// rendered as a caller.
 pub fn is_textual(c: &Caller) -> bool {
     c.evidence == "name"
 }

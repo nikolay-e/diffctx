@@ -1006,7 +1006,7 @@ const READ_KNOWN_RED: &[(&str, &str)] = &[];
 /// (`DIFFCTX_TEST_READ_FAULT=n` fails the n-th read): the answer is an error,
 /// a named loss or the whole truth, never a smaller answer that looks
 /// complete. The git sweep fails calls; this one fails the reads a caller can
-/// swallow (m3).
+/// swallow.
 fn read_sweep(id: &str, lang: Lang, query: Query) {
     let knobs = Knobs {
         stale: true,
@@ -1107,7 +1107,7 @@ read_sweeps! {
     kotlin_locate: Kotlin, Locate;
 }
 
-// ---- a read of the base side that failed under a removed definition (m3) ----
+// ---- a read of the base side that failed under a removed definition ----
 
 /// Files that still call the removed method.
 const CALLERS: usize = 6;

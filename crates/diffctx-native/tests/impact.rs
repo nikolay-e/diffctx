@@ -6097,7 +6097,7 @@ fn a_block_scoped_binding_is_named_untracked_not_called_by_nothing() {
     );
 }
 
-// ---- the folding table (Revision 12.1): what a change cannot affect is counted
+// ---- the folding table: what a change cannot affect is counted
 
 fn impact_unfolded(repo: &Path) -> serde_json::Value {
     let out = diffctx_unclocked()

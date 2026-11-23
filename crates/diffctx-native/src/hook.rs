@@ -377,7 +377,7 @@ struct Before {
 }
 
 /// A remote-tracking ref when the call started or ended: a push is an
-/// "update by push" entry in its reflog past `log` (T20).
+/// "update by push" entry in its reflog past `log`.
 #[derive(serde::Serialize, serde::Deserialize)]
 struct Tracked {
     /// `refs/remotes/<remote>/<branch>`.
@@ -2607,7 +2607,7 @@ fn lead_of(event: Event, trigger: &Trigger, range: &str) -> String {
                 );
             }
             // Git alone cannot tell a commit another session makes in the
-            // same checkout meanwhile from this call's own (T19).
+            // same checkout meanwhile from this call's own.
             lead.push_str(if *late {
                 " It covers what changed in this repository since that call began."
             } else {
@@ -3596,7 +3596,7 @@ fn one_symbol_answer(
             .map_err(|_| "no-symbol")
     })?;
     // No definition, but files spell it: one line, since the grep that led
-    // here printed the lines and cannot say no binding was found (R2). Only a
+    // here printed the lines and cannot say no binding was found. Only a
     // lookup of a name code would spell asks that: an alternation or a plain
     // word is a search for text.
     if let Some(named) = &output.symbol_named {
@@ -4304,7 +4304,7 @@ const LOG_NAME: &str = "hook-runs.log";
 /// call=<tool_use_id> roots=<repo,repo> <version>`: the version last, so an
 /// audit can tell an old pin's answer from the current one (#524) without
 /// moving the fields before it. `call` joins a call's lines with the
-/// transcript; `roots` names every repository something landed in (M1).
+/// transcript; `roots` names every repository something landed in.
 #[allow(
     clippy::disallowed_methods,
     reason = "the hook's own log: a rotation or line that cannot be written leaves no line, as with a cache nobody can write"

@@ -16,7 +16,7 @@ export UV_ISOLATED=1
 # Read the event once and leave a call outside any git work tree alone before
 # starting anything: the matcher is every Bash call, and inside a repository
 # whatever a line runs may commit, so git's record decides what it did, not the
-# line's text (T19).
+# line's text.
 payload=$(cat 2>/dev/null) || exit 0
 case "$payload" in
 *'"PreToolUse"'*) event=pretooluse hook_event=PreToolUse ;;
@@ -27,7 +27,7 @@ case "$payload" in
 esac
 
 # Whether the call runs in a git work tree, where a program of any kind may
-# commit: its refs are recorded before and compared after (T19), so a script
+# commit: its refs are recorded before and compared after, so a script
 # that commits is reviewed though its line shows no git. The `cd` target of
 # the command and a Grep tool's `path` move the directory; only the command is
 # read for it, since the payload also carries the tool's output, and a `cd

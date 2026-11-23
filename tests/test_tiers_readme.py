@@ -1,4 +1,4 @@
-"""The README's language tiers are the registry's (T5): one table, two readers.
+"""The README's language tiers are the registry's: one table, two readers.
 
 The table lives in `crates/diffctx-resolve/src/vocabulary.rs`; a language that
 moves tier there moves in the README in the same change.

@@ -1036,7 +1036,7 @@ fn an_expired_run_says_so_instead_of_returning_a_clean_file() {
     assert!(parse_errors(&blob).is_empty());
 }
 
-/// W5-R1 (R2): a module-level statement that mutates a module variable is part
+/// A module-level statement that mutates a module variable is part
 /// of that variable's value, so its edit changes the variable's hashes and
 /// nothing else's. A statement that only reads it, one in a function, in the
 /// main guard, or a method that does not change a dict, list or set, does not.

@@ -1,5 +1,5 @@
 //! Which rows of a changed definition the change cannot have affected, by the
-//! folding table of the 2.0 plan (Revision 12.1): definition kind x what changed
+//! folding table: definition kind x what changed
 //! x relation kind x whether its type is declared. A folded row is counted in a
 //! line of its own, never dropped; a case the table does not name is listed.
 //! When unsure, nothing folds.

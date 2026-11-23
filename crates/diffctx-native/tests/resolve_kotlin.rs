@@ -420,7 +420,7 @@ fn groups(fixture: &Fixture, node: &Node, changed: &Changed) -> Vec<Group> {
     let mut groups: Vec<Group> = Vec::new();
     for named in definitions_of(fixture, node) {
         for binding in named.resolver.references_to(&named.key) {
-            // A type use is its own relation (R9), never a read of the type it names.
+            // A type use is its own relation, never a read of the type it names.
             let relation = binding.relation;
             if !relation.uses()
                 && !matches!(

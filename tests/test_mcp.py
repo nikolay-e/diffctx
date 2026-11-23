@@ -1123,8 +1123,8 @@ class TestPathsScopeAMonorepo:
         text = await self._ask(server, monorepo.path, paths=["svc_a/calc.py"])
         assert "1 changed file(s)" in text
         # The scope holds one file; the files outside it that may call it were left
-        # out, so the answer claims no absence and says why (Revision 11 item 2:
-        # an absence needs a complete search).
+        # out, so the answer claims no absence and says why: an
+        # absence needs a complete search.
         assert "0 caller(s)" not in text
         assert "nothing calls them" not in text
         assert "file(s) outside the run's pathspecs were left out" in text
