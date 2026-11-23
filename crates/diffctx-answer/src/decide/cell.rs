@@ -3,18 +3,20 @@
 
 use std::cell::{OnceCell, RefCell};
 
-use std::collections::{BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet};
 
 use std::rc::Rc;
 
 use std::sync::Arc;
 
 use anyhow::Result;
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::run_provenance::state::ScoredState;
 
 use diffctx_facts::facts::{
-    DefKey, DefKind, FactsCache, FileFacts, Language, ModulePath, ProjectId, Scope, facts_of,
+    DefKey, DefKind, EntryPoint, FactsCache, FileFacts, HeldString, Language, ModulePath,
+    ProjectId, Scope, facts_of,
 };
 
 use diffctx_occurrence::tokens::occurrence::debug::Written;
@@ -86,33 +88,33 @@ pub(crate) struct Cell {
     base: OnceCell<Result<Resolver, String>>,
     changed: Vec<Changed>,
     /// Every key the range changed outside layout, by its head key.
-    changed_keys: HashSet<DefKey>,
+    changed_keys: FxHashSet<DefKey>,
     hunks: Hunks,
     /// The lines each file gained or rewrote, by number, outside formatter-only
     /// hunks.
-    added: HashMap<String, Vec<(u32, String)>>,
+    added: FxHashMap<String, Vec<(u32, String)>>,
     /// The project, module and language of each file that holds a definition.
-    homes: HashMap<String, (ProjectId, ModulePath, Language)>,
+    homes: FxHashMap<String, (ProjectId, ModulePath, Language)>,
     /// Definitions by file: indices into the head's definitions.
-    defs_by_file: HashMap<String, Vec<usize>>,
+    defs_by_file: FxHashMap<String, Vec<usize>>,
     /// Definitions by key: indices into the head's definitions.
-    defs_by_key: HashMap<DefKey, usize>,
+    defs_by_key: FxHashMap<DefKey, usize>,
     /// Head bindings by file.
-    bindings_by_file: HashMap<String, Vec<usize>>,
+    bindings_by_file: FxHashMap<String, Vec<usize>>,
     /// Files the resolver read.
-    files: HashSet<String>,
+    files: FxHashSet<String>,
     /// Files outside the run's pathspecs that hold uses the cell left out.
-    outside: HashSet<String>,
-    /// The (user file, used file) pairs a binding of those links.
-    reached_from_outside: HashSet<(String, String)>,
+    outside: FxHashSet<String>,
+    /// Users outside pathspecs by the file a binding of theirs lands on.
+    reached_from_outside: FxHashMap<String, FxHashSet<String>>,
     /// Rust files that invoke `cfg_if!`.
-    macro_files: HashSet<String>,
+    macro_files: FxHashSet<String>,
     /// Python files that import a library which executes annotations at run time.
-    runtime_files: RefCell<HashMap<String, bool>>,
+    runtime_files: RefCell<FxHashMap<String, bool>>,
     /// Resolved uses by target: the file and line of each.
-    landed: HashMap<DefKey, Vec<(String, u32)>>,
-    /// (user file, used file) pairs a binding links.
-    reaches: HashSet<(String, String)>,
+    landed: FxHashMap<DefKey, Vec<(String, u32)>>,
+    /// User files by the file a binding of theirs lands on.
+    reaches: FxHashMap<String, FxHashSet<String>>,
     losses: Vec<Loss>,
     /// The run's pathspecs: the cell reads the files inside them alone, as the
     /// fragments do. Empty for the whole repository.
@@ -120,7 +122,7 @@ pub(crate) struct Cell {
     /// What every cell of the run asks whether a file spells a name.
     tokens: Arc<TokenIndex>,
     /// The paths the head resolver read.
-    read: HashSet<String>,
+    read: FxHashSet<String>,
     /// Of those, the ones no extension puts in the family's group.
     outside_group: Vec<String>,
     /// What the run lost that does not change while the cell answers: its own
@@ -133,7 +135,11 @@ pub(crate) struct Cell {
     ground: OnceCell<Ground>,
     /// The occurrence account of each changed definition, once per cell: the
     /// answer asks for a definition's verdict from several places.
-    accounted: RefCell<HashMap<DefKey, Rc<Accounting>>>,
+    accounted: RefCell<FxHashMap<DefKey, Rc<Accounting>>>,
+    /// Framework entry points per `(file, side)`, memoized after the first read.
+    framework_entries: RefCell<FxHashMap<(RepoPath, SideTag), Option<Rc<Vec<EntryPoint>>>>>,
+    /// Held strings per head file, memoized after the first read.
+    held_strings: RefCell<FxHashMap<RepoPath, Option<Rc<Vec<HeldString>>>>>,
 }
 
 /// The context the cell reads: the range the run analysed, or one snapshot of
@@ -330,7 +336,7 @@ impl Cell {
         let cache = FactsCache::user();
         let head = Resolver::open(family, &ctx, SideTag::Head, &cache)?;
         tokens.bind(&ctx, &cache)?;
-        let read: HashSet<String> = head
+        let read: FxHashSet<String> = head
             .read_paths()
             .iter()
             .map(|path| path.as_str().to_string())
@@ -349,20 +355,20 @@ impl Cell {
             head,
             base: OnceCell::new(),
             changed: Vec::new(),
-            changed_keys: HashSet::new(),
-            hunks: HashMap::new(),
-            added: HashMap::new(),
-            homes: HashMap::new(),
-            defs_by_file: HashMap::new(),
-            defs_by_key: HashMap::new(),
-            bindings_by_file: HashMap::new(),
-            files: HashSet::new(),
-            outside: HashSet::new(),
-            reached_from_outside: HashSet::new(),
-            macro_files: HashSet::new(),
-            runtime_files: RefCell::new(HashMap::new()),
-            landed: HashMap::new(),
-            reaches: HashSet::new(),
+            changed_keys: FxHashSet::default(),
+            hunks: FxHashMap::default(),
+            added: FxHashMap::default(),
+            homes: FxHashMap::default(),
+            defs_by_file: FxHashMap::default(),
+            defs_by_key: FxHashMap::default(),
+            bindings_by_file: FxHashMap::default(),
+            files: FxHashSet::default(),
+            outside: FxHashSet::default(),
+            reached_from_outside: FxHashMap::default(),
+            macro_files: FxHashSet::default(),
+            runtime_files: RefCell::default(),
+            landed: FxHashMap::default(),
+            reaches: FxHashMap::default(),
             losses: Vec::new(),
             scope: state.scope.clone(),
             tokens,
@@ -372,6 +378,8 @@ impl Cell {
             shadow_written: RefCell::default(),
             ground: OnceCell::new(),
             accounted: RefCell::default(),
+            framework_entries: RefCell::default(),
+            held_strings: RefCell::default(),
         };
         // A queried name has no diff: the lines a symbol run anchors its
         // definitions on are no hunks, and a use inside one is a caller.
@@ -417,7 +425,7 @@ impl Cell {
     }
 
     fn index(&mut self) {
-        let mut file_of: HashMap<&DefKey, &str> = HashMap::new();
+        let mut file_of: FxHashMap<&DefKey, &str> = FxHashMap::default();
         for (at, def) in self.head.definitions().iter().enumerate() {
             let file = def.file.as_str();
             self.files.insert(file.to_string());
@@ -442,10 +450,14 @@ impl Cell {
                 Resolution::Module { file: used, .. } => Some(used.as_str()),
                 Resolution::Candidate { .. } | Resolution::Unresolved { .. } => None,
             };
-            let reach = used.map(|used| (file.to_string(), used.to_string()));
             if !within_scope(&self.scope, file) {
                 self.outside.insert(file.to_string());
-                self.reached_from_outside.extend(reach);
+                if let Some(used) = used {
+                    self.reached_from_outside
+                        .entry(used.to_string())
+                        .or_default()
+                        .insert(file.to_string());
+                }
                 continue;
             }
             // A configuration file that only names places (a Kustomize file) is
@@ -489,7 +501,12 @@ impl Cell {
                         .push((file.to_string(), line));
                 }
             }
-            self.reaches.extend(reach);
+            if let Some(used) = used {
+                self.reaches
+                    .entry(used.to_string())
+                    .or_default()
+                    .insert(file.to_string());
+            }
         }
         self.losses = self.head.losses().to_vec();
     }
@@ -527,7 +544,7 @@ impl Cell {
     /// answer says so. A file the range adds has no callers to lose; a test
     /// file's top-level code is still named, never read as a change of nothing.
     pub(crate) fn outside_definitions(&self) -> Vec<(String, Vec<(u32, u32)>)> {
-        let added_files: HashSet<&str> = self
+        let added_files: FxHashSet<&str> = self
             .ctx
             .changes
             .changes
@@ -613,10 +630,10 @@ impl Cell {
         let Ok(base) = self.base() else {
             return None;
         };
-        let dir = |path: &str| path.rsplit_once('/').map(|(dir, _)| dir.to_string());
+        let dir = |path: &str| path.rsplit_once('/').map(|(dir, _)| dir);
         let go = self.family == Family::Go;
         let unit = |path: &str| path == file || (go && dir(path) == dir(file));
-        let defined: HashSet<&DefKey> = base
+        let defined: FxHashSet<&DefKey> = base
             .definitions()
             .iter()
             .filter(|d| unit(d.file.as_str()))
@@ -824,7 +841,7 @@ impl Cell {
         let unbound = (spelled.into_iter())
             .map(|at| group.files()[at as usize].as_str())
             .filter(|file| !within_scope(&self.scope, file));
-        let files: HashSet<&str> = self
+        let files: FxHashSet<&str> = self
             .outside
             .iter()
             .map(String::as_str)
@@ -833,8 +850,10 @@ impl Cell {
         (files.into_iter())
             .filter(|file| {
                 self.ctx.workspace.may_reference(file, &changed.file)
-                    || (self.reached_from_outside)
-                        .contains(&(file.to_string(), changed.file.clone()))
+                    || self
+                        .reached_from_outside
+                        .get(&changed.file)
+                        .is_some_and(|users| users.contains(*file))
             })
             .count()
     }
