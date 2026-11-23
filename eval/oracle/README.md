@@ -49,6 +49,13 @@ eval/oracle/run.sh                                 # the full corpus
 the metamorphic and fault outcomes (`ORACLE_METAMORPHIC_REPORT`,
 `ORACLE_FAULTS_REPORT`; JSON, JSON lines or a `cargo test` log).
 
+The cluster runs one command per language lane, `python run.py lane --lane jvm
+--repos A B --job DIR --out DIR`: inside a container it first fetches the pinned
+JDKs and Maven (`jvm-toolchains.toml`) and writes the Gradle installations and
+`~/.m2/toolchains.xml`, then measures each repository at both budgets into
+`<out>/<budget>/<lane>`. The workflow template names only an image, resources
+and that command.
+
 The scheduled run draws a random metamorphic stream (`DIFFCTX_METAMORPHIC_SEED`,
 `DIFFCTX_METAMORPHIC_CASES`); locally set the same two variables before
 `cargo test --release --test metamorphic` and pass its log as

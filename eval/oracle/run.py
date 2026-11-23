@@ -7,6 +7,7 @@ import sys
 
 import adjudicate
 import bench
+import lane
 import measure
 import report
 import runners
@@ -30,6 +31,7 @@ def setup(argv: list[str]) -> int:
 COMMANDS = {
     "setup": setup,
     "measure": measure.main,
+    "lane": lane.main,
     "bench": bench.main,
     "report": report.main,
     "adjudicate": adjudicate.main,
