@@ -609,7 +609,16 @@ fn dockerfile_in(dir: &str, name: &str) -> String {
 /// root; none when it is not a plain path.
 type WorkDir<'a> = &'a dyn Fn(usize) -> Option<String>;
 
+/// Both command patterns need the literal inside one physical line: a joined
+/// line only adds a space between pieces, so a text without it has no match.
+fn names_docker(text: &str) -> bool {
+    text.contains("docker") || text.contains("podman")
+}
+
 fn docker_commands(text: &str, work_dir: WorkDir, out: &mut Vec<RawRecord>) {
+    if !names_docker(text) {
+        return;
+    }
     for (line, logical) in logical_lines(text) {
         if let Some(cap) = DOCKER_BUILD.captures(&logical) {
             let tokens: Vec<&str> = cap[1].split_whitespace().collect();
@@ -1287,7 +1296,9 @@ fn yaml(rel: &str, text: &str, lines: &Lines, compose_file: bool, out: &mut Vec<
     if name.starts_with("application") || name.starts_with("bootstrap") {
         spring_yaml(&entries, out);
     }
-    docker_commands(text, &step_dirs(&entries, &kids), out);
+    if names_docker(text) {
+        docker_commands(text, &step_dirs(&entries, &kids), out);
+    }
     if compose_file {
         compose(rel, &entries, &kids, &mut env, out);
         for cap in INTERPOLATION.captures_iter(text) {
@@ -1753,6 +1764,9 @@ fn metric_defs(text: &str, lines: &Lines, out: &mut Vec<RawRecord>) {
 /// The metrics a rule file's `expr:` queries, a block scalar included: the
 /// names before a `(` are functions, and labels and strings are no series.
 fn promql_reads(text: &str, out: &mut Vec<RawRecord>) {
+    if !text.contains("expr:") {
+        return;
+    }
     let mut rows = text.lines().enumerate().peekable();
     while let Some((at, row)) = rows.next() {
         let Some(rest) = row
