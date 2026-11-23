@@ -508,6 +508,30 @@ fn a_macro_invoked_as_an_impl_item_carries_the_impls_type() {
 }
 
 #[test]
+fn a_closure_parameter_and_a_loop_variable_take_the_element_of_a_declared_sequence() {
+    let blob = extract(
+        "fn f(cells: &[Cell], rows: &Vec<Cell>, one: Option<&Cell>, shapes: &[Box<dyn Shape>], fixed: [Row; 3]) {\n    cells.iter().any(|a| a.points());\n    for b in rows {\n        b.looks();\n    }\n    one.is_some_and(|c| c.opens());\n    shapes.iter().map(|d| d.area());\n    fixed.into_iter().for_each(|e| e.draws());\n    cells.iter().map(|g: &Other| g.typed());\n}\n",
+    );
+    let typed = |t: &str| Receiver::Typed(t.into());
+    assert_eq!(receiver_of(&blob, "points"), (&typed("Cell"), vec![]));
+    assert_eq!(receiver_of(&blob, "looks"), (&typed("Cell"), vec![]));
+    assert_eq!(receiver_of(&blob, "opens"), (&typed("Cell"), vec![]));
+    assert_eq!(receiver_of(&blob, "area"), (&typed("dyn Shape"), vec![]));
+    assert_eq!(receiver_of(&blob, "draws"), (&typed("Row"), vec![]));
+    assert_eq!(receiver_of(&blob, "typed"), (&typed("Other"), vec![]));
+}
+
+#[test]
+fn a_closure_parameter_whose_element_is_not_declared_stays_unknown() {
+    let blob = extract(
+        "fn f(cells: &[Cell], others: &[Other], walk: Walk, pairs: Vec<(Cell, u8)>) {\n    walk.into_iter().any(|a| a.points());\n    pairs.iter().any(|b| b.looks());\n    cells.iter().enumerate().any(|c| c.opens());\n    let cells = others;\n    cells.iter().any(|d| d.draws());\n    cells.chunks(2).any(|e| e.saves());\n}\n",
+    );
+    for name in ["points", "looks", "opens", "draws", "saves"] {
+        assert_eq!(receiver_of(&blob, name).0, &Receiver::Unknown, "{name}");
+    }
+}
+
+#[test]
 fn tests_and_main_are_entry_points() {
     let blob = extract(
         "fn main() {}\n#[test]\nfn works() {}\n#[tokio::test]\nasync fn async_works() {}\nmod inner { fn main() {} }\n",

@@ -25,7 +25,9 @@
 //!   `SelfType`; a local whose type its declaration or constructor states is
 //!   `Typed` (a trait object, `impl Tr` or a generic with a bound is the type
 //!   `dyn Tr`); a call result is `CallResult` (the callee's path, with a final
-//!   `?` when the result was unwrapped); anything else is `Unknown`. The fields
+//!   `?` when the result was unwrapped; a closure parameter or loop variable
+//!   over a local declared as a slice, `Vec` or `Option` is `Typed` as its
+//!   element); anything else is `Unknown`. The fields
 //!   written after `self` or a typed local go to the `qualifier`; for an
 //!   `Unknown` receiver the qualifier is the whole chain written.
 //! - A trait-impl method has an `Override` reference to the trait's method of
@@ -51,6 +53,7 @@ use crate::facts::{
 };
 use diffctx_snapshot::snapshot::RunBudget;
 
+mod elements;
 mod macros;
 
 const MAX_DEPTH: u16 = 256;
@@ -198,8 +201,9 @@ struct Walker<'t> {
     /// How many definitions each key has had, for twins.
     twins: HashMap<LocalKey, u16>,
     /// The locals of the function, block and closure scopes around, innermost
-    /// last, with the type their declaration states.
-    locals: Vec<HashMap<String, Option<Ty>>>,
+    /// last, with the type their declaration states and, for a slice, array,
+    /// `Vec`, set or `Option`, the type of its element.
+    locals: Vec<HashMap<String, (Option<Ty>, Option<Ty>)>>,
     /// Inside the body of a `macro_rules!` rule, where only `self.m(..)` is read.
     defining_macro: bool,
 }
@@ -235,12 +239,15 @@ impl<'t> Walker<'t> {
     // ---- locals
 
     fn lookup(&self, name: &str) -> Option<&Option<Ty>> {
-        self.locals.iter().rev().find_map(|scope| scope.get(name))
+        self.locals
+            .iter()
+            .rev()
+            .find_map(|scope| scope.get(name).map(|(ty, _)| ty))
     }
 
     fn bind(&mut self, name: &str, ty: Option<Ty>) {
         if let Some(scope) = self.locals.last_mut() {
-            scope.insert(name.to_string(), ty);
+            scope.insert(name.to_string(), (ty, None));
         }
     }
 
@@ -554,6 +561,7 @@ impl<'t> Walker<'t> {
                     let known = ty.and_then(|t| self.ty_of(t, cx));
                     if let Some(pattern) = parameter.child_by_field_name("pattern") {
                         self.pattern(pattern, known, cx, LocalKind::Parameter, depth);
+                        self.bind_elements(pattern, ty, cx);
                     }
                 }
                 "self_parameter" => {}
@@ -1167,6 +1175,7 @@ impl<'t> Walker<'t> {
             .or_else(|| value.and_then(|v| self.built_ty(v, cx)));
         if let Some(pattern) = node.child_by_field_name("pattern") {
             self.pattern(pattern, known, cx, LocalKind::Variable, depth + 1);
+            self.bind_elements(pattern, declared, cx);
         }
     }
 
@@ -1391,34 +1400,7 @@ impl<'t> Walker<'t> {
             "token_tree" => self.tokens(node, cx, depth),
             "let_declaration" => self.let_statement(node, cx, depth),
             "block" | "unsafe_block" | "async_block" | "const_block" => self.block(node, cx, depth),
-            "closure_expression" => {
-                self.locals.push(HashMap::new());
-                if let Some(parameters) = node.child_by_field_name("parameters") {
-                    let mut cursor = parameters.walk();
-                    let list: Vec<Node<'t>> = parameters.named_children(&mut cursor).collect();
-                    for parameter in list {
-                        if parameter.kind() == "parameter" {
-                            let ty = parameter.child_by_field_name("type");
-                            if let Some(ty) = ty {
-                                self.type_refs(ty, cx, depth + 1);
-                            }
-                            let known = ty.and_then(|t| self.ty_of(t, cx));
-                            if let Some(pattern) = parameter.child_by_field_name("pattern") {
-                                self.pattern(pattern, known, cx, LocalKind::Parameter, depth + 1);
-                            }
-                        } else {
-                            self.pattern(parameter, None, cx, LocalKind::Parameter, depth + 1);
-                        }
-                    }
-                }
-                if let Some(ret) = node.child_by_field_name("return_type") {
-                    self.type_refs(ret, cx, depth + 1);
-                }
-                if let Some(body) = node.child_by_field_name("body") {
-                    self.expr(body, cx, depth + 1);
-                }
-                self.locals.pop();
-            }
+            "closure_expression" => self.closure(node, cx, depth, None),
             "match_expression" => {
                 if let Some(value) = node.child_by_field_name("value") {
                     self.expr(value, cx, depth + 1);
@@ -1467,7 +1449,10 @@ impl<'t> Walker<'t> {
                 }
                 self.locals.push(HashMap::new());
                 if let Some(pattern) = node.child_by_field_name("pattern") {
-                    self.pattern(pattern, None, cx, LocalKind::Variable, depth + 1);
+                    let element = node
+                        .child_by_field_name("value")
+                        .and_then(|value| self.element_of(value));
+                    self.pattern(pattern, element, cx, LocalKind::Variable, depth + 1);
                 }
                 if let Some(body) = node.child_by_field_name("body") {
                     self.expr(body, cx, depth + 1);
@@ -1475,7 +1460,7 @@ impl<'t> Walker<'t> {
                 self.locals.pop();
             }
             "let_condition" => self.condition(node, cx, depth),
-            "arguments" => self.arguments(node, cx, depth),
+            "arguments" => self.arguments(node, cx, depth, None),
             "type_arguments" => self.type_refs(node, cx, depth),
             // Items inside a block.
             "function_item" | "impl_item" | "struct_item" | "enum_item" | "trait_item"
@@ -1527,14 +1512,18 @@ impl<'t> Walker<'t> {
     }
 
     /// The arguments of a call: a bare path is a value passed on (a function
-    /// handed by name), anything else is read as code.
-    fn arguments(&mut self, node: Node<'t>, cx: &Cx, depth: u16) {
+    /// handed by name), anything else is read as code. `element` is what the
+    /// first parameter of a closure argument holds.
+    fn arguments(&mut self, node: Node<'t>, cx: &Cx, depth: u16, element: Option<Ty>) {
         let mut cursor = node.walk();
         let list: Vec<Node<'t>> = node.named_children(&mut cursor).collect();
         for argument in list {
             match argument.kind() {
                 "identifier" | "scoped_identifier" => {
                     self.path_ref(argument, cx, UseKind::PassAsValue, depth + 1);
+                }
+                "closure_expression" => {
+                    self.closure(argument, cx, depth + 1, element.clone());
                 }
                 _ => self.expr(argument, cx, depth + 1),
             }
@@ -1552,7 +1541,10 @@ impl<'t> Walker<'t> {
             }
         }
         if let Some(arguments) = node.child_by_field_name("arguments") {
-            self.arguments(arguments, cx, depth + 1);
+            let element = node
+                .child_by_field_name("function")
+                .and_then(|function| self.closure_element(function));
+            self.arguments(arguments, cx, depth + 1, element);
         }
     }
 
