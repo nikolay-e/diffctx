@@ -533,6 +533,49 @@ fn module_stem(path: &str) -> Option<&str> {
         .filter(|s| distinctive(s))
 }
 
+/// The words [`UntracedNamers`] searches for: the names the changed definitions
+/// are spelled by, their modules and the names they were renamed from.
+fn untraced_needles(
+    cores: &[&Fragment],
+    removed: &[&str],
+    left: &[&str],
+    own: &[super::keys::OwnSpan],
+) -> Vec<String> {
+    let mut needles: Vec<String> = cores
+        .iter()
+        .filter_map(|c| spelled_name(c))
+        .chain(removed.iter().copied().map(literal_base))
+        .chain(left.iter().copied())
+        .chain(
+            own.iter()
+                .filter(|o| extension(&o.0) == "tf")
+                .map(|o| o.1.as_str()),
+        )
+        .filter(|w| searched_as_text(w))
+        .chain(cores.iter().filter_map(|c| module_stem(c.path())))
+        .map(str::to_string)
+        .chain(
+            cores
+                .iter()
+                .filter(|c| extension(c.path()) == "go")
+                .filter_map(|c| spelled_name(c))
+                .map(str::to_string),
+        )
+        .collect();
+    needles.sort();
+    needles.dedup();
+    needles
+}
+
+/// What the readers that plan after the tests' sources search for, announced
+/// with theirs so the run starts one search: the words the changed definitions
+/// are spelled by, and the paths the changed files are named by.
+pub(super) fn later_needles(state: &ScoredState, cores: &[&Fragment]) -> Vec<String> {
+    let mut needles = untraced_needles(cores, &[], &[], &[]);
+    needles.extend(super::mentions::named_by_path_needles(state));
+    needles
+}
+
 impl UntracedNamers {
     pub(super) fn build(
         state: &ScoredState,
@@ -553,29 +596,7 @@ impl UntracedNamers {
         let literal =
             super::keys::LiteralNames::build(state, cells, diff_range, &literal_names, own);
         let unread = UnreadFiles::of(state);
-        let mut needles: Vec<String> = cores
-            .iter()
-            .filter_map(|c| spelled_name(c))
-            .chain(removed.iter().copied().map(literal_base))
-            .chain(left.iter().copied())
-            .chain(
-                own.iter()
-                    .filter(|o| extension(&o.0) == "tf")
-                    .map(|o| o.1.as_str()),
-            )
-            .filter(|w| searched_as_text(w))
-            .chain(cores.iter().filter_map(|c| module_stem(c.path())))
-            .map(str::to_string)
-            .chain(
-                cores
-                    .iter()
-                    .filter(|c| extension(c.path()) == "go")
-                    .filter_map(|c| spelled_name(c))
-                    .map(str::to_string),
-            )
-            .collect();
-        needles.sort();
-        needles.dedup();
+        let needles = untraced_needles(cores, removed, left, own);
         if needles.is_empty() {
             return Self {
                 literal,
