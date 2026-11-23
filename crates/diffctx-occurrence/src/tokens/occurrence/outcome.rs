@@ -28,6 +28,7 @@ use diffctx_resolve::resolve::{
 };
 use diffctx_resolve::vocabulary::family::Family;
 use diffctx_snapshot::snapshot::{Loss, RepoPath, WorkspaceModel};
+mod resolved;
 mod routes;
 
 /// What one side's resolved snapshot is indexed by, as positions in its files and
@@ -627,46 +628,6 @@ impl<'a> Reading<'a> {
             || Claim::candidate(relation, Reason::Resolver(reason)),
             |key| Claim::not_ours(relation, Witness::OtherDefinition(key.clone())),
         )
-    }
-
-    fn resolved(&self, target: &DefKey, binding: &Binding) -> Claim {
-        let relation = Some(binding.relation);
-        if *target == self.subject.key || self.paired(target) || self.redefined(target) {
-            Claim::new(relation, Outcome::Ours, Basis::Resolved)
-        } else if binding.relation != Relation::Overrides
-            && (self.family.contains(target) || self.view.stranded_at(binding))
-        {
-            Claim::candidate(relation, Reason::Dispatch)
-        } else if self.view.family_unproven
-            && target.local.name == self.subject.key.local.name
-            && !self.view.index.definitions.contains(&self.subject.key)
-        {
-            Claim::candidate(relation, Reason::OverrideUnproven)
-        } else if self.view.index.definitions.contains(target) {
-            Claim::not_ours(relation, Witness::OtherDefinition(target.clone()))
-        } else {
-            Claim::candidate(relation, Reason::BasisUnverified)
-        }
-    }
-
-    /// Whether `target` is another file's definition of the subject's own key, where that is the
-    /// one object (`CREATE OR REPLACE`).
-    fn redefined(&self, target: &DefKey) -> bool {
-        let subject = &self.subject.key;
-        SCHEMA_OBJECTS.iter().any(|f| {
-            f.has(self.file.language()) && f.has(target.language) && f.has(subject.language)
-        }) && target.project == subject.project
-            && target.local == subject.local
-    }
-
-    /// Whether `target` and the subject are a prototype and its definition.
-    fn paired(&self, target: &DefKey) -> bool {
-        let (subject, prototypes) = (&self.subject.key, &self.view.index.prototypes);
-        PAIRED_PROTOTYPES.iter().any(|f| {
-            f.has(self.file.language()) && f.has(target.language) && f.has(subject.language)
-        }) && target.project == subject.project
-            && target.local == subject.local
-            && (prototypes.contains(target) || prototypes.contains(subject))
     }
 
     fn module(&self, module: &RepoPath, relation: Option<Relation>) -> Claim {

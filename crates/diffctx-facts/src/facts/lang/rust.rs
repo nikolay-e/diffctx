@@ -16,7 +16,10 @@
 //!   parent. A glob is `star: Star::Glob`. A `pub use` is also an `Export`.
 //! - A reference names the last segment and carries the written path before it
 //!   in `qualifier` (`a::f()` is `f` with `[a]`; `Self::f()` is `f` with
-//!   `[Self]`). A macro invocation `m!` is a `Call` of the name `m!`. A bare
+//!   `[Self]`). A macro invocation `m!` is a `Call` of the name `m!`; made as an
+//!   item of an `impl`, it takes that impl's type as its `Typed` receiver (the
+//!   `self` of what it expands to), and a `self.f(..)` in the body of a
+//!   `macro_rules!` is a `Call` of `f` on `SelfType` from the macro. A bare
 //!   name that is a local of the function around it is no reference.
 //! - A method call `x.m()` is `m` with the receiver the syntax states: `self` is
 //!   `SelfType`; a local whose type its declaration or constructor states is
@@ -47,6 +50,8 @@ use crate::facts::{
     Receiver, Ref, Scope, Star, TypeName, UseKind, Visibility, expired,
 };
 use diffctx_snapshot::snapshot::RunBudget;
+
+mod macros;
 
 const MAX_DEPTH: u16 = 256;
 const POLL_EVERY: usize = 256;
@@ -195,6 +200,8 @@ struct Walker<'t> {
     /// The locals of the function, block and closure scopes around, innermost
     /// last, with the type their declaration states.
     locals: Vec<HashMap<String, Option<Ty>>>,
+    /// Inside the body of a `macro_rules!` rule, where only `self.m(..)` is read.
+    defining_macro: bool,
 }
 
 impl<'t> Walker<'t> {
@@ -208,6 +215,7 @@ impl<'t> Walker<'t> {
             facts: Vec::new(),
             twins: HashMap::new(),
             locals: Vec::new(),
+            defining_macro: false,
         }
     }
 
@@ -311,7 +319,9 @@ impl<'t> Walker<'t> {
             "mod_item" => self.module(node, cx, attrs, docs, depth),
             "macro_definition" => {
                 let shape = Shape::of(node, DefKind::Macro);
-                self.define(node, cx, attrs, docs, shape);
+                if let Some(key) = self.define(node, cx, attrs, docs, shape) {
+                    self.macro_rules(node, &self.inside(cx, &key), depth);
+                }
             }
             "use_declaration" => self.import(node, cx),
             "extern_crate_declaration" => self.extern_crate(node, cx),
@@ -1720,122 +1730,6 @@ impl<'t> Walker<'t> {
             &name_text,
             path.into_iter().map(Name::new).collect(),
         );
-    }
-
-    // ---- macros
-
-    fn macro_call(&mut self, node: Node<'t>, cx: &Cx, depth: u16) {
-        if let Some(name) = node.child_by_field_name("macro") {
-            if let Some(mut path) = path_of(self.bytes, name) {
-                if let Some(last) = path.pop() {
-                    let site = match name.kind() {
-                        "scoped_identifier" => name.child_by_field_name("name").unwrap_or(name),
-                        _ => name,
-                    };
-                    let called = format!("{last}!");
-                    self.emit(
-                        site,
-                        cx,
-                        Receiver::None,
-                        UseKind::Call,
-                        &called,
-                        path.into_iter().map(Name::new).collect(),
-                    );
-                }
-            }
-        }
-        let mut cursor = node.walk();
-        let trees: Vec<Node<'t>> = node
-            .named_children(&mut cursor)
-            .filter(|c| c.kind() == "token_tree")
-            .collect();
-        for tree in trees {
-            self.tokens(tree, cx, depth + 1);
-        }
-    }
-
-    /// A macro's tokens read as the code they usually expand to: `a::b(..)`,
-    /// `x.m(..)` and `name!`.
-    fn tokens(&mut self, tree: Node<'t>, cx: &Cx, depth: u16) {
-        if !self.deeper(depth) {
-            return;
-        }
-        let mut cursor = tree.walk();
-        let toks: Vec<Node<'t>> = tree.children(&mut cursor).collect();
-        let ident = |n: Node<'t>| {
-            matches!(
-                n.kind(),
-                "identifier" | "self" | "type_identifier" | "crate" | "super"
-            )
-        };
-        let mut i = 0;
-        while i < toks.len() {
-            let tok = toks[i];
-            if tok.kind() == "token_tree" {
-                self.tokens(tok, cx, depth + 1);
-                i += 1;
-                continue;
-            }
-            if !ident(tok) {
-                i += 1;
-                continue;
-            }
-            // A run `a::b::c`.
-            let mut run = vec![tok];
-            let mut j = i;
-            while toks.get(j + 1).is_some_and(|t| t.kind() == "::")
-                && toks.get(j + 2).is_some_and(|t| ident(*t))
-            {
-                run.push(toks[j + 2]);
-                j += 2;
-            }
-            let end = j;
-            let next = toks.get(end + 1);
-            let call = next.is_some_and(|n| {
-                n.kind() == "token_tree" && n.child(0).is_some_and(|c| c.kind() == "(")
-            });
-            let names: Vec<String> = run.iter().map(|n| self.ident(*n).to_string()).collect();
-            let previous = i.checked_sub(1).and_then(|p| toks.get(p));
-            let last = run[run.len() - 1];
-            if next.is_some_and(|n| n.kind() == "!") {
-                let called = format!("{}!", names[names.len() - 1]);
-                let qualifier = names[..names.len() - 1]
-                    .iter()
-                    .map(|n| Name::new(n.as_str()))
-                    .collect();
-                self.emit(last, cx, Receiver::None, UseKind::Call, &called, qualifier);
-            } else if previous.is_some_and(|p| p.kind() == ".") && run.len() == 1 {
-                if call {
-                    let before = i.checked_sub(2).and_then(|p| toks.get(p)).copied();
-                    let (receiver, qualifier) = match before {
-                        Some(b) if b.kind() == "self" => (Receiver::SelfType, Vec::new()),
-                        Some(b) if b.kind() == "identifier" => {
-                            let local = self.ident(b).to_string();
-                            match self.lookup(&local).cloned() {
-                                Some(Some(Ty::Named(t))) => {
-                                    (Receiver::Typed(TypeName::new(t.as_str())), Vec::new())
-                                }
-                                _ => (Receiver::Unknown, vec![Name::new(local)]),
-                            }
-                        }
-                        _ => (Receiver::Unknown, Vec::new()),
-                    };
-                    self.emit(last, cx, receiver, UseKind::Call, &names[0], qualifier);
-                }
-            } else if previous.is_none_or(|p| p.kind() != "::" && p.kind() != ".") {
-                let keyword = |n: &str| matches!(n, "self" | "Self" | "super" | "crate");
-                let name = names[names.len() - 1].clone();
-                if !keyword(&name) && !(run.len() == 1 && self.lookup(&name).is_some()) {
-                    let qualifier = names[..names.len() - 1]
-                        .iter()
-                        .map(|n| Name::new(n.as_str()))
-                        .collect();
-                    let kind = if call { UseKind::Call } else { UseKind::Read };
-                    self.emit(last, cx, Receiver::None, kind, &name, qualifier);
-                }
-            }
-            i = end + 1;
-        }
     }
 }
 

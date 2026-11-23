@@ -472,6 +472,42 @@ fn tokens_of_a_macro_are_read_as_code() {
 }
 
 #[test]
+fn a_macro_body_is_read_for_its_self_calls_only() {
+    let blob = extract(
+        "macro_rules! describe {\n    () => {\n        fn describe(&self, name: &str) -> String {\n            let shown = self.lookup(name);\n            other.lookup(shown) + vec![self.title()].len()\n        }\n    };\n}\n",
+    );
+    let lines: Vec<String> = refs(&blob).into_iter().map(ref_line).collect();
+    assert_eq!(
+        lines,
+        ["Call lookup in def:describe", "Call title in def:describe"],
+        "{lines:#?}"
+    );
+    for found in refs(&blob) {
+        assert_eq!(found.receiver, Receiver::SelfType);
+    }
+}
+
+#[test]
+fn a_macro_invoked_as_an_impl_item_carries_the_impls_type() {
+    let blob = extract(
+        "impl Engine {\n    common!();\n    fn run(&self) {\n        common!();\n    }\n}\nfn free() {\n    common!();\n}\n",
+    );
+    let invocations: Vec<(&Receiver, String)> = refs(&blob)
+        .into_iter()
+        .filter(|r| r.name.as_str() == "common!")
+        .map(|r| (&r.receiver, scope(&r.enclosing)))
+        .collect();
+    assert_eq!(
+        invocations,
+        [
+            (&Receiver::Typed("Engine".into()), "module".to_string()),
+            (&Receiver::None, "def:Engine::run".to_string()),
+            (&Receiver::None, "def:free".to_string()),
+        ]
+    );
+}
+
+#[test]
 fn tests_and_main_are_entry_points() {
     let blob = extract(
         "fn main() {}\n#[test]\nfn works() {}\n#[tokio::test]\nasync fn async_works() {}\nmod inner { fn main() {} }\n",

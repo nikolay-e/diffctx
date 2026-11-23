@@ -39,6 +39,7 @@ use diffctx_snapshot::snapshot::{
     WorkspaceModel,
 };
 
+mod expansion;
 mod lookup;
 
 use lookup::{Children, GlobWalks, Guards, ImportsIndex, Items, Locals};
@@ -97,46 +98,6 @@ const PRELUDE: &[&str] = &[
     "FromIterator",
     "Debug",
     "Hash",
-];
-
-/// The macros the standard library provides.
-const STD_MACROS: &[&str] = &[
-    "println",
-    "print",
-    "eprintln",
-    "eprint",
-    "format",
-    "format_args",
-    "write",
-    "writeln",
-    "vec",
-    "panic",
-    "assert",
-    "assert_eq",
-    "assert_ne",
-    "debug_assert",
-    "debug_assert_eq",
-    "debug_assert_ne",
-    "unreachable",
-    "unimplemented",
-    "todo",
-    "matches",
-    "dbg",
-    "cfg",
-    "include_str",
-    "include_bytes",
-    "include",
-    "env",
-    "option_env",
-    "concat",
-    "stringify",
-    "line",
-    "file",
-    "column",
-    "module_path",
-    "compile_error",
-    "thread_local",
-    "try",
 ];
 
 /// The crates every program may name.
@@ -298,6 +259,9 @@ struct Index {
     /// `impl Tr for X` headers: the file, the module, the type's name and the
     /// trait's reference.
     impls: Vec<(usize, usize, Name, Ref)>,
+    /// Macro invocations made as items of an `impl`: the file and the reference,
+    /// whose receiver is that impl's type.
+    expansions: Vec<(usize, Ref)>,
 }
 
 impl Index {
@@ -552,6 +516,9 @@ impl Index {
         }
         for fact in &facts.blob.facts {
             if let Fact::Reference(r) = fact {
+                if r.name.as_str().ends_with('!') && matches!(r.receiver, Receiver::Typed(_)) {
+                    self.expansions.push((at, r.clone()));
+                }
                 if r.use_kind == UseKind::Override {
                     if let Scope::Def(subject) = &r.enclosing {
                         if subject.ns == Namespace::Type && subject.disambig.is_none() {
@@ -1443,6 +1410,11 @@ impl<'a> Engine<'a> {
     }
 
     fn reference(&self, f: usize, r: &Ref, out: &mut Vec<Binding>) {
+        if r.receiver == Receiver::SelfType
+            && matches!(&r.enclosing, Scope::Def(k) if k.ns == Namespace::Macro)
+        {
+            return self.expanded_self_call(f, r, out);
+        }
         self.bind(f, r, out);
         if r.receiver != Receiver::None
             && r.use_kind != UseKind::Override
@@ -1608,40 +1580,6 @@ impl<'a> Engine<'a> {
             return Outcome::Unresolved(UnresolvedReason::NoBinding);
         }
         self.outcome_of(ent, kind)
-    }
-
-    fn macro_outcome(&self, site: &Site, r: &Ref) -> Outcome {
-        let name = Name::new(r.name.as_str().trim_end_matches('!'));
-        let mut found: Vec<usize> = Vec::new();
-        let krate = self.ix.mods[site.module].krate;
-        if !r.qualifier.is_empty() {
-            let segs = r.qualifier.clone();
-            if let Some(Ent::Mod(m)) = self.walk(site, &segs, Want::Type, 0) {
-                if let Some(ids) = self.ix.items.get(m, name.as_str()) {
-                    found.extend(ids.iter().copied());
-                }
-            } else {
-                return Outcome::Unresolved(UnresolvedReason::External);
-            }
-        } else {
-            for d in self.ix.macros.get(&name).into_iter().flatten() {
-                let same_crate = self.ix.mods[self.ix.defs[*d].home].krate == krate;
-                if same_crate || self.reachable(site.file, *d) {
-                    found.push(*d);
-                }
-            }
-        }
-        found.retain(|d| self.ix.defs[*d].def.kind == DefKind::Macro);
-        found.sort_unstable();
-        found.dedup();
-        match found.as_slice() {
-            [] if STD_MACROS.contains(&name.as_str()) => {
-                Outcome::Unresolved(UnresolvedReason::Builtin)
-            }
-            [] => Outcome::Unresolved(UnresolvedReason::External),
-            [only] => Outcome::Found(*only, EvidenceKind::SameScope),
-            many => Outcome::Candidates(many.to_vec(), CandidateReason::UntypedReceiver),
-        }
     }
 
     /// `impl Tr for X`: the type implements the trait; a method of it replaces
