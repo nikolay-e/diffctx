@@ -1670,15 +1670,15 @@ fn tables(class: FileClass, text: &str, lines: &Lines, out: &mut Vec<RawRecord>)
         FileClass::Code(_) => &[(&SQL_TABLE_DEF, "sql-ddl"), (&ORM_TABLE_DEF, "orm-table")],
         _ => &[],
     };
-    let schema = (!defines.is_empty()).then(|| file_schema(text)).flatten();
+    let mut schema: Option<Option<String>> = None;
     for (re, mechanism) in defines {
-        let bare_in = if *mechanism == "orm-table" {
-            schema.as_deref()
-        } else {
-            None
-        };
         for cap in re.captures_iter(text) {
             if let Some((name, at)) = first_group(&cap) {
+                let bare_in = if *mechanism == "orm-table" {
+                    schema.get_or_insert_with(|| file_schema(text)).as_deref()
+                } else {
+                    None
+                };
                 out.extend(table_record(
                     name,
                     Role::Set,
