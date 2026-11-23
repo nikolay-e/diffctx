@@ -1,9 +1,9 @@
-# The oracle's corpus (T10): public repositories under permissive licences, each pinned at a commit.
+# The oracle's corpus: public repositories under permissive licences, each pinned at a commit.
 # Pins were read with `git ls-remote <url> HEAD` on 2026-10-31; licences from the hosting API.
 # Indexers are pinned in tools/package.json (npm, with integrity hashes in tools/package-lock.json).
 
 [sampling]
-# The fresh seed (Revision 18, C4): one draw of the operating system's CSPRNG on 2026-11-13, used by nothing before. The
+# The fresh seed: one draw of the operating system's CSPRNG on 2026-11-13, used by nothing before. The
 # earlier seeds were 20261031 (every commit its runs sampled is in spent_commits.txt) and 20261112 (index-only rounds that
 # chose the repositories below read its first commits' exclusions, so it would be a tuning set). A new seed is drawn after
 # a defect is fixed from a row the previous draw produced, never before.
@@ -150,8 +150,8 @@ license = "Apache-2.0"
 sha = "d67e333d682de65620bf82c46c5b41038e1e450f"  # pragma: allowlist secret gitleaks:allow
 
 # hoplite is out: 19 of the 24 commits sampled from it (and 22 of jackson-annotations', 12 of jackson-core's) were excluded
-# by commit age (a Gradle or JDK level JDK 21 cannot run, a SNAPSHOT parent no longer published), above the 20 % the C3 rule
-# allows. Replacements: the first Kotlin and Java libraries a git-only prediction put at or below 20 % (`p5/index`), by the
+# by commit age (a Gradle or JDK level JDK 21 cannot run, a SNAPSHOT parent no longer published), above the 20 % the exclusion rule
+# allows. Replacements: the first Kotlin and Java libraries a git-only prediction put at or below 20 %, by the
 # order fixed before any of them was looked at.
 
 [[repo]]
@@ -161,12 +161,12 @@ language = "kotlin"
 license = "Apache-2.0"
 sha = "e3056235acd5fc543c20da0022fa41af226522d2"  # pragma: allowlist secret gitleaks:allow
 
-# Go repositories, chosen by Revision 18's C3 in a fixed order before any engine answer on them: more than 20 % of the
+# Go repositories, chosen in a fixed order before any engine answer on them: more than 20 % of the
 # commits sampled from chi, cobra and testify were excluded before `go.mod` (no module file, nothing indexed). An index-only
 # round over each candidate measured the share: gin 0/24, urfave/cli 0/24, go-toml 1/24 (fasthttp 20/24 and lo 5/24 were
 # out: files built for another OS, a nested module). On the fresh seed's whole draw, 68 commits per repository, go-toml
 # predicts 20 excluded (29.4 %): the window reaches Go v1 history without a module file. It is replaced by echo, the first
-# entry of the list written before the run (`p5/index/GO_REPLACEMENTS.md`: echo 16.2 %, then tablewriter 17.6 %).
+# entry of the list written before the run (echo 16.2 %, then tablewriter 17.6 %).
 
 [[repo]]
 name = "gin"
