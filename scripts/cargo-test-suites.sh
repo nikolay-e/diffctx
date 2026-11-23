@@ -70,38 +70,61 @@ report() {
 trap report EXIT
 
 # Seconds per suite, the slowest of the Linux, macOS and Windows runs of
-# 2026-11-19 (`lib` is the library's inline tests, an estimate). Windows was
-# stopped inside the class corpus at its time limit: that weight is a floor.
+# 2026-11-24 (`lib` is the library's inline tests, an estimate; the two corpus
+# suites keep their 2026-11-19 figures, and the class corpus is also split by
+# case, DIFFCTX_CLASS_SHARD). Suites under five seconds are not listed: they
+# weigh `default_weight`.
 default_weight=3
 weights="
 class_completeness_corpus 4535
-impact 1729
 yaml_cases 1689
-metamorphic 1054
-loss_sweep 746
-class_completeness 703
-unknowns 669
-git_faults 612
-occurrence_classes 302
-hook_property 302
-hook 244
-budget_contract 183
-lane_f 157
-facts_cache 122
-resolve_python 100
+impact 1392
+loss_sweep 1093
+unknowns 1015
+metamorphic 968
+class_completeness 585
+git_faults 400
+hook_property 378
+occurrence_classes 296
+lane_f 218
+crate_graph 201
+hook 197
+facts_cache 146
+budget_contract 109
+resolve_python 88
 resolve_typescript 61
-native_cli 59
-deadline_answer 48
-untracked_budget 30
-resolve_kotlin 30
+native_cli 57
+deadline_answer 50
+untracked_budget 49
+resolve_java 29
+staged 29
+resolve_kotlin 28
+lane_ts 27
 resolve_rust 27
-tests_same_file 27
-staged 26
-lane_ts 25
-bindings 24
-lane_py 21
-lane_e1 20
+kotlin 25
+lane_py 22
+tests_same_file 22
+bindings 21
+lane_e1 19
+lane_rs 16
+lane_sh 15
+resolve_go 13
+resolve_php 13
+fragment_snapshot 12
+data_file_added 11
+occurrence_debug 11
+test_claim 11
+edge_precision 10
 lib 10
+occurrence_outcome 10
+resolve_c 8
+resolve_cpp 8
+lane_swift 7
+resolve_terraform 7
+facts_changes 6
+git_processes 6
+git_together 6
+module_graph 5
 "
 
 # The names on stdin that fall to shard $1 of $2, one per line.

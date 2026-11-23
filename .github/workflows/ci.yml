@@ -409,8 +409,9 @@ jobs:
       matrix:
         include:
           - {part: corpus, label: "", cache: release}
-          - {part: "rest:1/2", label: " (ubuntu-latest, 1/2)", cache: debug}
-          - {part: "rest:2/2", label: " (ubuntu-latest, 2/2)", cache: debug}
+          - {part: "rest:1/3", label: " (ubuntu-latest, 1/3)", cache: debug}
+          - {part: "rest:2/3", label: " (ubuntu-latest, 2/3)", cache: debug}
+          - {part: "rest:3/3", label: " (ubuntu-latest, 3/3)", cache: debug}
     runs-on: ubuntu-latest
     # tests/git_faults.rs stalls never end on their own (#510): a run its
     # deadline does not end hangs, and this is where it fails.
@@ -455,27 +456,36 @@ jobs:
   # The Linux job above keeps its name because branch protection requires it;
   # this one gates the same suites on macOS and Windows, where paths, line
   # endings and process spawning differ. A run of the binary costs them two to
-  # five times what it costs Linux, so the corpus runs in three parts: the YAML
-  # corpus, and the class corpus (`corpus:1/2`, the heavier suite) split by case
-  # in two. On 2026-11-19 the class corpus ran past 75 minutes on Windows and the
-  # macOS corpus job took 85 of its 90.
+  # five times what it costs Linux, so the corpus runs in three kinds of part:
+  # the YAML corpus, and the class corpus (`corpus:1/2`, the heavier suite)
+  # split by case. Each part is sized for 60% of the 90-minute limit at the
+  # slowest run measured on 2026-11-24: macOS ran its parts 66 to 78 minutes
+  # (rest 1/2, class corpus) and Windows its class corpus 88, so macOS runs the
+  # rest in three parts and the class corpus in three, Windows each in four.
+  # The Intel-Mac cross build rides with the YAML corpus, the lightest macOS part.
   rust-diffctx-test-cross:
     name: Rust diffctx tests (${{ matrix.os }}, ${{ matrix.label }})
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-latest, windows-latest]
-        part: ["rest:1/2", "rest:2/2", "corpus:2/2"]
         include:
-          - {part: "rest:1/2", label: "1/2", cache: debug}
-          - {part: "rest:2/2", label: "2/2", cache: debug}
-          - {part: "corpus:2/2", label: "YAML corpus", cache: release}
-          - {os: macos-latest, part: "corpus:1/2", class_shard: "1/2", label: "class corpus 1/2", cache: release}
-          - {os: macos-latest, part: "corpus:1/2", class_shard: "2/2", label: "class corpus 2/2", cache: release}
-          - {os: windows-latest, part: "corpus:1/2", class_shard: "1/2", label: "class corpus 1/2", cache: release}
-          - {os: windows-latest, part: "corpus:1/2", class_shard: "2/2", label: "class corpus 2/2", cache: release}
+          - {os: macos-latest, part: "rest:1/3", label: "1/3", cache: debug}
+          - {os: macos-latest, part: "rest:2/3", label: "2/3", cache: debug}
+          - {os: macos-latest, part: "rest:3/3", label: "3/3", cache: debug}
           # This part also cross-builds the Intel-Mac binary into target/, which no other part holds.
-          - {os: macos-latest, part: "rest:1/2", cache: debug-intel}
+          - {os: macos-latest, part: "corpus:2/2", label: "YAML corpus", cache: release-intel}
+          - {os: macos-latest, part: "corpus:1/2", class_shard: "1/3", label: "class corpus 1/3", cache: release}
+          - {os: macos-latest, part: "corpus:1/2", class_shard: "2/3", label: "class corpus 2/3", cache: release}
+          - {os: macos-latest, part: "corpus:1/2", class_shard: "3/3", label: "class corpus 3/3", cache: release}
+          - {os: windows-latest, part: "rest:1/4", label: "1/4", cache: debug}
+          - {os: windows-latest, part: "rest:2/4", label: "2/4", cache: debug}
+          - {os: windows-latest, part: "rest:3/4", label: "3/4", cache: debug}
+          - {os: windows-latest, part: "rest:4/4", label: "4/4", cache: debug}
+          - {os: windows-latest, part: "corpus:2/2", label: "YAML corpus", cache: release}
+          - {os: windows-latest, part: "corpus:1/2", class_shard: "1/4", label: "class corpus 1/4", cache: release}
+          - {os: windows-latest, part: "corpus:1/2", class_shard: "2/4", label: "class corpus 2/4", cache: release}
+          - {os: windows-latest, part: "corpus:1/2", class_shard: "3/4", label: "class corpus 3/4", cache: release}
+          - {os: windows-latest, part: "corpus:1/2", class_shard: "4/4", label: "class corpus 4/4", cache: release}
     # A stream check (a PR into relay/arch) runs Linux only and leaves the other
     # platforms to the head check (a push to relay/arch) and to main: the account runs 20
     # jobs at once (5 macOS), and six streams of ~27 jobs queued for hours.
@@ -513,7 +523,7 @@ jobs:
       # Release ships an Intel-Mac binary cross-built on this arm64 image; the
       # first build of it must not be the release itself. One macOS part does it.
       - name: Cross-build the Intel-Mac binary and run it under Rosetta
-        if: runner.os == 'macOS' && matrix.part == 'rest:1/2'
+        if: runner.os == 'macOS' && matrix.part == 'corpus:2/2'
         working-directory: crates/diffctx-native
         run: |
           rustup target add x86_64-apple-darwin
