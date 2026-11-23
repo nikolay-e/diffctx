@@ -387,9 +387,10 @@ fn known_below_threshold() -> &'static std::collections::BTreeSet<String> {
     })
 }
 
-/// `known_false_hedges.txt`: cases whose answer hedges a definition the case
-/// proves is fully resolved (the coverage gate). Bidirectional like the
-/// baseline above, a binary named by `DIFFCTX_BIN` included.
+/// `known_false_hedges.txt`: cases whose coverage answer disagrees with the
+/// case's declaration (the coverage gate): a hedge on a definition the case
+/// proves resolved, or a declared gap the answer calls complete. Bidirectional
+/// like the baseline above, a binary named by `DIFFCTX_BIN` included.
 fn known_false_hedges() -> &'static std::collections::BTreeSet<String> {
     static LIST: std::sync::OnceLock<std::collections::BTreeSet<String>> =
         std::sync::OnceLock::new();
@@ -781,9 +782,9 @@ fn run_oracle_case(
                 state = "stale_false_hedge";
             }
             problems.push(
-                "case no longer hedges falsely but is still listed in \
+                "case's coverage now matches its declaration but it is still listed in \
                  tests/known_false_hedges.txt — remove it from that file, otherwise a \
-                 future false hedge here would be silently absorbed",
+                 future coverage mismatch here would be silently absorbed",
             );
         }
         (true, false) => {

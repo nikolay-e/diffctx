@@ -1,9 +1,14 @@
-# Cases whose answer hedges (names a gap in `coverage.calls` or `coverage.reads`) for a
-# definition the case itself proves fully resolved: a false hedge, each a defect of the
-# engine, not an oracle to bend. The coverage gate (judge.rs `gate`) fails an `exact`
-# case whose subject definition is hedged and not declared under `expect.partial`.
-# Enforced in both directions like known_below_threshold.txt: a listed case that stops
-# hedging falsely also fails. The comment on a row is the mechanism that hedges it.
-# An honest hedge is declared under `partial:` in the case, with the reader or the gap
-# it stands for written beside it, and never listed here.
+# Cases whose coverage answer disagrees with what the case proves, each a defect of the
+# engine, not an oracle to bend. The coverage gate (judge.rs `gate`) reads it in both
+# directions of that disagreement:
+#   - a false hedge: an `exact` case's subject definition is hedged (a gap named in
+#     `coverage.calls` or `coverage.reads`) though the case proves it fully resolved
+#     and declares no `expect.partial` for it;
+#   - a false absence: the case declares an honest gap under `expect.partial` and the
+#     answer calls the group complete, or names other gap kinds than the declared ones.
+# Enforced in both directions like known_below_threshold.txt: a listed case whose
+# coverage now agrees with its declaration also fails. The comment on a row is the
+# mechanism. An honest hedge is declared under `partial:` in the case, with the reader
+# or the gap it stands for written beside it; it is listed here only while the engine
+# fails to name it.
 impact/python/py_attribute_read_through_a_local_alias_is_a_read_of_the_member  # the engine before fj#264 resolves the read of `cache.dns_lookup`, so the declared unlanded reads gap is never named
