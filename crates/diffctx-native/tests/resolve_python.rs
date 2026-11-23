@@ -761,6 +761,15 @@ const RED: &[(&str, &str)] = &[
          field no construction passed",
     ),
     (
+        "impact/python/py_removed_defaulted_field_reaches_no_construction_site",
+        "gh#400: the resolver binds every construction of the class; which of them a removed \
+         field reaches is decided over its argument list, in the answer",
+    ),
+    (
+        "impact/python/py_removed_field_passed_by_a_construction_keeps_that_site",
+        "gh#400: as above, the construction that does not pass the removed field is bound too",
+    ),
+    (
         "impact/python/py_removed_defaulted_field_passed_by_position_or_splat_keeps_those_sites",
         "gh#400: the resolver binds every construction of the class; which of them a removed \
          field reaches is decided over its argument list, in the answer",

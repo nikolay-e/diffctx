@@ -203,6 +203,9 @@ impl Cell {
                     };
                     if let (Some(reach), Family::Python) = (rebuilt, self.family) {
                         if let Some(class) = self.class_holding(&gone.file, &d.key) {
+                            let passing = (reach == Reach::Construction)
+                                .then(|| self.passed_to_reach(&gone.file, &d.key, class))
+                                .flatten();
                             merge(
                                 &mut by_key,
                                 Changed {
@@ -215,6 +218,7 @@ impl Cell {
                                         key: class.key.clone(),
                                         reach,
                                         within: own_span(class.kind, class.span.lines),
+                                        passing,
                                     }],
                                     stale: Vec::new(),
                                     unpaired: false,
@@ -236,6 +240,11 @@ impl Cell {
                     let Some(def) = self.definition(&d.key) else {
                         continue;
                     };
+                    if wholes.get(&d.key) == Some(&Whole::Members)
+                        && self.lost_only_omittable_fields(d, def, &python)
+                    {
+                        continue;
+                    }
                     let unaccounted = whole(d) == Some(Whole::Unaccounted);
                     let how = match change {
                         DefChange::Added => How::Added,
@@ -960,6 +969,7 @@ impl Cell {
                 key: def.key.clone(),
                 reach,
                 within: own_span(def.kind, def.span.lines),
+                passing: None,
             }],
             stale: stale.clone(),
             unpaired,
@@ -980,6 +990,7 @@ impl Cell {
                         key: def.key.clone(),
                         reach: Reach::Every,
                         within: own_span(def.kind, def.span.lines),
+                        passing: None,
                     });
                     out.push(changed);
                 }

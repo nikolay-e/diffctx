@@ -8,7 +8,7 @@ use std::rc::Rc;
 
 use crate::fold::Rule;
 
-use diffctx_facts::facts::{DefKey, Scope};
+use diffctx_facts::facts::{DefKey, Name, Scope};
 
 use diffctx_occurrence::tokens::occurrence::{Hedge, Standing};
 
@@ -251,4 +251,7 @@ pub(super) struct Subject {
     /// definitions: the unchanged ones are callers, the changed ones
     /// `also_changed`.
     pub(super) within: Option<(u32, u32)>,
+    /// A class that lost fields, each with a default: a construction reaches it
+    /// only by passing one of these names. `None`: every construction does.
+    pub(super) passing: Option<Vec<Name>>,
 }

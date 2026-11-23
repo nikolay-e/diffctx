@@ -326,6 +326,19 @@ pub(super) fn merge(by_key: &mut BTreeMap<DefKey, Changed>, changed: Changed) {
             for subject in changed.subjects {
                 match known.subjects.iter_mut().find(|s| s.key == subject.key) {
                     Some(seen) if subject.reach == Reach::Every => seen.reach = Reach::Every,
+                    Some(seen)
+                        if seen.reach == Reach::Construction
+                            && subject.reach == Reach::Construction =>
+                    {
+                        seen.passing =
+                            seen.passing
+                                .take()
+                                .zip(subject.passing)
+                                .map(|(mut names, more)| {
+                                    names.extend(more);
+                                    names
+                                });
+                    }
                     Some(_) => {}
                     None => known.subjects.push(subject),
                 }

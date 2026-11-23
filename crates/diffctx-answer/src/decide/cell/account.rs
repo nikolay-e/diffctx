@@ -57,6 +57,7 @@ impl Cell {
                 // are used there like anywhere else, and so is anything the guard
                 // of another file runs.
                 if !reaches
+                    || self.leaves_out(b, subject)
                     || (b.entry_guard && self.runs_as_entry(changed, subject, b))
                     || subject.within.is_some_and(|own| {
                         b.file.as_str() == changed.file && within(b.site.lines.0, own)
