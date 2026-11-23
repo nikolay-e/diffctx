@@ -43,10 +43,12 @@ expect:
     message: [pkg_a/src/runtime.py, pkg_a/tests/test_runtime.py]
     callback: [pkg_a/src/runtime.py, pkg_a/tests/test_runtime.py]
   partial:
-    # `sent` and `update` are untyped parameters of main, but nothing imports
-    # runtime.py or bot.py and runtime.py imports neither, so no Bot reaches them:
-    # `sent.callback(query)` and `update.message` there are no uses. A test runner
-    # enters the test file from outside the code, so its `update.message` may read
-    # a Bot's member and stays an open read, never a caller.
+    # `sent` and `update` are untyped parameters of main: nothing in the snapshot
+    # calls it, and nothing says what a caller outside it hands in. So
+    # `sent.callback(query)` and `update.message` in runtime.py, like the
+    # `update.message` in the test file, may reach a Bot: open reads and calls,
+    # never callers.
+    pkg_b/src/bot.py::callback:
+      calls: unlanded
     pkg_b/src/bot.py::message:
       reads: unlanded
