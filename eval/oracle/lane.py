@@ -17,27 +17,37 @@ from pathlib import Path
 
 import jvmtoolchains
 from corpus import CACHE
-from runners import SANDBOX_VARIABLE, in_container
+from runners import JDK_HOMES_VARIABLE, SANDBOX_VARIABLE, in_container
 
 MEASURE = Path(__file__).with_name("measure.py")
 BUDGETS = ("default", "uncapped")
 
 
 def prepare_environment(lane: str, job: Path, shared_index: Path | None) -> dict[str, str]:
-    """The environment `measure.py` runs in, after the lane's files are in place."""
+    """The environment `measure.py` runs in, after the lane's files are in place.
+
+    Inside a container the JVM builds run in place, on toolchains under `job`. On a machine with Docker they run in a
+    throwaway container, and a runner that already has the JDKs (`actions/setup-java`) hands them to it by mount.
+    """
     env = dict(os.environ)
     if shared_index is not None and not (CACHE / "index").exists():
         CACHE.mkdir(parents=True, exist_ok=True)
         (CACHE / "index").symlink_to(shared_index)
-    if lane == "jvm" and in_container():
-        prepared = jvmtoolchains.prepare(job, CACHE / "gradle-home", jvmtoolchains.default_java_home())
+    if lane != "jvm":
+        return env
+    if in_container():
+        prepared = jvmtoolchains.prepare(job, CACHE / "gradle-home", job / "m2", jvmtoolchains.default_java_home(), env=env)
         jvmtoolchains.claim_local_repository(job / "m2", Path(pwd.getpwuid(os.getuid()).pw_dir))
         env[SANDBOX_VARIABLE] = "1"
-        env["PATH"] = f"{prepared.maven_bin}{os.pathsep}{env['PATH']}"
-    elif lane == "jvm":
-        print(
-            "no container detected: the JVM builds start their own throwaway container, no toolchain is prepared here", flush=True
+        if prepared.maven_bin:
+            env["PATH"] = f"{prepared.maven_bin}{os.pathsep}{env['PATH']}"
+    elif jvmtoolchains.runner_jdks(jvmtoolchains.load_pins(), env) is not None:
+        prepared = jvmtoolchains.prepare(
+            job, CACHE / "gradle-home", CACHE / "maven-home", jvmtoolchains.default_java_home(), env=env, maven=False
         )
+        env[JDK_HOMES_VARIABLE] = os.pathsep.join(str(home) for home in prepared.jdk_homes)
+    else:
+        print("no container and no JDKs on this machine: the JVM builds run in a container with the JDK it ships", flush=True)
     return env
 
 

@@ -35,6 +35,7 @@ CACHE = corpus_config.CACHE
 TOOLS = corpus_config.ROOT / "tools"
 SANDBOX_VARIABLE = "ORACLE_SANDBOX"
 NEEDS_SANDBOX = "needs_sandbox"
+JDK_HOMES_VARIABLE = "ORACLE_JDK_HOMES"  # JDK directories of this machine the throwaway container may read, by mount
 
 
 @dataclass
@@ -274,6 +275,7 @@ def _plan_jvm(ctx: Context, build_tool: str) -> Plan:
         "-v", f"{ctx.out.parent}:/out",
         "-v", f"{gradle}:/gradle-home",
         "-v", f"{maven}:/root/.m2",
+        *[arg for home in os.environ.get(JDK_HOMES_VARIABLE, "").split(os.pathsep) if home for arg in ("-v", f"{home}:{home}:ro")],
         "-e", "GRADLE_USER_HOME=/gradle-home",
         "-e", f"GRADLE_OPTS={GRADLE_OPTS}",
         "-w", "/work",

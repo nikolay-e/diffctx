@@ -10,6 +10,7 @@ import pytest
 
 import jvmtoolchains
 import lane
+from corpus import load_corpus
 
 
 def fake_jdk_pins() -> jvmtoolchains.Pins:
@@ -57,7 +58,7 @@ def test_the_pins_file_names_three_jdks_and_maven_by_a_checksum_each():
 def test_prepare_writes_the_gradle_installations_and_one_maven_toolchain_per_jdk_from_a_fake_jdk_directory(tmp_path: Path):
     job, gradle_home, running = tmp_path / "job", tmp_path / "gradle-home", tmp_path / "running-jdk"
 
-    prepared = jvmtoolchains.prepare(job, gradle_home, running, fake_jdk_pins(), Downloads())
+    prepared = jvmtoolchains.prepare(job, gradle_home, job / "m2", running, fake_jdk_pins(), Downloads(), env={})
 
     assert prepared.gradle_properties.read_text() == (
         f"org.gradle.java.installations.paths={job}/jdks/jdk8u512-b09,{job}/jdks/jdk-11.0.33+10\n"
@@ -76,10 +77,14 @@ def test_prepare_writes_the_gradle_installations_and_one_maven_toolchain_per_jdk
 
 def test_a_second_prepare_downloads_nothing_and_a_download_that_misses_its_checksum_is_refused(tmp_path: Path):
     downloads = Downloads()
-    jvmtoolchains.prepare(tmp_path / "job", tmp_path / "gh", tmp_path / "jdk", fake_jdk_pins(), downloads)
+    jvmtoolchains.prepare(
+        tmp_path / "job", tmp_path / "gh", tmp_path / "m2", tmp_path / "jdk", fake_jdk_pins(), downloads, env={}
+    )
     first = len(downloads.calls)
 
-    jvmtoolchains.prepare(tmp_path / "job", tmp_path / "gh", tmp_path / "jdk", fake_jdk_pins(), downloads)
+    jvmtoolchains.prepare(
+        tmp_path / "job", tmp_path / "gh", tmp_path / "m2", tmp_path / "jdk", fake_jdk_pins(), downloads, env={}
+    )
 
     assert first == 3 and len(downloads.calls) == first
     with pytest.raises(ValueError, match="non-https"):
@@ -136,3 +141,67 @@ def test_the_lane_is_a_command_of_the_oracle_entry_point():
 
     assert run.COMMANDS["lane"] is lane.main
     assert lane.measure_command("hono", "default", Path("o"))[:2] == [sys.executable, str(lane.MEASURE)]
+
+
+def test_a_runner_that_has_every_jdk_gets_its_toolchain_files_and_downloads_nothing(tmp_path: Path):
+    homes = {major: tmp_path / "tool-cache" / f"jdk{major}" for major in ("8", "11", "21")}
+    for home in homes.values():
+        home.mkdir(parents=True)
+    env = {f"JAVA_HOME_{major}_X64": str(home) for major, home in homes.items()}
+    pins = fake_jdk_pins()
+    downloads = Downloads()
+
+    prepared = jvmtoolchains.prepare(
+        tmp_path / "job", tmp_path / "gh", tmp_path / "m2", tmp_path / "unused", pins, downloads, env=env, maven=False
+    )
+
+    assert downloads.calls == [] and prepared.maven_bin is None
+    assert prepared.gradle_properties.read_text() == f"org.gradle.java.installations.paths={homes['8']},{homes['11']}\n"
+    xml = prepared.toolchains_xml.read_text()
+    assert f"<version>1.8</version><vendor>temurin</vendor></provides><configuration><jdkHome>{homes['8']}</jdkHome>" in xml
+    assert f"<version>21</version><vendor>temurin</vendor></provides><configuration><jdkHome>{homes['21']}</jdkHome>" in xml
+    assert prepared.jdk_homes == [homes["8"], homes["11"], homes["21"]]
+    assert not (tmp_path / "job").exists()  # nothing was fetched or unpacked
+
+
+def test_a_runner_missing_one_jdk_is_not_taken_for_one_that_has_them_all(tmp_path: Path):
+    (tmp_path / "jdk8").mkdir()
+    env = {"JAVA_HOME_8_X64": str(tmp_path / "jdk8"), "JAVA_HOME_11_X64": str(tmp_path / "missing")}
+
+    assert jvmtoolchains.runner_jdks(fake_jdk_pins(), env) is None
+
+
+def test_the_throwaway_container_mounts_the_runner_jdks_read_only(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    import runners
+
+    launcher = tmp_path / "scip-java"
+    launcher.write_bytes(b"#!/bin/sh\n")
+    monkeypatch.setattr(runners, "tool_path", lambda tool: launcher)
+    monkeypatch.setattr(runners, "CACHE", tmp_path / "cache")
+    monkeypatch.setattr(runners, "sandboxed", lambda: False)
+    monkeypatch.setattr(runners.shutil, "which", lambda name: "/usr/bin/docker")
+    monkeypatch.setenv(runners.JDK_HOMES_VARIABLE, os.pathsep.join(["/opt/jdk8", "/opt/jdk11"]))
+    ctx = runners.Context(
+        load_corpus(),
+        next(r for r in load_corpus().repos if r.language == "java"),
+        "a" * 40,
+        tmp_path / "t",
+        tmp_path / "o" / "i.scip",
+        tmp_path,
+        {},
+        True,
+        5,
+    )
+    ctx.tree.mkdir()
+    (ctx.tree / "pom.xml").write_text("")
+
+    command = runners.plan_java(ctx).command
+
+    assert [
+        command[i + 1]
+        for i, arg in enumerate(command)
+        if arg == "-v" and command[i + 1].endswith(":ro") and "jdk" in command[i + 1]
+    ] == [
+        "/opt/jdk8:/opt/jdk8:ro",
+        "/opt/jdk11:/opt/jdk11:ro",
+    ]

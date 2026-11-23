@@ -14,7 +14,7 @@ import tarfile
 import tempfile
 import tomllib
 import urllib.request
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -40,9 +40,10 @@ class Pins:
 
 @dataclass(frozen=True)
 class Prepared:
-    maven_bin: Path
+    maven_bin: Path | None  # None when the runner's own Maven is used
     gradle_properties: Path
     toolchains_xml: Path
+    jdk_homes: list[Path]
 
 
 Fetch = Callable[[str, str, str], bytes]  # url, algorithm, hex digest -> the verified bytes
@@ -100,33 +101,58 @@ def _unpack(payload: bytes, into: Path, strip: int = 0) -> None:
             tar.extractall(into, members=members, filter="data")
 
 
+def runner_jdks(pins: Pins, env: Mapping[str, str]) -> dict[str, Path] | None:
+    """The JDKs a hosted runner already has (`actions/setup-java` exports `JAVA_HOME_<major>_<ARCH>` for each version it
+    installs), by toolchain; None unless every pinned version and the running 21 are there, and then nothing is downloaded."""
+    found: dict[str, Path] = {}
+    for toolchain in [jdk.toolchain for jdk in pins.jdks] + [RUNNING_JDK_TOOLCHAIN]:
+        major = toolchain.removeprefix("1.")
+        home = next((Path(env[key]) for key in (f"JAVA_HOME_{major}_X64", f"JAVA_HOME_{major}_ARM64") if env.get(key)), None)
+        if home is None or not home.is_dir():
+            return None
+        found[toolchain] = home
+    return found
+
+
 def prepare(
-    job: Path, gradle_home: Path, java_home: Path, pins: Pins | None = None, fetch: Fetch = download_verified
+    job: Path,
+    gradle_home: Path,
+    m2: Path,
+    java_home: Path,
+    pins: Pins | None = None,
+    fetch: Fetch = download_verified,
+    env: Mapping[str, str] | None = None,
+    maven: bool = True,
 ) -> Prepared:
-    """Fetch what is missing under `job` and write both toolchain files; a second call downloads nothing."""
+    """Fetch what is missing and write both toolchain files; a second call, or a runner that has the JDKs, downloads nothing.
+
+    The JDKs come from the runner's own when it has every one (see `runner_jdks`), from `job/jdks` otherwise. Maven is
+    fetched under `job` unless a `mvn` is on the PATH or `maven` is False (the build then runs in a container with its own).
+    """
     pins = pins or load_pins()
-    maven = job / f"maven-{pins.maven_version}"
-    if not (maven / "bin" / "mvn").exists():
-        _unpack(fetch(pins.maven_url, "sha512", pins.maven_sha512), maven, strip=1)
-        (maven / "bin" / "mvn").chmod(0o755)
-    jdks = job / "jdks"
-    for jdk in pins.jdks:
-        if not (jdks / jdk.directory).is_dir():
-            _unpack(fetch(jdk.url, "sha256", jdk.sha256), jdks)
-    homes = [jdks / jdk.directory for jdk in pins.jdks]
+    env = os.environ if env is None else env
+    maven_bin = None
+    if maven and shutil.which("mvn", path=env.get("PATH", "")) is None:
+        unpacked = job / f"maven-{pins.maven_version}"
+        if not (unpacked / "bin" / "mvn").exists():
+            _unpack(fetch(pins.maven_url, "sha512", pins.maven_sha512), unpacked, strip=1)
+            (unpacked / "bin" / "mvn").chmod(0o755)
+        maven_bin = unpacked / "bin"
+    homes = runner_jdks(pins, env)
+    if homes is None:
+        jdks = job / "jdks"
+        for jdk in pins.jdks:
+            if not (jdks / jdk.directory).is_dir():
+                _unpack(fetch(jdk.url, "sha256", jdk.sha256), jdks)
+        homes = {jdk.toolchain: jdks / jdk.directory for jdk in pins.jdks} | {RUNNING_JDK_TOOLCHAIN: java_home}
+    pinned = [homes[jdk.toolchain] for jdk in pins.jdks]
     gradle_home.mkdir(parents=True, exist_ok=True)
     properties = gradle_home / "gradle.properties"
-    properties.write_text(gradle_properties(homes), encoding="utf-8")
-    m2 = job / "m2"
+    properties.write_text(gradle_properties(pinned), encoding="utf-8")
     m2.mkdir(parents=True, exist_ok=True)
     xml = m2 / "toolchains.xml"
-    xml.write_text(
-        toolchains_xml(
-            [*((jdk.toolchain, home) for jdk, home in zip(pins.jdks, homes, strict=True)), (RUNNING_JDK_TOOLCHAIN, java_home)]
-        ),
-        encoding="utf-8",
-    )
-    return Prepared(maven / "bin", properties, xml)
+    xml.write_text(toolchains_xml(list(homes.items())), encoding="utf-8")
+    return Prepared(maven_bin, properties, xml, list(homes.values()))
 
 
 def claim_local_repository(m2: Path, home: Path) -> None:
