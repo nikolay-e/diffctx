@@ -761,6 +761,11 @@ const RED: &[(&str, &str)] = &[
          field no construction passed",
     ),
     (
+        "impact/python/py_removed_defaulted_field_passed_by_position_or_splat_keeps_those_sites",
+        "gh#400: the resolver binds every construction of the class; which of them a removed \
+         field reaches is decided over its argument list, in the answer",
+    ),
+    (
         "impact/python/py_removed_middle_field_with_a_typed_reader_is_named_as_removed",
         "the untyped reader's candidate is the removal side's: a read through a receiver nothing \
          types is `UntypedRead` for the resolver, and decide() names the surviving read of a \

@@ -1,0 +1,60 @@
+name: py_removed_defaulted_field_of_a_dataclass_subclassed_through_a_call_keeps_the_class_row
+mode: impact
+source: gh#400
+issue_state: closed
+tags: [python, removed-field, construction, control, dataclass, inheritance]
+repo:
+  initial_files:
+    svc/__init__.py: ""
+    svc/model.py: |
+      from dataclasses import dataclass
+
+
+      @dataclass
+      class Item:
+          id: int
+          size: int = 0
+          note: str = ""
+    svc/sub.py: |
+      import importlib
+
+
+      def make_base():
+          return getattr(importlib.import_module("svc.model"), "Item")
+
+
+      class Sub(make_base()):
+          pass
+    svc/use.py: |
+      from svc.model import Item
+
+
+      def describe(item: Item):
+          return str(item)
+    svc/make.py: |
+      from svc.sub import Sub
+
+
+      def build():
+          return Sub(1, note="n")
+  changed_files:
+    svc/model.py: |
+      from dataclasses import dataclass
+
+
+      @dataclass
+      class Item:
+          id: int
+          note: str = ""
+  commit_message: "model: drop the size field"
+expect:
+  removed: [size]
+  # A base written as a call may be the class, and no name says which: the
+  # whole class stays reached, as for a subclass written by name, so a use of
+  # the type is a caller and the answer is not narrowed to constructions. The
+  # factory's string that spells `Item` is named, not resolved: a declared hedge.
+  relations:
+    - {from: "svc/use.py::describe", to: "svc/model.py::Item", kind: type_use, resolution: resolved, site: 4}
+    - {from: "svc/sub.py", to: "svc/model.py::Item", kind: calls, resolution: unresolved, site: 5}
+  partial:
+    "svc/model.py::Item": {calls: unaccounted, reads: unaccounted}

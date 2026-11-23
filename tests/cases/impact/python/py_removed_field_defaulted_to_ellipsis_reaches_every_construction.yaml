@@ -1,0 +1,43 @@
+name: py_removed_field_defaulted_to_ellipsis_reaches_every_construction
+mode: impact
+source: gh#400
+issue_state: closed
+tags: [python, removed-field, construction, control, decoy]
+repo:
+  initial_files:
+    svc/__init__.py: ""
+    svc/model.py: |
+      from pydantic import BaseModel, Field
+
+
+      class Payload(BaseModel):
+          name: str = ""
+          kind: str = Field(default=...)
+    svc/make.py: |
+      from svc.model import Payload
+
+
+      def build():
+          return Payload(name="x", kind="k")
+    svc/other.py: |
+      from svc.model import Payload
+
+
+      def build_other():
+          return Payload(name="y")
+  changed_files:
+    svc/model.py: |
+      from pydantic import BaseModel, Field
+
+
+      class Payload(BaseModel):
+          name: str = ""
+  commit_message: "model: drop the kind field"
+expect:
+  removed: [kind]
+  # `default=...` makes the field required, so no construction may leave it out:
+  # the one that does not name it builds an invalid model, and stays a site.
+  relations:
+    - {from: "svc/make.py::build", to: "svc/model.py::Payload", kind: instantiates, resolution: resolved, site: 5}
+    - {from: "svc/other.py::build_other", to: "svc/model.py::Payload",
+       kind: instantiates, resolution: resolved, site: 5}

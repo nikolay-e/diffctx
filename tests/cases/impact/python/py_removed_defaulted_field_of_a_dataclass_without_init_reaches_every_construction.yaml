@@ -1,0 +1,45 @@
+name: py_removed_defaulted_field_of_a_dataclass_without_init_reaches_every_construction
+mode: impact
+source: gh#400
+issue_state: closed
+tags: [python, removed-field, construction, control, dataclass]
+repo:
+  initial_files:
+    svc/__init__.py: ""
+    svc/model.py: |
+      from dataclasses import dataclass
+
+
+      @dataclass(init=False)
+      class Item:
+          id: int
+          size: int = 0
+          note: str = ""
+
+          def __post_init__(self):
+              self.id = int(self.id)
+    svc/by_name.py: |
+      from svc.model import Item
+
+
+      def build():
+          return Item(id=1, note="n")
+  changed_files:
+    svc/model.py: |
+      from dataclasses import dataclass
+
+
+      @dataclass(init=False)
+      class Item:
+          id: int
+          note: str = ""
+
+          def __post_init__(self):
+              self.id = int(self.id)
+  commit_message: "model: drop the size field"
+expect:
+  removed: [size]
+  # `init=False` leaves the constructor to code the field list does not describe,
+  # so no construction is left out.
+  relations:
+    - {from: "svc/by_name.py::build", to: "svc/model.py::Item", kind: instantiates, resolution: resolved, site: 5}
