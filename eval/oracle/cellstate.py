@@ -1,6 +1,6 @@
 """The state of each (language, relation) cell: what the engine declares, checked against the measurement.
 
-The engine declares each cell `precise`, `heuristic` or `none` (T16) in a facts file (`diffctx.cell-facts.v2`, documented
+The engine declares each cell `precise`, `heuristic` or `none` in a facts file (`diffctx.cell-facts.v2`, documented
 in README.md). A declared state is checked, never believed:
 
 - `precise` passes every condition of `gates.toml` `[precise]` in every row of the cell (each mode, each paired run): head

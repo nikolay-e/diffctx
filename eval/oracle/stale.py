@@ -1,6 +1,6 @@
 """A removed definition is scored against head: what still names it there is a stale reference, what the range
-changed so that it no longer names it cannot break (S3). A removal the engine pairs with a head definition of the
-same kind and the same body, the name set aside, is a rename the answer states under its new name (S4)."""
+changed so that it no longer names it cannot break. A removal the engine pairs with a head definition of the
+same kind and the same body, the name set aside, is a rename the answer states under its new name."""
 
 from __future__ import annotations
 

@@ -50,7 +50,7 @@ def parse_v1(data: dict, resolve: Resolver) -> Answer:
             target.callers.append(
                 AnswerCaller(from_key, caller.get("evidence", "resolved"), relation, stated, caller.get("folded_by"))
             )
-        # A use inside a definition the range changes: the engine names it beside the callers (R14).
+        # A use inside a definition the range changes: the engine names it beside the callers.
         for text in entry.get("also_changed", []):
             found = _ALSO_CHANGED.match(str(text))
             spanned = _ALSO_CHANGED_SPAN.match(str(text))

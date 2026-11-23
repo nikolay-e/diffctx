@@ -170,7 +170,7 @@ def test_a_local_symbol_reaches_only_references_in_its_own_document(tmp_path: Pa
 
 
 def test_an_occurrence_inside_an_import_statement_is_imported_even_when_the_indexer_sets_no_import_role(tmp_path: Path):
-    # scip-python gives the imported name no import role; read from the syntax it was filed as a read (R8).
+    # scip-python gives the imported name no import role; read from the syntax it was filed as a read.
     (tmp_path / "shop").mkdir()
     (tmp_path / "shop" / "pricing.py").write_text(PRICING)
     (tmp_path / "shop" / "checkout.py").write_text(CHECKOUT)
@@ -280,7 +280,7 @@ def register(app):
 
 
 def test_a_python_definition_inside_a_function_that_keeps_it_there_belongs_to_that_function(tmp_path: Path):
-    # scip-python gives `helper` a full descriptor, not `local N`: the syntax decides (R18)
+    # scip-python gives `helper` a full descriptor, not `local N`: the syntax decides
     (tmp_path / "t.py").write_text(NESTED_PYTHON)
     snapshot = Snapshot(tmp_path, Index(), "python")
 

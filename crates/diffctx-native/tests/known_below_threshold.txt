@@ -111,11 +111,11 @@ builders/openapi_external_ref
 # the class's users) needs the core lifted to its container.
 synthetic/balanced/suite-4/cross-module/bal4_crossmod_013_java_service_calls_repo
 
-# Impact and symbol corpus (W1-B): cases seeded from an open issue are expected red.
+# Impact and symbol corpus: cases seeded from an open issue are expected red.
 # These entries are predictions made without running the harness; reconcile them on the first run.
-# Each lists its issue; T21 dispositions every line before the release.
+# Each lists its issue; every line is dispositioned before the release.
 
-# Other languages (W1-C), triaged at integration 1.
+# Other languages, triaged.
 impact/rust/rust_constant_read_by_its_own_files_function  # gh#503 regression
 impact/other/csharp_record_method_has_a_caller  # gh#424 open
 impact/other/scala_same_file_caller_of_a_changed_method  # gh#604 open

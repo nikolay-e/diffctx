@@ -1,4 +1,4 @@
-"""The folding table of Revision 12.1, applied to the oracle's own classification of a change (`delta.py`).
+"""The folding table, applied to the oracle's own classification of a change (`delta.py`).
 
 A truth relation is *affected* unless the table says the change cannot reach it; the rule that would fold it is kept
 on the row. Where the table is silent a relation is affected: when unsure, nothing folds.

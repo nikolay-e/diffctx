@@ -175,7 +175,7 @@ fn required<'a>(def: &'a serde_json::Value) -> Vec<&'a str> {
         .unwrap_or_default()
 }
 
-/// The shape the W6-A design gives: the sections, the closed vocabularies, and
+/// The shape the design gives: the sections, the closed vocabularies, and
 /// what travels together.
 #[test]
 fn the_v2_impact_schema_has_the_shape_the_design_gives() {

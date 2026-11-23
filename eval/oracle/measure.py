@@ -187,7 +187,7 @@ def enclosing_keys(key: str) -> list[str]:
 def mark_in_diff(
     relations: list[Relation], changed_keys: set[str], hunk_lines: dict[str, set[int]], added: bool = False
 ) -> list[Relation]:
-    """A use inside a definition the range changes is `also_changed` and scored (R14), unless the target is added:
+    """A use inside a definition the range changes is `also_changed` and scored, unless the target is added:
     nothing outside the diff can depend on what the diff introduces, and its users are in the diff (R14'). A use on a
     changed line of no definition (module code) lies inside the diff and is not scored."""
     marked = []
@@ -269,7 +269,7 @@ def prepare(run: RepoRun, base: str, sha: str, record: dict) -> Prepared | None:
 
 
 def symbol_candidates(changed: list[ChangedDefinition]) -> list[ChangedDefinition]:
-    """Definitions a `--symbol NAME` query can name: not a bare `constructor` or `__init__`, every class has one (R13)."""
+    """Definitions a `--symbol NAME` query can name: not a bare `constructor` or `__init__`, every class has one."""
     return [c for c in changed if c.head is not None and c.status in SCORED_STATUSES and c.head.name not in CONSTRUCTORS]
 
 

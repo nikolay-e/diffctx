@@ -44,7 +44,7 @@ def _touched(defs: list[Definition], lines: range, boundary: int | None, inert: 
 
     A blank or comment-only line that falls directly in a definition holding others touches nothing: the blank
     line and the doc comment of an added or removed member are not a change of the class around it. Nor does a
-    pure deletion there; the base side names what was deleted (R12).
+    pure deletion there; the base side names what was deleted.
     """
     if boundary is not None:
         inside = [d for d in defs if d.start <= boundary and d.end >= boundary + 1]

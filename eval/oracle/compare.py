@@ -237,7 +237,7 @@ def compare(target: Definition, truth: list[Relation], answer: Answer) -> tuple[
         or (reported is None and answer.unnamed_omitted > 0)
     )
     # `entry`, `truncated`, `callers_omitted` and `also_changed` disclose what the list leaves out: with nothing else
-    # listed for the target, the answer abstains (R15). `callers_omitted` and `also_changed` are read above.
+    # listed for the target, the answer abstains. `callers_omitted` and `also_changed` are read above.
     abstained = abstained or (not callers and (answer.truncated > 0 or bool(reported and reported.entry)))
     # An answer with no entry for the target says nothing of it: a symbol it found no definition of ("named in N file(s), a
     # textual match"), a nested definition it reports under its container. Only an entry claims anything, so only one can be

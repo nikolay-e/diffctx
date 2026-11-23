@@ -23,7 +23,7 @@ from corpus import CACHE, Corpus, Repo, load_corpus
 from indexing import IndexResult, index_snapshot, setup_tools
 from sampling import sample_commits
 
-THRESHOLD = 0.20  # a repository whose excluded share is above this is replaced (Revision 18, C3)
+THRESHOLD = 0.20  # a repository whose excluded share is above this is replaced
 
 
 def cause(result: IndexResult) -> str:

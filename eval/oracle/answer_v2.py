@@ -59,7 +59,7 @@ def parse_v2(data: dict, resolve: Resolver) -> Answer:
         attributed = attributed or shed > 0
         target.entry = definition.get("entry") or target.entry
         target.callers += [_row(row, resolve) for row in definition.get("rows", [])]
-        # A use inside a definition the range changes: structured, so it needs no parsing (R14).
+        # A use inside a definition the range changes: structured, so it needs no parsing.
         target.callers += [
             AnswerCaller(_ref_key(ref, resolve), "resolved", "also_changed") for ref in definition.get("also_changed", [])
         ]

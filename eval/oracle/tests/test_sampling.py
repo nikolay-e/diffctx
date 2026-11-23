@@ -112,7 +112,7 @@ def test_the_counts_per_language_follow_the_sizing_input(tmp_path: Path):
     assert [len(sampling.sample_commits(sized, r, git_dir, 1)) for r in repos] == [1, 1, 1]
 
 
-# Repositories added in Revision 18 and 20: no engine answer on them yet
+# Repositories added after the first measurement: no engine answer on them yet
 NEVER_MEASURED = {"gin", "cli", "echo", "github-workflows-kt", "github-api", "HikariCP"}
 
 

@@ -434,7 +434,7 @@ def reference_kind(root: Node, start: tuple[int, int], end: tuple[int, int], is_
 
     SCIP marks no call: a callee position is `calls` (`instantiates` for a class), an argument or an assigned
     value is `passes_as_value`, a re-export clause is `reexports`, anything else `reads`; an occurrence inside an
-    import statement is `imports` (R8).
+    import statement is `imports`.
     """
     return ruled_kind(root, start, end, is_class, grammar)[0]
 

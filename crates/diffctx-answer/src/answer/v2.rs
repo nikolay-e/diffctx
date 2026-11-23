@@ -5,7 +5,7 @@
 //! under a complete search), every unknown a closed [`Gap`], every test fact one
 //! [`Guard`], every shed row a [`ShedRows`] ledger entry. No field holds prose
 //! other than the repository's own text (paths, symbols, commit-less). The shape
-//! is the one DESIGN.md §2 of the W6-A note gives; nothing here is wired into the
+//! is the design's; nothing here is wired into the
 //! doors yet: [`ImpactV2::from_v1`] builds it from the v1 answer, field by field,
 //! until the builders produce it natively.
 

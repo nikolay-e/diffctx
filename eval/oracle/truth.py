@@ -80,7 +80,7 @@ class Snapshot:
         return found if tree is None else found | syntax.comment_only_lines(tree.root_node, source)
 
     def definitions(self, path: str) -> list[Definition]:
-        """The definitions of `path` that are not local to a function body: a local belongs to its enclosing definition (R18)."""
+        """The definitions of `path` that are not local to a function body: a local belongs to its enclosing definition."""
         if path not in self._definitions:
             found = syntax.definitions(path, self.source(path))
             self._definitions[path] = mark_overloads([d for d in found if not self._is_local(d, found)])
@@ -134,7 +134,7 @@ class Snapshot:
         return node is not None and syntax.script_escapes(node, subject, self.source(definition.path))
 
     def _inside_a_function(self, definition: Definition, siblings: list[Definition]) -> bool:
-        """A Python definition nested in a function that does not leave it, whatever the index calls its symbol (R18).
+        """A Python definition nested in a function that does not leave it, whatever the index calls its symbol.
 
         scip-python names a nested function with a full descriptor and not `local N`; the syntax decides instead.
         """

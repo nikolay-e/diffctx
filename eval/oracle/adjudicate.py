@@ -1,4 +1,4 @@
-"""Sample the hard relations for the evidence-backed adjudication set (T14).
+"""Sample the hard relations for the evidence-backed adjudication set.
 
 The set holds references, never code: repository, commit, path, line and the observed disagreement. Two
 blind passes fill `label_a`/`evidence_a` and `label_b`/`evidence_b` and a final decision fills `final`

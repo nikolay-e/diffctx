@@ -1,6 +1,6 @@
 """The oracle's own reading of what a commit did to one definition, from its base and head syntax trees.
 
-It is independent of the engine: nothing here reads a diffctx answer. The folding table of Revision 12.1 is keyed
+It is independent of the engine: nothing here reads a diffctx answer. The folding table is keyed
 by what this module says (`Delta`), and `folding.py` applies the table to the SCIP relations that reach the target.
 """
 

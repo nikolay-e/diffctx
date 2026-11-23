@@ -1,4 +1,4 @@
-"""Wall-time baseline (T18): p50 and p95 of impact, pack and locate per commit and of `--symbol` over the sampled commits."""
+"""Wall-time baseline: p50 and p95 of impact, pack and locate per commit and of `--symbol` over the sampled commits."""
 
 from __future__ import annotations
 
