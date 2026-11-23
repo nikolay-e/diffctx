@@ -758,6 +758,35 @@ fn generated_from(
     vec![normalize_rel(from), normalize_rel(&format!("{dir}/{from}"))]
 }
 
+/// The changed files [`named_by_path`] looks for. Every build step names a
+/// project manifest; that it changed is said where dependencies are.
+fn named_targets(state: &ScoredState) -> Vec<String> {
+    changed_rels(state)
+        .filter(|t| !PROJECT_MANIFESTS.contains(&t.rsplit('/').next().unwrap_or(t)))
+        .collect()
+}
+
+fn named_search(
+    state: &ScoredState,
+    targets: &[String],
+) -> (String, FxHashMap<String, usize>, Vec<String>, Spellings) {
+    let (root, basenames, mut needles) = path_search(state, targets);
+    let spellings = Spellings::of(&state.root_dir, state.run.source());
+    needles.extend(spellings.needles(targets, Reader::Content));
+    needles.sort();
+    needles.dedup();
+    (root, basenames, needles, spellings)
+}
+
+/// What [`named_by_path`] will search for, for the consumers that plan with it.
+pub(super) fn named_by_path_needles(state: &ScoredState) -> Vec<String> {
+    let targets = named_targets(state);
+    if targets.is_empty() {
+        return Vec::new();
+    }
+    named_search(state, &targets).2
+}
+
 /// Lines outside the change that name a changed file by its path, from a
 /// file of another runtime or a config: the command line that runs it, the
 /// Dockerfile that copies it, the settings entry that runs a script (#393,
@@ -768,19 +797,11 @@ pub(super) fn named_by_path(
     cells: &Cells,
     diff_range: Option<&str>,
 ) -> (Vec<PathReference>, usize) {
-    // Every build step names a project manifest; that it changed is said
-    // where dependencies are.
-    let targets: Vec<String> = changed_rels(state)
-        .filter(|t| !PROJECT_MANIFESTS.contains(&t.rsplit('/').next().unwrap_or(t)))
-        .collect();
+    let targets = named_targets(state);
     if targets.is_empty() {
         return (Vec::new(), 0);
     }
-    let (root, basenames, mut needles) = path_search(state, &targets);
-    let mut spellings = Spellings::of(&state.root_dir, state.run.source());
-    needles.extend(spellings.needles(&targets, Reader::Content));
-    needles.sort();
-    needles.dedup();
+    let (root, basenames, needles, mut spellings) = named_search(state, &targets);
     // A file the ignore rules withhold is not searched here; the header's
     // withheld count stays the one the answer's own reads give.
     let grepped = spelled_lines(state, diff_range, &needles);

@@ -48,13 +48,15 @@ impl Run {
 /// Every run the tests in view make, and the runs of the strings a changed
 /// definition holds that a test asserts. `spelled` maps the path the answer
 /// prints to the path the fragments spell. Every source plans before any
-/// searches, so the run's one fixed-string search holds all their needles.
+/// searches, so the run's one fixed-string search holds all their needles and
+/// the `later` ones of the readers that plan after.
 pub(super) fn all(
     state: &ScoredState,
     cells: &Cells,
     diff_range: Option<&str>,
     spelled: &FxHashMap<&str, &str>,
     declared: &DeclaredTests,
+    later: &[String],
 ) -> (Vec<Run>, Vec<Run>) {
     let sources = [
         binary_runs(state),
@@ -67,7 +69,11 @@ pub(super) fn all(
     announce(
         state,
         diff_range,
-        sources.iter().chain([&asserted]).map(Search::needles),
+        sources
+            .iter()
+            .chain([&asserted])
+            .map(Search::needles)
+            .chain([later]),
     );
     let runs = sources
         .into_iter()

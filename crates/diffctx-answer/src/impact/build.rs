@@ -63,8 +63,8 @@ use super::removed::{dead_modules, removed_definitions};
 use super::symbol::{directory_name, parse_symbol_query};
 use super::unanalysed::{
     MAX_OUTSIDE_RUNS, MAX_UNTRACED_NAMERS, OUTSIDE_DEFINITIONS, UntracedNamers, callable_by_name,
-    left_words, literal_base, nameless_changes, outside_definitions, searched_as_text,
-    spelled_name, spelled_word, unaccounted_rows, unanalysed_files,
+    later_needles, left_words, literal_base, nameless_changes, outside_definitions,
+    searched_as_text, spelled_name, spelled_word, unaccounted_rows, unanalysed_files,
 };
 
 /// `deadline`: the line log (one git call per changed symbol) runs only
@@ -98,21 +98,26 @@ pub fn build_impact(
     // The cells: changed definitions from the facts layer's semantic changes,
     // callers from the resolver of their language (decide.rs). The ranking
     // graph and the text filters take no part in what they answer.
+    let analysed = state.analysed_range.as_deref().or(diff_range);
     let cells = {
         let _t = diffctx_base::profile::detail("impact.setup.cells", "");
-        Cells::open(
-            state,
-            state.analysed_range.as_deref().or(diff_range),
-            query.is_some(),
-        )
+        Cells::open(state, analysed, query.is_some())
     };
+    // A hunk inside a function body seeds a nested fragment — a `let`, an
+    // inner block — that nobody calls; the symbol a reader knows, and the one
+    // the callers link to, is the named container around it.
+    let mut cores: Vec<&Fragment> = state
+        .core_ids
+        .iter()
+        .filter_map(|id| by_id.get(id).copied())
+        .filter_map(|f| named_container_of(f, &state.all_fragments))
+        .collect();
+    cores.sort_by(|a, b| a.id.cmp(&b.id));
+    cores.dedup_by(|a, b| a.id == b.id);
+    let later = later_needles(state, &cores);
     let tests = {
         let _t = diffctx_base::profile::detail("impact.setup.tests", "");
-        TestsReach::build(
-            state,
-            &cells,
-            state.analysed_range.as_deref().or(diff_range),
-        )
+        TestsReach::build(state, &cells, analysed, &later)
     };
     // A caller in a changed file is outside the diff unless its lines are
     // in a hunk: the reader holds the hunks, not the rest of the file (#362).
@@ -166,17 +171,6 @@ pub fn build_impact(
     let mut traced_definitions = 0usize;
     let mut traced_names: Vec<String> = Vec::new();
 
-    // A hunk inside a function body seeds a nested fragment — a `let`, an
-    // inner block — that nobody calls; the symbol a reader knows, and the one
-    // the callers link to, is the named container around it.
-    let mut cores: Vec<&Fragment> = state
-        .core_ids
-        .iter()
-        .filter_map(|id| by_id.get(id).copied())
-        .filter_map(|f| named_container_of(f, &state.all_fragments))
-        .collect();
-    cores.sort_by(|a, b| a.id.cmp(&b.id));
-    cores.dedup_by(|a, b| a.id == b.id);
     let mut held: FxHashMap<String, Vec<(u32, u32)>> = FxHashMap::default();
     for c in &cores {
         held.entry(rel(state, c.path()))
@@ -184,7 +178,6 @@ pub fn build_impact(
             .push((c.start_line(), c.end_line()));
     }
 
-    let analysed = state.analysed_range.as_deref().or(diff_range);
     let bounds = commit_bounds(analysed).filter(|_| state.commit_count >= 2);
     let base_texts = BaseTexts::new(&state.root_dir, state.run.source().base());
 

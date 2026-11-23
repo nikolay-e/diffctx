@@ -104,6 +104,7 @@ impl<'a> TestsReach<'a> {
         state: &'a ScoredState,
         cells: &'a Cells,
         diff_range: Option<&str>,
+        later: &[String],
     ) -> Self {
         let mut by_rel: FxHashMap<String, Vec<&Fragment>> = FxHashMap::default();
         let mut rel_of: FxHashMap<&str, String> = FxHashMap::default();
@@ -225,7 +226,7 @@ impl<'a> TestsReach<'a> {
             .iter()
             .map(|(path, shown)| (shown.as_str(), *path))
             .collect();
-        let (runs, asserted) = runs::all(state, cells, diff_range, &spelled, &declared);
+        let (runs, asserted) = runs::all(state, cells, diff_range, &spelled, &declared, later);
         let doctests = runs::doctest_runs(state);
         let repo_tests = test_fragments.is_empty()
             && named.is_empty()

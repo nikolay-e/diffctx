@@ -87,10 +87,10 @@ const CELLS: [Cell; 4] = [
     }),
 ];
 
-const IMPACT_CEILING: usize = 34;
-const PACK_CEILING: usize = 22;
-const LOCATE_CEILING: usize = 22;
-const SYMBOL_CEILING: usize = 22;
+const IMPACT_CEILING: usize = 26;
+const PACK_CEILING: usize = 15;
+const LOCATE_CEILING: usize = 15;
+const SYMBOL_CEILING: usize = 12;
 
 fn repository(extra_files: usize) -> TempDir {
     let dir = tempfile::tempdir().expect("tempdir");
