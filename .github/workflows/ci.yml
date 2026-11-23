@@ -546,12 +546,15 @@ jobs:
         python-version: ['3.11', '3.12', '3.13', '3.14']
         # A stream check (a PR into relay/arch, see rust-diffctx-test-cross)
         # runs one Linux interpreter; exclude never drops an include-only
-        # cell, so the ARM legs are an expression too.
+        # cell, so the ARM legs are an expression too. macOS runs the lowest
+        # and the highest supported interpreter: it has five slots, which
+        # four interpreters held for half an hour behind the Rust parts.
         exclude: >-
           ${{ fromJSON((github.base_ref == 'relay/arch')
             && '[{"os":"macos-latest"},{"os":"windows-latest"},
                  {"python-version":"3.11"},{"python-version":"3.12"},{"python-version":"3.14"}]'
-            || '[]') }}
+            || '[{"os":"macos-latest","python-version":"3.12"},
+                 {"os":"macos-latest","python-version":"3.13"}]') }}
         # The ARM legs of the release matrix. Windows on ARM has native
         # CPython only from 3.11, so one current interpreter each.
         include: >-
@@ -602,6 +605,7 @@ jobs:
         shell: bash
         env:
           PYO3_USE_ABI3_FORWARD_COMPATIBILITY: "1"
+          EVAL_PYTHON: ${{ matrix.os == 'macos-latest' && '3.11' || '3.12' }}
         run: |
           # Editable install of the project plus every extra the suite needs.
           # uv provisions maturin in its own build environment, so the build
@@ -610,7 +614,8 @@ jobs:
           # tests/conftest.py drops tests/eval/* at COLLECTION time, so those
           # tests reported as neither run nor skipped and executed in no job at
           # all. Installed on one interpreter: the cost is one matrix cell, the
-          # alternative was a suite nobody ran.
+          # alternative was a suite nobody ran. 3.12, or 3.11 on macOS, which
+          # runs only the lowest and the highest interpreter.
           SYNC=(uv sync --locked --no-build --extra dev --extra full --extra mcp)
           # Windows on ARM: cryptography (pulled in by mcp) publishes no wheel
           # and needs OpenSSL to build, so the MCP suites skip there; tiktoken,
@@ -618,7 +623,7 @@ jobs:
           if [[ "$RUNNER_OS" == "Windows" && "$RUNNER_ARCH" == "ARM64" ]]; then
             SYNC=(uv sync --locked --extra dev --extra full)
           fi
-          if [[ "${{ matrix.python-version }}" == "3.12" ]]; then
+          if [[ "${{ matrix.python-version }}" == "$EVAL_PYTHON" ]]; then
             SYNC+=(--group eval)
           fi
           "${SYNC[@]}"
@@ -655,7 +660,7 @@ jobs:
       - name: Upload coverage reports to Codecov
         # Every OS uploads: platform-only branches (Windows paths, POSIX modes)
         # are covered nowhere else, and Codecov merges the reports.
-        if: matrix.python-version == '3.12'
+        if: matrix.python-version == (matrix.os == 'macos-latest' && '3.11' || '3.12')
         uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5  # v7.1.1
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
