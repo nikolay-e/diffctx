@@ -120,30 +120,6 @@ pub(crate) struct RawRecord {
     pub mount: Option<Mount>,
 }
 
-/// A record that spans its own line and carries none of the optional parts.
-pub(super) fn bare(
-    kind: Kind,
-    key: String,
-    strength: Strength,
-    role: Role,
-    mechanism: &'static str,
-    line: usize,
-) -> RawRecord {
-    RawRecord {
-        kind,
-        key,
-        strength,
-        role,
-        mechanism,
-        line,
-        end: line,
-        anchor: None,
-        artifact: None,
-        router: None,
-        mount: None,
-    }
-}
-
 /// A router mounted under a prefix (`app.include_router(items.router,
 /// prefix="/api")`, `app.use('/api', users)`): the record's key is the prefix.
 #[derive(Clone, Debug)]
@@ -288,14 +264,19 @@ fn env_record(name: &str, role: Role, mechanism: &'static str, line: usize) -> O
     if key.len() < 2 || PLATFORM_ENV.contains(&key.as_str()) {
         return None;
     }
-    Some(bare(
-        Kind::Env,
+    Some(RawRecord {
+        kind: Kind::Env,
         key,
-        Strength::Strong,
+        strength: Strength::Strong,
         role,
         mechanism,
         line,
-    ))
+        end: line,
+        anchor: None,
+        artifact: None,
+        router: None,
+        mount: None,
+    })
 }
 
 /// A setting that answers to several keys (a Spring property and the variable
@@ -308,7 +289,19 @@ fn env_records(
 ) -> Vec<RawRecord> {
     keys.into_iter()
         .filter(|k| !PLATFORM_ENV.contains(&k.as_str()))
-        .map(|key| bare(Kind::Env, key, Strength::Strong, role, mechanism, line))
+        .map(|key| RawRecord {
+            kind: Kind::Env,
+            key,
+            strength: Strength::Strong,
+            role,
+            mechanism,
+            line,
+            end: line,
+            anchor: None,
+            artifact: None,
+            router: None,
+            mount: None,
+        })
         .collect()
 }
 
@@ -493,9 +486,17 @@ fn image_records(
     };
     for (key, strength) in [(strong, Strength::Strong), (weak, Strength::Weak)] {
         out.push(RawRecord {
+            kind: Kind::Image,
+            key,
+            strength,
+            role,
+            mechanism,
+            line,
+            end: line,
             anchor: anchor.map(str::to_string),
             artifact: artifact.map(str::to_string),
-            ..bare(Kind::Image, key, strength, role, mechanism, line)
+            router: None,
+            mount: None,
         });
     }
 }
@@ -504,15 +505,17 @@ fn image_records(
 /// image. It carries no key: only [`builds`] reads it.
 fn build_site(line: usize, artifact: &str, out: &mut Vec<RawRecord>) {
     out.push(RawRecord {
+        kind: Kind::Image,
+        key: String::new(),
+        strength: Strength::Strong,
+        role: Role::Build,
+        mechanism: "build-site",
+        line,
+        end: line,
+        anchor: None,
         artifact: Some(artifact.to_string()),
-        ..bare(
-            Kind::Image,
-            String::new(),
-            Strength::Strong,
-            Role::Build,
-            "build-site",
-            line,
-        )
+        router: None,
+        mount: None,
     });
 }
 
@@ -529,9 +532,10 @@ fn logical_lines(text: &str) -> Vec<(usize, String)> {
     let mut current: Option<(usize, String)> = None;
     for (i, line) in text.lines().enumerate() {
         let trimmed = line.trim_end();
-        let (body, continues) = trimmed
-            .strip_suffix('\\')
-            .map_or((trimmed, false), |b| (b, true));
+        let (body, continues) = match trimmed.strip_suffix('\\') {
+            Some(b) => (b, true),
+            None => (trimmed, false),
+        };
         match &mut current {
             Some((_, acc)) => {
                 acc.push(' ');
@@ -580,14 +584,6 @@ const BUILD_VALUE_FLAGS: &[&str] = &[
     "-m",
 ];
 
-fn under(base: &str, rel: &str) -> String {
-    if base.is_empty() {
-        rel.to_string()
-    } else {
-        format!("{base}/{rel}")
-    }
-}
-
 fn join_dir(base: &str, rel: &str) -> Option<String> {
     if rel.starts_with('/')
         || rel.contains(['$', '{'])
@@ -596,11 +592,20 @@ fn join_dir(base: &str, rel: &str) -> Option<String> {
     {
         return None;
     }
-    normalize_lexical(&under(base, rel))
+    let joined = if base.is_empty() {
+        rel.to_string()
+    } else {
+        format!("{base}/{rel}")
+    };
+    normalize_lexical(&joined)
 }
 
 fn dockerfile_in(dir: &str, name: &str) -> String {
-    let joined = under(dir, name);
+    let joined = if dir.is_empty() {
+        name.to_string()
+    } else {
+        format!("{dir}/{name}")
+    };
     normalize_lexical(&joined).unwrap_or(joined)
 }
 
@@ -609,9 +614,6 @@ fn dockerfile_in(dir: &str, name: &str) -> String {
 type WorkDir<'a> = &'a dyn Fn(usize) -> Option<String>;
 
 fn docker_commands(text: &str, work_dir: WorkDir, out: &mut Vec<RawRecord>) {
-    if !(text.contains("docker") || text.contains("podman")) {
-        return;
-    }
     for (line, logical) in logical_lines(text) {
         if let Some(cap) = DOCKER_BUILD.captures(&logical) {
             let tokens: Vec<&str> = cap[1].split_whitespace().collect();
@@ -733,10 +735,10 @@ fn dockerfile(text: &str, out: &mut Vec<RawRecord>) {
 
 // ---------------------------------------------------------------- YAML
 
-pub(super) struct Entry {
+pub(super) struct Entry<'a> {
     pub(super) line: usize,
-    pub(super) key: String,
-    pub(super) value: String,
+    pub(super) key: &'a str,
+    pub(super) value: &'a str,
     pub(super) parent: Option<usize>,
     /// First entry of a list item.
     pub(super) item: bool,
@@ -765,7 +767,7 @@ fn strip_comment(line: &str) -> &str {
 }
 
 /// The key and value of `key: value`, when the line is a mapping entry.
-fn split_mapping(rest: &str) -> Option<(String, String)> {
+fn split_mapping(rest: &str) -> Option<(&str, &str)> {
     let mut quote: Option<char> = None;
     let bytes = rest.as_bytes();
     for (i, c) in rest.char_indices() {
@@ -777,7 +779,7 @@ fn split_mapping(rest: &str) -> Option<(String, String)> {
                 if key.is_empty() || key.contains("{{") {
                     return None;
                 }
-                return Some((key.to_string(), rest[i + 1..].trim().to_string()));
+                return Some((key, rest[i + 1..].trim()));
             }
             _ => {}
         }
@@ -785,7 +787,7 @@ fn split_mapping(rest: &str) -> Option<(String, String)> {
     None
 }
 
-pub(super) fn parse_yaml(text: &str) -> Vec<Entry> {
+pub(super) fn parse_yaml(text: &str) -> Vec<Entry<'_>> {
     let mut entries: Vec<Entry> = Vec::new();
     let mut stack: Vec<(usize, usize)> = Vec::new();
     let mut block: Option<(usize, usize)> = None;
@@ -797,8 +799,8 @@ pub(super) fn parse_yaml(text: &str) -> Vec<Entry> {
                 if !raw.trim().is_empty() {
                     entries.push(Entry {
                         line,
-                        key: String::new(),
-                        value: raw.trim().to_string(),
+                        key: "",
+                        value: raw.trim(),
                         parent: Some(owner),
                         item: false,
                         plain: true,
@@ -831,7 +833,7 @@ pub(super) fn parse_yaml(text: &str) -> Vec<Entry> {
         }
         let (key, value, plain) = match split_mapping(rest) {
             Some((k, v)) => (k, v, false),
-            None => (String::new(), rest.to_string(), true),
+            None => ("", rest, true),
         };
         while stack.last().is_some_and(|(c, _)| *c >= col) {
             stack.pop();
@@ -867,13 +869,11 @@ pub(super) fn children(entries: &[Entry]) -> Vec<Vec<usize>> {
     kids
 }
 
-fn norm_in(key: &str, names: &[&str]) -> bool {
-    names.iter().any(|n| {
-        key.chars()
-            .filter(|c| *c != '_' && *c != '-')
-            .map(|c| c.to_ascii_lowercase())
-            .eq(n.chars())
-    })
+fn norm_eq(key: &str, target: &str) -> bool {
+    key.bytes()
+        .filter(|&b| b != b'_' && b != b'-')
+        .map(|b| b.to_ascii_lowercase())
+        .eq(target.bytes())
 }
 
 const ENV_PARENTS: &[&str] = &[
@@ -892,10 +892,10 @@ fn valid_name(s: &str) -> bool {
         && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
 }
 
-fn scalar_items<'a>(entries: &'a [Entry], kids: &[usize]) -> Vec<(&'a str, usize)> {
+fn scalar_items<'a>(entries: &[Entry<'a>], kids: &[usize]) -> Vec<(&'a str, usize)> {
     kids.iter()
         .filter(|k| entries[**k].plain)
-        .map(|k| (entries[*k].value.as_str(), entries[*k].line))
+        .map(|k| (entries[*k].value, entries[*k].line))
         .collect()
 }
 
@@ -904,18 +904,19 @@ fn scalar_items<'a>(entries: &'a [Entry], kids: &[usize]) -> Vec<(&'a str, usize
 fn yaml_env(entries: &[Entry], kids: &[Vec<usize>]) -> Vec<(RawRecord, usize)> {
     let mut out = Vec::new();
     let config_kind = entries.iter().any(|e| {
-        e.parent.is_none() && e.key == "kind" && matches!(unquote(&e.value), "ConfigMap" | "Secret")
+        e.parent.is_none() && e.key == "kind" && matches!(unquote(e.value), "ConfigMap" | "Secret")
     });
     for (p, parent) in entries.iter().enumerate() {
         if parent.plain {
             continue;
         }
-        let is = |i: usize, names: &[&str]| norm_in(&entries[i].key, names);
-        let env_like = is(p, ENV_PARENTS)
-            || (is(p, &["args"]) && parent.parent.is_some_and(|g| is(g, &["build"])));
-        let data_like = config_kind
-            && parent.parent.is_none()
-            && matches!(parent.key.as_str(), "data" | "stringData");
+        let env_like = ENV_PARENTS.iter().any(|t| norm_eq(parent.key, t))
+            || (norm_eq(parent.key, "args")
+                && parent
+                    .parent
+                    .is_some_and(|g| norm_eq(entries[g].key, "build")));
+        let data_like =
+            config_kind && parent.parent.is_none() && matches!(parent.key, "data" | "stringData");
         if !env_like && !data_like {
             continue;
         }
@@ -924,11 +925,11 @@ fn yaml_env(entries: &[Entry], kids: &[Vec<usize>]) -> Vec<(RawRecord, usize)> {
         for &k in &kids[p] {
             let e = &entries[k];
             let name = if e.plain {
-                Some(e.value.split('=').next().unwrap_or(&e.value).trim())
+                Some(e.value.split('=').next().unwrap_or(e.value).trim())
             } else if list_mode {
-                (e.key == "name").then(|| unquote(&e.value))
+                (e.key == "name").then(|| unquote(e.value))
             } else {
-                Some(e.key.as_str())
+                Some(e.key)
             };
             let Some(name) = name.filter(|n| valid_name(n)) else {
                 continue;
@@ -962,22 +963,22 @@ fn yaml_image_consumers(
     for (i, e) in entries.iter().enumerate() {
         if e.plain {
             if let Some(p) = e.parent {
-                if norm_in(&entries[p].key, &["services"]) {
-                    if let Some(r) = image_ref(&e.value) {
+                if norm_eq(entries[p].key, "services") {
+                    if let Some(r) = image_ref(e.value) {
                         image_records(r, Role::Consume, "ci-services", e.line, None, None, out);
                     }
                 }
             }
             continue;
         }
-        match e.key.as_str() {
+        match e.key {
             "image" if !skip_image_key => {
                 if e.value.is_empty() {
                     let get = |name: &str| {
                         kids[i]
                             .iter()
                             .find(|k| entries[**k].key == name)
-                            .map(|k| unquote(&entries[*k].value))
+                            .map(|k| unquote(entries[*k].value))
                             .filter(|v| !v.is_empty() && !v.contains("{{"))
                     };
                     let repository = get("repository").or_else(|| get("name"));
@@ -999,12 +1000,12 @@ fn yaml_image_consumers(
                         let last = kids[i].iter().map(|k| entries[*k].line).max();
                         widen(out, from, last.unwrap_or(e.line));
                     }
-                } else if let Some(r) = image_ref(&e.value) {
+                } else if let Some(r) = image_ref(e.value) {
                     image_records(r, Role::Consume, "yaml-image", e.line, None, None, out);
                 }
             }
             "container" => {
-                if let Some(r) = image_ref(&e.value) {
+                if let Some(r) = image_ref(e.value) {
                     image_records(r, Role::Consume, "ci-container", e.line, None, None, out);
                 }
             }
@@ -1023,7 +1024,7 @@ fn yaml_image_consumers(
                         group
                             .iter()
                             .find(|k| entries[**k].key == name)
-                            .map(|k| (unquote(&entries[*k].value), entries[*k].line))
+                            .map(|k| (unquote(entries[*k].value), entries[*k].line))
                     };
                     if let Some((r, line)) = get("newName").or_else(|| get("name")) {
                         let from = out.len();
@@ -1054,7 +1055,7 @@ fn action_build(
         kids[with]
             .iter()
             .find(|k| entries[**k].key == name)
-            .map(|k| unquote(&entries[*k].value))
+            .map(|k| unquote(entries[*k].value))
     };
     let context = sibling("context")
         .and_then(|c| join_dir("", c))
@@ -1113,7 +1114,7 @@ fn build_push_action(entries: &[Entry], kids: &[Vec<usize>], out: &mut Vec<RawRe
 /// path leaves the directory unknown.
 fn run_dir(entries: &[Entry], kids: &[Vec<usize>], run: usize) -> Option<String> {
     let value = |at: usize| -> Option<String> {
-        join_dir("", unquote(&entries[at].value)).filter(|_| !entries[at].value.is_empty())
+        join_dir("", unquote(entries[at].value)).filter(|_| !entries[at].value.is_empty())
     };
     let parent = entries[run].parent;
     let of_steps = |j: &usize| entries[*j].parent == parent;
@@ -1207,14 +1208,14 @@ fn compose(
                 Some(b)
             }
         });
-        let context = context_entry.and_then(|c| join_dir(base, unquote(&entries[c].value)));
+        let context = context_entry.and_then(|c| join_dir(base, unquote(entries[c].value)));
         let dockerfile_entry = build.and_then(|b| {
             kids[b]
                 .iter()
                 .copied()
                 .find(|k| entries[*k].key == "dockerfile")
         });
-        let dockerfile = dockerfile_entry.map(|k| unquote(&entries[k].value).to_string());
+        let dockerfile = dockerfile_entry.map(|k| unquote(entries[k].value).to_string());
         // A build with no `context` builds the compose file's own directory; the
         // line is the one that names the Dockerfile, else the context.
         let built = build.and_then(|b| match context_entry {
@@ -1232,7 +1233,7 @@ fn compose(
                     .first()
                     .map(|(v, _)| unquote(v).to_string())
             } else {
-                Some(unquote(&entries[f].value).to_string())
+                Some(unquote(entries[f].value).to_string())
             }?;
             join_dir(base, &first).map(|p| dir_of(&p).to_string())
         });
@@ -1252,7 +1253,7 @@ fn compose(
             } else {
                 None
             };
-            if let Some(r) = image_ref(&entries[image].value) {
+            if let Some(r) = image_ref(entries[image].value) {
                 image_records(
                     r,
                     role,
@@ -1420,16 +1421,20 @@ pub(crate) fn route_shape(raw: &str) -> Option<String> {
     Some(format!("/{}", segments.join("/")))
 }
 
-fn route_record(text: &str, role: Role, mechanism: &'static str, line: usize) -> Option<RawRecord> {
-    let key = route_key(text)?;
-    Some(bare(
-        Kind::Route,
-        key,
-        Strength::Strong,
+fn route_record(raw: &str, role: Role, mechanism: &'static str, line: usize) -> Option<RawRecord> {
+    Some(RawRecord {
+        kind: Kind::Route,
+        key: route_key(raw)?,
+        strength: Strength::Strong,
         role,
         mechanism,
         line,
-    ))
+        end: line,
+        anchor: None,
+        artifact: None,
+        router: None,
+        mount: None,
+    })
 }
 
 static NGINX_LOCATION: Lazy<Regex> =
@@ -1486,33 +1491,33 @@ fn openapi_json(text: &str, lines: &Lines, out: &mut Vec<RawRecord>) {
 fn yaml_routes(entries: &[Entry], kids: &[Vec<usize>], out: &mut Vec<RawRecord>) {
     let is_openapi = entries
         .iter()
-        .any(|e| e.parent.is_none() && matches!(e.key.as_str(), "openapi" | "swagger"));
+        .any(|e| e.parent.is_none() && matches!(e.key, "openapi" | "swagger"));
     for (i, e) in entries.iter().enumerate() {
         if e.plain {
             continue;
         }
-        if e.key == "path" && unquote(&e.value).starts_with('/') {
+        if e.key == "path" && unquote(e.value).starts_with('/') {
             let exact = e.parent.is_some_and(|p| {
                 kids[p].iter().any(|&k| {
-                    norm_in(&entries[k].key, &["pathtype"]) && unquote(&entries[k].value) == "Exact"
+                    norm_eq(entries[k].key, "pathtype") && unquote(entries[k].value) == "Exact"
                 })
             });
             if exact {
                 out.extend(route_record(
-                    unquote(&e.value),
+                    unquote(e.value),
                     Role::Read,
                     "ingress-path",
                     e.line,
                 ));
             } else {
-                route_prefix_records(unquote(&e.value), "ingress-path", e.line, out);
+                route_prefix_records(unquote(e.value), "ingress-path", e.line, out);
             }
         }
         if is_openapi && e.parent.is_none() && e.key == "paths" {
             for &k in &kids[i] {
                 if entries[k].key.starts_with('/') {
                     out.extend(route_record(
-                        &entries[k].key,
+                        entries[k].key,
                         Role::Read,
                         "openapi-path",
                         entries[k].line,
@@ -1668,13 +1673,15 @@ fn tables(class: FileClass, text: &str, lines: &Lines, out: &mut Vec<RawRecord>)
         FileClass::Code(_) => &[(&SQL_TABLE_DEF, "sql-ddl"), (&ORM_TABLE_DEF, "orm-table")],
         _ => &[],
     };
-    let schema = std::cell::LazyCell::new(|| file_schema(text));
+    let schema = (!defines.is_empty()).then(|| file_schema(text)).flatten();
     for (re, mechanism) in defines {
+        let bare_in = if *mechanism == "orm-table" {
+            schema.as_deref()
+        } else {
+            None
+        };
         for cap in re.captures_iter(text) {
             if let Some((name, at)) = first_group(&cap) {
-                let bare_in = (*mechanism == "orm-table")
-                    .then(|| schema.as_deref())
-                    .flatten();
                 out.extend(table_record(
                     name,
                     Role::Set,
@@ -1729,15 +1736,18 @@ fn metric_record(
         .iter()
         .find_map(|suffix| name.strip_suffix(suffix))
         .unwrap_or(name);
-    (key.len() >= 4 && key.contains('_') && !key.contains(':')).then(|| {
-        bare(
-            Kind::Metric,
-            key.to_string(),
-            Strength::Strong,
-            role,
-            mechanism,
-            line,
-        )
+    (key.len() >= 4 && key.contains('_') && !key.contains(':')).then(|| RawRecord {
+        kind: Kind::Metric,
+        key: key.to_string(),
+        strength: Strength::Strong,
+        role,
+        mechanism,
+        line,
+        end: line,
+        anchor: None,
+        artifact: None,
+        router: None,
+        mount: None,
     })
 }
 
@@ -1760,9 +1770,6 @@ fn metric_defs(text: &str, lines: &Lines, out: &mut Vec<RawRecord>) {
 /// The metrics a rule file's `expr:` queries, a block scalar included: the
 /// names before a `(` are functions, and labels and strings are no series.
 fn promql_reads(text: &str, out: &mut Vec<RawRecord>) {
-    if !text.contains("expr:") {
-        return;
-    }
     let mut rows = text.lines().enumerate().peekable();
     while let Some((at, row)) = rows.next() {
         let Some(rest) = row
@@ -1815,7 +1822,6 @@ static GO_PB: Lazy<Regex> = Lazy::new(|| {
         r"\bpb\.([A-Z]\w*)|\bRegister([A-Z]\w*)Server\(|\bNew([A-Z]\w*)Client\(|\bUnimplemented([A-Z]\w*)Server\b",
     )
 });
-const GO_HINTS: [&str; 3] = ["pb.", "Server", "Client("];
 static JAVA_PB: Lazy<Regex> = Lazy::new(|| pattern(r"\b([A-Z]\w*)Grpc\b"));
 
 fn proto_record(
@@ -1825,7 +1831,19 @@ fn proto_record(
     mechanism: &'static str,
     line: usize,
 ) -> RawRecord {
-    bare(Kind::Proto, key, strength, role, mechanism, line)
+    RawRecord {
+        kind: Kind::Proto,
+        key,
+        strength,
+        role,
+        mechanism,
+        line,
+        end: line,
+        anchor: None,
+        artifact: None,
+        router: None,
+        mount: None,
+    }
 }
 
 /// `Order` of `order_pb2.Order`, `OrdersServicer` of the generated gRPC
@@ -1902,7 +1920,7 @@ fn proto_uses(lang: CodeLang, text: &str, lines: &Lines, out: &mut Vec<RawRecord
     match lang {
         // The module a generated name comes from is the .proto file's stem:
         // `orders_pb2.Order` names Order of orders.proto and no other.
-        CodeLang::Python if text.contains("_pb2") => {
+        CodeLang::Python => {
             for cap in PY_PB.captures_iter(text) {
                 let (Some(module), Some(name)) = (cap.get(1), cap.get(2)) else {
                     continue;
@@ -1921,7 +1939,7 @@ fn proto_uses(lang: CodeLang, text: &str, lines: &Lines, out: &mut Vec<RawRecord
                 ));
             }
         }
-        CodeLang::Go if GO_HINTS.iter().any(|k| text.contains(k)) => {
+        CodeLang::Go => {
             for cap in GO_PB.captures_iter(text) {
                 if let Some((name, at)) = first_group(&cap) {
                     out.push(proto_record(
@@ -1934,7 +1952,7 @@ fn proto_uses(lang: CodeLang, text: &str, lines: &Lines, out: &mut Vec<RawRecord
                 }
             }
         }
-        CodeLang::Jvm if text.contains("Grpc") => {
+        CodeLang::Jvm => {
             for cap in JAVA_PB.captures_iter(text) {
                 if let Some(m) = cap.get(1) {
                     out.push(proto_record(
@@ -2001,23 +2019,22 @@ fn placeholders(value: &str, line: usize, out: &mut Vec<RawRecord>) {
 /// `spring:` / `datasource:` / `url:` as `spring.datasource.url`: the
 /// settings and placeholders of a Spring application file.
 fn spring_yaml(entries: &[Entry], out: &mut Vec<RawRecord>) {
-    for (i, e) in entries.iter().enumerate() {
+    for e in entries {
         if e.plain {
             continue;
         }
-        let mut path = vec![e.key.as_str()];
+        let mut path = vec![e.key];
         let mut at = e.parent;
         while let Some(p) = at {
             if entries[p].plain {
                 break;
             }
-            path.push(entries[p].key.as_str());
+            path.push(entries[p].key);
             at = entries[p].parent;
         }
         path.reverse();
-        let value = unquote(&e.value);
+        let value = unquote(e.value);
         let is_leaf = !value.is_empty() && !value.starts_with(['|', '>']);
-        let _ = i;
         if is_leaf {
             out.extend(env_records(
                 property_keys(&path.join(".")),

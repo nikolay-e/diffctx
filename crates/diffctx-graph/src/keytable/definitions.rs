@@ -53,19 +53,19 @@ fn yaml_definitions(rel: &str, text: &str, compose: bool) -> Vec<String> {
         .filter_map(|i| {
             let entry = &entries[i];
             if compose {
-                under(i, "services").then(|| entry.key.clone())
+                under(i, "services").then(|| entry.key.to_string())
             } else if workflow {
                 if under(i, "jobs") {
-                    Some(entry.key.clone())
+                    Some(entry.key.to_string())
                 } else {
-                    (top(i) && entry.key == "name").then(|| unquote(&entry.value).to_string())
+                    (top(i) && entry.key == "name").then(|| unquote(entry.value).to_string())
                 }
             } else {
                 (top(i)
                     && kids[i]
                         .iter()
-                        .any(|&k| GITLAB_JOB_KEYS.contains(&entries[k].key.as_str())))
-                .then(|| entry.key.clone())
+                        .any(|&k| GITLAB_JOB_KEYS.contains(&entries[k].key)))
+                .then(|| entry.key.to_string())
             }
         })
         .collect()
