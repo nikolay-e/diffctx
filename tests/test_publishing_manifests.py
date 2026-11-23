@@ -522,7 +522,6 @@ class TestLicenseSurfaces:
         assert "\nLicensor Line of Business: " in text
 
     def test_every_package_and_doc_surface_matches_the_license(self):
-        tomllib = pytest.importorskip("tomllib" if sys.version_info >= (3, 11) else "tomli")
         project = tomllib.loads((PROJECT_ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]
         assert project["license"] == "LicenseRef-PolyForm-Shield-1.0.0"
         assert project["license-files"] == ["LICENSE.md"]
