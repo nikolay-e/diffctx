@@ -48,7 +48,7 @@ pub(super) fn of<'a>(cx: &Impact<'a>, t: &Targets<'a>, c: &Core<'a, '_>) -> Sour
     let tests = &cx.tests;
     let files = &cx.files;
     let defined_in = &cx.defined_in;
-    let diff_range = cx.diff_range;
+    let analysed = cx.analysed;
     let bordering = &t.bordering;
     let in_a_hunk = |id: &FragmentId| cx.in_a_hunk(id);
     let one_tree = |user: &str, used: &str| cx.one_tree(user, used);
@@ -273,7 +273,7 @@ pub(super) fn of<'a>(cx: &Impact<'a>, t: &Targets<'a>, c: &Core<'a, '_>) -> Sour
     }
     // A client that requests the path a route serves reaches its handler
     // through HTTP: no import or name ties them, only the path text does.
-    for (reader, line) in super::super::runs::route_readers(state, cells, diff_range, core) {
+    for (reader, line) in super::super::runs::route_readers(state, cells, analysed, core) {
         let frags = files
             .fragments
             .get(diffctx_base::paths::join_native(&state.root_dir, &reader).as_str());
@@ -347,9 +347,7 @@ pub(super) fn of<'a>(cx: &Impact<'a>, t: &Targets<'a>, c: &Core<'a, '_>) -> Sour
             .or_else(|| {
                 sources
                     .is_empty()
-                    .then(|| {
-                        super::super::php::registered_by(state, diff_range, core, file_of(core))
-                    })
+                    .then(|| super::super::php::registered_by(state, analysed, core, file_of(core)))
                     .flatten()
                     .map(Entered::Registered)
             })

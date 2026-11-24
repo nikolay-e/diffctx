@@ -105,7 +105,7 @@ pub(crate) struct GitMemo {
     kept_bytes: AtomicUsize,
     derived: Mutex<std::collections::HashMap<Vec<u8>, Arc<Mutex<Option<Derived>>>>>,
     searches: Mutex<std::collections::HashMap<(PathBuf, Option<String>), Arc<Mutex<Searches>>>>,
-    batches: Mutex<std::collections::HashMap<(PathBuf, usize), Arc<Mutex<CatBatch>>>>,
+    batches: Mutex<std::collections::HashMap<PathBuf, Arc<Mutex<CatBatch>>>>,
     /// Combined commands that were refused: their questions run alone.
     refused: Mutex<std::collections::HashSet<Asked>>,
 }
@@ -542,23 +542,23 @@ impl Exec {
         ))
     }
 
-    /// The object reader of `root`, one for every reader of the run that keeps
-    /// blobs up to `cap` bytes. Outside a run each reader has its own.
-    pub(crate) fn batch(&self, root: &Path, cap: usize) -> Arc<Mutex<CatBatch>> {
+    /// The object reader of `root`, one for every reader of the run, whatever
+    /// size cap each keeps blobs under. Outside a run each reader has its own.
+    pub(crate) fn batch(&self, root: &Path) -> Arc<Mutex<CatBatch>> {
         let open = || {
             // Without the memo: the run's memo owns this reader.
             let exec = Self {
                 memo: None,
                 ..self.clone()
             };
-            Arc::new(Mutex::new(CatBatch::new(root, cap, exec)))
+            Arc::new(Mutex::new(CatBatch::new(root, exec)))
         };
         match self.memo.as_deref() {
             Some(memo) => Arc::clone(
                 memo.batches
                     .lock()
                     .unwrap()
-                    .entry((root.to_path_buf(), cap))
+                    .entry(root.to_path_buf())
                     .or_insert_with(open),
             ),
             None => open(),
@@ -1041,12 +1041,12 @@ enum Raw {
 struct BatchConn {
     child: Child,
     live: Option<Live>,
-    requests: Option<mpsc::SyncSender<Vec<u8>>>,
+    requests: Option<mpsc::SyncSender<(Vec<u8>, usize)>>,
     replies: mpsc::Receiver<Raw>,
 }
 
 impl BatchConn {
-    fn start(root: &Path, max_bytes: usize) -> Result<Self> {
+    fn start(root: &Path) -> Result<Self> {
         let mut cmd = git_command(root);
         cmd.args(["cat-file", "--batch"])
             .stdin(Stdio::piped())
@@ -1059,9 +1059,9 @@ impl BatchConn {
                 "failed to capture the batch pipes".into(),
             ));
         };
-        let (requests, request_rx) = mpsc::sync_channel::<Vec<u8>>(1);
+        let (requests, request_rx) = mpsc::sync_channel::<(Vec<u8>, usize)>(1);
         let (reply_tx, replies) = mpsc::sync_channel(1);
-        std::thread::spawn(move || batch_worker(stdin, stdout, &request_rx, &reply_tx, max_bytes));
+        std::thread::spawn(move || batch_worker(stdin, stdout, &request_rx, &reply_tx));
         Ok(Self {
             live: Some(Live::new(&child)),
             child,
@@ -1070,10 +1070,10 @@ impl BatchConn {
         })
     }
 
-    fn send(&self, request: Vec<u8>) -> bool {
+    fn send(&self, request: Vec<u8>, max_bytes: usize) -> bool {
         self.requests
             .as_ref()
-            .is_some_and(|requests| requests.send(request).is_ok())
+            .is_some_and(|requests| requests.send((request, max_bytes)).is_ok())
     }
 
     /// A graceful close gives git the cleanup allowance to exit on EOF, cut to
@@ -1118,12 +1118,11 @@ impl Drop for BatchConn {
 fn batch_worker(
     mut stdin: ChildStdin,
     stdout: ChildStdout,
-    requests: &mpsc::Receiver<Vec<u8>>,
+    requests: &mpsc::Receiver<(Vec<u8>, usize)>,
     replies: &mpsc::SyncSender<Raw>,
-    max_bytes: usize,
 ) {
     let mut reader = BufReader::new(stdout);
-    while let Ok(request) = requests.recv() {
+    while let Ok((request, max_bytes)) = requests.recv() {
         let reply = match stdin.write_all(&request).and_then(|()| stdin.flush()) {
             Ok(()) => read_batch_reply(&mut reader, max_bytes),
             Err(e) => Raw::Broken(format!("write failed: {e}")),
@@ -1194,7 +1193,6 @@ fn read_batch_reply(reader: &mut BufReader<ChildStdout>, max_bytes: usize) -> Ra
 
 pub(crate) struct CatBatch {
     root: PathBuf,
-    max_bytes: usize,
     exec: Exec,
     conn: Option<BatchConn>,
 }
@@ -1202,22 +1200,22 @@ pub(crate) struct CatBatch {
 impl CatBatch {
     /// The child starts on the first request: a reader of the working tree
     /// alone never spawns one.
-    pub(crate) fn new(root: &Path, max_bytes: usize, exec: Exec) -> Self {
+    pub(crate) fn new(root: &Path, exec: Exec) -> Self {
         Self {
             root: root.to_path_buf(),
-            max_bytes,
             exec,
             conn: None,
         }
     }
 
-    /// The object `oid` names, within the limits of the reader that asks. A connection that went wrong is replaced once
+    /// The object `oid` names, kept up to `max_bytes`, within the limits of the
+    /// reader that asks. A connection that went wrong is replaced once
     /// and the request asked again; a second failure is an error, never an
     /// absent object.
-    pub(crate) fn get(&mut self, asker: &Exec, oid: &str) -> Result<Reply> {
+    pub(crate) fn get(&mut self, asker: &Exec, oid: &str, max_bytes: usize) -> Result<Reply> {
         let mut last = String::new();
         for _ in 0..2 {
-            match self.ask(asker, oid)? {
+            match self.ask(asker, oid, max_bytes)? {
                 Raw::Reply(reply) => return Ok(reply),
                 Raw::Broken(why) => last = why,
             }
@@ -1225,16 +1223,16 @@ impl CatBatch {
         Err(SnapshotError::Protocol(format!("{last} ({oid})")))
     }
 
-    fn ask(&mut self, asker: &Exec, oid: &str) -> Result<Raw> {
+    fn ask(&mut self, asker: &Exec, oid: &str, max_bytes: usize) -> Result<Raw> {
         let limits = asker.limits();
         if let Some(stop) = limits.exhausted() {
             return Err(stop);
         }
         let conn = match self.conn.take() {
             Some(conn) => conn,
-            None => BatchConn::start(&self.root, self.max_bytes)?,
+            None => BatchConn::start(&self.root)?,
         };
-        if !conn.send(format!("{oid}\n").into_bytes()) {
+        if !conn.send(format!("{oid}\n").into_bytes(), max_bytes) {
             conn.shut_down(None);
             return Ok(Raw::Broken(format!("connection closed before {oid}")));
         }
@@ -1400,7 +1398,7 @@ mod tests {
             .status()
             .unwrap();
         assert!(status.success());
-        let conn = BatchConn::start(repo.path(), 1 << 20).unwrap();
+        let conn = BatchConn::start(repo.path()).unwrap();
         let pid = conn.child.id();
         drop(conn);
         assert!(is_gone(pid), "cat-file {pid} outlived its connection");

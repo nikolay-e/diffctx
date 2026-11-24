@@ -11,6 +11,7 @@ repository = "https://github.com/nikolay-e/diffctx"
 
 # Dependencies two or more crates of the workspace share: one version, one feature set.
 [workspace.dependencies]
+aho-corasick = "1"
 anyhow = "1"
 diffctx-answer = { path = "crates/diffctx-answer", version = "2.0.0-dev.0" }
 diffctx-base = { path = "crates/diffctx-base", version = "2.0.0-dev.0" }

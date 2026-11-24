@@ -17,8 +17,8 @@ use diffctx_base::paths::contains_lexically;
 pub type Row = (String, u32, String);
 
 /// Needles sent to one `git grep` by [`needle_lines`] and [`word_lines`], and
-/// the bytes of them: tens of thousands of `-e` arguments overflow `ARG_MAX` and
-/// the whole search fails (#440).
+/// the bytes of them: `-e` arguments past `ARG_MAX` fail the search (#440), and
+/// git's matcher spends 22, 57 and 242 ms a pattern at 50, 200 and 1000 a call.
 const NEEDLES_PER_CALL: usize = 50;
 const NEEDLE_BYTES_PER_CALL: usize = 32 * 1024;
 
@@ -141,23 +141,15 @@ pub fn word_lines(
     more: &dyn Fn() -> bool,
 ) -> Result<Vec<Row>> {
     let per_file_arg = per_file.to_string();
-    let mut found = Vec::new();
-    for chunk in chunks(words) {
-        if chunk.iter().all(String::is_empty) {
-            continue;
-        }
-        if !more() {
-            break;
-        }
-        let mut args: Vec<&str> = vec!["grep", "-n", "-z", "-I", "-F", "-w", "-m", &per_file_arg];
-        args.extend(patterns(chunk));
-        args.extend(rev);
-        args.push("--");
-        args.extend(globs.iter().map(String::as_str));
-        found.extend(rows(root, &args, rev)?);
-    }
-    found.sort_unstable();
-    found.dedup();
+    let globs: Vec<&str> = globs.iter().map(String::as_str).collect();
+    let mut found = chunked(
+        root,
+        words,
+        rev,
+        more,
+        &["-w", "-m", per_file_arg.as_str()],
+        &globs,
+    )?;
     // `-m` bounds each chunk's search: the chunks together may hold more.
     let mut kept_for: Option<String> = None;
     let mut kept = 0;
@@ -204,7 +196,7 @@ pub fn needle_lines(
     more: &dyn Fn() -> bool,
 ) -> Result<Vec<Row>> {
     let Some(shared) = Exec::current().searches(root, rev) else {
-        return search(root, needles, rev, more);
+        return chunked(root, needles, rev, more, &[], &[]);
     };
     let mut searches = shared.lock().unwrap();
     let wanted: FxHashSet<&str> = needles
@@ -217,11 +209,9 @@ pub fn needle_lines(
             .iter()
             .map(|n| (*n).to_string())
             .filter(|n| !searches.covered.contains(n))
-            .collect::<FxHashSet<_>>()
-            .into_iter()
             .collect();
         missing.sort_unstable();
-        let found = search(root, &missing, rev, more)?;
+        let found = chunked(root, &missing, rev, more, &[], &[])?;
         searches.rows.extend(found);
         searches.rows.sort_unstable();
         searches.rows.dedup();
@@ -234,19 +224,26 @@ pub fn needle_lines(
     // Sizes alone would take covered {a, b} for wanted {c, d} after a cut search.
     let everything = searches.covered.len() == wanted.len()
         && wanted.iter().all(|n| searches.covered.contains(*n));
+    let automaton = (!everything).then(|| aho_corasick::AhoCorasick::new(&wanted));
+    let selected = |text: &str| match &automaton {
+        Some(Ok(found)) => found.is_match(text),
+        _ => wanted.iter().any(|n| text.contains(n)),
+    };
     Ok(searches
         .rows
         .iter()
-        .filter(|(_, _, text)| everything || wanted.iter().any(|n| text.contains(n)))
+        .filter(|(_, _, text)| everything || selected(text))
         .cloned()
         .collect())
 }
 
-fn search(
+fn chunked(
     root: &Path,
     needles: &[String],
     rev: Option<&str>,
     more: &dyn Fn() -> bool,
+    flags: &[&str],
+    pathspec: &[&str],
 ) -> Result<Vec<Row>> {
     let mut found = Vec::new();
     for chunk in chunks(needles) {
@@ -257,8 +254,13 @@ fn search(
             break;
         }
         let mut args: Vec<&str> = vec!["grep", "-n", "-z", "-I", "-F"];
+        args.extend(flags);
         args.extend(patterns(chunk));
         args.extend(rev);
+        if !pathspec.is_empty() {
+            args.push("--");
+            args.extend(pathspec);
+        }
         found.extend(rows(root, &args, rev)?);
     }
     found.sort_unstable();

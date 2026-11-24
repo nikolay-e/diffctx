@@ -1167,18 +1167,18 @@ fn framework_runs<'a>(
     needles.sort();
     needles.dedup();
     Search::of(needles, move |grepped| {
+        let run_rows: Vec<_> = grepped
+            .rows
+            .iter()
+            .filter(|(path, _, text)| declared.runs(path) && !commented(text))
+            .collect();
         entries
             .into_iter()
             .filter_map(|entry| {
                 let tests = ordered(
-                    grepped
-                        .rows
+                    run_rows
                         .iter()
-                        .filter(|(path, _, text)| {
-                            declared.runs(path)
-                                && !commented(text)
-                                && entry.spelling.spelled_by(text)
-                        })
+                        .filter(|(_, _, text)| entry.spelling.spelled_by(text))
                         .map(|(path, line, _)| (path.clone(), *line))
                         .collect(),
                 );
@@ -1410,15 +1410,16 @@ fn literal_runs<'a>(state: &'a ScoredState, declared: &'a DeclaredTests) -> Sear
                 }
             }
         }
+        let run_rows: Vec<_> = grepped
+            .rows
+            .iter()
+            .filter(|(path, _, text)| declared.runs(path) && !commented(text))
+            .collect();
         held.into_iter()
             .filter_map(|(file, shown, symbol, literals)| {
                 let shown = shown.as_str();
-                let spells = |literal: &str, path: &str, text: &str| {
-                    path != shown
-                        && declared.runs(path)
-                        && !commented(text)
-                        && text.contains(literal)
-                };
+                let spells =
+                    |literal: &str, path: &str, text: &str| path != shown && text.contains(literal);
                 let (clear, shared): (Vec<&String>, Vec<&String>) =
                     literals.iter().partition(|l| {
                         files_of
@@ -1429,8 +1430,7 @@ fn literal_runs<'a>(state: &'a ScoredState, declared: &'a DeclaredTests) -> Sear
                     clear
                         .into_iter()
                         .flat_map(|literal| {
-                            grepped
-                                .rows
+                            run_rows
                                 .iter()
                                 .filter(move |(path, _, text)| spells(literal, path, text))
                                 .map(|(path, line, _)| (path.clone(), *line))
@@ -1442,7 +1442,7 @@ fn literal_runs<'a>(state: &'a ScoredState, declared: &'a DeclaredTests) -> Sear
                 (!tests.is_empty()
                     || shared
                         .into_iter()
-                        .any(|l| grepped.rows.iter().any(|(p, _, t)| spells(l, p, t))))
+                        .any(|l| run_rows.iter().any(|(p, _, t)| spells(l, p, t))))
                 .then(|| Run {
                     file,
                     symbol: Some(symbol),

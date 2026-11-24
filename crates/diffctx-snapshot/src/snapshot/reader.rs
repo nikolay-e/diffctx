@@ -220,7 +220,6 @@ impl SnapshotReader {
                 (Backing::WorkingTree, id, Some(found), unreadable)
             }
         };
-        let cap = usize::try_from(admission.policy().size_cap).unwrap_or(usize::MAX);
         // A file git could not read to name the checkout is a lost read from the start.
         let failures: Vec<(RepoPath, bool)> = unreadable
             .iter()
@@ -235,7 +234,7 @@ impl SnapshotReader {
                 root: root.clone(),
                 basis,
                 id,
-                batch: exec.batch(work, cap),
+                batch: exec.batch(work),
                 admission,
                 exec,
                 table: Mutex::new(None),
@@ -535,7 +534,8 @@ impl SnapshotReader {
         self.inner.exec.inject_read_fault(self.role())?;
         // A stream that went wrong twice on this object is an error: it is
         // never answered another way, so no read is quietly a different one.
-        match lock(&self.inner.batch)?.get(&self.inner.exec, oid.as_str())? {
+        let cap = usize::try_from(self.inner.admission.policy().size_cap).unwrap_or(usize::MAX);
+        match lock(&self.inner.batch)?.get(&self.inner.exec, oid.as_str(), cap)? {
             Reply::Blob(bytes) => Ok(Bytes::from(bytes)),
             // The tree names this object: git not having it is a broken or
             // partial repository, not an absent file.

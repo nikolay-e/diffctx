@@ -53,8 +53,8 @@ pub(super) fn read<'a>(
     cores: Vec<&'a Fragment>,
     found: &mut Findings,
 ) -> Targets<'a> {
-    let (state, query, cells, files, diff_range) =
-        (cx.state, cx.query, cx.cells, &cx.files, cx.diff_range);
+    let (state, query, cells, files, analysed) =
+        (cx.state, cx.query, cx.cells, &cx.files, cx.analysed);
     let file_of = |f: &Fragment| cx.file_of(f);
     let hunks_in = |core: &Fragment| cx.hunks_in(core);
     let core_place = |core: &Fragment| cx.core_place(core);
@@ -300,7 +300,7 @@ pub(super) fn read<'a>(
             .chain(&cell_apart)
             .flat_map(left_words)
             .collect();
-        UntracedNamers::build(state, cells, &cores, &removed, &left, &own, diff_range)
+        UntracedNamers::build(state, cells, &cores, &removed, &left, &own, analysed)
     };
     Targets {
         cores,
