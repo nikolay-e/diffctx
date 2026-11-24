@@ -33,8 +33,65 @@ concurrency:
         type: boolean
 
 jobs:
+  # The release tokens are only used after PyPI may have published, and the
+  # build_only dry run never touches them: prove both here, read-only, before
+  # anything is built.
+  check-credentials:
+    name: Check Release Credentials
+    runs-on: ubuntu-latest
+    steps:
+      # finalize-release pushes to a protected main as an admin, which the
+      # protection exempts (enforce_admins: false, #69).
+      - name: Check RELEASE_PUSH_TOKEN
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_PUSH_TOKEN }}
+          REPO_FULL_NAME: ${{ github.repository }}
+        run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::error::RELEASE_PUSH_TOKEN is not set"
+            exit 1
+          fi
+          if ! admin=$(gh api "repos/${REPO_FULL_NAME}" --jq .permissions.admin 2>/dev/null); then
+            echo "::error::RELEASE_PUSH_TOKEN does not authenticate against ${REPO_FULL_NAME}"
+            exit 1
+          fi
+          if [ "$admin" != "true" ]; then
+            echo "::error::RELEASE_PUSH_TOKEN is not an admin of ${REPO_FULL_NAME}; it could not push to main"
+            exit 1
+          fi
+          # Dry run: the remote authenticates the push and nothing is written.
+          # The token cannot read main's branch protection (no Administration
+          # scope), so that admins are exempt stays a setting to trust.
+          git init -q probe
+          git -C probe -c user.name=probe -c user.email=probe@localhost commit -q --allow-empty -m probe
+          url="https://x-access-token:${GH_TOKEN}@github.com/${REPO_FULL_NAME}.git"
+          if ! git -C probe push --dry-run "$url" HEAD:refs/heads/credential-check >/dev/null 2>&1; then
+            echo "::error::RELEASE_PUSH_TOKEN cannot push to ${REPO_FULL_NAME}"
+            exit 1
+          fi
+          echo "RELEASE_PUSH_TOKEN is an admin and can push to ${REPO_FULL_NAME}."
+
+      - name: Check DHI_TOKEN
+        if: ${{ !cancelled() }}
+        env:
+          DHI_USERNAME: ${{ secrets.DHI_USERNAME }}
+          DHI_TOKEN: ${{ secrets.DHI_TOKEN }}
+        run: |
+          if [ -z "$DHI_USERNAME" ] || [ -z "$DHI_TOKEN" ]; then
+            echo "::error::DHI_USERNAME or DHI_TOKEN is not set"
+            exit 1
+          fi
+          if ! printf '%s' "$DHI_TOKEN" |
+            docker login dhi.io --username "$DHI_USERNAME" --password-stdin >/dev/null 2>&1; then
+            echo "::error::docker login to dhi.io failed: DHI_USERNAME/DHI_TOKEN are rejected"
+            exit 1
+          fi
+          docker logout dhi.io >/dev/null
+          echo "DHI_TOKEN logs in to dhi.io."
+
   prepare-version:
     name: Prepare Version Commit
+    needs: check-credentials
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.set_outputs.outputs.version }}
