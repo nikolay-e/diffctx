@@ -1,0 +1,37 @@
+name: java_method_answering_an_interface_without_override_is_an_implementation
+mode: impact
+source: synthetic
+tags: [java, interface, implementation]
+repo:
+  initial_files:
+    src/main/java/demo/Shape.java: |
+      package demo;
+
+      public interface Shape {
+          double area();
+      }
+    src/main/java/demo/Square.java: |
+      package demo;
+
+      public class Square implements Shape {
+          public double area() {
+              return 1.0;
+          }
+      }
+  changed_files:
+    src/main/java/demo/Shape.java: |
+      package demo;
+
+      public interface Shape {
+          double area() throws Exception;
+      }
+  commit_message: "shape: area may throw"
+expect:
+  exact: false
+  relations:
+    # Square answers area by name and arity, with no @Override to say so, from a file the range leaves alone.
+    - from: src/main/java/demo/Square.java::Square.area
+      to: src/main/java/demo/Shape.java::Shape.area
+      kind: overrides
+      resolution: resolved
+      site: 4
