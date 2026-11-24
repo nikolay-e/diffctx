@@ -68,13 +68,15 @@ jobs:
       - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2  # v10.3.3
         with:
           python-version: '3.12'
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+      # Restore only: ci.yml is the one saver of cargo-rust-<os>-release-; a key per sha here filled the
+      # repository's cache quota and evicted the CI cache.
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: scoreboard-build-${{ needs.plan.outputs.product }}
+          key: cargo-rust-${{ runner.os }}-release-${{ hashFiles('Cargo.lock') }}
           restore-keys: |
             cargo-rust-${{ runner.os }}-release-
             cargo-${{ runner.os }}-
