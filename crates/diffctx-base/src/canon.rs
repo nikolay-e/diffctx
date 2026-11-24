@@ -43,14 +43,19 @@ pub fn canon_key(name: &str) -> String {
 /// Segment -> canonical key, kept across the fragments of one build: the same
 /// few thousand words recur in every file.
 #[derive(Default)]
-pub struct KeyCache(FxHashMap<String, String>);
+pub struct KeyCache {
+    index: FxHashMap<String, usize>,
+    keys: Vec<String>,
+}
 
 impl KeyCache {
     pub fn key(&mut self, segment: &str) -> &str {
-        if !self.0.contains_key(segment) {
-            self.0.insert(segment.to_string(), canon_key(segment));
+        if let Some(&at) = self.index.get(segment) {
+            return &self.keys[at];
         }
-        &self.0[segment]
+        self.index.insert(segment.to_string(), self.keys.len());
+        self.keys.push(canon_key(segment));
+        &self.keys[self.keys.len() - 1]
     }
 }
 

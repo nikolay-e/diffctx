@@ -120,6 +120,30 @@ pub(crate) struct RawRecord {
     pub mount: Option<Mount>,
 }
 
+/// A record that spans its own line and carries none of the optional parts.
+pub(super) fn bare(
+    kind: Kind,
+    key: String,
+    strength: Strength,
+    role: Role,
+    mechanism: &'static str,
+    line: usize,
+) -> RawRecord {
+    RawRecord {
+        kind,
+        key,
+        strength,
+        role,
+        mechanism,
+        line,
+        end: line,
+        anchor: None,
+        artifact: None,
+        router: None,
+        mount: None,
+    }
+}
+
 /// A router mounted under a prefix (`app.include_router(items.router,
 /// prefix="/api")`, `app.use('/api', users)`): the record's key is the prefix.
 #[derive(Clone, Debug)]
@@ -264,19 +288,14 @@ fn env_record(name: &str, role: Role, mechanism: &'static str, line: usize) -> O
     if key.len() < 2 || PLATFORM_ENV.contains(&key.as_str()) {
         return None;
     }
-    Some(RawRecord {
-        kind: Kind::Env,
+    Some(bare(
+        Kind::Env,
         key,
-        strength: Strength::Strong,
+        Strength::Strong,
         role,
         mechanism,
         line,
-        end: line,
-        anchor: None,
-        artifact: None,
-        router: None,
-        mount: None,
-    })
+    ))
 }
 
 /// A setting that answers to several keys (a Spring property and the variable
@@ -289,19 +308,7 @@ fn env_records(
 ) -> Vec<RawRecord> {
     keys.into_iter()
         .filter(|k| !PLATFORM_ENV.contains(&k.as_str()))
-        .map(|key| RawRecord {
-            kind: Kind::Env,
-            key,
-            strength: Strength::Strong,
-            role,
-            mechanism,
-            line,
-            end: line,
-            anchor: None,
-            artifact: None,
-            router: None,
-            mount: None,
-        })
+        .map(|key| bare(Kind::Env, key, Strength::Strong, role, mechanism, line))
         .collect()
 }
 
@@ -486,17 +493,9 @@ fn image_records(
     };
     for (key, strength) in [(strong, Strength::Strong), (weak, Strength::Weak)] {
         out.push(RawRecord {
-            kind: Kind::Image,
-            key,
-            strength,
-            role,
-            mechanism,
-            line,
-            end: line,
             anchor: anchor.map(str::to_string),
             artifact: artifact.map(str::to_string),
-            router: None,
-            mount: None,
+            ..bare(Kind::Image, key, strength, role, mechanism, line)
         });
     }
 }
@@ -505,17 +504,15 @@ fn image_records(
 /// image. It carries no key: only [`builds`] reads it.
 fn build_site(line: usize, artifact: &str, out: &mut Vec<RawRecord>) {
     out.push(RawRecord {
-        kind: Kind::Image,
-        key: String::new(),
-        strength: Strength::Strong,
-        role: Role::Build,
-        mechanism: "build-site",
-        line,
-        end: line,
-        anchor: None,
         artifact: Some(artifact.to_string()),
-        router: None,
-        mount: None,
+        ..bare(
+            Kind::Image,
+            String::new(),
+            Strength::Strong,
+            Role::Build,
+            "build-site",
+            line,
+        )
     });
 }
 
@@ -532,10 +529,9 @@ fn logical_lines(text: &str) -> Vec<(usize, String)> {
     let mut current: Option<(usize, String)> = None;
     for (i, line) in text.lines().enumerate() {
         let trimmed = line.trim_end();
-        let (body, continues) = match trimmed.strip_suffix('\\') {
-            Some(b) => (b, true),
-            None => (trimmed, false),
-        };
+        let (body, continues) = trimmed
+            .strip_suffix('\\')
+            .map_or((trimmed, false), |b| (b, true));
         match &mut current {
             Some((_, acc)) => {
                 acc.push(' ');
@@ -584,6 +580,14 @@ const BUILD_VALUE_FLAGS: &[&str] = &[
     "-m",
 ];
 
+fn under(base: &str, rel: &str) -> String {
+    if base.is_empty() {
+        rel.to_string()
+    } else {
+        format!("{base}/{rel}")
+    }
+}
+
 fn join_dir(base: &str, rel: &str) -> Option<String> {
     if rel.starts_with('/')
         || rel.contains(['$', '{'])
@@ -592,20 +596,11 @@ fn join_dir(base: &str, rel: &str) -> Option<String> {
     {
         return None;
     }
-    let joined = if base.is_empty() {
-        rel.to_string()
-    } else {
-        format!("{base}/{rel}")
-    };
-    normalize_lexical(&joined)
+    normalize_lexical(&under(base, rel))
 }
 
 fn dockerfile_in(dir: &str, name: &str) -> String {
-    let joined = if dir.is_empty() {
-        name.to_string()
-    } else {
-        format!("{dir}/{name}")
-    };
+    let joined = under(dir, name);
     normalize_lexical(&joined).unwrap_or(joined)
 }
 
@@ -614,6 +609,9 @@ fn dockerfile_in(dir: &str, name: &str) -> String {
 type WorkDir<'a> = &'a dyn Fn(usize) -> Option<String>;
 
 fn docker_commands(text: &str, work_dir: WorkDir, out: &mut Vec<RawRecord>) {
+    if !(text.contains("docker") || text.contains("podman")) {
+        return;
+    }
     for (line, logical) in logical_lines(text) {
         if let Some(cap) = DOCKER_BUILD.captures(&logical) {
             let tokens: Vec<&str> = cap[1].split_whitespace().collect();
@@ -869,11 +867,13 @@ pub(super) fn children(entries: &[Entry]) -> Vec<Vec<usize>> {
     kids
 }
 
-fn norm(key: &str) -> String {
-    key.chars()
-        .filter(|c| *c != '_' && *c != '-')
-        .collect::<String>()
-        .to_ascii_lowercase()
+fn norm_in(key: &str, names: &[&str]) -> bool {
+    names.iter().any(|n| {
+        key.chars()
+            .filter(|c| *c != '_' && *c != '-')
+            .map(|c| c.to_ascii_lowercase())
+            .eq(n.chars())
+    })
 }
 
 const ENV_PARENTS: &[&str] = &[
@@ -910,10 +910,9 @@ fn yaml_env(entries: &[Entry], kids: &[Vec<usize>]) -> Vec<(RawRecord, usize)> {
         if parent.plain {
             continue;
         }
-        let key = norm(&parent.key);
-        let grand = parent.parent.map(|g| norm(&entries[g].key));
-        let env_like = ENV_PARENTS.contains(&key.as_str())
-            || (key == "args" && grand.as_deref() == Some("build"));
+        let is = |i: usize, names: &[&str]| norm_in(&entries[i].key, names);
+        let env_like = is(p, ENV_PARENTS)
+            || (is(p, &["args"]) && parent.parent.is_some_and(|g| is(g, &["build"])));
         let data_like = config_kind
             && parent.parent.is_none()
             && matches!(parent.key.as_str(), "data" | "stringData");
@@ -963,7 +962,7 @@ fn yaml_image_consumers(
     for (i, e) in entries.iter().enumerate() {
         if e.plain {
             if let Some(p) = e.parent {
-                if norm(&entries[p].key) == "services" {
+                if norm_in(&entries[p].key, &["services"]) {
                     if let Some(r) = image_ref(&e.value) {
                         image_records(r, Role::Consume, "ci-services", e.line, None, None, out);
                     }
@@ -1421,20 +1420,16 @@ pub(crate) fn route_shape(raw: &str) -> Option<String> {
     Some(format!("/{}", segments.join("/")))
 }
 
-fn route_record(raw: &str, role: Role, mechanism: &'static str, line: usize) -> Option<RawRecord> {
-    Some(RawRecord {
-        kind: Kind::Route,
-        key: route_key(raw)?,
-        strength: Strength::Strong,
+fn route_record(text: &str, role: Role, mechanism: &'static str, line: usize) -> Option<RawRecord> {
+    let key = route_key(text)?;
+    Some(bare(
+        Kind::Route,
+        key,
+        Strength::Strong,
         role,
         mechanism,
         line,
-        end: line,
-        anchor: None,
-        artifact: None,
-        router: None,
-        mount: None,
-    })
+    ))
 }
 
 static NGINX_LOCATION: Lazy<Regex> =
@@ -1499,7 +1494,7 @@ fn yaml_routes(entries: &[Entry], kids: &[Vec<usize>], out: &mut Vec<RawRecord>)
         if e.key == "path" && unquote(&e.value).starts_with('/') {
             let exact = e.parent.is_some_and(|p| {
                 kids[p].iter().any(|&k| {
-                    norm(&entries[k].key) == "pathtype" && unquote(&entries[k].value) == "Exact"
+                    norm_in(&entries[k].key, &["pathtype"]) && unquote(&entries[k].value) == "Exact"
                 })
             });
             if exact {
@@ -1673,15 +1668,13 @@ fn tables(class: FileClass, text: &str, lines: &Lines, out: &mut Vec<RawRecord>)
         FileClass::Code(_) => &[(&SQL_TABLE_DEF, "sql-ddl"), (&ORM_TABLE_DEF, "orm-table")],
         _ => &[],
     };
-    let schema = (!defines.is_empty()).then(|| file_schema(text)).flatten();
+    let schema = std::cell::LazyCell::new(|| file_schema(text));
     for (re, mechanism) in defines {
-        let bare_in = if *mechanism == "orm-table" {
-            schema.as_deref()
-        } else {
-            None
-        };
         for cap in re.captures_iter(text) {
             if let Some((name, at)) = first_group(&cap) {
+                let bare_in = (*mechanism == "orm-table")
+                    .then(|| schema.as_deref())
+                    .flatten();
                 out.extend(table_record(
                     name,
                     Role::Set,
@@ -1736,18 +1729,15 @@ fn metric_record(
         .iter()
         .find_map(|suffix| name.strip_suffix(suffix))
         .unwrap_or(name);
-    (key.len() >= 4 && key.contains('_') && !key.contains(':')).then(|| RawRecord {
-        kind: Kind::Metric,
-        key: key.to_string(),
-        strength: Strength::Strong,
-        role,
-        mechanism,
-        line,
-        end: line,
-        anchor: None,
-        artifact: None,
-        router: None,
-        mount: None,
+    (key.len() >= 4 && key.contains('_') && !key.contains(':')).then(|| {
+        bare(
+            Kind::Metric,
+            key.to_string(),
+            Strength::Strong,
+            role,
+            mechanism,
+            line,
+        )
     })
 }
 
@@ -1770,6 +1760,9 @@ fn metric_defs(text: &str, lines: &Lines, out: &mut Vec<RawRecord>) {
 /// The metrics a rule file's `expr:` queries, a block scalar included: the
 /// names before a `(` are functions, and labels and strings are no series.
 fn promql_reads(text: &str, out: &mut Vec<RawRecord>) {
+    if !text.contains("expr:") {
+        return;
+    }
     let mut rows = text.lines().enumerate().peekable();
     while let Some((at, row)) = rows.next() {
         let Some(rest) = row
@@ -1822,6 +1815,7 @@ static GO_PB: Lazy<Regex> = Lazy::new(|| {
         r"\bpb\.([A-Z]\w*)|\bRegister([A-Z]\w*)Server\(|\bNew([A-Z]\w*)Client\(|\bUnimplemented([A-Z]\w*)Server\b",
     )
 });
+const GO_HINTS: [&str; 3] = ["pb.", "Server", "Client("];
 static JAVA_PB: Lazy<Regex> = Lazy::new(|| pattern(r"\b([A-Z]\w*)Grpc\b"));
 
 fn proto_record(
@@ -1831,19 +1825,7 @@ fn proto_record(
     mechanism: &'static str,
     line: usize,
 ) -> RawRecord {
-    RawRecord {
-        kind: Kind::Proto,
-        key,
-        strength,
-        role,
-        mechanism,
-        line,
-        end: line,
-        anchor: None,
-        artifact: None,
-        router: None,
-        mount: None,
-    }
+    bare(Kind::Proto, key, strength, role, mechanism, line)
 }
 
 /// `Order` of `order_pb2.Order`, `OrdersServicer` of the generated gRPC
@@ -1920,7 +1902,7 @@ fn proto_uses(lang: CodeLang, text: &str, lines: &Lines, out: &mut Vec<RawRecord
     match lang {
         // The module a generated name comes from is the .proto file's stem:
         // `orders_pb2.Order` names Order of orders.proto and no other.
-        CodeLang::Python => {
+        CodeLang::Python if text.contains("_pb2") => {
             for cap in PY_PB.captures_iter(text) {
                 let (Some(module), Some(name)) = (cap.get(1), cap.get(2)) else {
                     continue;
@@ -1939,7 +1921,7 @@ fn proto_uses(lang: CodeLang, text: &str, lines: &Lines, out: &mut Vec<RawRecord
                 ));
             }
         }
-        CodeLang::Go => {
+        CodeLang::Go if GO_HINTS.iter().any(|k| text.contains(k)) => {
             for cap in GO_PB.captures_iter(text) {
                 if let Some((name, at)) = first_group(&cap) {
                     out.push(proto_record(
@@ -1952,7 +1934,7 @@ fn proto_uses(lang: CodeLang, text: &str, lines: &Lines, out: &mut Vec<RawRecord
                 }
             }
         }
-        CodeLang::Jvm => {
+        CodeLang::Jvm if text.contains("Grpc") => {
             for cap in JAVA_PB.captures_iter(text) {
                 if let Some(m) = cap.get(1) {
                     out.push(proto_record(

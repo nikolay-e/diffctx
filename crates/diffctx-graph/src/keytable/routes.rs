@@ -12,23 +12,11 @@ use once_cell::sync::Lazy;
 use regex::Regex;
 use rustc_hash::FxHashMap;
 
-use super::extract::{CodeLang, Kind, Lines, Mount, RawRecord, Role, Strength, pattern};
+use super::extract::{CodeLang, Kind, Lines, Mount, RawRecord, Role, Strength, bare, pattern};
 use super::extract::{route_key, route_shape};
 
 fn record(key: String, role: Role, mechanism: &'static str, line: usize) -> RawRecord {
-    RawRecord {
-        kind: Kind::Route,
-        key,
-        strength: Strength::Strong,
-        role,
-        mechanism,
-        line,
-        end: line,
-        anchor: None,
-        artifact: None,
-        router: None,
-        mount: None,
-    }
+    bare(Kind::Route, key, Strength::Strong, role, mechanism, line)
 }
 
 fn route(
@@ -235,13 +223,7 @@ static JVM_USE: Lazy<Regex> = Lazy::new(|| {
     ))
 });
 
-fn consumers(
-    lang: CodeLang,
-    text: &str,
-    lines: &Lines,
-    consts: &[(String, String)],
-    out: &mut Vec<RawRecord>,
-) {
+fn consumers(lang: CodeLang, text: &str, lines: &Lines, out: &mut Vec<RawRecord>) {
     let re: &Regex = match lang {
         CodeLang::Python => &PY_USE,
         CodeLang::Js => &JS_USE,
@@ -249,6 +231,7 @@ fn consumers(
         CodeLang::Jvm => &JVM_USE,
         _ => return,
     };
+    let consts = std::cell::LazyCell::new(|| constants(lang, text));
     for cap in re.captures_iter(text) {
         let Some(path) = ["path", "path2", "path3"].iter().find_map(|n| cap.name(n)) else {
             continue;
@@ -258,7 +241,7 @@ fn consumers(
             .find_map(|n| cap.name(n))
             .map(|m| m.as_str());
         out.extend(route(
-            &resolve(base, path.as_str(), consts),
+            &resolve(base, path.as_str(), &consts),
             Role::Read,
             "http-call",
             lines.of(path.start()),
@@ -441,7 +424,7 @@ fn python(text: &str, lines: &Lines, out: &mut Vec<RawRecord>) {
             Some(var),
         ));
     }
-    let imported = imports(CodeLang::Python, text);
+    let imported = std::cell::LazyCell::new(|| imports(CodeLang::Python, text));
     for m in PY_MOUNT.find_iter(text) {
         let Some(args) = balanced(text, m.end() - 1) else {
             continue;
@@ -489,7 +472,7 @@ fn javascript(text: &str, lines: &Lines, out: &mut Vec<RawRecord>) {
             Some(var),
         ));
     }
-    let imported = imports(CodeLang::Js, text);
+    let imported = std::cell::LazyCell::new(|| imports(CodeLang::Js, text));
     for m in JS_MOUNT.find_iter(text) {
         let Some(args) = balanced(text, m.end() - 1) else {
             continue;
@@ -614,8 +597,7 @@ pub(super) fn code_routes(lang: CodeLang, text: &str, lines: &Lines, out: &mut V
         CodeLang::Go => go(text, lines, out),
         _ => {}
     }
-    let consts = constants(lang, text);
-    consumers(lang, text, lines, &consts, out);
+    consumers(lang, text, lines, out);
 }
 
 #[cfg(test)]
