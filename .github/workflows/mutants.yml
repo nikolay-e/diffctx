@@ -14,7 +14,7 @@ name: mutants
   # A workflow file is dispatchable only from the default branch; until it lands there, a push to
   # this branch starts the full run.
   push:
-    branches: [ci/mutants]
+    branches: [ci/mutants, 'ci/mutants-*']
   workflow_dispatch:
     inputs:
       shards:
@@ -61,11 +61,16 @@ jobs:
         env:
           SHARDS: ${{ inputs.shards || '15' }}
           PICK: ${{ inputs.pick }}
+          # A push picks jobs with a `Mutants-pick: occurrence:11,answer:3` trailer.
+          MESSAGE: ${{ github.event.head_commit.message }}
         run: |
           python3 - <<'PY' >> "$GITHUB_OUTPUT"
           import json, os
           shards = int(os.environ["SHARDS"])
-          pick = {p for p in os.environ["PICK"].replace(" ", "").split(",") if p}
+          spec = os.environ["PICK"] or next(
+              (l.split(":", 1)[1] for l in os.environ.get("MESSAGE", "").splitlines()
+               if l.startswith("Mutants-pick:")), "")
+          pick = {p for p in spec.replace(" ", "").split(",") if p}
           jobs = [
               {"pkg": pkg, "shard": k, "of": shards}
               for pkg in ("occurrence", "answer")
@@ -116,12 +121,26 @@ jobs:
 
       # Every mutant runs these: the crates' own tests and the native suites that read them.
       # `--lib` takes the lib tests of the mutated crate and of the `diffctx` package.
+      - name: Cap the mutants' memory below the runner's
+        # A mutant that grows memory without bound took the whole VM with it: the runner got a
+        # shutdown signal and the job's results were lost (occurrence 6/8 and 11/15). In a cgroup
+        # capped under the machine's memory the kernel kills the mutated test instead, which
+        # cargo-mutants counts as caught.
+        run: |
+          total_kb=$(awk '/MemTotal/ {print $2}' /proc/meminfo)
+          cap=$(( (total_kb - 2500000) * 1024 ))
+          sudo mkdir -p /sys/fs/cgroup/mutants
+          echo "$cap" | sudo tee /sys/fs/cgroup/mutants/memory.max
+          echo 0 | sudo tee /sys/fs/cgroup/mutants/memory.swap.max
+          cat /sys/fs/cgroup/mutants/memory.max
+
       - name: Fast suites on every mutant
         env:
           PKG: diffctx-${{ matrix.pkg }}
           SHARD: ${{ matrix.shard }}/${{ matrix.of }}
         run: |
           set -u
+          echo $$ | sudo tee /sys/fs/cgroup/mutants/cgroup.procs > /dev/null
           scope=(--package "$PKG")
           if [ "${{ matrix.pkg }}" = answer ]; then
             scope+=(--file 'crates/diffctx-answer/src/decide/**')
@@ -141,7 +160,7 @@ jobs:
           echo "mutants in shard $SHARD: $(wc -l < shard-list.txt)"
           rc=0
           timeout -s INT 150m cargo mutants "${scope[@]}" "${args[@]}" --shard "$SHARD" \
-            --baseline=skip --timeout 900 || rc=$?
+            --baseline=skip --timeout 240 || rc=$?
           echo "fast exit=$rc"
           echo "$rc" > fast.rc
           # 0 all caught, 2 survivors, 3 timeouts; anything else is a broken run, not a result.
@@ -154,6 +173,7 @@ jobs:
           PKG: diffctx-${{ matrix.pkg }}
         run: |
           set -u
+          echo $$ | sudo tee /sys/fs/cgroup/mutants/cgroup.procs > /dev/null
           survivors=$(cat mutants-fast.out/missed.txt mutants-fast.out/timeout.txt 2>/dev/null | wc -l)
           echo "survivors of the fast suites: $survivors"
           [ "$survivors" -gt 0 ] || { echo 0 > heavy.rc; exit 0; }
