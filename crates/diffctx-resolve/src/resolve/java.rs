@@ -1257,13 +1257,7 @@ impl<'w> Engine<'w> {
         let Some(named) = self.ix.members.get(&rec.def.local.name) else {
             return Vec::new();
         };
-        let arity = rec.sig.params.map(|p| p.0);
-        let fits = |id: usize| {
-            let other = &self.ix.defs[id];
-            other.def.kind == DefKind::Method
-                && !other.sig.has("static")
-                && other.sig.params.map(|p| p.0) == arity
-        };
+        let fits = |id: usize| self.answers(member, id) && !self.ix.defs[id].sig.has("static");
         let mut found: Vec<usize> = named
             .iter()
             .copied()
@@ -1577,35 +1571,17 @@ impl<'w> Engine<'w> {
 
     // ---- overrides
 
-    fn override_of(&self, f: usize, r: &Ref) -> (Relation, Resolution) {
-        let Scope::Def(key) = &r.enclosing else {
-            return (Relation::Overrides, unresolved(UnresolvedReason::NoMember));
-        };
-        let mut path = key.container.clone();
-        path.push(key.name.clone());
-        let member = self.ix.owner(f, &path);
-        let holder = member.and_then(|m| self.holder_of(m));
-        let Some((member, holder)) = member.zip(holder) else {
-            return (Relation::Overrides, unresolved(UnresolvedReason::External));
-        };
-        let params = self.ix.defs[member].sig.params.map(|p| p.0);
-        let mut found: Vec<usize> = Vec::new();
-        for s in self.supers_of(holder).iter() {
-            if let Super::Repo(id) = s {
-                if let Some((ids, _)) = self.members_of(*id, &r.name, false, 0) {
-                    found.extend(ids.into_iter().filter(|i| {
-                        let other = &self.ix.defs[*i];
-                        other.def.kind == DefKind::Method && other.sig.params.map(|p| p.0) == params
-                    }));
-                }
-            }
-        }
-        let resolution = match found.as_slice() {
-            [] => unresolved(UnresolvedReason::External),
-            [one] => self.resolved(*one, EvidenceKind::Overridden),
-            many => self.candidates(many, CandidateReason::Overloaded),
-        };
-        (Relation::Overrides, resolution)
+    /// Whether an instance method may override a supertype's, and whether it says `@Override`.
+    fn states_override(&self, id: usize) -> Option<bool> {
+        let rec = &self.ix.defs[id];
+        (rec.def.kind == DefKind::Method && !rec.sig.has("static"))
+            .then(|| rec.def.decorators.iter().any(|d| d.as_str() == "Override"))
+    }
+
+    fn answers(&self, member: usize, other: usize) -> bool {
+        let (rec, other) = (&self.ix.defs[member], &self.ix.defs[other]);
+        other.def.kind == DefKind::Method
+            && other.sig.params.map(|p| p.0) == rec.sig.params.map(|p| p.0)
     }
 
     // ---- imports

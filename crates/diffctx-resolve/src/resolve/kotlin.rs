@@ -806,15 +806,11 @@ impl<'w> Engine<'w> {
         let mut inside = scope.clone();
         inside.push(rec.def.local.name.clone());
         let mut stated: Vec<(usize, &[String])> = vec![(rec.file, rec.sig.supers.as_slice())];
-        // The conformances a Swift extension of the type adds.
+        // The conformances a Swift extension of the type adds, and those of the type an extension extends.
         if self.ix.swift {
-            for id in self
-                .ix
-                .ext_types
-                .get(&rec.def.local.name)
-                .into_iter()
-                .flatten()
-            {
+            let name = &rec.def.local.name;
+            let extended = self.ix.types.get(name).filter(|_| is_extension(&rec.def));
+            for id in (self.ix.ext_types.get(name).into_iter().chain(extended)).flatten() {
                 let ext = &self.ix.defs[*id];
                 if *id != class
                     && ext.def.local.container == rec.def.local.container
@@ -1551,11 +1547,10 @@ impl<'w> Engine<'w> {
             .copied()
             .filter(|id| *id != member)
             .filter(|id| {
-                let rec = &self.ix.defs[*id];
                 let Some(owner) = self.holder_of(*id) else {
                     return false;
                 };
-                rec.def.kind == self.ix.defs[member].def.kind
+                self.answers(member, *id)
                     && owner != class
                     && self.is_subtype(owner, class, 0)
                     && holder.is_none_or(|h| h != owner)
@@ -1783,35 +1778,17 @@ impl<'w> Engine<'w> {
 
     // ---- overrides
 
-    fn override_of(&self, f: usize, r: &Ref) -> (Relation, Resolution) {
-        let Scope::Def(key) = &r.enclosing else {
-            return (Relation::Overrides, unresolved(UnresolvedReason::NoMember));
-        };
-        let mut path = key.container.clone();
-        path.push(key.name.clone());
-        let member = self.ix.owner(f, &path);
-        let holder = member.and_then(|m| self.holder_of(m));
-        let Some((member, holder)) = member.zip(holder) else {
-            return (Relation::Overrides, unresolved(UnresolvedReason::External));
-        };
-        let kind = self.ix.defs[member].def.kind;
-        let mut found: Vec<usize> = Vec::new();
-        for s in self.supers_of(holder).iter() {
-            if let Super::Repo(id) = s {
-                if let Some((ids, _)) = self.members_of(*id, &r.name, false, 0) {
-                    found.extend(
-                        ids.into_iter()
-                            .filter(|i| self.ix.defs[*i].def.kind == kind),
-                    );
-                }
-            }
-        }
-        let resolution = match found.as_slice() {
-            [] => unresolved(UnresolvedReason::External),
-            [one] => self.resolved(*one, EvidenceKind::Overridden),
-            many => self.candidates(many, CandidateReason::Overloaded),
-        };
-        (Relation::Overrides, resolution)
+    /// Whether a member may override, and says `override`: a Swift one answers a protocol without saying so.
+    fn states_override(&self, id: usize) -> Option<bool> {
+        let rec = &self.ix.defs[id];
+        let said = rec.sig.has("override");
+        let answers = matches!(rec.def.kind, DefKind::Method | DefKind::Property)
+            && !(rec.sig.has("static") || rec.sig.has("class"));
+        (said || (self.ix.swift && answers)).then_some(said)
+    }
+
+    fn answers(&self, member: usize, other: usize) -> bool {
+        self.ix.defs[other].def.kind == self.ix.defs[member].def.kind
     }
 
     // ---- imports

@@ -170,6 +170,26 @@ macro_rules! jvm_engine_methods {
                     self.import(f, import, &mut bindings);
                 }
             }
+            // A member overrides by what its supertypes hold, said or not; one that says so overrides a base we lack.
+            for (id, rec) in (self.ix.defs.iter().enumerate())
+                .filter(|(_, rec)| !self.ix.files[rec.file].foreign)
+            {
+                let Some(said) = self.states_override(id) else {
+                    continue;
+                };
+                let resolution = self.overrides(id);
+                if said || !matches!(resolution, Resolution::Unresolved { .. }) {
+                    bindings.push(Binding {
+                        file: self.ix.files[rec.file].facts.path.clone(),
+                        site: rec.def.name_span.clone(),
+                        from: Scope::Def(rec.def.local.clone()),
+                        relation: Relation::Overrides,
+                        name: rec.def.local.name.clone(),
+                        resolution,
+                        entry_guard: false,
+                    });
+                }
+            }
             let definitions = self
                 .ix
                 .defs
@@ -384,7 +404,7 @@ macro_rules! jvm_engine_methods {
             let file = &self.ix.files[f];
             let scope = scope_path(&r.enclosing);
             let (relation, resolution) = match r.use_kind {
-                UseKind::Override => self.override_of(f, r),
+                UseKind::Override => return,
                 UseKind::TypeUse => self.type_use(f, &scope, r),
                 _ => self.value_use(f, &scope, r),
             };
@@ -397,6 +417,33 @@ macro_rules! jvm_engine_methods {
                 resolution,
                 entry_guard: false,
             });
+        }
+
+        /// What the member overrides in its supertypes; a supertype the file cannot reach may be any type of that name.
+        fn overrides(&self, member: usize) -> Resolution {
+            let supers = self.holder_of(member).map(|h| self.supers_of(h));
+            let name = &self.ix.defs[member].def.local.name;
+            let (mut found, mut hidden) = (Vec::new(), Vec::new());
+            for s in supers.iter().flat_map(|s| s.iter()) {
+                let (types, into) = match s {
+                    Super::Repo(id) => (vec![*id], &mut found),
+                    Super::Foreign(n) => (
+                        self.ix.types.get(n).map_or_else(Vec::new, Vec::clone),
+                        &mut hidden,
+                    ),
+                };
+                for ty in types {
+                    if let Some((ids, _)) = self.members_of(ty, name, false, 0) {
+                        into.extend(ids.into_iter().filter(|i| self.answers(member, *i)));
+                    }
+                }
+            }
+            match (found.as_slice(), hidden.as_slice()) {
+                ([], []) => unresolved(UnresolvedReason::External),
+                ([], many) => self.candidates(many, CandidateReason::AnyNamespace),
+                ([one], _) => self.resolved(*one, EvidenceKind::Overridden),
+                (many, _) => self.candidates(many, CandidateReason::Overloaded),
+            }
         }
 
         /// The type a member is declared in.
