@@ -13,9 +13,9 @@ use std::sync::Arc;
 use serde_json::json;
 
 use super::{
-    Account, Alias, AliasScope, Basis, Class, Entry, Hedge, Implicit, Known, Occurrence, Outcome,
-    Reason, Unread, ValuePlace, Verdict, View, Witness, admitted, callee_of, close_aliases,
-    counts_against, entered, implicit_kinds, outcomes, value_use,
+    Account, Accounted, Alias, AliasScope, Basis, Class, Entry, Implicit, Known, Occurrence,
+    Outcome, Reason, Unread, ValuePlace, Verdict, View, Witness, admitted, callee_of,
+    close_aliases, counts_against, entered, implicit_kinds, outcomes, value_use,
 };
 use crate::tokens::{Names, TokenIndex};
 use diffctx_facts::facts::{DefKind, FactsCache, FileFacts, Name, facts_of};
@@ -71,21 +71,6 @@ pub struct Shadow<'a> {
     pub identity: Option<super::identity::Bounds<'a>>,
 }
 
-/// What the accounting of one definition found.
-pub struct Accounted {
-    /// What stands in the way of each relation of use.
-    pub hedges: Vec<(Relation, Hedge)>,
-    /// No occurrence is a use, an alias, a leak or a candidate.
-    pub unused: bool,
-    /// Every relation is complete and so is what the definition holds.
-    pub whole: bool,
-    /// The lines, at the head, whose quoted spelling resolved to another definition: a
-    /// literal on one of them is that use, not a mention the cell could not read.
-    pub elsewhere: HashSet<(RepoPath, u32)>,
-    /// The whole strings that spell a name of the definition and no binding explains.
-    pub quoted: usize,
-}
-
 #[derive(Default)]
 struct Found {
     entries: Vec<Entry>,
@@ -113,9 +98,32 @@ fn label(definition: &Definition) -> String {
 }
 
 impl Shadow<'_> {
+    /// Accounts each of `definitions` at its side and merges what was found.
+    pub fn write_all<'d>(
+        &self,
+        mut out: Option<File>,
+        written: &mut Written,
+        definitions: impl IntoIterator<Item = (&'d Definition, SideTag, Known)>,
+    ) -> Accounted {
+        let mut all = Accounted {
+            hedges: Vec::new(),
+            unused: true,
+            elsewhere: HashSet::new(),
+            quoted: 0,
+        };
+        for (definition, side, known) in definitions {
+            let done = self.write(out.as_mut(), written, definition, side, known);
+            all.hedges.extend(done.hedges);
+            all.unused &= done.unused;
+            all.elsewhere.extend(done.elsewhere);
+            all.quoted += done.quoted;
+        }
+        all
+    }
+
     /// Accounts `definition`, read at `side`, and appends its lines to `out` when
     /// there is one.
-    pub fn write(
+    fn write(
         &self,
         out: Option<&mut File>,
         written: &mut Written,
@@ -225,10 +233,12 @@ impl Shadow<'_> {
             lines.push('\n');
         }
         let (mut whole, mut hedges) = (true, Vec::new());
-        let unused = found
-            .entries
-            .iter()
-            .all(|entry| matches!(entry.outcome, Outcome::Declaration | Outcome::NotOurs(_)));
+        let unused = found.entries.iter().all(|entry| {
+            matches!(
+                entry.outcome,
+                Outcome::Declaration | Outcome::NotOurs { .. }
+            )
+        });
         for (relation, gaps) in pairs {
             let mut account = Account::new(definition.key.clone(), relation, side);
             account.files = found.files.len();
@@ -288,7 +298,6 @@ impl Shadow<'_> {
         Accounted {
             hedges,
             unused,
-            whole,
             quoted: found.quoted,
             elsewhere: if side == SideTag::Head {
                 found.elsewhere
@@ -353,12 +362,18 @@ impl Shadow<'_> {
             }
             for mut entry in done.entries {
                 if other_project && matches!(entry.outcome, Outcome::Candidate(_)) {
-                    entry.outcome =
-                        Outcome::NotOurs(Witness::OtherProject(definition.file.clone()));
+                    entry.outcome = Outcome::NotOurs {
+                        witness: Witness::OtherProject(definition.file.clone()),
+                    };
                     entry.basis = Basis::Witnessed;
                 }
                 let through = scope.is_some()
-                    && matches!(entry.outcome, Outcome::NotOurs(Witness::OtherDefinition(_)));
+                    && matches!(
+                        entry.outcome,
+                        Outcome::NotOurs {
+                            witness: Witness::OtherDefinition(_),
+                        }
+                    );
                 if through {
                     entry.outcome = Outcome::Ours;
                     entry.basis = Basis::Resolved;
@@ -382,8 +397,12 @@ impl Shadow<'_> {
                 if let Outcome::Alias(alias) = &entry.outcome {
                     aliases.push(alias.clone());
                 }
-                if matches!(entry.outcome, Outcome::NotOurs(Witness::OtherDefinition(_)))
-                    && quoted(&text, &entry.occurrence.bytes)
+                if matches!(
+                    entry.outcome,
+                    Outcome::NotOurs {
+                        witness: Witness::OtherDefinition(_),
+                    }
+                ) && quoted(&text, &entry.occurrence.bytes)
                 {
                     found
                         .elsewhere
