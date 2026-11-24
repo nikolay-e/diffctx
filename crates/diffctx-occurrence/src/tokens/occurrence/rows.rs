@@ -94,9 +94,6 @@ pub(super) const COMMAND_ARGUMENTS: &[(Family, &str, bool)] = &[
     (Family::Shell, "sudo env exec nohup xargs command", true),
 ];
 
-/// The keyword that opens a block declaring the members of the type it names.
-pub(super) const IMPL_HEADS: &[(Family, &str)] = &[(Family::Rust, "impl")];
-
 /// Families whose variable locals declare at the name and are read unbound; `true`: as `$name`.
 pub(super) const NAMED_LOCALS: &[(Family, bool)] = &[
     (Family::Rust, false),

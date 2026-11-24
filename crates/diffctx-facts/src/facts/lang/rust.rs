@@ -32,7 +32,7 @@
 //!   `Unknown` receiver the qualifier is the whole chain written.
 //! - A trait-impl method has an `Override` reference to the trait's method of
 //!   the same name (qualifier: the trait's path), and the impl header has one to
-//!   the trait itself, from the implementing type.
+//!   the trait itself, from the implementing type, and a `TypeUse` of that type.
 //! - `#[test]`-like functions are `Test` entry points, a top-level `main` is
 //!   `Main`.
 //! - Hashes are FNV-1a over the definition's own parts: members that are
@@ -793,7 +793,8 @@ impl<'t> Walker<'t> {
             generics: Rc::clone(&generics),
             ..cx.clone()
         };
-        // The type's own arguments are uses; its name is the impl's subject.
+        // The type's name is a use of it, and its own arguments are uses.
+        self.path_ref(head, &outer, UseKind::TypeUse, depth + 1);
         if ty.kind() == "generic_type" {
             if let Some(args) = ty.child_by_field_name("type_arguments") {
                 self.type_refs(args, &outer, depth + 1);

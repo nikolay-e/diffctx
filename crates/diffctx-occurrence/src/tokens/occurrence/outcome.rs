@@ -10,9 +10,9 @@ use std::rc::Rc;
 use super::implicit::C_EXPORTS;
 use super::rows::{
     BARE_HEADS, CLASS_CANDIDATES, COMMAND_ARGUMENTS, DECLARING_KEYWORDS, DECLARING_LOCALS,
-    FOREIGN_TEXT, IMPL_HEADS, KEYWORD_ARGUMENTS, LOCAL_CALLS, MEMBER_OBJECTS, MODULE_PATHS,
-    NAMED_LOCALS, OFFERING_MODULES, PACKAGE_HEADS, PAIRED_PROTOTYPES, PATH_SEPARATORS,
-    SCHEMA_OBJECTS, SCOPED_LOCALS, STATEMENT_NAMES, STRUCTURAL_TYPES,
+    FOREIGN_TEXT, KEYWORD_ARGUMENTS, LOCAL_CALLS, MEMBER_OBJECTS, MODULE_PATHS, NAMED_LOCALS,
+    OFFERING_MODULES, PACKAGE_HEADS, PAIRED_PROTOTYPES, PATH_SEPARATORS, SCHEMA_OBJECTS,
+    SCOPED_LOCALS, STATEMENT_NAMES, STRUCTURAL_TYPES,
 };
 use super::scanner::dollar_joins;
 use super::{
@@ -808,8 +808,7 @@ impl<'a> Reading<'a> {
         let spelled = self.spelled(occurrence);
         let bytes = &occurrence.bytes;
         if let Some(claim) = self
-            .impl_type(occurrence)
-            .or_else(|| self.keyword_field(occurrence))
+            .keyword_field(occurrence)
             .or_else(|| self.scoped_site(occurrence, spelled))
             .or_else(|| self.member_object(occurrence))
         {
@@ -1220,30 +1219,6 @@ impl<'a> Reading<'a> {
     fn keyword_name(&self, occurrence: &Occurrence) -> Option<Witness> {
         (!writable(self.subject) && self.keyword_call(occurrence).is_some())
             .then(|| Witness::Keyword(Name::new(String::from_utf8_lossy(self.spelled(occurrence)))))
-    }
-
-    /// The type an `impl` header names is declared there, unlike a return `impl Trait` or a bound.
-    fn impl_type(&self, occurrence: &Occurrence) -> Option<Claim> {
-        let (_, keyword) = IMPL_HEADS
-            .iter()
-            .find(|row| row.0.has(self.file.language()))?;
-        let before = &self.text[..occurrence.bytes.start as usize];
-        let at = before.iter().rposition(|b| b"\n;{}".contains(b));
-        let header = &before[at.map_or(0, |at| at + 1)..];
-        let words = split_words(header);
-        let opens = keyword.as_bytes();
-        let named = [opens, b"for".as_slice()].contains(words.last()?)
-            || header.trim_ascii_end().ends_with(b">");
-        let ahead = self.text[occurrence.bytes.end as usize..].split(|b| b"{;".contains(b));
-        let traited = (split_words(ahead.into_iter().next()?).into_iter())
-            .take_while(|word| *word != b"where")
-            .any(|word| word == b"for");
-        let first = words.iter().position(|word| *word == opens);
-        (named
-            && !traited
-            && first.is_some_and(|at| at < 2)
-            && !words.contains(&b"where".as_slice()))
-        .then(|| Claim::new(None, Outcome::Declaration, Basis::DefinitionName))
     }
 
     /// A word after a listed command names no function (an unlisted command may run it); a script, only after a
