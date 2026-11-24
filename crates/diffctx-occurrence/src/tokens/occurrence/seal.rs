@@ -18,14 +18,26 @@ pub struct Settled<'a> {
     pub relation: Relation,
 }
 
-/// One relation's account, closed. Its proof is the only evidence of a definition's `Complete` that
-/// anything outside this crate holds.
-#[derive(Clone, PartialEq, Eq, Debug)]
-pub struct Sealed(Verdict);
+/// One relation's account, closed, and the relation it is.
+///
+/// Its proof is the only `Complete` evidence held outside this crate; it is never `Clone`.
+///
+/// ```compile_fail,E0599
+/// use diffctx_occurrence::tokens::occurrence::Sealed;
+/// fn copy(sealed: Sealed) -> (Sealed, Sealed) {
+///     (sealed.clone(), sealed)
+/// }
+/// ```
+#[derive(PartialEq, Eq, Debug)]
+pub struct Sealed(Relation, Verdict);
 
 impl Sealed {
+    pub const fn relation(&self) -> Relation {
+        self.0
+    }
+
     pub const fn proof(&self) -> Option<Proof> {
-        match &self.0 {
+        match &self.1 {
             Verdict::Complete(proof) => Some(*proof),
             Verdict::Partial(_) => None,
         }
@@ -33,7 +45,7 @@ impl Sealed {
 
     /// What stands in the way: nothing when it is complete.
     pub fn hedges(&self) -> &[Hedge] {
-        match &self.0 {
+        match &self.1 {
             Verdict::Complete(_) => &[],
             Verdict::Partial(hedges) => hedges,
         }
@@ -42,7 +54,7 @@ impl Sealed {
 
 /// The accounting of a changed definition after the resolved uses settled their own sites.
 pub struct Settlement {
-    pub by_relation: [(Relation, Sealed); 6],
+    pub by_relation: [Sealed; 6],
     /// What stands in the way of each relation's absence, less the occurrences a resolved use
     /// settles: a site has one standing, the strongest.
     pub hedges: Vec<(Relation, Hedge)>,
@@ -113,10 +125,7 @@ impl Accounted {
             let own = (hedges.iter())
                 .filter(|(of, _)| *of == relation)
                 .map(|(_, hedge)| hedge.clone());
-            (
-                relation,
-                Sealed(Verdict::of(own.collect(), self.definitions)),
-            )
+            Sealed(relation, Verdict::of(own.collect(), self.definitions))
         });
         Settlement {
             by_relation,

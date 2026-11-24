@@ -4,12 +4,13 @@
 use std::collections::HashSet;
 
 use diffctx_facts::facts::{Name, Span};
-use diffctx_resolve::resolve::{CandidateReason, Relation};
+use diffctx_resolve::resolve::{CandidateReason, Relation, USES};
 use diffctx_snapshot::snapshot::{Loss, RepoPath, SideTag};
 
 use super::{
     Account, Accounted, Alias, AliasBound, AliasScope, Basis, Class, Entry, Hedge, Implicit,
-    MAX_ALIAS_HOPS, Occurrence, Outcome, Reason, Settled, Unread, ValuePlace, Verdict, Witness,
+    MAX_ALIAS_HOPS, Occurrence, Outcome, Reason, Sealed, Settled, Unread, ValuePlace, Verdict,
+    Witness,
 };
 
 fn path(name: &str) -> RepoPath {
@@ -222,18 +223,14 @@ fn same(relation: Relation, _: &Hedge) -> Relation {
 fn a_hedge_seals_only_the_relation_it_stands_in() {
     let clear = accounted(Vec::new()).settle(&[], same);
     assert_eq!(clear.hedges, []);
-    assert!(
-        clear
-            .by_relation
-            .iter()
-            .all(|(_, sealed)| sealed.proof().is_some())
-    );
+    assert_eq!(clear.by_relation.each_ref().map(Sealed::relation), USES);
+    assert!(clear.by_relation.iter().all(|s| s.proof().is_some()));
     let none = Accounted {
         definitions: 0,
         ..accounted(Vec::new())
     };
     let nothing = none.settle(&[], same);
-    assert!(nothing.by_relation.iter().all(|(_, s)| s.proof().is_none()));
+    assert!(nothing.by_relation.iter().all(|s| s.proof().is_none()));
     let hedge = candidate_at(3, 10..11, Reason::Unexplained);
     let stood = accounted(vec![(Relation::TypeUses, hedge.clone())]);
     let moved = |relation, _: &Hedge| match relation {
@@ -245,13 +242,14 @@ fn a_hedge_seals_only_the_relation_it_stands_in() {
         (stood.settle(&[], moved), Relation::Instantiates),
     ] {
         assert_eq!(settlement.hedges, [(standing, hedge.clone())]);
-        for (relation, sealed) in &settlement.by_relation {
+        for sealed in &settlement.by_relation {
+            let relation = sealed.relation();
             assert_eq!(
                 sealed.proof().is_none(),
-                *relation == standing,
+                relation == standing,
                 "{relation:?}"
             );
-            assert_eq!(sealed.hedges().len(), usize::from(*relation == standing));
+            assert_eq!(sealed.hedges().len(), usize::from(relation == standing));
         }
     }
 }

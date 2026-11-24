@@ -1,5 +1,5 @@
 //! The witness that a search left nothing unread and the places that make it (`Coverage::close` for a
-//! definition, the crate's `Coverage::of_run` for the run), with the counts and claims that hold it.
+//! definition, the crate's `Coverage::of_run` for the run), with the claims that hold it.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -14,15 +14,26 @@ use super::losses::{Effect, effect_of};
 use super::verdict::Verdict;
 
 /// The witness that the search for a definition's uses covered everything that
-/// could name it. It has no public field and no `Default`: `Coverage::close` makes
-/// it from the one thing that proves a definition's account complete, a `Sealed`
-/// verdict of the occurrence accounting. The crate's own `Coverage::of_run` makes
-/// it for what is no definition's, and no other crate can. An absence or an exact
-/// count cannot be written without it.
+/// could name it. It has no public field, no `Default`, and it is neither `Copy` nor
+/// `Clone`: `Coverage::close` makes it from the one thing that proves a definition's
+/// account complete, a `Sealed` verdict of the occurrence accounting, and the crate's
+/// own `Coverage::of_run` makes it for what is no definition's. Another crate may hold
+/// a complete coverage and clone it whole; it can neither write one nor lift the witness
+/// out of one to put on another.
 ///
 /// ```compile_fail,E0423
 /// use diffctx_answer::decide::coverage::{Complete, Coverage};
 /// let _ = Coverage::Complete(Complete(()));
+/// ```
+///
+/// ```compile_fail,E0507
+/// use diffctx_answer::decide::coverage::Coverage;
+/// fn relabel(held: &Coverage) -> Option<Coverage> {
+///     match held {
+///         Coverage::Complete(witness) => Some(Coverage::Complete(*witness)),
+///         Coverage::Partial(_) => None,
+///     }
+/// }
 /// ```
 ///
 /// ```compile_fail,E0624
@@ -34,7 +45,7 @@ use super::verdict::Verdict;
 /// use diffctx_occurrence::tokens::occurrence::Accounted;
 /// let _ = Accounted { hedges: Vec::new(), unused: true, elsewhere: Default::default(), quoted: 0 };
 /// ```
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(PartialEq, Eq, Debug)]
 pub struct Complete(());
 
 /// What each hedge of an occurrence account of `relation` says in the answer's
@@ -115,19 +126,39 @@ fn hedge_gaps(relation: Relation, hedges: &[Hedge], dispatched: bool) -> Vec<Gap
 }
 
 /// What the search for a definition's uses covered.
-#[derive(Clone, PartialEq, Eq, Debug)]
+#[derive(PartialEq, Eq, Debug)]
 pub enum Coverage {
     Complete(Complete),
     Partial(Vec<Gap>),
 }
 
+impl Clone for Coverage {
+    fn clone(&self) -> Self {
+        match self {
+            Self::Complete(_) => Self::Complete(Complete(())),
+            Self::Partial(gaps) => Self::Partial(gaps.clone()),
+        }
+    }
+}
+
 impl Coverage {
-    /// The one place a definition's `Complete` is made: its `relation`'s account was sealed
-    /// complete, and the search found no gap of its own. The sealed hedges join the search's
-    /// gaps, so that a partial coverage always says what stood in the way.
-    pub fn close(relation: Relation, sealed: &Sealed, mut gaps: Vec<Gap>) -> Self {
+    /// The one place a definition's `Complete` is made: the `relation` its `sealed` account names
+    /// was sealed complete, and the search found no gap of its own. The sealed hedges join the
+    /// search's gaps, so that a partial coverage always says what stood in the way.
+    ///
+    /// A seal names its relation, so none is passed:
+    ///
+    /// ```compile_fail,E0061
+    /// use diffctx_answer::decide::coverage::Coverage;
+    /// use diffctx_occurrence::tokens::occurrence::Sealed;
+    /// use diffctx_resolve::resolve::Relation;
+    /// fn pair(sealed: &Sealed) -> Coverage {
+    ///     Coverage::close(Relation::Reads, sealed, Vec::new())
+    /// }
+    /// ```
+    pub fn close(sealed: &Sealed, mut gaps: Vec<Gap>) -> Self {
         let dispatched = gaps.iter().any(|gap| matches!(gap, Gap::Dispatched { .. }));
-        for gap in hedge_gaps(relation, sealed.hedges(), dispatched) {
+        for gap in hedge_gaps(sealed.relation(), sealed.hedges(), dispatched) {
             if !gaps.contains(&gap) {
                 gaps.push(gap);
             }
@@ -185,9 +216,9 @@ impl Coverage {
         }
     }
 
-    pub fn witness(&self) -> Option<Complete> {
+    pub(crate) const fn witness(&self) -> Option<&Complete> {
         match self {
-            Self::Complete(witness) => Some(*witness),
+            Self::Complete(witness) => Some(witness),
             Self::Partial(_) => None,
         }
     }
@@ -196,25 +227,6 @@ impl Coverage {
         match self {
             Self::Complete(_) => &[],
             Self::Partial(gaps) => gaps,
-        }
-    }
-}
-
-/// A number of uses, and whether it is the whole.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-#[allow(
-    dead_code,
-    reason = "the witness is held so that an exact count needs one, never read"
-)]
-pub enum Count {
-    Exact(usize, Complete),
-    AtLeast(usize),
-}
-
-impl Count {
-    pub const fn found(self) -> usize {
-        match self {
-            Self::Exact(n, _) | Self::AtLeast(n) => n,
         }
     }
 }

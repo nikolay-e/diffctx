@@ -52,13 +52,6 @@ pub(super) fn read<'a, 't>(
         let _t = diffctx_base::profile::detail("impact.callers.verdict", "");
         Some(cell.verdict(def))
     });
-    if let Some(v) = &verdict {
-        tracing::debug!(
-            "impact {}: the cell claims {:?}",
-            core.symbol_name.as_deref().unwrap_or("?"),
-            v.claim(diffctx_resolve::resolve::Relation::Calls)
-        );
-    }
     // A formatter run or a comment changes nothing a caller sees (#370),
     // and neither does a definition moved verbatim within its file. The
     // facts layer says it for its languages: the hashes of the definition

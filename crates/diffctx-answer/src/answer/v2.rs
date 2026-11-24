@@ -32,15 +32,6 @@ pub struct Count {
     pub exact: bool,
 }
 
-impl From<decide::coverage::Count> for Count {
-    fn from(count: decide::coverage::Count) -> Self {
-        Self {
-            n: count.found(),
-            exact: matches!(count, decide::coverage::Count::Exact(..)),
-        }
-    }
-}
-
 /// A list and its total, which travel together: the items shown are the first of
 /// `total`.
 #[derive(Serialize, Deserialize, JsonSchema, Clone, Debug)]

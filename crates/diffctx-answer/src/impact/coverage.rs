@@ -86,7 +86,7 @@ pub(crate) fn scope_coverage(output: &ImpactOutput) -> decide::coverage::Coverag
 
 /// A definition the answer lists as one nothing calls: only a complete search
 /// makes one.
-pub(super) fn absence(named: String, _complete: decide::coverage::Complete) -> String {
+pub(super) fn absence(named: String, _complete: &decide::coverage::Complete) -> String {
     named
 }
 

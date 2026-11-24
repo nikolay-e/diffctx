@@ -160,9 +160,8 @@ impl Cell {
         let settlement = (found.accounted).settle(&resolved, |relation, hedge| {
             self.relation_of_hedge(changed, relation, hedge)
         });
-        let by_relation = (settlement.by_relation.each_ref()).map(|(relation, sealed)| {
-            (*relation, Coverage::close(*relation, sealed, gaps.clone()))
-        });
+        let by_relation = (settlement.by_relation.each_ref())
+            .map(|sealed| (sealed.relation(), Coverage::close(sealed, gaps.clone())));
         (by_relation, found, settlement.hedges)
     }
 

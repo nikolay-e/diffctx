@@ -545,9 +545,10 @@ impl fmt::Display for Hedge {
     }
 }
 
-/// What a `Complete` verdict carries. Only a settled account of at least one definition makes one,
-/// because the field is private to this module tree: another crate holds a [`Sealed`] verdict and
-/// asks it for the proof.
+/// What a `Complete` verdict carries. `Verdict::of` makes it, because the field is private to this
+/// module tree: from a settled account of at least one definition, which is what a [`Sealed`]
+/// carries, or from one definition's own account, which never leaves this crate. Another crate holds
+/// a [`Sealed`] verdict and asks it for the proof.
 ///
 /// ```compile_fail,E0423
 /// use diffctx_occurrence::tokens::occurrence::Proof;
@@ -569,7 +570,6 @@ impl fmt::Display for Hedge {
 /// use diffctx_occurrence::tokens::occurrence::Sealed;
 /// let _ = Sealed(());
 /// ```
-
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct Proof(());
 

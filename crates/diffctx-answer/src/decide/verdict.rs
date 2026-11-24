@@ -14,24 +14,8 @@ use diffctx_resolve::resolve::Relation;
 
 use diffctx_snapshot::snapshot::RepoPath;
 
-use super::coverage::{Complete, Coverage};
+use super::coverage::Coverage;
 use super::gap::Gap;
-
-/// What a statement about a definition's uses may be.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-#[allow(
-    dead_code,
-    reason = "the witness is held so that an absence needs one, never read"
-)]
-pub(crate) enum Claim {
-    Resolved,
-    Candidate,
-    Unresolved,
-    Partial,
-    /// Nothing calls the definition and nothing that could was left unread: the
-    /// only claim an answer may print as an absence.
-    Absent(Complete),
-}
 
 /// One use of a definition: the line, how it uses it, and how sure the
 /// resolver is. `scope` names who owns the line.
@@ -174,24 +158,6 @@ impl Verdict {
     /// The gap the answer names first.
     pub(crate) fn gap(&self) -> Option<Gap> {
         self.coverage().gaps().first().cloned()
-    }
-
-    /// The strongest thing the evidence carries of one relation. An absence is
-    /// the one claim only a complete search of that relation makes.
-    pub(crate) fn claim(&self, relation: Relation) -> Claim {
-        if self.resolved().any(|u| u.relation == relation) {
-            Claim::Resolved
-        } else if self.candidates().any(|u| u.relation == relation) {
-            Claim::Candidate
-        } else {
-            match self.relation(relation) {
-                Coverage::Complete(witness) => Claim::Absent(*witness),
-                Coverage::Partial(gaps) => match gaps.first() {
-                    Some(Gap::Candidates { .. }) => Claim::Unresolved,
-                    _ => Claim::Partial,
-                },
-            }
-        }
     }
 
     pub(crate) fn complete(&self) -> bool {

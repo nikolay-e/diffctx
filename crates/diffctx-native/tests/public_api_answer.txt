@@ -89,7 +89,6 @@ answer::v2::Class::Call variant Call
 answer::v2::Class::Implementation variant Implementation
 answer::v2::Class::Reexports variant Reexports
 answer::v2::Class::Reference variant Reference
-answer::v2::Count impl From<decide::coverage::Count> for Count
 answer::v2::Count struct derive(Clone, Copy, Debug, Eq, JsonSchema, PartialEq, Serialize)
 answer::v2::Count.exact field bool
 answer::v2::Count.n field usize
@@ -369,20 +368,16 @@ decide::changed::How::Added variant Added
 decide::changed::How::Edited variant Edited { layout_only: bool }
 decide::changed::How::Removed variant Removed
 decide::coverage mod
-decide::coverage::Complete struct derive(Clone, Copy, Debug, Eq, PartialEq)
-decide::coverage::Count enum derive(Clone, Copy, Debug, Eq, PartialEq)
-decide::coverage::Count::AtLeast variant AtLeast(usize)
-decide::coverage::Count::Exact variant Exact(usize, Complete)
-decide::coverage::Count::found fn (self) -> usize
-decide::coverage::Coverage enum derive(Clone, Debug, Eq, PartialEq)
+decide::coverage::Complete struct derive(Debug, Eq, PartialEq)
+decide::coverage::Coverage enum derive(Debug, Eq, PartialEq)
+decide::coverage::Coverage impl Clone for Coverage
 decide::coverage::Coverage::Complete variant Complete(Complete)
 decide::coverage::Coverage::Partial variant Partial(Vec<Gap>)
 decide::coverage::Coverage::both fn (self, other: Self) -> Self
-decide::coverage::Coverage::close fn (relation: Relation, sealed: &Sealed, mut gaps: Vec<Gap>) -> Self
+decide::coverage::Coverage::close fn (sealed: &Sealed, mut gaps: Vec<Gap>) -> Self
 decide::coverage::Coverage::gaps fn (&self) -> &[Gap]
 decide::coverage::Coverage::partial fn (gap: Gap) -> Self
 decide::coverage::Coverage::with fn (self, gap: Option<Gap>) -> Self
-decide::coverage::Coverage::witness fn (&self) -> Option<Complete>
 decide::gap mod
 decide::gap::Gap enum derive(Clone, Debug, Eq, PartialEq)
 decide::gap::Gap impl std::fmt::Display for Gap

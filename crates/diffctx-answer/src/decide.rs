@@ -16,12 +16,13 @@
 //! part.
 //!
 //! An absence is never a default. [`Complete`] is the witness that the search for a
-//! definition's uses left nothing unread. [`Coverage::close`] makes it for a definition, from
+//! definition's uses left nothing unread, and it cannot be copied out of the
+//! [`Coverage`] that holds it. [`Coverage::close`] makes it for a definition, from
 //! the gaps the search found and the sealed verdict of the occurrence accounting
 //! ([`diffctx_occurrence::tokens::occurrence::Sealed`]), which only that crate makes; this
 //! crate's `Coverage::of_run` makes it for what is no definition's.
-//! An absence claim ([`Claim::Absent`]) or an exact count ([`Count::Exact`]) holds
-//! the witness. Every other outcome names its [`Gap`]. A failed read is an `Err`
+//! An absence or an exact count is printed only from a coverage that holds the
+//! witness. Every other outcome names its [`Gap`]. A failed read is an `Err`
 //! or a gap here, never an empty value: the lint that says so is denied in this
 //! module.
 

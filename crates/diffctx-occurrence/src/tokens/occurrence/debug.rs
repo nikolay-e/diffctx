@@ -42,7 +42,8 @@ fn append(out: &mut File, lines: &str) {
     }
 }
 
-/// What the cell knows of one changed definition's group, as the accounting asks.
+/// What the cell knows of one changed definition's group, as the accounting asks. The cell is the
+/// only caller and the seal is as sound as what it supplies here: the names, the reach, the lost files.
 pub struct Shadow<'a> {
     pub ctx: &'a AnalysisContext,
     pub cache: &'a FactsCache,

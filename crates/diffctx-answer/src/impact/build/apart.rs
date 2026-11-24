@@ -111,8 +111,8 @@ pub(super) fn trace<'t>(
         // test link" is for the answer that has no tests to say it against.
         let named = place(&sym.path, sym.symbol.as_deref(), &sym.lines);
         let in_a_test_file = tests.is_test_file(&sym.path);
-        let witness = sym.coverage.all().witness();
-        match witness.filter(|_| callerless && verdict.complete()) {
+        let all = sym.coverage.all();
+        match all.witness().filter(|_| callerless && verdict.complete()) {
             Some(_) if in_a_test_file => {
                 found
                     .entry_unlisted
