@@ -366,6 +366,9 @@ def _rust_kind(node: Node, is_class: bool) -> str:
         return "instantiates" if is_class else "calls"
     if parent.type == "macro_invocation" and _same(parent.child_by_field_name("macro"), node):
         return "calls"
+    follower = node.next_sibling
+    if parent.type == "token_tree" and follower is not None and follower.type == "token_tree" and follower.text.startswith(b"("):
+        return "instantiates" if is_class else "calls"  # a macro's arguments are tokens: a name before `(...)` is a call
     if parent.type == "struct_expression" and _same(parent.child_by_field_name("name"), node):
         return "instantiates"
     if parent.type == "arguments":
