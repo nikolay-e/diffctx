@@ -959,8 +959,8 @@ fn overloads_are_settled_by_the_argument_count_or_candidates() {
 }
 
 /// A call through a supertype may run in an implementation; through a type
-/// nothing below it replaces, it is the member. `@Override` binds to the member
-/// it replaces.
+/// nothing below it replaces, it is the member. A method that answers the member
+/// by name and arity binds to it, with `@Override` or without.
 #[test]
 fn a_call_through_a_supertype_is_a_candidate_on_its_implementations() {
     let fx = snapshot(&[(
@@ -981,8 +981,12 @@ fn a_call_through_a_supertype_is_a_candidate_on_its_implementations() {
         .iter()
         .filter(|b| b.relation == Relation::Overrides)
         .collect();
-    assert_eq!(overrides.len(), 1, "{overrides:#?}");
-    assert_eq!(fx.lands(overrides[0]), "d/Disp.java::Repo.find");
+    assert_eq!(overrides.len(), 2, "{overrides:#?}");
+    assert!(
+        overrides
+            .iter()
+            .all(|b| fx.lands(b) == "d/Disp.java::Repo.find")
+    );
 }
 
 /// A call through a receiver nothing types is a candidate for the methods of
