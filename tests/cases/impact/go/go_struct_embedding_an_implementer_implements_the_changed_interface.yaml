@@ -1,0 +1,47 @@
+name: go_struct_embedding_an_implementer_implements_the_changed_interface
+mode: impact
+source: synthetic
+tags: [go, interface, implementation, embedding]
+repo:
+  initial_files:
+    go.mod: |
+      module demo
+
+      go 1.21
+    store.go: |
+      package demo
+
+      type Store interface {
+          Get(string) string
+      }
+    disk.go: |
+      package demo
+
+      type disk struct{}
+
+      func (d *disk) Get(key string) string {
+          return key
+      }
+
+      func (d *disk) Put(key, value string) {}
+    cached.go: |
+      package demo
+
+      type cached struct {
+          *disk
+      }
+  changed_files:
+    store.go: |
+      package demo
+
+      type Store interface {
+          Get(string) string
+          Put(string, string)
+      }
+  commit_message: "store: Store requires Put"
+expect:
+  exact: false
+  relations:
+    - {from: disk.go::disk.Put, to: store.go::Store.Put, kind: overrides, resolution: candidate, site: 9}
+    # cached has Get and Put through the embedded disk.
+    - {from: cached.go::cached, to: store.go::Store.Put, kind: overrides, resolution: candidate, site: 3}

@@ -1,0 +1,42 @@
+name: go_struct_embedding_an_external_type_may_implement_the_changed_interface
+mode: impact
+source: synthetic
+tags: [go, interface, implementation, embedding, hedge]
+repo:
+  initial_files:
+    go.mod: |
+      module demo
+
+      go 1.21
+    store.go: |
+      package demo
+
+      type Store interface {
+          Get(string) string
+      }
+    disk.go: |
+      package demo
+
+      import "io"
+
+      type disk struct {
+          io.Writer
+      }
+
+      func (d *disk) Get(key string) string {
+          return key
+      }
+  changed_files:
+    store.go: |
+      package demo
+
+      type Store interface {
+          Get(string) string
+          Write([]byte) (int, error)
+      }
+  commit_message: "store: Store requires Write"
+expect:
+  exact: false
+  relations:
+    # Write may come from the embedded io.Writer, which the repository does not hold: a candidate, not an absence.
+    - {from: disk.go::disk, to: store.go::Store.Write, kind: overrides, resolution: candidate, site: 5}

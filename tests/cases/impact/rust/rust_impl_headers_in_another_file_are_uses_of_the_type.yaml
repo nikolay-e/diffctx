@@ -1,0 +1,48 @@
+name: rust_impl_headers_in_another_file_are_uses_of_the_type
+mode: impact
+source: synthetic
+tags: [rust, impl-header, type-use, cross-file]
+repo:
+  initial_files:
+    Cargo.toml: |
+      [package]
+      name = "demo"
+      version = "0.1.0"
+      edition = "2021"
+    src/lib.rs: |
+      pub mod format;
+      pub mod plain;
+    src/plain.rs: |
+      #[derive(Default)]
+      pub struct Plain;
+    src/format.rs: |
+      use crate::plain::Plain;
+
+      pub trait Format {
+          fn line(&self) -> String;
+      }
+
+      impl Format for Plain {
+          fn line(&self) -> String {
+              String::new()
+          }
+      }
+
+      impl Plain {
+          pub fn new() -> Self {
+              Plain
+          }
+      }
+  changed_files:
+    src/plain.rs: |
+      #[derive(Default)]
+      pub struct Plain {
+          pub width: usize,
+      }
+  commit_message: "plain: Plain gets a width"
+expect:
+  exact: false
+  relations:
+    # The trait impl and the inherent impl each name the type in their header.
+    - {from: src/format.rs, to: src/plain.rs::Plain, kind: type_use, site: 7}
+    - {from: src/format.rs, to: src/plain.rs::Plain, kind: type_use, site: 13}

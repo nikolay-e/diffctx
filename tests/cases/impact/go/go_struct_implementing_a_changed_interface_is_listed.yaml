@@ -12,22 +12,6 @@ repo:
     source.go: |
       package demo
 
-      type Source struct {
-          m map[string]any
-      }
-
-      func NewSource(m map[string]any) *Source {
-          return &Source{m: m}
-      }
-
-      func (s *Source) lookup(name string) (any, bool) {
-          v, ok := s.m[name]
-          return v, ok
-      }
-  changed_files:
-    source.go: |
-      package demo
-
       type Source interface {
           Lookup(string) (any, bool)
       }
@@ -44,9 +28,38 @@ repo:
           v, ok := s.m[name]
           return v, ok
       }
-  commit_message: "source: Source becomes an interface"
+
+      func (s *source) Keys() []string {
+          return nil
+      }
+  changed_files:
+    source.go: |
+      package demo
+
+      type Source interface {
+          Lookup(string) (any, bool)
+          Keys() []string
+      }
+
+      type source struct {
+          m map[string]any
+      }
+
+      func NewSource(m map[string]any) Source {
+          return &source{m: m}
+      }
+
+      func (s *source) Lookup(name string) (any, bool) {
+          v, ok := s.m[name]
+          return v, ok
+      }
+
+      func (s *source) Keys() []string {
+          return nil
+      }
+  commit_message: "source: Source requires Keys"
 expect:
   exact: false
   relations:
-    # Source is now an interface and `source` implements it by its method set.
-    - {from: source.go::source, to: source.go::Source, kind: overrides, site: 7}
+    # source implements Source by its method set, in the same file, on lines the range leaves alone.
+    - {from: source.go::source.Keys, to: source.go::Source.Keys, kind: overrides, resolution: candidate, site: 21}

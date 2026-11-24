@@ -38,4 +38,4 @@ expect:
   exact: false
   relations:
     # disk has Get and Put, so it implements the changed interface, from a file the range does not touch.
-    - {from: disk.go::disk, to: store.go::Store, kind: overrides, site: 3}
+    - {from: disk.go::disk.Put, to: store.go::Store.Put, kind: overrides, resolution: candidate, site: 9}
