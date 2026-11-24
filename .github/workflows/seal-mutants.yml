@@ -1,0 +1,73 @@
+name: seal-mutants
+
+'on':
+  push:
+    branches: [ci/seal-probe]
+
+permissions:
+  contents: read
+
+jobs:
+  mutants:
+    name: cargo mutants ${{ matrix.shard }}/8
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3, 4, 5, 6, 7]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
+        with:
+          toolchain: "1.100.0"
+
+      # Restore only: a save per shard would evict the head check's cache from the repository's
+      # 10 GB, and no shard is the warm job.
+      - name: Restore Cargo
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: cargo-rust-${{ runner.os }}-release-${{ hashFiles('Cargo.lock') }}
+          restore-keys: |
+            cargo-rust-${{ runner.os }}-release-
+            cargo-${{ runner.os }}-
+
+      - name: Install cargo-mutants
+        run: cargo install --locked --version 27.1.0 cargo-mutants
+
+      # The tests that kill a mutant live in the library crates and in diffctx's integration suites
+      # that read analyzer runs: --test-workspace runs both, named suites only.
+      - name: Mutate the occurrence crate
+        continue-on-error: true
+        run: >
+          cargo mutants --locked --in-place --test-workspace=true
+          --shard ${{ matrix.shard }}/8 --package diffctx-occurrence
+          --output mutants-out/occurrence -- --lib
+          --test occurrence_alias --test occurrence_classes --test occurrence_debug
+          --test occurrence_implicit --test occurrence_outcome --test occurrence_scan
+          --test class_completeness --test impact --test unknowns --test gap_reasons
+
+      - name: Mutate the decision cell
+        continue-on-error: true
+        run: >
+          cargo mutants --locked --in-place --test-workspace=true
+          --shard ${{ matrix.shard }}/8 --package diffctx-answer --file 'src/decide/**'
+          --output mutants-out/answer -- --lib
+          --test occurrence_alias --test occurrence_classes --test occurrence_debug
+          --test occurrence_implicit --test occurrence_outcome --test occurrence_scan
+          --test class_completeness --test impact --test unknowns --test gap_reasons
+
+      - name: Keep the outcomes
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        with:
+          name: mutants-${{ matrix.shard }}
+          path: |
+            mutants-out/occurrence/mutants.out
+            mutants-out/answer/mutants.out
