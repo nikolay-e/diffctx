@@ -3,7 +3,7 @@ name: diffctx CI
 
 'on':
   pull_request:
-    branches: ['**']
+    branches-ignore: ['relay/arch', 'ci-base/**']  # mutation PR runs relay-mutations.yml only
   push:
     # A push to relay/arch is the 2.0 migration's head check: every platform.
     branches:

@@ -1,0 +1,85 @@
+name: relay mutations
+
+'on':
+  pull_request:
+    branches: [relay/arch]
+
+concurrency:
+  group: relay-mutations-${{ github.head_ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: never
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  warm:
+    if: startsWith(github.head_ref, 'ci/probe-mutations')
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    outputs:
+      matrix: ${{ steps.m.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - id: m
+        run: |
+          python3 .github/relay-mutations/mutate.py --verify
+          echo "matrix=$(python3 .github/relay-mutations/mutate.py --matrix-json)" >> "$GITHUB_OUTPUT"
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca
+        with:
+          toolchain: "1.100.0"
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: relay-muts-warm-${{ github.sha }}
+          restore-keys: cargo-${{ runner.os }}-
+      - name: Build binary and catching suites on unmutated tree
+        run: |
+          cargo build --release --locked --bin diffctx
+          cargo test --release --locked -p diffctx \
+            --test snapshot_faults \
+            --test git_faults \
+            --test loss_sweep \
+            --test hook_property \
+            --test occurrence_classes \
+            --test tests_same_file -- --list >/dev/null
+
+  mutant:
+    needs: warm
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.warm.outputs.matrix) }}
+    name: mutant ${{ matrix.id }} (${{ matrix.group }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca
+        with:
+          toolchain: "1.100.0"
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: relay-muts-${{ matrix.id }}-${{ github.sha }}
+          restore-keys: |
+            relay-muts-warm-${{ github.sha }}
+            cargo-${{ runner.os }}-
+      - name: Ensure release binary is built (for process-spawning suites) and run mutant gate
+        run: |
+          python3 .github/relay-mutations/mutate.py --apply "${{ matrix.id }}"
+          cargo build --release --locked --bin diffctx
+          python3 .github/relay-mutations/mutate.py --restore "${{ matrix.id }}"
+          python3 .github/relay-mutations/mutate.py --run-ci "${{ matrix.id }}"
