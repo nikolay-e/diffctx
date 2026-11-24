@@ -599,11 +599,11 @@ fn over_the_cap(tail: &str) -> String {
 /// #548: a name in scope wins over a same-named item elsewhere: the file's
 /// own function (a file over the size cap included, whose fragments were
 /// never read), a method of another type (`BTreeMap::entry`) and a local
-/// closure (`at`). A `mod` declaration and an `impl Context` header use
-/// nothing. The call that
+/// closure (`at`). A `mod` declaration uses nothing, and an `impl Context`
+/// header uses the type. The call that
 /// does reach each definition is kept.
 #[test]
-fn a_name_in_scope_shadows_and_an_impl_header_is_no_caller() {
+fn a_name_in_scope_shadows_and_an_impl_header_is_a_use_of_its_type() {
     let export = |gone: bool| {
         let removed = "pub fn to_json(x: u32) -> String {\n    format!(\"{x}\")\n}\n\npub fn entry(k: u32) -> u32 {\n    k + 1\n}\n\npub fn render(x: u32) -> String {\n    x.to_string()\n}\n\n";
         let kept = "pub fn kept() -> u32 {\n    1\n}\n";
@@ -685,7 +685,11 @@ fn a_name_in_scope_shadows_and_an_impl_header_is_no_caller() {
     );
     assert_eq!(
         callers_of(&doc, "Context", false),
-        ["src/user.rs::make"],
+        [
+            "src/ctx.rs::Context",
+            "src/ctx.rs::Context",
+            "src/user.rs::make"
+        ],
         "{doc:#}"
     );
 }

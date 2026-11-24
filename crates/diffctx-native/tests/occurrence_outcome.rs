@@ -1451,7 +1451,7 @@ fn a_heredoc_body_is_text_but_an_unquoted_one_reads_its_expansions() {
 const IMPLS: &str = "pub struct QueryError;\n\nimpl Display for QueryError {\n    fn fmt(&self) {}\n}\n\nimpl<T> From<T> for QueryError {\n    fn from(_: T) -> Self {\n        QueryError\n    }\n}\n\nimpl QueryError {}\n\nfn wrap(e: impl QueryError) {}\n";
 
 #[test]
-fn the_type_an_impl_header_names_is_where_its_members_are_declared() {
+fn the_type_an_impl_header_names_is_a_type_use_of_it() {
     let world = snapshot_in(Lang::Rust, &[("src/lib.rs", IMPLS)]);
     let found = world.outcomes(
         world.def("src/lib.rs", "QueryError"),
@@ -1461,7 +1461,7 @@ fn the_type_an_impl_header_names_is_where_its_members_are_declared() {
     for line in [3, 7, 13] {
         assert_eq!(
             shape(on(&found, line)),
-            ("declaration", "definition_name", None),
+            ("ours", "resolved", Some(Relation::TypeUses)),
             "line {line}: {found:#?}"
         );
     }
@@ -1482,7 +1482,7 @@ fn a_name_in_an_impl_trait_argument_is_no_impl_header_type() {
 const TRAITS: &str = "pub trait Convert<T> {}\n\npub struct Page;\n\nimpl Convert<i32> for Page {\n}\n\nimpl<T> Convert<T> for Page {\n}\n\nimpl Page {}\n";
 
 #[test]
-fn the_trait_an_impl_header_names_is_no_declaration_of_it_but_the_type_is() {
+fn the_trait_an_impl_header_names_is_no_declaration_of_it_and_the_type_is_a_type_use() {
     let world = snapshot_in(Lang::Rust, &[("src/lib.rs", TRAITS)]);
     let found = world.outcomes(
         world.def("src/lib.rs", "Convert"),
@@ -1500,7 +1500,7 @@ fn the_trait_an_impl_header_names_is_no_declaration_of_it_but_the_type_is() {
     for line in [5, 8, 11] {
         assert_eq!(
             shape(on(&found, line)),
-            ("declaration", "definition_name", None),
+            ("ours", "resolved", Some(Relation::TypeUses)),
             "line {line}: {found:#?}"
         );
     }
