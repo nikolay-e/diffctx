@@ -42,28 +42,28 @@ jobs:
         run: cargo install --locked --version 27.1.0 cargo-mutants
 
       # The tests that kill a mutant live in the library crates and in diffctx's integration suites
-      # that read analyzer runs: --test-workspace runs both, named suites only.
+      # that read analyzer runs. A glob names a suite so that a package without it is not an error.
       - name: Mutate the occurrence crate
         continue-on-error: true
         run: |
           mkdir -p mutants-out/occurrence
-          cargo mutants --cargo-arg=--locked --in-place --test-workspace=true \
+          cargo mutants --cargo-arg=--locked --in-place \
+          --test-package diffctx-occurrence --test-package diffctx-answer --test-package diffctx \
           --shard ${{ matrix.shard }}/8 --package diffctx-occurrence \
           --output mutants-out/occurrence -- --lib \
-          --test occurrence_alias --test occurrence_classes --test occurrence_debug \
-          --test occurrence_implicit --test occurrence_outcome --test occurrence_scan \
-          --test class_completeness --test impact --test unknowns --test gap_reasons
+          --test 'occurrence_*' --test 'class_completenes[s]' \
+          --test 'unknown[s]' --test 'gap_reason[s]' --test 'impac[t]'
 
       - name: Mutate the decision cell
         continue-on-error: true
         run: |
           mkdir -p mutants-out/answer
-          cargo mutants --cargo-arg=--locked --in-place --test-workspace=true \
-          --shard ${{ matrix.shard }}/8 --package diffctx-answer --file 'src/decide/**' \
+          cargo mutants --cargo-arg=--locked --in-place \
+          --test-package diffctx-occurrence --test-package diffctx-answer --test-package diffctx \
+          --shard ${{ matrix.shard }}/8 --package diffctx-answer --file 'crates/diffctx-answer/src/decide/**/*.rs' \
           --output mutants-out/answer -- --lib \
-          --test occurrence_alias --test occurrence_classes --test occurrence_debug \
-          --test occurrence_implicit --test occurrence_outcome --test occurrence_scan \
-          --test class_completeness --test impact --test unknowns --test gap_reasons
+          --test 'occurrence_*' --test 'class_completenes[s]' \
+          --test 'unknown[s]' --test 'gap_reason[s]' --test 'impac[t]'
 
       - name: Keep the outcomes
         if: always()
