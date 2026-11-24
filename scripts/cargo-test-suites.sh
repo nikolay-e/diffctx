@@ -12,8 +12,10 @@
 # DIFFCTX_YAML_CASES_LIMIT, when set, samples the corpus.
 # An argument runs a part, for a runner that cannot hold them all inside its
 # time limit: `corpus` is the two corpus suites alone, `rest` everything else,
-# and `corpus:K/N` or `rest:K/N` the K-th of N shards of either. No argument
-# runs it all.
+# and `corpus:K/N` or `rest:K/N` the K-th of N shards of either. `platform` is
+# the suites whose subject is the operating system (snapshots, child reaping,
+# git faults, the hook), the ones a macOS runner must run for the others to
+# mean the same there. No argument runs it all.
 # The shards balance expected seconds, not binary counts: `weights` below,
 # heaviest first onto the lightest shard (ties by name), so every caller gets
 # the same split for the same N. A suite missing from the table weighs
@@ -32,14 +34,19 @@ cd "$(dirname "$0")/../crates/diffctx-native"
 part=${1:-all}
 run_corpus=1
 run_rest=1
+platform=0
 shard=1
 shards=1
 case "$part" in
 all) ;;
+platform)
+  run_corpus=0
+  platform=1
+  ;;
 corpus | corpus:[1-9]*/[1-9]*) run_rest=0 ;;
 rest | rest:[1-9]*/[1-9]*) run_corpus=0 ;;
 *)
-  echo "usage: $0 [all|corpus|rest|corpus:K/N|rest:K/N]" >&2
+  echo "usage: $0 [all|corpus|rest|platform|corpus:K/N|rest:K/N]" >&2
   exit 2
   ;;
 esac
@@ -163,8 +170,9 @@ if ((run_rest)); then
   # compiled at all: they are cfg-gated on it and ship inside the wheel.
   names=$(
     {
-      echo lib
-      for file in tests/*.rs; do basename "$file" .rs; done | grep -vxF -e "${corpus[0]}" -e "${corpus[1]}"
+      ((platform)) || echo lib
+      for file in tests/*.rs; do basename "$file" .rs; done | grep -vxF -e "${corpus[0]}" -e "${corpus[1]}" |
+        { if ((platform)); then grep -E '^(snapshot_|hook|orphan_children$|reaping$|git_faults$)'; else cat; fi; }
     } | shard_of "$shard" "$shards"
   )
   suites=()

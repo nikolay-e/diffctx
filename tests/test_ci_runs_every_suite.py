@@ -1,3 +1,4 @@
+import json
 import re
 import subprocess
 import sys
@@ -26,12 +27,24 @@ def _rust_jobs() -> list[dict]:
     return [job for job in ci["jobs"].values() if job.get("name", "").startswith("Rust diffctx tests")]
 
 
-def _cells(job: dict) -> list[dict[str, str]]:
+PLATFORM_SUITES = ("snapshot_", "hook")
+PLATFORM_NAMES = {"orphan_children", "reaping", "git_faults"}
+
+
+def _platform_suites() -> set[str]:
+    return {s for s in _suites() if s.startswith(PLATFORM_SUITES) or s in PLATFORM_NAMES}
+
+
+def _cells(job: dict, push: bool = False) -> list[dict[str, str]]:
     """GitHub's expansion: the product of the vectors less every cell an exclude
     entry agrees with, then each include entry extends every product cell it
     agrees with, or becomes a cell of its own. A cell an include made is no
     product cell: two includes with the same vector values are two cells."""
-    matrix = job.get("strategy", {}).get("matrix", {})
+    matrix = dict(job.get("strategy", {}).get("matrix", {}))
+    if isinstance(matrix.get("include"), str):
+        # `fromJSON(push && '[head cells]' || '[every cell]')`: the shape of the event picks one.
+        literals = re.findall(r"'(\[.*?\])'", matrix["include"], re.S)
+        matrix["include"] = json.loads(literals[0] if push else literals[-1])
     vectors = {k: v for k, v in matrix.items() if k not in ("include", "exclude")}
     cells: list[dict[str, str]] = [{}]
     for key, values in vectors.items():
@@ -58,6 +71,8 @@ def _part_suites(part: str) -> set[str]:
     corpus = ["class_completeness_corpus", "yaml_cases"]
     if part == "all":
         return _suites()
+    if part == "platform":
+        return _platform_suites()
     kind, _, shard = part.partition(":")
     names = corpus if kind == "corpus" else sorted(_suites() - set(corpus))
     if not shard:
@@ -95,34 +110,49 @@ def _joined(suites: set[str]) -> set[str]:
     return suites - pieces | ({CLASS_CORPUS} if parts and parts == whole else set())
 
 
-def test_every_rust_suite_runs_on_each_ci_os():
+def _covered_by_os(push: bool) -> dict[str, set[str]]:
+    covered: dict[str, set[str]] = {}
+    for job in _rust_jobs():
+        for cell in _cells(job, push):
+            covered.setdefault(_expanded(job["runs-on"], cell), set()).update(_covered(job, cell))
+    return {os_name: _joined(suites) for os_name, suites in covered.items()}
+
+
+def test_every_rust_suite_runs_on_linux_and_windows():
     """A suite under tests/ that no job runs guards nothing: the 1.20.0
     gates (unknowns, lane_*) ran nowhere for days behind a named list. A
     job may run a part of them (Windows is too slow for one job), so the
     parts of one OS together must hold every suite."""
-    jobs = _rust_jobs()
-    assert jobs, "no 'Rust diffctx tests' job in ci.yml"
-    covered: dict[str, set[str]] = {}
-    for job in jobs:
-        for cell in _cells(job):
-            covered.setdefault(_expanded(job["runs-on"], cell), set()).update(_covered(job, cell))
-    for os_name, suites in covered.items():
-        suites = _joined(suites)
-        assert suites == _suites(), f"{os_name} never runs {sorted(_suites() - suites)}"
+    assert _rust_jobs(), "no 'Rust diffctx tests' job in ci.yml"
+    covered = _covered_by_os(push=False)
+    for os_name in ("ubuntu-latest", "windows-latest"):
+        assert covered[os_name] == _suites(), f"{os_name} never runs {sorted(_suites() - covered[os_name])}"
 
 
-def test_the_intel_mac_cross_build_runs_in_exactly_one_macos_part():
+def test_macos_runs_the_platform_suites_and_the_corpora_in_a_pull_request_into_main():
+    """macOS has five slots: it runs what the operating system decides, and the
+    two corpora when a PR into main or the nightly asks for the full set."""
+    covered = _covered_by_os(push=False)["macos-latest"]
+    assert covered == _platform_suites() | {CLASS_CORPUS, "yaml_cases"}, sorted(covered)
+
+
+def test_a_push_runs_one_macos_rust_job_of_the_platform_suites():
+    cells = [cell for job in _rust_jobs() for cell in _cells(job, push=True) if "macos" in _expanded(job["runs-on"], cell)]
+    assert len(cells) == 1, cells
+    assert _covered_by_os(push=True)["macos-latest"] == _platform_suites()
+
+
+def test_the_intel_mac_cross_build_runs_in_exactly_one_macos_part_of_each_shape():
     cross = [job for job in _rust_jobs() if any("x86_64-apple-darwin" in step.get("run", "") for step in job["steps"])]
     assert len(cross) == 1
     step = next(step for step in cross[0]["steps"] if "x86_64-apple-darwin" in step.get("run", ""))
-    ran = [
-        cell
-        for cell in _cells(cross[0])
-        if cell["os"].startswith("macos")
-        and "macOS" in step["if"]
-        and ("matrix.part" not in step["if"] or f"matrix.part == '{cell['part']}'" in step["if"])
-    ]
-    assert len(ran) == 1, ran
+    for push in (False, True):
+        ran = [
+            cell
+            for cell in _cells(cross[0], push)
+            if "matrix.part" not in step["if"] or f"matrix.part == '{cell['part']}'" in step["if"]
+        ]
+        assert len(ran) == 1, (push, ran)
 
 
 def test_every_rust_suite_runs_in_the_pre_commit_hook():
@@ -196,6 +226,14 @@ def test_the_parts_of_the_suites_script_run_each_suite_once(tmp_path, parts, run
     names = re.findall(r"--test (\w+)", "\n".join(calls))
     assert sorted(names) == sorted(_suites()), "a suite ran twice or not at all"
     assert sum("--lib" in call for call in calls) == 1
+
+
+@POSIX_ONLY
+def test_the_platform_part_runs_the_platform_suites_and_nothing_else(tmp_path):
+    result, calls = _run_script(tmp_path, args=("platform",))
+    assert result.returncode == 0, result.stderr
+    assert set(re.findall(r"--test (\w+)", "\n".join(calls))) == _platform_suites()
+    assert not any("--lib" in call or "--package" in call for call in calls)
 
 
 @POSIX_ONLY
