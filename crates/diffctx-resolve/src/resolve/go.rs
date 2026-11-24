@@ -30,7 +30,7 @@ use super::{
 use diffctx_facts::facts::FileFacts;
 use diffctx_facts::facts::{
     Def, DefKey, DefKind, Fact, FactsCache, Import, ImportKind, Language, Name, Receiver, Ref,
-    Star, UseKind, Visibility,
+    Scope, Star, UseKind, Visibility,
 };
 use diffctx_snapshot::snapshot::{
     AnalysisContext, Bytes, Loss, RepoPath, Result, SideTag, SnapshotReader, WorkspaceModel,
@@ -409,6 +409,7 @@ impl Engine<'_> {
                 }
             }
         }
+        self.implementers(&mut bindings);
         let definitions = self
             .ix
             .defs
@@ -724,6 +725,31 @@ impl Engine<'_> {
         names
     }
 
+    /// The type a method belongs to, when the package declares it.
+    fn owner_of(&self, m: usize) -> Option<usize> {
+        let owner = self.ix.defs[m].def.local.container.first()?;
+        self.item(self.pkg_of(m), owner.as_str(), Want::Type, None)
+    }
+
+    /// Whether a type has every method `required` names, its own or an embedded type's: `Some(true)`. One that
+    /// has some, and embeds a type the repository does not hold, may have the rest through it: `Some(false)`.
+    fn covers(&self, t: usize, required: &[String]) -> Option<bool> {
+        let has = |name: &String| {
+            self.find_member(t, name, 0)
+                .is_some_and(|m| self.ix.defs[m].def.kind == DefKind::Method)
+        };
+        let found = required.iter().filter(|name| has(name)).count();
+        if found == required.len() {
+            return Some(true);
+        }
+        let foreign = self.members_of(t).iter().any(|m| {
+            self.ix.defs[*m].def.kind == DefKind::Field
+                && self.is_embedded(*m)
+                && matches!(self.value_type(*m), Typed::External | Typed::Unknown)
+        });
+        (found > 0 && foreign).then_some(false)
+    }
+
     /// A call through an interface: the interface's method and every concrete
     /// type's that has all the methods the interface asks.
     fn dispatched(&self, i: usize, name: &str) -> Outcome {
@@ -738,29 +764,12 @@ impl Engine<'_> {
         }
         let required = self.required(i, 0);
         for m in self.ix.methods.get(&Name::new(name)).into_iter().flatten() {
-            let rec = &self.ix.defs[*m];
-            let Some(owner) = rec.def.local.container.first() else {
+            let Some(t) = self.owner_of(*m) else {
                 continue;
             };
-            let pkg = self.pkg_of(*m);
-            let Some(t) = self.item(pkg, owner.as_str(), Want::Type, None) else {
-                continue;
-            };
-            if matches!(self.ix.defs[t].def.kind, DefKind::Interface) {
-                continue;
-            }
-            let has = |needed: &String| {
-                self.ix
-                    .members
-                    .get(&(pkg, owner.clone()))
-                    .into_iter()
-                    .flatten()
-                    .any(|x| {
-                        self.ix.defs[*x].def.kind == DefKind::Method
-                            && self.ix.defs[*x].def.local.name.as_str() == needed
-                    })
-            };
-            if required.iter().all(has) {
+            if self.ix.defs[t].def.kind != DefKind::Interface
+                && self.covers(t, &required) == Some(true)
+            {
                 targets.push(*m);
             }
         }
@@ -770,6 +779,66 @@ impl Engine<'_> {
             return Outcome::Unresolved(UnresolvedReason::NoMember);
         }
         Outcome::Candidates(targets, CandidateReason::Dispatch)
+    }
+
+    /// A type that covers an interface's methods implements it though no line names it: it is a
+    /// candidate for the interface and, for each method, its own answering one (the type itself
+    /// where it may hold it through a type the repository lacks). The names are compared, not the
+    /// signatures.
+    fn implementers(&self, out: &mut Vec<Binding>) {
+        let embedders: Vec<usize> = (self.ix.defs.iter().enumerate())
+            .filter(|(d, rec)| rec.def.kind == DefKind::Field && self.is_embedded(*d))
+            .filter_map(|(d, _)| self.owner_of(d))
+            .collect();
+        let mut bind = |from: usize, to: usize| {
+            let (at, to) = (&self.ix.defs[from], &self.ix.defs[to]);
+            out.push(Binding {
+                file: self.path_of(at.file).clone(),
+                site: at.def.name_span.clone(),
+                from: Scope::Def(at.def.local.clone()),
+                relation: Relation::Overrides,
+                name: to.def.local.name.clone(),
+                resolution: Resolution::Candidate {
+                    targets: vec![to.key.clone()],
+                    reason: CandidateReason::Dispatch,
+                },
+                entry_guard: false,
+            });
+        };
+        for (i, _) in
+            (self.ix.defs.iter().enumerate()).filter(|(_, rec)| rec.def.kind == DefKind::Interface)
+        {
+            let required = self.required(i, 0);
+            let methods_named = |name: &String| self.ix.methods.get(&Name::new(name.as_str()));
+            let Some(rarest) =
+                (required.iter()).min_by_key(|name| methods_named(name).map_or(0, Vec::len))
+            else {
+                continue;
+            };
+            let mut pool: Vec<usize> = (methods_named(rarest).into_iter().flatten())
+                .filter_map(|m| self.owner_of(*m))
+                .chain(embedders.iter().copied())
+                .collect();
+            pool.sort_unstable();
+            pool.dedup();
+            for t in pool {
+                if self.ix.defs[t].def.kind == DefKind::Interface
+                    || !self.reachable(self.ix.defs[t].file, i)
+                    || self.covers(t, &required).is_none()
+                {
+                    continue;
+                }
+                bind(t, i);
+                for name in &required {
+                    let Some(theirs) = self.find_member(i, name, 0) else {
+                        continue;
+                    };
+                    let mine =
+                        (self.find_member(t, name, 0)).filter(|d| self.owner_of(*d) == Some(t));
+                    bind(mine.unwrap_or(t), theirs);
+                }
+            }
+        }
     }
 
     /// A member of `start`, after the fields written on the way.
