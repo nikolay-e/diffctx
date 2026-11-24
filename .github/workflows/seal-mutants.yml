@@ -45,22 +45,24 @@ jobs:
       # that read analyzer runs: --test-workspace runs both, named suites only.
       - name: Mutate the occurrence crate
         continue-on-error: true
-        run: >
-          cargo mutants --cargo-arg=--locked --in-place --test-workspace=true
-          --shard ${{ matrix.shard }}/8 --package diffctx-occurrence
-          --output mutants-out/occurrence -- --lib
-          --test occurrence_alias --test occurrence_classes --test occurrence_debug
-          --test occurrence_implicit --test occurrence_outcome --test occurrence_scan
+        run: |
+          mkdir -p mutants-out/occurrence
+          cargo mutants --cargo-arg=--locked --in-place --test-workspace=true \
+          --shard ${{ matrix.shard }}/8 --package diffctx-occurrence \
+          --output mutants-out/occurrence -- --lib \
+          --test occurrence_alias --test occurrence_classes --test occurrence_debug \
+          --test occurrence_implicit --test occurrence_outcome --test occurrence_scan \
           --test class_completeness --test impact --test unknowns --test gap_reasons
 
       - name: Mutate the decision cell
         continue-on-error: true
-        run: >
-          cargo mutants --cargo-arg=--locked --in-place --test-workspace=true
-          --shard ${{ matrix.shard }}/8 --package diffctx-answer --file 'src/decide/**'
-          --output mutants-out/answer -- --lib
-          --test occurrence_alias --test occurrence_classes --test occurrence_debug
-          --test occurrence_implicit --test occurrence_outcome --test occurrence_scan
+        run: |
+          mkdir -p mutants-out/answer
+          cargo mutants --cargo-arg=--locked --in-place --test-workspace=true \
+          --shard ${{ matrix.shard }}/8 --package diffctx-answer --file 'src/decide/**' \
+          --output mutants-out/answer -- --lib \
+          --test occurrence_alias --test occurrence_classes --test occurrence_debug \
+          --test occurrence_implicit --test occurrence_outcome --test occurrence_scan \
           --test class_completeness --test impact --test unknowns --test gap_reasons
 
       - name: Keep the outcomes
