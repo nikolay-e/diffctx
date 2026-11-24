@@ -22,7 +22,7 @@ class Resolve:
 
 def normal(value):
     if isinstance(value, dict):
-        return {k: normal(v) for k, v in sorted(value.items())}
+        return {k: normal(v) for k, v in sorted(value.items()) if (k, v) != ("named", ())}  # `named` is read from v2 only
     if isinstance(value, (list, tuple)):
         return [normal(x) for x in value]
     if isinstance(value, set):
@@ -319,12 +319,17 @@ def to_v2(a):
 
 def what_the_scorer_sees(parsed):
     """v1 wrote `reexport` as evidence where v2 says resolved with class reexports (the scorer ranks them alike), and its
-    omitted entry became a target of the pseudo-path `(changed definitions)`, which v2 has no entry for."""
+    omitted entry became a target of the pseudo-path `(changed definitions)`, which v2 has no entry for. A row with no symbol
+    is filed under the module by v1 and under the definition holding its lines by v2: both are one place here."""
     return {
         "targets": {
             key: {
                 "callers": [
-                    (c.from_key, "resolved" if c.evidence == "reexport" else c.evidence, *dataclasses.astuple(c)[2:])
+                    (
+                        re.sub(r"::(<module>|span:.*)$", "::<place>", c.from_key),
+                        "resolved" if c.evidence == "reexport" else c.evidence,
+                        *dataclasses.astuple(c)[2:5],
+                    )  # not `named`: v1 has none
                     for c in t.callers
                 ],
                 "partial": bool(t.unresolved or t.missed_in or t.gapped or t.callers_omitted),

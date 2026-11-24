@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from answer import Answer, AnswerCaller, Resolver, TargetAnswer
+from answer import Answer, AnswerCaller, Resolver, TargetAnswer, line_span
 from answer import parse_answer as parse_answer  # the scorer's callers read answers through this module
 from answer_v2 import _ref_key
 from model import MODULE, Definition, Relation, without_span
@@ -29,16 +29,6 @@ SURE = {"resolved", "reexport"}
 NOT_A_CLAIM = {"untyped-receiver"}
 
 
-def _line_span(lines: str | None) -> tuple[int, int] | None:
-    if not lines:
-        return None
-    first, _, last = str(lines).partition("-")
-    try:
-        return int(first), int(last or first)
-    except ValueError:
-        return None
-
-
 def _overlap(definition: Definition, span: tuple[int, int]) -> bool:
     return definition.start <= span[1] and span[0] <= definition.end
 
@@ -50,7 +40,7 @@ def make_resolver(*providers: Callable[[str], list[Definition]]) -> Resolver:
         if not symbol:
             return f"{path}::{MODULE}"
         name = symbol.replace("::", ".").split(".")[-1]
-        span = _line_span(lines)
+        span = line_span(lines)
         fallback = None
         for provider in providers:
             named = [d for d in provider(path) if d.name == name]
@@ -64,7 +54,7 @@ def make_resolver(*providers: Callable[[str], list[Definition]]) -> Resolver:
 
     def by_span(path: str, lines: str) -> str:
         """The definition a bare `path:lines` names: the narrowest one holding the span, else the one overlapping most."""
-        span = _line_span(lines)
+        span = line_span(lines)
         for provider in providers:
             defs = provider(path)
             holding = [d for d in defs if span and d.start <= span[0] and span[1] <= d.end]
@@ -88,14 +78,26 @@ def _strongest(callers: list[AnswerCaller]) -> dict[str, AnswerCaller]:
     """One row per caller: the surest evidence, and among equals a listed row over a folded one, so a pair counts as folded
     only when every row the answer has for it is."""
 
-    def rank(c: AnswerCaller) -> tuple[int, bool]:
-        return EVIDENCE_RANK.get(c.evidence, 0), not c.folded_by
-
     best: dict[str, AnswerCaller] = {}
     for c in callers:
-        if c.from_key not in best or rank(c) > rank(best[c.from_key]):
+        if c.from_key not in best or _rank(c) > _rank(best[c.from_key]):
             best[c.from_key] = c
     return best
+
+
+def _rank(caller: AnswerCaller) -> tuple[int, bool]:
+    return EVIDENCE_RANK.get(caller.evidence, 0), not caller.folded_by
+
+
+def _in_file(callers: list[AnswerCaller], path: str) -> list[AnswerCaller]:
+    return [c for c in callers if c.from_key.partition("::")[0] == path]
+
+
+def _naming(callers: list[AnswerCaller], path: str, sites: list[int]) -> AnswerCaller | None:
+    """The surest row or `also_changed` ref of `path` whose lines hold one of `sites`, whatever key it files the caller under:
+    the oracle keys a use to the definition that encloses it, the engine to the nearest binding, member or container."""
+    named = [c for c in _in_file(callers, path) if any(first <= site <= last for first, last in c.named for site in sites)]
+    return max(named, key=_rank, default=None)
 
 
 def relation_group(kind: str) -> str | None:
@@ -226,7 +228,9 @@ def compare(target: Definition, truth: list[Relation], answer: Answer) -> tuple[
     ignored = {k for k, rels in grouped.items() if all(r.in_diff for r in rels)}
     scored = {k: [r for r in rels if not r.in_diff] for k, rels in grouped.items() if k not in ignored}
     reported = entry_for(target, answer)
-    callers = _strongest(reported.callers) if reported else {}
+    listed = reported.callers if reported else []
+    callers = _strongest(listed)
+    claimed: set[str] = set()  # answer rows that stand for a truth pair under another key: no false positives
     # A symbol the cap cut callers from, or shed whole (its stub carries an "omitted ..." reason in `unresolved`),
     # is a partial answer: the listed callers count, the missing truth is abstention.
     abstained = (
@@ -250,15 +254,19 @@ def compare(target: Definition, truth: list[Relation], answer: Answer) -> tuple[
 
     for from_key, relations in scored.items():
         kind = best_kind(relations)
+        path = from_key.partition("::")[0]
+        if kind == "imports" and _in_file(listed, path):
+            continue  # a static import is no row by design: the file is named by its uses of the target
         row = cell(kind)
         row["truth"] += 1
         affected = any(r.rule is None for r in relations)
         row["truth_affected"] += affected
-        caller = callers.get(from_key)
+        caller = callers.get(from_key) or _naming(listed, path, [r.site for r in relations])
         if caller is None:
             row["fn"] += 1
             status, evidence = "fn", None
         else:
+            claimed.add(caller.from_key)
             status, evidence = ("tp" if caller.evidence in SURE else "tp_weak"), caller.evidence
             row[status] += 1
             false_fold = bool(caller.folded_by) and caller.folded_by not in NOT_A_CLAIM and affected
@@ -286,7 +294,7 @@ def compare(target: Definition, truth: list[Relation], answer: Answer) -> tuple[
             )
         )
     for from_key, caller in callers.items():
-        if from_key in scored or from_key in ignored:
+        if from_key in scored or from_key in ignored or from_key in claimed:
             continue
         kind = caller.kind or {"call": "calls", "reexports": "reexports"}.get(caller.relation, "reads")
         moved = ["R14"] if caller.relation == "also_changed" else []

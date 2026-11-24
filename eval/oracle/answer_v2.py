@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import json
 
-from answer import ROW_KINDS, Answer, AnswerCaller, Resolver, TargetAnswer
+from answer import ROW_KINDS, Answer, AnswerCaller, Resolver, TargetAnswer, line_span
 
 ENTERED = "entered by a runner or the framework: callers not traced"
 LAYOUT = "changed only in comments, formatting or position: callers not traced"
@@ -25,6 +25,11 @@ def _ref_key(ref: dict, resolve: Resolver) -> str:
     return by_span(ref["path"], ref.get("lines", "")) if by_span else resolve(ref["path"], None, None)
 
 
+def _span(ref: dict) -> tuple[tuple[int, int], ...]:
+    span = line_span(ref.get("lines"))
+    return (span,) if span else ()
+
+
 def _shed_total(shed: dict) -> int:
     return sum(int(shed.get(kind, 0) or 0) for kind in ("resolved", "candidate", "name"))
 
@@ -32,11 +37,12 @@ def _shed_total(shed: dict) -> int:
 def _row(row: dict, resolve: Resolver) -> AnswerCaller:
     stated = row.get("kind") if row.get("kind") in ROW_KINDS else None
     return AnswerCaller(
-        resolve(row["path"], row.get("symbol"), row.get("lines")),
+        _ref_key(row, resolve),
         row.get("standing", "resolved"),
         CLASSES.get(row.get("class", "call"), "call"),
         stated,
         row.get("folded_by"),
+        tuple((site, site) for site in row.get("sites") or ()),
     )
 
 
@@ -61,7 +67,8 @@ def parse_v2(data: dict, resolve: Resolver) -> Answer:
         target.callers += [_row(row, resolve) for row in definition.get("rows", [])]
         # A use inside a definition the range changes: structured, so it needs no parsing.
         target.callers += [
-            AnswerCaller(_ref_key(ref, resolve), "resolved", "also_changed") for ref in definition.get("also_changed", [])
+            AnswerCaller(_ref_key(ref, resolve), "resolved", "also_changed", named=_span(ref))
+            for ref in definition.get("also_changed", [])
         ]
     unnamed = 0
     omitted = data.get("omitted")

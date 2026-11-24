@@ -15,6 +15,15 @@ ROW_KINDS = ("calls", "instantiates", "passes_as_value", "writes", "reads", "typ
 V1, V2 = "diffctx.impact.v1", "diffctx.impact.v2"
 
 
+def line_span(lines: str | None) -> tuple[int, int] | None:
+    """`"12"` or `"12-30"` as inclusive first and last line; None for anything else."""
+    first, _, last = str(lines or "").partition("-")
+    try:
+        return int(first), int(last or first)
+    except ValueError:
+        return None
+
+
 @dataclass
 class AnswerCaller:
     from_key: str
@@ -22,6 +31,9 @@ class AnswerCaller:
     relation: str  # call | reference | reexports | also_changed
     kind: str | None = None  # the row's own kind (schema v1, a precise cell only): calls, type_use, ...
     folded_by: str | None = None  # the folding rule the engine applied to this row (Rev 12.1): it would not list it
+    named: tuple[
+        tuple[int, int], ...
+    ] = ()  # the lines of its file the row names (v2): a site, or the span of a changed definition
 
 
 @dataclass
