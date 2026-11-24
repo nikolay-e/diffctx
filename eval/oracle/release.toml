@@ -1,0 +1,132 @@
+# The release gate table: every threshold `scripts/release-gate.sh` judges and none lives in code. The oracle's own
+# thresholds stay in `gates.toml` (its verdict lines are read from `report.json`); a value spelled "@section.name" is
+# read from there so that one number has one home.
+#
+# A gate is one table. Its evidence is `<evidence dir>/<evidence>` (JSON carrying the full `sha` it was measured on); the
+# keys are `<field>_max` (inclusive ceiling), `<field>_min` (inclusive floor), `<field>_below` (exclusive ceiling) and
+# `<field>_is` (equality) over that file's fields, and `<field> = "read"` for a field that must be present and has no
+# limit yet. A field the evidence lacks is "not measured", never a pass. The reserved keys are `evidence`, `rows_of`,
+# `budgets`, `required`, `repo` and `branch`; any other key without a suffix is a configuration error.
+
+[ci]
+# `ci.yml` push run on the sha: every job of it.
+evidence = "ci.json"
+jobs_min = 1
+failed_max = 0
+unfinished_max = 0
+
+[d5_lists]
+# Counted by the script itself from the files as they are at the sha: rows that are neither blank nor comments.
+rows_of = { known_red = "crates/diffctx-native/tests/class_completeness_known_red.txt", known_false_hedges = "crates/diffctx-native/tests/known_false_hedges.txt" }
+known_red_max = 0
+known_false_hedges_max = 0
+
+[identity_b]
+# `cargo test --locked -p diffctx --test identity_corpus -- --ignored`
+evidence = "identity_b.json"
+rc_is = 0
+passed_min = 17
+failed_max = 0
+violations_max = 0
+remainder_max = 0
+
+[mutations]
+# `mutate.py` (the Phase E mutants) and `cargo mutants` over diffctx-occurrence and `decide/**`.
+evidence = "mutations.json"
+rc_is = 0
+killed_min = 11
+survived_max = 0
+occurrence_survivors_max = 0
+decide_survivors_max = 0
+
+[scip_oracle]
+# `measure.py` then `report.py` at each budget: `<evidence dir>/oracle-<budget>/report.json` beside a `sha` file. Every
+# verdict line of a required gate passes at every budget (a lane too thin to measure is not a pass); any line failing,
+# of any gate, is red.
+budgets = ["default", "uncapped"]
+required = ["safety.incomplete_complete", "safety.not_ours_by_place", "safety.false_fold", "coverage.indexed_share", "coverage.measured_share"]
+
+[ext]
+# `judge.py` over PyCG and JCG-Py/JS/Java.
+evidence = "ext.json"
+judged_min = 1
+unresolved_false_absences_max = 0
+
+[dyn]
+# pytest-cov with `--cov-context=test` on the fresh repositories, 1.20.0 column beside it.
+evidence = "dyn.json"
+probes_min = 1
+false_absence_max = 0
+false_complete_max = 0
+hedged = "read"
+
+[hedge]
+# `hedge/compare.py` against the 1.20.0 wheel; `share_delta` is the head's confident-and-correct share minus 1.20.0's.
+evidence = "hedge.json"
+cases_min = 1
+regressions_max = 0
+share_delta_min = 0.0
+
+[ac5]
+evidence = "ac5.json"
+found_min = 34
+noise_share_below = "@ac5.noise"
+
+[git_processes]
+# `cargo test --release -p diffctx --test git_processes`
+evidence = "git_processes.json"
+rc_is = 0
+impact_max = 26
+pack_max = 15
+locate_max = 15
+symbol_max = 12
+
+[cpu_vs_1_20_0]
+# `perf.sh` callgrind instruction ratios of the head to 1.20.0. impact and symbol wait for the owner's threshold.
+evidence = "cpu_vs_1_20_0.json"
+locate_max = 1.05
+pack_max = 1.05
+impact = "read"
+symbol = "read"
+
+[determinism]
+# bitcheck's cells, each run `runs` times at different RAYON_NUM_THREADS; `symbol_spread` is the instruction spread.
+evidence = "determinism.json"
+cells_min = 30
+runs_min = 5
+mismatched_max = 0
+symbol_spread_max = 0.01
+
+[p95]
+# The owner's set in a quiet window; warm is the gate, cold is reported.
+evidence = "p95.json"
+impact_warm_seconds_max = "@speed.impact_p95_seconds"
+symbol_warm_seconds_max = "@speed.impact_p95_seconds"
+hook_in_budget_is = true
+hook_partial_deadline_repeats_max = "@speed.hook_partial_deadline_share"
+impact_cold_seconds = "read"
+symbol_cold_seconds = "read"
+
+[budget]
+# `tests/test_product_budget.py` enforces allow_count and big_files from budget.toml; `dormant_paths` counts what
+# `DIFFCTX_CELL_EDGES` keeps alive without a caller.
+evidence = "budget.json"
+rc_is = 0
+dormant_paths_max = 0
+
+[black_box]
+evidence = "black_box.json"
+clean_rounds_min = 2
+false_absences_max = 0
+leaks_max = 0
+delivery_breaks_max = 0
+
+[verifier]
+evidence = "verifier.json"
+verdict_is = "PASS"
+
+[branch_protection]
+# What finalize-release depends on: admins are not bound by the protection. Read with the owner's `gh`.
+repo = "nikolay-e/diffctx"
+branch = "main"
+enforce_admins_is = false
