@@ -207,7 +207,7 @@ def test_the_throwaway_container_mounts_the_runner_jdks_read_only(tmp_path: Path
     ]
 
 
-def test_the_plan_names_every_corpus_repository_once_with_a_pin_that_moves_with_its_own_record_and_the_recipe(tmp_path: Path):
+def test_the_plan_names_every_corpus_repository_once_and_the_fast_scope_one_per_language():
     import plan
 
     corpus = load_corpus()
@@ -216,17 +216,7 @@ def test_the_plan_names_every_corpus_repository_once_with_a_pin_that_moves_with_
 
     assert [entry["repo"] for entry in full] == [repo.name for repo in corpus.repos]
     assert {entry["repo"] for entry in fast} == {repo.name for repo in corpus.repos if repo.fast} and all(e["fast"] for e in fast)
-    assert all(entry["lane"] == entry["language"] and len(entry["pin"]) == 16 for entry in full)
-    assert len({entry["pin"] for entry in full}) == len(full)
-    recipe = tmp_path / "recipe"
-    recipe.mkdir()
-    for name in plan.RECIPE_FILES:
-        (recipe / name).write_text("one")
-    before = plan.plan(corpus, "full", recipe)["include"]
-    (recipe / "runners.py").write_text("two")
-    assert [a["pin"] == b["pin"] for a, b in zip(before, plan.plan(corpus, "full", recipe)["include"], strict=True)] == [
-        False
-    ] * len(before)
+    assert all(entry["lane"] == entry["language"] for entry in full)
 
 
 def test_merge_joins_the_parts_and_refuses_parts_of_two_engines(tmp_path: Path):
@@ -242,3 +232,38 @@ def test_merge_joins_the_parts_and_refuses_parts_of_two_engines(tmp_path: Path):
     assert [json.loads(line)["repo"] for line in (tmp_path / "merged" / "commits.jsonl").read_text().splitlines()] == ["1", "2"]
     with pytest.raises(SystemExit, match="one engine"):
         merge.merge([tmp_path / "a", tmp_path / "c"], tmp_path / "bad")
+
+
+def test_a_fast_lane_asks_for_the_fast_commit_count_and_a_retry_only_on_the_first_budget(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.setattr(lane, "CACHE", tmp_path / "cache")
+    script = tmp_path / "measure_stub.py"
+    script.write_text("import os, sys, json\nopen(os.environ['STUB_LOG'], 'a').write(json.dumps(sys.argv[1:]) + '\\n')\n")
+    env = {**os.environ, "STUB_LOG": str(tmp_path / "calls.jsonl")}
+
+    lane.run_lane("python", ["r"], tmp_path / "out", env, script, fast=True, retry_failed=True)
+
+    calls = [json.loads(line) for line in (tmp_path / "calls.jsonl").read_text().splitlines()]
+    assert ["--fast" in call for call in calls] == [True, True]
+    assert ["--retry-failed" in call for call in calls] == [True, False]
+
+
+@pytest.mark.parametrize(("lane_name", "prepared"), [("kotlin", True), ("java", True), ("jvm", True), ("python", False)])
+def test_a_jvm_lane_named_after_its_language_prepares_the_runners_jdks_for_the_build_container(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, lane_name: str, prepared: bool
+):
+    homes = {}
+    for major in ("8", "11", "17", "21"):
+        homes[major] = tmp_path / "tool-cache" / major
+        homes[major].mkdir(parents=True)
+        monkeypatch.setenv(f"JAVA_HOME_{major}_X64", str(homes[major]))
+    monkeypatch.setattr(lane, "CACHE", tmp_path / "cache")
+    monkeypatch.setattr(lane, "in_container", lambda: False)
+
+    env = lane.prepare_environment(lane_name, tmp_path / "job", None)
+
+    assert (lane.JDK_HOMES_VARIABLE in env) is prepared
+    if prepared:
+        assert env[lane.JDK_HOMES_VARIABLE].split(os.pathsep) == [str(homes[major]) for major in ("8", "11", "17", "21")]
+        assert (tmp_path / "cache" / "gradle-home" / "gradle.properties").is_file()

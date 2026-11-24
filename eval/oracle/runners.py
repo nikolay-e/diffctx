@@ -199,9 +199,19 @@ MAVEN_IMAGE = "maven@sha256:99e61abcff91a9b1333463bd8451fb18495d6eba9250ac66a338
 GRADLE_OPTS = "-Dorg.gradle.daemon=false -Xmx4g"
 # scip-java's own Maven command (`--batch-mode clean verify -DskipTests`) with the plugins that only run something:
 # a pom's literal `<skipTests>${...}</skipTests>` overrides -DskipTests, so Surefire still ran the tests of older
-# snapshots (`maven.test.skip.exec` wins over it), and docker-maven-plugin needs a daemon the build container lacks.
+# snapshots (`maven.test.skip.exec` wins over it), docker-maven-plugin needs a daemon the build container lacks, and a
+# formatting check (spotless) or a bytecode analysis (spotbugs) fails a snapshot on the plugin's own JDK, not on its code.
 # Test sources are still compiled: callers live there (`maven.test.skip` would drop them).
-MAVEN_BUILD_COMMAND = ["--batch-mode", "clean", "verify", "-DskipTests", "-Dmaven.test.skip.exec=true", "-Ddocker.skip=true"]
+MAVEN_BUILD_COMMAND = [
+    "--batch-mode",
+    "clean",
+    "verify",
+    "-DskipTests",
+    "-Dmaven.test.skip.exec=true",
+    "-Ddocker.skip=true",
+    "-Dspotless.check.skip=true",
+    "-Dspotbugs.skip=true",
+]
 
 
 GRADLE_VERSIONS_BUDGET = 1 << 30  # bytes the per-version Gradle files may take before they are dropped
@@ -241,6 +251,56 @@ def index_arguments(build_tool: str, out: Path) -> list[str]:
     return [f"--build-tool={build_tool}", "--output", str(out), *(["--", *MAVEN_BUILD_COMMAND] if build_tool == "maven" else [])]
 
 
+GRADLE_RUNS_ON_21 = (8, 5)  # the first Gradle that reads the class files of JDK 21
+GRADLE_RUNTIME = 17  # the JDK an older Gradle runs on
+WRAPPER_VERSION = re.compile(r"gradle-(\d+)\.(\d+)")
+JAVA_VERSION = re.compile(r'JAVA_VERSION="(\d+)')
+
+# A Kotlin compiler refuses a dependency whose metadata is newer than it is ("Module was compiled with an incompatible
+# version of Kotlin": a snapshot with a dynamic version resolves a stdlib released after it). The check guards compiled
+# output, which the oracle never runs, and the flag is the compiler's own advice. Gradle loads every init.d script.
+KOTLIN_INIT_SCRIPT = """allprojects {
+    tasks.configureEach { task ->
+        if (task.class.name.startsWith('org.jetbrains.kotlin.gradle.tasks.KotlinCompile')) {
+            if (task.hasProperty('compilerOptions')) {
+                task.compilerOptions.freeCompilerArgs.add('-Xskip-metadata-version-check')
+            } else if (task.hasProperty('kotlinOptions')) {
+                task.kotlinOptions.freeCompilerArgs += ['-Xskip-metadata-version-check']
+            }
+        }
+    }
+}
+"""
+
+
+def write_init_scripts(gradle_home: Path) -> None:
+    script = gradle_home / "init.d" / "oracle-kotlin.gradle"
+    script.parent.mkdir(parents=True, exist_ok=True)
+    if not script.exists() or script.read_text(encoding="utf-8") != KOTLIN_INIT_SCRIPT:
+        script.write_text(KOTLIN_INIT_SCRIPT, encoding="utf-8")
+
+
+def jdk_home(major: int) -> Path | None:
+    """The directory of the JDK of this major version among the machine's JDKs (`ORACLE_JDK_HOMES`), by its release file."""
+    for entry in os.environ.get(JDK_HOMES_VARIABLE, "").split(os.pathsep):
+        release = Path(entry) / "release"
+        if entry and release.is_file():
+            found = JAVA_VERSION.search(release.read_text(encoding="utf-8", errors="replace"))
+            if found and int(found.group(1)) == major:
+                return Path(entry)
+    return None
+
+
+def gradle_java_home(tree: Path) -> Path | None:
+    """The JDK a Gradle build must run on when the snapshot's wrapper names a Gradle that cannot read JDK 21's class files
+    (its own init script fails to load: "Unsupported class file major version 65"); None when the running JDK serves."""
+    properties = tree / "gradle" / "wrapper" / "gradle-wrapper.properties"
+    found = WRAPPER_VERSION.search(properties.read_text(encoding="utf-8", errors="replace")) if properties.is_file() else None
+    if found is None or (int(found.group(1)), int(found.group(2))) >= GRADLE_RUNS_ON_21:
+        return None
+    return jdk_home(GRADLE_RUNTIME)
+
+
 def _plan_jvm(ctx: Context, build_tool: str) -> Plan:
     """scip-java indexes through the repository's build, which runs third-party code.
 
@@ -254,9 +314,13 @@ def _plan_jvm(ctx: Context, build_tool: str) -> Plan:
     gradle = CACHE / "gradle-home"
     maven = CACHE / "maven-home"
     trim_gradle_home(gradle)
+    write_init_scripts(gradle)
+    runtime = gradle_java_home(ctx.tree) if build_tool == "gradle" else None
     if sandboxed():
         env = {**ctx.env, "GRADLE_USER_HOME": str(gradle), "GRADLE_OPTS": GRADLE_OPTS}
-        if "JAVA_HOME" in os.environ:
+        if runtime is not None:
+            env["JAVA_HOME"] = str(runtime)
+        elif "JAVA_HOME" in os.environ:
             env["JAVA_HOME"] = os.environ["JAVA_HOME"]
         return Plan([*start, "index", *index_arguments(build_tool, ctx.out)], env, runs_third_party_code=True)
     docker = shutil.which("docker")
@@ -277,6 +341,7 @@ def _plan_jvm(ctx: Context, build_tool: str) -> Plan:
         "-v", f"{maven}:/root/.m2",
         *[arg for home in os.environ.get(JDK_HOMES_VARIABLE, "").split(os.pathsep) if home for arg in ("-v", f"{home}:{home}:ro")],
         "-e", "GRADLE_USER_HOME=/gradle-home",
+        *(["-e", f"JAVA_HOME={runtime}"] if runtime is not None else []),
         "-e", f"GRADLE_OPTS={GRADLE_OPTS}",
         "-w", "/work",
         MAVEN_IMAGE if build_tool == "maven" else SANDBOX_IMAGE,

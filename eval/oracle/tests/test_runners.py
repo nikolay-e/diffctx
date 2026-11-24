@@ -363,7 +363,16 @@ def test_a_maven_index_build_compiles_the_tests_and_runs_no_test_and_no_docker_p
     command = plans["maven"].command
     build = command[command.index("--") + 1 :]
     assert command[command.index("index") + 1].startswith("--build-tool=maven")
-    assert build == ["--batch-mode", "clean", "verify", "-DskipTests", "-Dmaven.test.skip.exec=true", "-Ddocker.skip=true"]
+    assert build == [
+        "--batch-mode",
+        "clean",
+        "verify",
+        "-DskipTests",
+        "-Dmaven.test.skip.exec=true",
+        "-Ddocker.skip=true",
+        "-Dspotless.check.skip=true",
+        "-Dspotbugs.skip=true",
+    ]
     assert not any(argument.startswith("-Dmaven.test.skip=") for argument in command)  # that one drops the test sources
     assert "--" not in plans["gradle"].command  # scip-java's own Gradle tasks compile every source set and run no test
 
@@ -415,3 +424,105 @@ def test_a_kotlin_compiler_error_is_the_first_error_ahead_of_gradles_own_report(
 
     assert indexing.first_error(output).startswith("e: file:///work/src/test/kotlin/A.kt:3:1 Module was compiled")
     assert indexing.first_error("nothing here blames anything\n") == ""
+
+
+def jdk_home(root: Path, version: str) -> Path:
+    home = root / f"jdk-{version}"
+    home.mkdir(parents=True)
+    (home / "release").write_text(f'IMPLEMENTOR="Eclipse Adoptium"\nJAVA_VERSION="{version}.0.1"\n')
+    return home
+
+
+@pytest.mark.parametrize(
+    ("wrapper", "runs_on_17"),
+    [
+        ("gradle-7.5.1-bin.zip", True),
+        ("gradle-8.1.1-bin.zip", True),
+        ("gradle-8.4-bin.zip", True),
+        ("gradle-8.5-bin.zip", False),
+        ("gradle-8.14.3-bin.zip", False),
+        ("gradle-9.1-bin.zip", False),
+        (None, False),
+    ],
+)
+def test_a_gradle_that_cannot_read_jdk_21_runs_on_the_machines_jdk_17(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, wrapper: str | None, runs_on_17: bool
+):
+    homes = [jdk_home(tmp_path, version) for version in ("8", "11", "17", "21")]
+    monkeypatch.setenv(runners.JDK_HOMES_VARIABLE, os.pathsep.join(str(home) for home in homes))
+    tree = tmp_path / "tree"
+    (tree / "gradle" / "wrapper").mkdir(parents=True)
+    if wrapper:
+        (tree / "gradle" / "wrapper" / "gradle-wrapper.properties").write_text(
+            f"distributionUrl=https\\://services.gradle.org/distributions/{wrapper}\n"
+        )
+
+    assert runners.gradle_java_home(tree) == (homes[2] if runs_on_17 else None)
+
+
+def test_an_old_gradle_gets_jdk_17_as_its_java_home_in_the_build_container_and_in_place(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    home = jdk_home(tmp_path, "17")
+    monkeypatch.setenv(runners.JDK_HOMES_VARIABLE, str(home))
+    launcher = tmp_path / "scip-java"
+    launcher.write_bytes(b"#!/bin/sh\n")
+    monkeypatch.setattr(runners, "tool_path", lambda tool: launcher)
+    monkeypatch.setattr(runners, "CACHE", tmp_path / "cache")
+    monkeypatch.setattr(runners.shutil, "which", lambda name: "/usr/bin/docker")
+    ctx = context(tmp_path, "kotlin", name="old")
+    (ctx.tree / "gradle" / "wrapper").mkdir(parents=True)
+    (ctx.tree / "gradle" / "wrapper" / "gradle-wrapper.properties").write_text("distributionUrl=gradle-8.0.2-bin.zip\n")
+
+    monkeypatch.setattr(runners, "sandboxed", lambda: False)
+    boxed = runners.plan_kotlin(ctx)
+    monkeypatch.setattr(runners, "sandboxed", lambda: True)
+    in_place = runners.plan_kotlin(ctx)
+
+    assert f"JAVA_HOME={home}" in boxed.command
+    assert in_place.env["JAVA_HOME"] == str(home)
+
+
+def test_every_gradle_build_loads_the_init_script_that_skips_the_kotlin_metadata_check(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    launcher = tmp_path / "scip-java"
+    launcher.write_bytes(b"#!/bin/sh\n")
+    monkeypatch.setattr(runners, "tool_path", lambda tool: launcher)
+    monkeypatch.setattr(runners, "CACHE", tmp_path / "cache")
+    monkeypatch.setattr(runners, "sandboxed", lambda: True)
+    ctx = context(tmp_path, "kotlin", name="k")
+    ctx.tree.mkdir()
+
+    runners.plan_kotlin(ctx)
+
+    script = tmp_path / "cache" / "gradle-home" / "init.d" / "oracle-kotlin.gradle"
+    assert "-Xskip-metadata-version-check" in script.read_text()
+
+
+def test_an_indexer_refused_with_429_is_run_again_after_a_wait_and_only_for_that(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    corpus = load_corpus()
+    repo = next(r for r in corpus.repos if r.language == "java")
+    marker = tmp_path / "refused-once"
+    script = (
+        'if [ -e "$0" ]; then touch "$1"; exit 0; fi; touch "$0"; '
+        "echo \"Could not GET 'https://repo.maven.apache.org/x.pom'. Received status code 429 from server: Too Many Requests\" >&2; exit 1"
+    )
+    out = tmp_path / "slot" / "index.scip"
+    out.parent.mkdir()
+    plan = runners.Plan(["sh", "-c", script, str(marker), str(out)], {"PATH": os.environ["PATH"]})
+    monkeypatch.setitem(runners.PLANNERS, "java", lambda ctx: plan)
+    monkeypatch.setattr(indexing, "RATE_LIMIT_WAITS", (0, 0))
+    monkeypatch.setattr(runners, "sandboxed", lambda: True)
+
+    served = indexing._run_indexer(corpus, repo, "a" * 40, tmp_path, out, tmp_path, {}, False)
+
+    assert served.ok and marker.exists()
+
+    plain = runners.Plan(
+        ["sh", "-c", 'echo x >> "$0"; echo broken >&2; exit 1', str(tmp_path / "runs")], {"PATH": os.environ["PATH"]}
+    )
+    monkeypatch.setitem(runners.PLANNERS, "java", lambda ctx: plain)
+    failed = indexing._run_indexer(corpus, repo, "b" * 40, tmp_path, tmp_path / "slot2" / "index.scip", tmp_path, {}, False)
+
+    assert not failed.ok and (tmp_path / "runs").read_text().count("x") == 1  # a failure that is not a refusal runs once

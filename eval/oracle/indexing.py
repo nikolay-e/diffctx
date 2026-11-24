@@ -27,6 +27,10 @@ TOOLS = corpus_config.ROOT / "tools"
 FAILURE_LOG = "failure.log"  # beside the index slot: the end of what a failed indexer printed
 FAILURE_LOG_CHARS = 200_000
 REASON_CHARS = 400
+# Maven Central answers a shared runner address with 429 for a while; Gradle retries within milliseconds, so the harness
+# waits (seconds) and runs the build again, which resumes from the artifacts it already has.
+RATE_LIMITED = "status code 429"
+RATE_LIMIT_WAITS = (30, 90, 270)
 # The first line a failed build blames: Maven `[ERROR] ...`, Kotlin `e: ...`, javac `error: ...` or `File.java:3: error: ...`.
 ERROR_LINE = re.compile(r"\[ERROR\]\s+\S|e: |error: |\S+\.java:\d+: error: ")
 WHAT_WENT_WRONG = "* What went wrong:"  # Gradle's report: the next line names the failure
@@ -203,6 +207,20 @@ def first_error(output: str) -> str:
     return headers[0][:REASON_CHARS] if headers else ""
 
 
+def _run_until_served(
+    command: list[str], cwd: Path, env: dict[str, str], timeout: int
+) -> tuple[subprocess.CompletedProcess[bytes], str]:
+    """Run the indexer; again after a wait when a download was refused with 429, up to `RATE_LIMIT_WAITS` times."""
+    for wait in (*RATE_LIMIT_WAITS, None):
+        done = subprocess.run(command, cwd=cwd, env=env, capture_output=True, timeout=timeout, check=False)
+        output = (done.stderr + done.stdout).decode(errors="replace")
+        if done.returncode == 0 or wait is None or RATE_LIMITED not in output:
+            break
+        print(f"{cwd.name}: a download was refused with 429; again in {wait}s", flush=True)
+        time.sleep(wait)
+    return done, output
+
+
 def _run_indexer(
     corpus: corpus_config.Corpus,
     repo: corpus_config.Repo,
@@ -223,14 +241,11 @@ def _run_indexer(
         result.reason = f"{NEEDS_SANDBOX}: refused to run the repository's build tooling outside a container"
         return result
     try:
-        done = subprocess.run(
-            plan.command, cwd=tree, env=plan.env, capture_output=True, timeout=corpus.index_seconds, check=False
-        )
+        done, output = _run_until_served(plan.command, tree, plan.env, corpus.index_seconds)
     except subprocess.TimeoutExpired:
         result.reason = "timeout"
         return result
     if done.returncode != 0 or not out.exists():
-        output = (done.stderr + done.stdout).decode(errors="replace")
         out.parent.mkdir(parents=True, exist_ok=True)
         (out.parent / FAILURE_LOG).write_text(output[-FAILURE_LOG_CHARS:], encoding="utf-8")
         blamed = first_error(output) or output[-REASON_CHARS:].strip().replace("\n", " | ")

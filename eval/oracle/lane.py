@@ -22,6 +22,7 @@ from runners import JDK_HOMES_VARIABLE, SANDBOX_VARIABLE, in_container
 
 MEASURE = Path(__file__).with_name("measure.py")
 BUDGETS = ("default", "uncapped")
+JVM_LANES = ("jvm", "java", "kotlin")  # the cluster ran both JVM languages as one lane; CI names a lane after its language
 
 
 def prepare_environment(lane: str, job: Path, shared_index: Path | None) -> dict[str, str]:
@@ -34,12 +35,13 @@ def prepare_environment(lane: str, job: Path, shared_index: Path | None) -> dict
     if shared_index is not None and not (CACHE / "index").exists():
         CACHE.mkdir(parents=True, exist_ok=True)
         (CACHE / "index").symlink_to(shared_index)
-    if lane != "jvm":
+    if lane not in JVM_LANES:
         return env
     if in_container():
         prepared = jvmtoolchains.prepare(job, CACHE / "gradle-home", job / "m2", jvmtoolchains.default_java_home(), env=env)
         jvmtoolchains.claim_local_repository(job / "m2", Path(pwd.getpwuid(os.getuid()).pw_dir))
         env[SANDBOX_VARIABLE] = "1"
+        env[JDK_HOMES_VARIABLE] = os.pathsep.join(str(home) for home in prepared.jdk_homes)
         if prepared.maven_bin:
             env["PATH"] = f"{prepared.maven_bin}{os.pathsep}{env['PATH']}"
     elif jvmtoolchains.runner_jdks(jvmtoolchains.load_pins(), env) is not None:
@@ -47,18 +49,23 @@ def prepare_environment(lane: str, job: Path, shared_index: Path | None) -> dict
             job, CACHE / "gradle-home", CACHE / "maven-home", jvmtoolchains.default_java_home(), env=env, maven=False
         )
         env[JDK_HOMES_VARIABLE] = os.pathsep.join(str(home) for home in prepared.jdk_homes)
+        print(f"JDKs mounted into the build container: {env[JDK_HOMES_VARIABLE]}", flush=True)
     else:
         print("no container and no JDKs on this machine: the JVM builds run in a container with the JDK it ships", flush=True)
     return env
 
 
-def measure_command(repo: str, budget: str, out: Path, script: Path = MEASURE, fast: bool = False) -> list[str]:
+def measure_command(
+    repo: str, budget: str, out: Path, script: Path = MEASURE, fast: bool = False, retry_failed: bool = False
+) -> list[str]:
     return [
         sys.executable,
         str(script),
         "--repo",
         repo,
         *(["--budget", "uncapped"] if budget == "uncapped" else []),
+        *(["--fast"] if fast else []),
+        *(["--retry-failed"] if retry_failed else []),
         "--append",
         "--out",
         str(out),
@@ -73,6 +80,7 @@ def run_lane(
     script: Path = MEASURE,
     budgets: tuple[str, ...] = BUDGETS,
     fast: bool = False,
+    retry_failed: bool = False,
 ) -> int:
     """Measure each repository once per budget into `out/<budget>/<lane>`; 1 when any repository failed, the rest still run."""
     failed = 0
@@ -82,7 +90,10 @@ def run_lane(
         for repo in repos:
             print(f"=== measure {budget} {repo} ===", flush=True)
             done = subprocess.run(
-                measure_command(repo, budget, target, script, fast), env=env, stdin=subprocess.DEVNULL, check=False
+                measure_command(repo, budget, target, script, fast, retry_failed and budget == budgets[0]),
+                env=env,
+                stdin=subprocess.DEVNULL,
+                check=False,
             )
             if done.returncode != 0:
                 print(f"FAILED {budget} {repo}", flush=True)
@@ -101,9 +112,18 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--out", type=Path, required=True, help="the round's directory: <out>/<budget>/<lane>")
     parser.add_argument("--budgets", nargs="+", choices=BUDGETS, default=list(BUDGETS))
     parser.add_argument("--fast", action="store_true", help="the fast subset's commit count")
+    parser.add_argument("--retry-failed", action="store_true", help="index again the snapshots whose cached index failed")
     parser.add_argument("--shared-index", type=Path, help="an index cache shared between rounds, linked into the oracle cache")
     options = parser.parse_args(argv)
     corpus = load_corpus()
     setup_tools(corpus, {repo.language for repo in corpus.select(options.repos)})
     env = prepare_environment(options.lane, options.job, options.shared_index)
-    return run_lane(options.lane, options.repos, options.out, env, budgets=tuple(options.budgets), fast=options.fast)
+    return run_lane(
+        options.lane,
+        options.repos,
+        options.out,
+        env,
+        budgets=tuple(options.budgets),
+        fast=options.fast,
+        retry_failed=options.retry_failed,
+    )
