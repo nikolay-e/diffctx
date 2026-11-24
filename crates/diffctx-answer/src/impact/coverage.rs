@@ -81,7 +81,7 @@ pub(crate) fn scope_coverage(output: &ImpactOutput) -> decide::coverage::Coverag
             total: output.unread_directories.len(),
         });
     }
-    decide::coverage::Coverage::close(decide::coverage::Evidence::Run, gaps)
+    decide::coverage::Coverage::of_run(gaps)
 }
 
 /// A definition the answer lists as one nothing calls: only a complete search

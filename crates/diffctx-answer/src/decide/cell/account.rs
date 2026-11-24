@@ -14,7 +14,7 @@ use diffctx_occurrence::tokens::occurrence::debug::{Shadow, sink};
 
 use diffctx_occurrence::tokens::occurrence::{Index, Known, Standing, View};
 
-use diffctx_resolve::resolve::{Binding, Relation, Resolution, UnresolvedReason};
+use diffctx_resolve::resolve::{Binding, Definition, Relation, Resolution, UnresolvedReason};
 
 use diffctx_resolve::vocabulary::family::{Family, Resolver};
 
@@ -133,11 +133,11 @@ impl Cell {
     /// Whether the account holds a hedge, read like `stranded`: no write, no memo.
     pub(crate) fn hedged(&self, changed: &Changed) -> bool {
         let done = self.account_occurrences(changed, &[], false);
-        !done.hedges.is_empty()
+        !done.accounted.hedges().is_empty()
     }
 
     fn account_occurrences(&self, changed: &Changed, gaps: &[Gap], write: bool) -> Accounting {
-        let mut out = sink().filter(|_| write);
+        let out = sink().filter(|_| write);
         let files = self.shadow_files.get_or_init(|| {
             let mut files: Vec<FileFacts> = self
                 .head
@@ -257,31 +257,25 @@ impl Cell {
             .filter(|definition| changed.stale.contains(&definition.key))
             .map(|definition| (definition, SideTag::Base));
         let (callers, stranded) = self.stranded_uses(&view, changed);
-        let mut all = Accounting {
-            hedges: Vec::new(),
-            unused: true,
-            whole: true,
+        let mut written = self.shadow_written.borrow_mut();
+        let known = |definition: &Definition| Known {
+            dispatched: self.dispatched_via(definition).is_some(),
+            consumed_outside: self.consumed_outside(),
+            root_module: self.head.root_module(definition.file.as_str()),
+            exported: false,
+        };
+        let accounted = shadow.write_all(
+            out,
+            &mut written,
+            heads
+                .chain(removed)
+                .map(|(definition, side)| (definition, side, known(definition))),
+        );
+        Accounting {
+            accounted,
             callers,
             stranded,
-            elsewhere: HashSet::new(),
-            quoted: 0,
-        };
-        for (definition, side) in heads.chain(removed) {
-            let known = Known {
-                dispatched: self.dispatched_via(definition).is_some(),
-                consumed_outside: self.consumed_outside(),
-                root_module: self.head.root_module(definition.file.as_str()),
-                exported: false,
-            };
-            let mut written = self.shadow_written.borrow_mut();
-            let done = shadow.write(out.as_mut(), &mut written, definition, side, known);
-            all.hedges.extend(done.hedges);
-            all.unused &= done.unused;
-            all.whole &= done.whole;
-            all.elsewhere.extend(done.elsewhere);
-            all.quoted += done.quoted;
         }
-        all
     }
 
     /// Whether the range's own new lines spell the use's name in its file: they moved the use

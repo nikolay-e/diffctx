@@ -18,21 +18,7 @@ tokens::occurrence use diffctx_facts::facts::Lexical
 tokens::occurrence use implicit::{Known, entered, implicit_kinds}
 tokens::occurrence use outcome::{FileOutcomes, Index, View, admitted, counts_against, outcomes}
 tokens::occurrence use scanner::{Case, Scan, scan}
-tokens::occurrence::Account struct derive(Clone, Debug, Eq, PartialEq)
-tokens::occurrence::Account.admits_calls field bool
-tokens::occurrence::Account.alias_bound field Option<AliasBound>
-tokens::occurrence::Account.consumed_by_reading field bool
-tokens::occurrence::Account.definition field DefKey
-tokens::occurrence::Account.entries field Vec<Entry>
-tokens::occurrence::Account.files field usize
-tokens::occurrence::Account.implicit field Vec<Implicit>
-tokens::occurrence::Account.mentions field usize
-tokens::occurrence::Account.relation field Relation
-tokens::occurrence::Account.side field SideTag
-tokens::occurrence::Account.too_common field Option<usize>
-tokens::occurrence::Account.unread field Vec<Unread>
-tokens::occurrence::Account::new fn (definition: DefKey, relation: Relation, side: SideTag) -> Self
-tokens::occurrence::Account::verdict fn (&self) -> Verdict
+tokens::occurrence use seal::{Accounted, Sealed, Settled, Settlement}
 tokens::occurrence::Alias struct derive(Clone, Debug, Eq, PartialEq)
 tokens::occurrence::Alias.hops field usize
 tokens::occurrence::Alias.name field Name
@@ -74,6 +60,7 @@ tokens::occurrence::Entry::counts_for fn (&self, relation: Relation) -> bool
 tokens::occurrence::Hedge enum derive(Clone, Debug, Eq, PartialEq)
 tokens::occurrence::Hedge impl fmt::Display for Hedge
 tokens::occurrence::Hedge::AliasBound variant AliasBound(AliasBound)
+tokens::occurrence::Hedge::BaseUnread variant BaseUnread
 tokens::occurrence::Hedge::Candidate variant Candidate { file: RepoPath, line: u32, bytes: Range<u32>, reason: Reason, }
 tokens::occurrence::Hedge::Implicit variant Implicit(Implicit)
 tokens::occurrence::Hedge::Leak variant Leak { file: RepoPath, line: u32, place: ValuePlace, callee: Option<Name>, }
@@ -101,7 +88,7 @@ tokens::occurrence::Outcome::Alias variant Alias(Alias)
 tokens::occurrence::Outcome::Candidate variant Candidate(Reason)
 tokens::occurrence::Outcome::Declaration variant Declaration
 tokens::occurrence::Outcome::Leak variant Leak(ValuePlace)
-tokens::occurrence::Outcome::NotOurs variant NotOurs(Witness)
+tokens::occurrence::Outcome::NotOurs variant NotOurs { witness: Witness, }
 tokens::occurrence::Outcome::Ours variant Ours
 tokens::occurrence::Outcome::as_str fn (&self) -> &'static str
 tokens::occurrence::Proof struct derive(Clone, Copy, Debug, Eq, PartialEq)
@@ -119,19 +106,11 @@ tokens::occurrence::Reason::WideBinding variant WideBinding
 tokens::occurrence::Standing enum derive(Clone, Copy, Debug, Eq, PartialEq)
 tokens::occurrence::Standing::Candidate variant Candidate(&'static str)
 tokens::occurrence::Standing::Resolved variant Resolved
-tokens::occurrence::Unread struct derive(Clone, Debug, Eq, PartialEq)
-tokens::occurrence::Unread.file field RepoPath
-tokens::occurrence::Unread.loss field Loss
 tokens::occurrence::ValuePlace enum derive(Clone, Copy, Debug, Eq, Hash, PartialEq)
 tokens::occurrence::ValuePlace::Argument variant Argument
 tokens::occurrence::ValuePlace::Element variant Element
 tokens::occurrence::ValuePlace::Return variant Return
 tokens::occurrence::ValuePlace::Store variant Store
-tokens::occurrence::Verdict enum derive(Clone, Debug, Eq, PartialEq)
-tokens::occurrence::Verdict::Complete variant Complete(Proof)
-tokens::occurrence::Verdict::Partial variant Partial(Vec<Hedge>)
-tokens::occurrence::Verdict::as_str fn (&self) -> &'static str
-tokens::occurrence::Verdict::is_complete fn (&self) -> bool
 tokens::occurrence::Witness enum derive(Clone, Debug, Eq, PartialEq)
 tokens::occurrence::Witness::BareName variant BareName(Vec<Name>)
 tokens::occurrence::Witness::Builtin variant Builtin(RepoPath)
@@ -151,12 +130,6 @@ tokens::occurrence::Witness::Statement variant Statement(Name)
 tokens::occurrence::Witness::Unreached variant Unreached(RepoPath)
 tokens::occurrence::Witness::as_str fn (&self) -> &'static str
 tokens::occurrence::debug mod
-tokens::occurrence::debug::Accounted struct
-tokens::occurrence::debug::Accounted.elsewhere field HashSet<(RepoPath, u32)>
-tokens::occurrence::debug::Accounted.hedges field Vec<(Relation, Hedge)>
-tokens::occurrence::debug::Accounted.quoted field usize
-tokens::occurrence::debug::Accounted.unused field bool
-tokens::occurrence::debug::Accounted.whole field bool
 tokens::occurrence::debug::Shadow struct
 tokens::occurrence::debug::Shadow.cache field &'a FactsCache
 tokens::occurrence::debug::Shadow.ctx field &'a AnalysisContext
@@ -173,7 +146,7 @@ tokens::occurrence::debug::Shadow.outside field &'a [RepoPath]
 tokens::occurrence::debug::Shadow.reach field &'a dyn Fn(&str) -> bool
 tokens::occurrence::debug::Shadow.tokens field &'a TokenIndex
 tokens::occurrence::debug::Shadow.view field &'a View<'a>
-tokens::occurrence::debug::Shadow::write fn ( &self, out: Option<&mut File>, written: &mut Written, definition: &Definition, side: SideTag, known: Known, ) -> Accounted
+tokens::occurrence::debug::Shadow::write_all fn <'d>( &self, mut out: Option<File>, written: &mut Written, definitions: impl IntoIterator<Item = (&'d Definition, SideTag, Known)>, ) -> Accounted
 tokens::occurrence::debug::Written type HashSet<(String, String, Option<&'static str>)>
 tokens::occurrence::debug::sink fn () -> Option<File>
 tokens::occurrence::identity mod
