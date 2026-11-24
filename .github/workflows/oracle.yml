@@ -8,11 +8,17 @@ name: oracle
 #
 # On pull_request it runs for the label `oracle` (fast subset: one repository per language, ten commits) or
 # `oracle:full` (the whole corpus). A push to relay/arch runs the full set too: GitHub shares a cache only down from a
-# branch to the pull requests into it, so that run is what fills the per-repository index caches a PR then restores.
+# branch to the pull requests into it, and a pull request's own entries are visible to that request alone, so that
+# run is what fills the per-repository index caches every other request then restores.
 # workflow_dispatch and schedule are declared for later: GitHub fires both only for a workflow file on the default
 # branch.
 #
 # The full set is cancelled by nothing but its own timeout; only a fast run gives way to the next push.
+#
+# Every repository's job measures both budgets (default and uncapped) and the report job gates each. The index of a
+# repository lives in one cache entry per change: a job restores the latest entry of its repository whatever recipe
+# built it, indexes only the snapshots that are missing or failed (--retry-failed), and saves a new entry only when
+# it indexed something. The measure step has its own timeout, so the index and the rows are kept when it overruns.
 #
 # Kotlin and Java are indexed through the repository's own build, which executes build scripts and downloaded code:
 # the oracle starts it in a throwaway container (the runner's Docker) and never runs it on the runner itself. The JDKs
@@ -245,46 +251,68 @@ jobs:
             17
             21
 
-      - name: Restore this repository's index
+      - name: Restore the latest index of this repository
         id: index-cache
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
           path: ${{ runner.temp }}/oracle-cache/index/${{ matrix.repo }}
-          key: oracle-index-${{ matrix.repo }}-${{ matrix.pin }}
+          key: oracle-index-${{ matrix.repo }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: oracle-index-${{ matrix.repo }}-
+
+      - name: Mark the moment the restored index is in place
+        run: touch "$RUNNER_TEMP/index-restored"
 
       - name: Index and measure
+        id: measure
+        timeout-minutes: 320
         env:
           FAST: ${{ matrix.fast }}
         run: |
           mkdir -p "$ORACLE_CACHE"
-          flags=(--budgets default)
+          flags=(--retry-failed)
           if [ "$FAST" = true ]; then flags+=(--fast); fi
           uv run --frozen --directory eval/oracle python run.py lane \
             --lane "${{ matrix.lane }}" --repos "${{ matrix.repo }}" \
             --job "$RUNNER_TEMP/job" --out "$RUNNER_TEMP/part" "${flags[@]}"
 
-      - name: Sizes
+      - name: What the index cache did
+        id: index-changes
         if: ${{ !cancelled() }}
+        env:
+          MATCHED: ${{ steps.index-cache.outputs.cache-matched-key }}
         run: |
+          dir="$ORACLE_CACHE/index/${{ matrix.repo }}"
+          indexed="$(find "$dir" -name meta.json -newer "$RUNNER_TEMP/index-restored" 2>/dev/null | wc -l | tr -d ' ')"
+          size="$(du -sh "$dir" 2>/dev/null | cut -f1)"
+          echo "changed=$([ "$indexed" -gt 0 ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
           {
             echo "### ${{ matrix.repo }}"
-            size="$(du -sh "$ORACLE_CACHE/index/${{ matrix.repo }}" 2>/dev/null | cut -f1)"
-            echo "- index cache: ${size:-none} (restored: ${{ steps.index-cache.outputs.cache-hit || 'false' }})"
+            echo "- index cache: ${size:-none}, restored from: ${MATCHED:-nothing}"
+            echo "- snapshots indexed in this run: ${indexed}"
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Save this repository's index, restored or not, so a failed round still keeps what it built
-        if: ${{ always() && steps.index-cache.outputs.cache-hit != 'true' }}
+      - name: Save the index when this run changed it, under a new key
+        if: ${{ always() && steps.index-changes.outputs.changed == 'true' }}
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
           path: ${{ runner.temp }}/oracle-cache/index/${{ matrix.repo }}
-          key: oracle-index-${{ matrix.repo }}-${{ matrix.pin }}
+          key: oracle-index-${{ matrix.repo }}-${{ github.run_id }}-${{ github.run_attempt }}
 
-      - name: Upload the part
+      - name: Upload the default-budget part
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
         with:
-          name: oracle-part-${{ matrix.repo }}
+          name: oracle-part-default-${{ matrix.repo }}
           path: ${{ runner.temp }}/part/default/${{ matrix.lane }}
+          retention-days: 30
+          if-no-files-found: warn
+
+      - name: Upload the uncapped-budget part
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        with:
+          name: oracle-part-uncapped-${{ matrix.repo }}
+          path: ${{ runner.temp }}/part/uncapped/${{ matrix.lane }}
           retention-days: 30
           if-no-files-found: warn
 
@@ -318,22 +346,26 @@ jobs:
           bin="$RUNNER_TEMP/artifacts/diffctx-bin/diffctx"
           uv run --frozen --directory eval/oracle python run.py selftest --bin "$bin"
 
-      - name: Join the parts, report and gate
+      - name: Join the parts, report and gate both budgets
         env:
           ARTIFACTS: ${{ runner.temp }}/artifacts
           OUT: ${{ github.workspace }}/oracle-out
         run: |
           mkdir -p "$OUT"
           cd eval/oracle
-          uv run --frozen python run.py merge --out "$OUT/run" "$ARTIFACTS"/oracle-part-*
-          flags=(--run "$OUT/run")
-          suites="$ARTIFACTS/oracle-suites"
-          [ -f "$suites/harness.json" ] && flags+=(--harness "$suites/harness.json")
-          [ -f "$suites/metamorphic.log" ] && flags+=(--metamorphic "$suites/metamorphic.log")
-          [ -f "$suites/faults.log" ] && flags+=(--faults "$suites/faults.log")
           status=0
-          uv run --frozen python run.py report "${flags[@]}" --gate || status=$?
-          cat "$OUT/run/report.md" >> "$GITHUB_STEP_SUMMARY"
+          for budget in default uncapped; do
+            uv run --frozen python run.py merge --out "$OUT/$budget" "$ARTIFACTS"/oracle-part-"$budget"-*
+            flags=(--run "$OUT/$budget")
+            suites="$ARTIFACTS/oracle-suites"
+            if [ "$budget" = default ]; then
+              [ -f "$suites/harness.json" ] && flags+=(--harness "$suites/harness.json")
+              [ -f "$suites/metamorphic.log" ] && flags+=(--metamorphic "$suites/metamorphic.log")
+              [ -f "$suites/faults.log" ] && flags+=(--faults "$suites/faults.log")
+            fi
+            uv run --frozen python run.py report "${flags[@]}" --gate || status=1
+            { echo "## Budget: $budget"; cat "$OUT/$budget/report.md"; } >> "$GITHUB_STEP_SUMMARY"
+          done
           exit "$status"
 
       - name: Upload the report
