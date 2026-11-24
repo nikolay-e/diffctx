@@ -75,7 +75,9 @@ jobs:
             ~/.cargo/git
             target
           key: scoreboard-build-${{ needs.plan.outputs.product }}
-          restore-keys: cargo-${{ runner.os }}-
+          restore-keys: |
+            cargo-rust-${{ runner.os }}-release-
+            cargo-${{ runner.os }}-
       - name: Release binary
         run: cargo build --release --locked --bin diffctx
       - name: Wheel
@@ -196,12 +198,6 @@ jobs:
       - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
         with:
           toolchain: "1.100.0"
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-          key: scoreboard-registry-${{ hashFiles('Cargo.lock') }}
       - run: sudo apt-get update -qq && sudo apt-get install -y -qq valgrind strace >/dev/null
       - name: Both binaries, symbols kept
         env:
@@ -314,12 +310,16 @@ jobs:
       - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
         with:
           toolchain: "1.100.0"
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-          key: scoreboard-registry-${{ hashFiles('Cargo.lock') }}
+            target
+          key: cargo-rust-${{ runner.os }}-release-${{ hashFiles('Cargo.lock') }}
+          restore-keys: |
+            cargo-rust-${{ runner.os }}-release-
+            cargo-${{ runner.os }}-
       - name: Every case, baseline ignored, every diff case reporting its score
         run: |
           mkdir -p out
@@ -492,12 +492,6 @@ jobs:
       - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
         with:
           toolchain: "1.100.0"
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-          key: scoreboard-registry-${{ hashFiles('Cargo.lock') }}
       - name: The identity over every language
         run: |
           mkdir -p out
