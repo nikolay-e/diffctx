@@ -1,0 +1,41 @@
+name: py_read_through_a_parameter_the_modules_own_call_fills_is_no_gap
+mode: impact
+source: synthetic
+issue_state: open
+tags: [python, untyped-receiver, uncalled-function, decoy]
+repo:
+  initial_files:
+    pkg/__init__.py: ""
+    pkg/settings.py: |
+      class Settings:
+          timeout = 1
+    pkg/boot.py: |
+      from pkg.settings import Settings
+
+
+      def default():
+          return Settings()
+    pkg/job.py: |
+      def read(cfg):
+          return cfg.timeout
+
+
+      def run(x):
+          return read(x)
+
+
+      RESULT = run(0)
+  changed_files:
+    pkg/settings.py: |
+      class Settings:
+          timeout = 30
+  commit_message: "settings: wait longer"
+expect:
+  callers:
+    timeout: []
+  decoys:
+    timeout: [pkg/job.py]
+# The module's own top level calls `run(0)`, `run` forwards to `read`: every call of
+# `read` is one the file makes with a value it builds, and the file imports nothing
+# that could hand `cfg` a Settings. The read is no use of `Settings.timeout`, and the
+# answer says so, complete.

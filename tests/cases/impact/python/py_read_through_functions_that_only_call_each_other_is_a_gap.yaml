@@ -1,0 +1,38 @@
+name: py_read_through_functions_that_only_call_each_other_is_a_gap
+mode: impact
+source: synthetic
+issue_state: open
+tags: [python, untyped-receiver, uncalled-function, coverage]
+repo:
+  initial_files:
+    pkg/__init__.py: ""
+    pkg/settings.py: |
+      class Settings:
+          timeout = 1
+    pkg/boot.py: |
+      from pkg.settings import Settings
+
+
+      def default():
+          return Settings()
+    pkg/job.py: |
+      def ping(cfg, n):
+          if n:
+              return pong(cfg, n - 1)
+          return cfg.timeout
+
+
+      def pong(cfg, n):
+          return ping(cfg, n)
+  changed_files:
+    pkg/settings.py: |
+      class Settings:
+          timeout = 30
+  commit_message: "settings: wait longer"
+expect:
+  partial:
+    pkg/settings.py::Settings.timeout:
+      reads: unlanded
+# `ping` and `pong` call each other and nothing else calls either: no top-level code of
+# the file runs them, so code outside the snapshot enters the pair with any object,
+# a Settings among them. The read of `cfg.timeout` is an open gap, not a zero.

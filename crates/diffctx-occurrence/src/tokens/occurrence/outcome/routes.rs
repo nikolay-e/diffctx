@@ -11,7 +11,7 @@ use crate::tokens::occurrence::rows::{CLASSIC_PAGES, DESERIALIZERS, ISOLATED_MOD
 use crate::tokens::occurrence::{Reason, Witness};
 use diffctx_base::testfiles::is_test_path;
 use diffctx_facts::facts::{
-    DefKey, Fact, FileFacts, Local, LocalKind, Name, Receiver, Scope, UseKind,
+    DefKey, EntryKind, Fact, FileFacts, Local, LocalKey, LocalKind, Name, Receiver, Scope, UseKind,
 };
 use diffctx_resolve::resolve::{Binding, Definition, Relation, Resolution, UnresolvedReason};
 use diffctx_snapshot::snapshot::RepoPath;
@@ -226,8 +226,11 @@ impl Reading<'_> {
         })
     }
 
-    /// Whether the read's chain starts at a parameter of a function nothing in the file calls: the
-    /// file is a root, so what calls the function from outside hands it any object.
+    /// Whether the read's chain starts at a parameter of a function no code the file runs of
+    /// itself calls: the file is a root, so what calls the function from outside hands it any
+    /// object. A call is the file's own when the top level makes it or a function that takes
+    /// no parameter, or one the file calls itself: `run(x)` forwards `x` to `read` and nothing
+    /// calls `run`, so what calls `run` from outside fills `read`'s parameter.
     fn entered_parameter(&self, binding: &Binding) -> bool {
         let Some(head) = self.chain_head(binding) else {
             return false;
@@ -243,11 +246,53 @@ impl Reading<'_> {
         else {
             return false;
         };
-        !self.file.blob.facts.iter().any(|fact| {
-            matches!(fact, Fact::Reference(r)
-                if r.name == function.name
-                    && !encloses(&Scope::Def(function.clone()), &r.enclosing))
+        !self.called_inside(function, &mut Vec::new())
+    }
+
+    /// Whether something outside the code enters the file at a definition that holds `scope`.
+    fn entered_at(&self, scope: &Scope) -> bool {
+        self.file.blob.facts.iter().any(|fact| {
+            matches!(fact, Fact::EntryPoint(entry)
+                if matches!(entry.target, Scope::Def(_)) && encloses(&entry.target, scope))
         })
+    }
+
+    /// Whether the file's top level, or a function it calls the same way, calls `function`.
+    fn called_inside(&self, function: &LocalKey, seen: &mut Vec<LocalKey>) -> bool {
+        if seen.contains(function) {
+            return false;
+        }
+        seen.push(function.clone());
+        let own = Scope::Def(function.clone());
+        self.file.blob.facts.iter().any(|fact| match fact {
+            Fact::Reference(r) if r.name == function.name && !encloses(&own, &r.enclosing) => {
+                let mut scope = &r.enclosing;
+                while let Scope::Callback { parent, .. } = scope {
+                    scope = parent;
+                }
+                let Scope::Def(caller) = scope else {
+                    return true;
+                };
+                let takes = self
+                    .locals
+                    .iter()
+                    .any(|local| local.kind == LocalKind::Parameter && local.enclosing == *scope);
+                !takes || (!self.entered_at(scope) && self.called_inside(caller, seen))
+            }
+            _ => false,
+        })
+    }
+
+    /// Whether what the subject's file defines circulates beyond it: another file imports it,
+    /// or it is no script, so code outside the snapshot may.
+    fn circulates(&self) -> bool {
+        self.view.index.routes.imported(&self.subject.file)
+            || !(self.view.files.iter()).any(|file| {
+                file.path == self.subject.file
+                    && (file.blob.facts.iter()).any(|fact| {
+                        matches!(fact, Fact::EntryPoint(e) if e.kind == EntryKind::ScriptGuard)
+                    })
+            })
     }
 
     /// Whether the read's chain starts at a name nothing in the file binds (`Svc.fetch` where no
@@ -268,16 +313,14 @@ impl Reading<'_> {
     /// The claim of an untyped member read: not ours when nothing brings an object of the
     /// subject's class to the receiver (no import, entry or run-time load of the file can, and
     /// the receiver is no parameter of a function something outside the code enters: a test, a
-    /// route, or a function nothing in its file calls when another file imports the subject's:
-    /// its instances circulate), else a candidate.
+    /// route, or a function no code of its file runs of itself calls when the subject's file is
+    /// no script or another file imports it: its instances circulate), else a candidate.
     pub(super) fn unreached(&self, binding: &Binding, reason: UnresolvedReason) -> Claim {
         let relation = Some(binding.relation);
         let (file, subject) = (&self.file.path, &self.subject.file);
         let routes = &self.view.index.routes;
-        let entered = self.file.blob.facts.iter().any(|fact| {
-            matches!(fact, Fact::EntryPoint(entry)
-                if matches!(entry.target, Scope::Def(_)) && encloses(&entry.target, &binding.from))
-        }) || (routes.imported(subject) && self.entered_parameter(binding));
+        let entered = self.entered_at(&binding.from)
+            || (self.circulates() && self.entered_parameter(binding));
         let isolated = |language| ISOLATED_MODULES.iter().any(|f| f.has(language));
         let cut = || {
             isolated(self.file.language())
