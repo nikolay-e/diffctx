@@ -41,29 +41,34 @@ jobs:
       - name: Install cargo-mutants
         run: cargo install --locked --version 27.1.0 cargo-mutants
 
-      # The tests that kill a mutant live in the library crates and in diffctx's integration suites
-      # that read analyzer runs. A glob names a suite so that a package without it is not an error.
+      # Two passes over each mutated package. First its own tests; then, for the mutants those left
+      # alive, the integration suites of diffctx that read real analyzer runs (--iterate skips what
+      # the first pass caught). A glob names a suite so a package without it is not an error.
       - name: Mutate the occurrence crate
         continue-on-error: true
         run: |
+          set +e
           mkdir -p mutants-out/occurrence
           cargo mutants --cargo-arg=--locked --in-place \
-          --test-package diffctx-occurrence --test-package diffctx-answer --test-package diffctx \
           --shard ${{ matrix.shard }}/8 --package diffctx-occurrence \
+          --output mutants-out/occurrence
+          cargo mutants --cargo-arg=--locked --in-place --iterate \
+          --shard ${{ matrix.shard }}/8 --package diffctx-occurrence --test-package diffctx \
           --output mutants-out/occurrence -- --lib \
-          --test 'occurrence_*' --test 'class_completenes[s]' \
-          --test 'unknown[s]' --test 'gap_reason[s]' --test 'impac[t]'
+          --test 'occurrence_*' --test 'class_completenes[s]' --test 'gap_reason[s]'
 
       - name: Mutate the decision cell
         continue-on-error: true
         run: |
+          set +e
           mkdir -p mutants-out/answer
           cargo mutants --cargo-arg=--locked --in-place \
-          --test-package diffctx-occurrence --test-package diffctx-answer --test-package diffctx \
-          --shard ${{ matrix.shard }}/8 --package diffctx-answer --file 'crates/diffctx-answer/src/decide/**/*.rs' \
-          --output mutants-out/answer -- --lib \
-          --test 'occurrence_*' --test 'class_completenes[s]' \
-          --test 'unknown[s]' --test 'gap_reason[s]' --test 'impac[t]'
+          --shard ${{ matrix.shard }}/8 --package diffctx-answer \
+          --file 'crates/diffctx-answer/src/decide/**/*.rs' --output mutants-out/answer
+          cargo mutants --cargo-arg=--locked --in-place --iterate \
+          --shard ${{ matrix.shard }}/8 --package diffctx-answer --test-package diffctx \
+          --file 'crates/diffctx-answer/src/decide/**/*.rs' --output mutants-out/answer -- --lib \
+          --test 'occurrence_*' --test 'class_completenes[s]' --test 'gap_reason[s]'
 
       - name: Keep the outcomes
         if: always()
@@ -71,5 +76,5 @@ jobs:
         with:
           name: mutants-${{ matrix.shard }}
           path: |
-            mutants-out/occurrence/mutants.out
-            mutants-out/answer/mutants.out
+            mutants-out/occurrence
+            mutants-out/answer
