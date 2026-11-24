@@ -182,14 +182,15 @@ def test_the_suites_script_reads_every_suite_off_the_tree(tmp_path):
         ["rest:1/4", "rest:2/4", "rest:3/4", "rest:4/4", "corpus:1/2", "corpus:2/2"],
     ],
 )
-def test_the_parts_of_the_suites_script_run_each_suite_once(tmp_path, parts):
+@pytest.mark.parametrize("runner_os", ["Linux", "macOS", "Windows"])
+def test_the_parts_of_the_suites_script_run_each_suite_once(tmp_path, parts, runner_os):
     """CI runs the script in parts: together they are the whole, and nothing
-    runs twice."""
+    runs twice, on the weights of each OS."""
     calls = []
     for i, part in enumerate(parts):
         workdir = tmp_path / str(i)
         workdir.mkdir()
-        result, run_calls = _run_script(workdir, args=(part,))
+        result, run_calls = _run_script(workdir, args=(part,), RUNNER_OS=runner_os)
         assert result.returncode == 0, result.stderr
         calls += run_calls
     names = re.findall(r"--test (\w+)", "\n".join(calls))
