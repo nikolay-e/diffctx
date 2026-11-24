@@ -392,13 +392,11 @@ mod tests {
         }
     }
 
-    /// Regression for #83: when a changed file has no selected fragment and
-    /// the postpass fallback must pick one, a same-file signature stub that
-    /// is merely *smaller* must not be preferred over a same-file fragment
-    /// that actually covers the diff hunk (core_ids), as long as the core
-    /// fragment also fits the remaining budget.
-    #[test]
-    fn ensure_changed_files_represented_prefers_core_fragment_when_it_fits() {
+    /// What the fallback picks for a changed file whose only selection candidates are a core
+    /// fragment and the signature stub that stands in for it, under `budget`: the core, the
+    /// stub, and what was selected. The stub is the stand-in the selection would have
+    /// recorded; the rank rule reads that fact, it no longer re-derives it.
+    fn represented_under(budget: u32) -> (Fragment, Fragment, Vec<Fragment>) {
         let core = frag(
             "a.ts",
             10,
@@ -415,8 +413,6 @@ mod tests {
         );
         let all_fragments = vec![core.clone(), stub.clone()];
         let core_ids: FxHashSet<FragmentId> = std::iter::once(core.id.clone()).collect();
-        // The stub is the stand-in the selection would have recorded for this
-        // core; the rank rule reads that fact, it no longer re-derives it.
         let stand_in_ids: FxHashSet<FragmentId> = std::iter::once(stub.id.clone()).collect();
         let changed_files = vec![PathBuf::from("a.ts")];
         let mut selected: Vec<Fragment> = Vec::new();
@@ -425,14 +421,24 @@ mod tests {
             &mut selected,
             &all_fragments,
             &changed_files,
-            100,
+            budget,
             Path::new("."),
             &diffctx_snapshot::source::Source::empty(),
             &core_ids,
             &FxHashMap::default(),
             &stand_in_ids,
         );
+        (core, stub, selected)
+    }
 
+    /// Regression for #83: when a changed file has no selected fragment and
+    /// the postpass fallback must pick one, a same-file signature stub that
+    /// is merely *smaller* must not be preferred over a same-file fragment
+    /// that actually covers the diff hunk (core_ids), as long as the core
+    /// fragment also fits the remaining budget.
+    #[test]
+    fn ensure_changed_files_represented_prefers_core_fragment_when_it_fits() {
+        let (core, _, selected) = represented_under(100);
         assert_eq!(selected.len(), 1, "expected exactly one fallback fragment");
         assert_eq!(
             selected[0].id, core.id,
@@ -485,40 +491,7 @@ mod tests {
     /// (some representation beats none).
     #[test]
     fn ensure_changed_files_represented_falls_back_to_stub_when_core_does_not_fit() {
-        let core = frag(
-            "a.ts",
-            10,
-            20,
-            diffctx_base::types::FragmentKind::Function,
-            60,
-        );
-        let stub = frag(
-            "a.ts",
-            10,
-            10,
-            diffctx_base::types::FragmentKind::FunctionSignature,
-            10,
-        );
-        let all_fragments = vec![core.clone(), stub.clone()];
-        let core_ids: FxHashSet<FragmentId> = std::iter::once(core.id.clone()).collect();
-        // The stub is the stand-in the selection would have recorded for this
-        // core; the rank rule reads that fact, it no longer re-derives it.
-        let stand_in_ids: FxHashSet<FragmentId> = std::iter::once(stub.id.clone()).collect();
-        let changed_files = vec![PathBuf::from("a.ts")];
-        let mut selected: Vec<Fragment> = Vec::new();
-
-        ensure_changed_files_represented(
-            &mut selected,
-            &all_fragments,
-            &changed_files,
-            15,
-            Path::new("."),
-            &diffctx_snapshot::source::Source::empty(),
-            &core_ids,
-            &FxHashMap::default(),
-            &stand_in_ids,
-        );
-
+        let (_, stub, selected) = represented_under(15);
         assert_eq!(selected.len(), 1);
         assert_eq!(selected[0].id, stub.id);
     }
