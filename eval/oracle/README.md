@@ -56,8 +56,9 @@ JDKs and Maven (`jvm-toolchains.toml`) and writes the Gradle installations and
 `<out>/<budget>/<lane>`. The workflow template names only an image, resources
 and that command.
 
-The scheduled run draws a random metamorphic stream (`DIFFCTX_METAMORPHIC_SEED`,
-`DIFFCTX_METAMORPHIC_CASES`); locally set the same two variables before
+The scheduled run and a push to relay/arch draw a random metamorphic stream
+(`DIFFCTX_METAMORPHIC_SEED`, `DIFFCTX_METAMORPHIC_CASES`), seeded by the run id
+and printed; locally set the same two variables before
 `cargo test --release --test metamorphic` and pass its log as
 `ORACLE_METAMORPHIC_REPORT`. The door test needs `DIFFCTX_NATIVE_BIN`; the
 oracle does not.

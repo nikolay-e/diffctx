@@ -13,7 +13,8 @@ name: oracle
 # workflow_dispatch and schedule are declared for later: GitHub fires both only for a workflow file on the default
 # branch.
 #
-# The full set is cancelled by nothing but its own timeout; only a fast run gives way to the next push.
+# A push to a pull request cancels that request's run. A push to relay/arch never cancels the run in progress: the
+# pending one is replaced by the newest, so a landing every few minutes cannot keep a three-hour measure from finishing.
 #
 # Every repository's job measures both budgets (default and uncapped) and the report job gates each. The index of a
 # repository lives in one cache entry per change: a job restores the latest entry of its repository whatever recipe
@@ -46,9 +47,7 @@ name: oracle
 
 concurrency:
   group: oracle-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: >-
-    ${{ github.event_name == 'pull_request'
-    && !contains(github.event.pull_request.labels.*.name, 'oracle:full') }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
@@ -111,14 +110,16 @@ jobs:
         with:
           toolchain: "1.100.0"
 
-      - name: Cache the Cargo registry (never the target directory)
+      - name: Cache the Cargo registry (never the target directory); this is the one job that saves it
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-          key: cargo-registry-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
-          restore-keys: cargo-registry-${{ runner.os }}-
+          key: cargo-rust-${{ runner.os }}-release-${{ hashFiles('Cargo.lock') }}
+          restore-keys: |
+            cargo-rust-${{ runner.os }}-release-
+            cargo-${{ runner.os }}-
 
       - name: Build the release binary from this head
         run: cargo build --release --locked --bin diffctx
@@ -150,14 +151,16 @@ jobs:
         with:
           toolchain: "1.100.0"
 
-      - name: Cache the Cargo registry (never the target directory)
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+      - name: Cache the Cargo registry (never the target directory); only the build job saves it
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-          key: cargo-registry-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
-          restore-keys: cargo-registry-${{ runner.os }}-
+          key: cargo-rust-${{ runner.os }}-release-${{ hashFiles('Cargo.lock') }}
+          restore-keys: |
+            cargo-rust-${{ runner.os }}-release-
+            cargo-${{ runner.os }}-
 
       - name: YAML corpus (impact and symbol strata)
         env:
@@ -171,8 +174,9 @@ jobs:
         if: ${{ !cancelled() }}
         run: |
           mkdir -p "$REPORT_DIR"
-          if [ "$GITHUB_EVENT_NAME" = schedule ]; then
+          if [ "$GITHUB_EVENT_NAME" = schedule ] || [ "$GITHUB_EVENT_NAME" = push ]; then
             export DIFFCTX_METAMORPHIC_SEED="$GITHUB_RUN_ID" DIFFCTX_METAMORPHIC_CASES=1000
+            echo "metamorphic stream: seed=$DIFFCTX_METAMORPHIC_SEED cases=$DIFFCTX_METAMORPHIC_CASES"
           fi
           cargo test --release --test metamorphic 2>&1 | tee "$REPORT_DIR/metamorphic.log"
 
@@ -181,6 +185,15 @@ jobs:
         run: |
           mkdir -p "$REPORT_DIR"
           cargo test --release --test git_faults 2>&1 | tee "$REPORT_DIR/faults.log"
+
+      - name: Hook property suite
+        if: ${{ !cancelled() }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = schedule ] || [ "$GITHUB_EVENT_NAME" = push ]; then
+            export DIFFCTX_HOOK_PROPERTY_SEED="$GITHUB_RUN_ID"
+            echo "hook property stream: seed=$DIFFCTX_HOOK_PROPERTY_SEED"
+          fi
+          cargo test --release --test hook_property 2>&1 | tee "$REPORT_DIR/hook_property.log"
 
       - name: Upload the suite logs
         if: ${{ !cancelled() }}
