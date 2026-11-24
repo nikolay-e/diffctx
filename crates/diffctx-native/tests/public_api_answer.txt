@@ -380,7 +380,6 @@ decide::coverage::Coverage::Partial variant Partial(Vec<Gap>)
 decide::coverage::Coverage::both fn (self, other: Self) -> Self
 decide::coverage::Coverage::close fn (relation: Relation, sealed: &Sealed, mut gaps: Vec<Gap>) -> Self
 decide::coverage::Coverage::gaps fn (&self) -> &[Gap]
-decide::coverage::Coverage::of_run fn (gaps: Vec<Gap>) -> Self
 decide::coverage::Coverage::partial fn (gap: Gap) -> Self
 decide::coverage::Coverage::with fn (self, gap: Option<Gap>) -> Self
 decide::coverage::Coverage::witness fn (&self) -> Option<Complete>

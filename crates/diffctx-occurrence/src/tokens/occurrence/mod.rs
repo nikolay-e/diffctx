@@ -22,7 +22,7 @@ use std::ops::Range;
 
 use diffctx_facts::facts::{DefKey, ModulePath, Name, Scope, Span};
 use diffctx_resolve::resolve::{CandidateReason, Relation, UnresolvedReason};
-use diffctx_snapshot::snapshot::{Loss, RepoPath, SideTag};
+use diffctx_snapshot::snapshot::{Loss, RepoPath};
 
 pub use diffctx_facts::facts::Lexical;
 pub use implicit::{Known, entered, implicit_kinds};
@@ -384,19 +384,13 @@ pub(crate) struct Unread {
     pub(crate) loss: Loss,
 }
 
-/// Everything the accounting found for one (definition, relation) of one side.
+/// Everything the accounting found for one relation of a definition at one side.
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub(crate) struct Account {
-    pub(crate) definition: DefKey,
     pub(crate) relation: Relation,
-    pub(crate) side: SideTag,
-    /// The files of the group whose occurrences were accounted.
-    pub(crate) files: usize,
     /// The code occurrences, each with its outcome.
     pub(crate) entries: Vec<Entry>,
     pub(crate) unread: Vec<Unread>,
-    /// Occurrences in strings nobody explained: counted, never blocking.
-    pub(crate) mentions: usize,
     pub(crate) implicit: Vec<Implicit>,
     /// The definition's kind admits `calls`: only then a leak stands against it
     /// (a property is read, never called).
@@ -411,15 +405,11 @@ pub(crate) struct Account {
 }
 
 impl Account {
-    pub(crate) fn new(definition: DefKey, relation: Relation, side: SideTag) -> Self {
+    pub(crate) fn new(relation: Relation) -> Self {
         Self {
-            definition,
             relation,
-            side,
-            files: 0,
             entries: Vec::new(),
             unread: Vec::new(),
-            mentions: 0,
             implicit: Vec::new(),
             admits_calls: true,
             consumed_by_reading: false,
@@ -492,7 +482,7 @@ impl Account {
             self.too_common
                 .map(|occurrences| Hedge::TooCommon { occurrences }),
         );
-        Verdict::of(hedges)
+        Verdict::of(hedges, 1)
     }
 }
 
@@ -555,36 +545,36 @@ impl fmt::Display for Hedge {
     }
 }
 
-/// What a `Complete` verdict carries. Only the account of a real run makes one, because the field is
-/// private to this module tree: another crate holds a [`Sealed`] verdict and asks it for the proof.
+/// What a `Complete` verdict carries. Only a settled account of at least one definition makes one,
+/// because the field is private to this module tree: another crate holds a [`Sealed`] verdict and
+/// asks it for the proof.
 ///
-/// ```
-/// use diffctx_occurrence::tokens::occurrence::{Outcome, Proof, Sealed};
-///
-/// fn matched(outcome: &Outcome, sealed: &Sealed) -> Option<Proof> {
-///     matches!(outcome, Outcome::NotOurs { .. }).then(|| sealed.proof()).flatten()
-/// }
-/// ```
-///
-/// ```compile_fail
+/// ```compile_fail,E0423
 /// use diffctx_occurrence::tokens::occurrence::Proof;
 /// let _ = Proof(());
 /// ```
 ///
-/// ```compile_fail
+/// ```compile_fail,E0599
 /// use diffctx_occurrence::tokens::occurrence::Proof;
 /// let _ = Proof::default();
 /// ```
 ///
-/// ```compile_fail
+/// ```compile_fail,E0639
 /// use diffctx_facts::facts::Name;
 /// use diffctx_occurrence::tokens::occurrence::{Outcome, Witness};
 /// let _ = Outcome::NotOurs { witness: Witness::Statement(Name::new("drop")) };
 /// ```
+///
+/// ```compile_fail,E0423
+/// use diffctx_occurrence::tokens::occurrence::Sealed;
+/// let _ = Sealed(());
+/// ```
+
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct Proof(());
 
-/// The verdict of one account: complete, or what stands in the way.
+/// The verdict of one account: complete, or what stands in the way (no hedge at all when no
+/// definition was accounted).
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub(crate) enum Verdict {
     Complete(Proof),
@@ -592,9 +582,10 @@ pub(crate) enum Verdict {
 }
 
 impl Verdict {
-    /// The one place a `Proof` is made: no hedge stands in the way.
-    fn of(hedges: Vec<Hedge>) -> Self {
-        if hedges.is_empty() {
+    /// The one place a `Proof` is made: no hedge stands in the way of what `definitions` accounted,
+    /// and something was.
+    fn of(hedges: Vec<Hedge>, definitions: usize) -> Self {
+        if hedges.is_empty() && definitions > 0 {
             Self::Complete(Proof(()))
         } else {
             Self::Partial(hedges)

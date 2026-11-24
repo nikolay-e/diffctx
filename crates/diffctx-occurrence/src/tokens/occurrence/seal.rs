@@ -18,7 +18,8 @@ pub struct Settled<'a> {
     pub relation: Relation,
 }
 
-/// One relation's account, closed. Its proof is the only `Complete` anything outside this crate holds.
+/// One relation's account, closed. Its proof is the only evidence of a definition's `Complete` that
+/// anything outside this crate holds.
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct Sealed(Verdict);
 
@@ -51,6 +52,8 @@ pub struct Settlement {
 /// [`Accounted::settle`] closes them.
 pub struct Accounted {
     pub(super) hedges: Vec<(Relation, Hedge)>,
+    /// How many definitions were accounted: over none, nothing is proven and no relation seals complete.
+    pub(super) definitions: usize,
     /// No occurrence is a use, an alias, a leak or a candidate.
     pub unused: bool,
     /// The lines, at the head, whose quoted spelling resolved to another definition: a
@@ -71,7 +74,9 @@ impl Accounted {
     /// of a shorthand). A candidate in a span of its own is another use that no binding settles, on
     /// a line already listed: counted, never listed again. A value the use hands on (returned,
     /// collected) still hedges the calls it leaves. `relation_of` says which relation a hedge stands
-    /// in: it moves a hedge, never drops one.
+    /// in: it moves a hedge, never drops one. Only the relations of use are sealed: a hedge that
+    /// stands in another (type uses, imports, re-exports) stays in `Settlement::hedges` and blocks
+    /// no seal.
     pub fn settle(
         &self,
         resolved: &[Settled<'_>],
@@ -108,7 +113,10 @@ impl Accounted {
             let own = (hedges.iter())
                 .filter(|(of, _)| *of == relation)
                 .map(|(_, hedge)| hedge.clone());
-            (relation, Sealed(Verdict::of(own.collect())))
+            (
+                relation,
+                Sealed(Verdict::of(own.collect(), self.definitions)),
+            )
         });
         Settlement {
             by_relation,

@@ -77,7 +77,6 @@ struct Found {
     unread: HashMap<RepoPath, Loss>,
     mentions: usize,
     quoted: usize,
-    files: HashSet<RepoPath>,
     elsewhere: HashSet<(RepoPath, u32)>,
     #[cfg(debug_assertions)]
     identity: Option<super::identity::Ledger>,
@@ -107,6 +106,7 @@ impl Shadow<'_> {
     ) -> Accounted {
         let mut all = Accounted {
             hedges: Vec::new(),
+            definitions: 0,
             unused: true,
             elsewhere: HashSet::new(),
             quoted: 0,
@@ -114,6 +114,7 @@ impl Shadow<'_> {
         for (definition, side, known) in definitions {
             let done = self.write(out.as_mut(), written, definition, side, known);
             all.hedges.extend(done.hedges);
+            all.definitions += done.definitions;
             all.unused &= done.unused;
             all.elsewhere.extend(done.elsewhere);
             all.quoted += done.quoted;
@@ -240,8 +241,7 @@ impl Shadow<'_> {
             )
         });
         for (relation, gaps) in pairs {
-            let mut account = Account::new(definition.key.clone(), relation, side);
-            account.files = found.files.len();
+            let mut account = Account::new(relation);
             account.entries = found
                 .entries
                 .iter()
@@ -252,7 +252,6 @@ impl Shadow<'_> {
                 .cloned()
                 .collect();
             account.unread.clone_from(&unread);
-            account.mentions = found.mentions;
             account.implicit.clone_from(&implicit);
             account.admits_calls = admits_calls;
             account.consumed_by_reading = consumed_by_reading;
@@ -297,6 +296,7 @@ impl Shadow<'_> {
         }
         Accounted {
             hedges,
+            definitions: 1,
             unused,
             quoted: found.quoted,
             elsewhere: if side == SideTag::Head {
@@ -327,7 +327,6 @@ impl Shadow<'_> {
             if matches!(scope, Some(AliasScope::File(only)) if *only != file) {
                 continue;
             }
-            found.files.insert(file.clone());
             let lost = (self.lost)(&file);
             let Some((facts, text)) = self.read(&file).filter(|_| lost.is_none()) else {
                 #[cfg(debug_assertions)]

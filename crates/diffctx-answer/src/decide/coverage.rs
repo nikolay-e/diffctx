@@ -1,5 +1,5 @@
 //! The witness that a search left nothing unread and the places that make it (`Coverage::close` for a
-//! definition, `Coverage::of_run` for the run), with the counts and claims that hold it.
+//! definition, the crate's `Coverage::of_run` for the run), with the counts and claims that hold it.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -16,23 +16,21 @@ use super::verdict::Verdict;
 /// The witness that the search for a definition's uses covered everything that
 /// could name it. It has no public field and no `Default`: `Coverage::close` makes
 /// it from the one thing that proves a definition's account complete, a `Sealed`
-/// verdict of the occurrence accounting, and `Coverage::of_run` makes it for what
-/// is no definition's. An absence or an exact count cannot be written without it.
+/// verdict of the occurrence accounting. The crate's own `Coverage::of_run` makes
+/// it for what is no definition's, and no other crate can. An absence or an exact
+/// count cannot be written without it.
 ///
-/// ```
-/// use diffctx_answer::decide::coverage::{Complete, Coverage};
-///
-/// fn held(coverage: &Coverage) -> Option<Complete> {
-///     coverage.witness()
-/// }
-/// ```
-///
-/// ```compile_fail
+/// ```compile_fail,E0423
 /// use diffctx_answer::decide::coverage::{Complete, Coverage};
 /// let _ = Coverage::Complete(Complete(()));
 /// ```
 ///
-/// ```compile_fail
+/// ```compile_fail,E0624
+/// use diffctx_answer::decide::coverage::Coverage;
+/// let _ = Coverage::of_run(Vec::new());
+/// ```
+///
+/// ```compile_fail,E0451
 /// use diffctx_occurrence::tokens::occurrence::Accounted;
 /// let _ = Accounted { hedges: Vec::new(), unused: true, elsewhere: Default::default(), quoted: 0 };
 /// ```
@@ -136,13 +134,15 @@ impl Coverage {
         }
         match sealed.proof() {
             Some(_) if gaps.is_empty() => Self::Complete(Complete(())),
+            // A seal over no accounted definition names no hedge; the partial still says why.
+            _ if gaps.is_empty() => Self::partial(Gap::NotTraced),
             _ => Self::Partial(gaps),
         }
     }
 
     /// What the run's own gaps leave of a coverage no definition's account stands behind: the
     /// run's limits, a local whose every use lies in a body the answer lists.
-    pub fn of_run(gaps: Vec<Gap>) -> Self {
+    pub(crate) fn of_run(gaps: Vec<Gap>) -> Self {
         if gaps.is_empty() {
             Self::Complete(Complete(()))
         } else {

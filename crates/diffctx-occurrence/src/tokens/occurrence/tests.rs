@@ -3,7 +3,7 @@
 
 use std::collections::HashSet;
 
-use diffctx_facts::facts::{DefKey, Language, LocalKey, ModulePath, Name, ProjectId, Span};
+use diffctx_facts::facts::{Name, Span};
 use diffctx_resolve::resolve::{CandidateReason, Relation};
 use diffctx_snapshot::snapshot::{Loss, RepoPath, SideTag};
 
@@ -17,15 +17,9 @@ fn path(name: &str) -> RepoPath {
 }
 
 fn account(relation: Relation, entries: Vec<Entry>) -> Account {
-    let key = DefKey {
-        project: ProjectId::default(),
-        language: Language::Python,
-        module: ModulePath::new("sample"),
-        local: LocalKey::value("f"),
-    };
     Account {
         entries,
-        ..Account::new(key, relation, SideTag::Head)
+        ..Account::new(relation)
     }
 }
 
@@ -81,8 +75,7 @@ fn an_account_with_every_occurrence_explained_is_complete() {
     .into_iter()
     .map(|outcome| entry(1, None, outcome))
     .collect();
-    let mut explained = account(Relation::Calls, entries);
-    explained.mentions = 3;
+    let explained = account(Relation::Calls, entries);
     assert!(explained.verdict().is_complete());
     assert_eq!(explained.verdict().as_str(), "complete");
     assert!(account(Relation::Reads, Vec::new()).verdict().is_complete());
@@ -195,6 +188,7 @@ fn a_not_ours_names_its_row_by_its_witness() {
 fn accounted(hedges: Vec<(Relation, Hedge)>) -> Accounted {
     Accounted {
         hedges,
+        definitions: 1,
         unused: true,
         elsewhere: HashSet::new(),
         quoted: 0,
@@ -234,6 +228,12 @@ fn a_hedge_seals_only_the_relation_it_stands_in() {
             .iter()
             .all(|(_, sealed)| sealed.proof().is_some())
     );
+    let none = Accounted {
+        definitions: 0,
+        ..accounted(Vec::new())
+    };
+    let nothing = none.settle(&[], same);
+    assert!(nothing.by_relation.iter().all(|(_, s)| s.proof().is_none()));
     let hedge = candidate_at(3, 10..11, Reason::Unexplained);
     let stood = accounted(vec![(Relation::TypeUses, hedge.clone())]);
     let moved = |relation, _: &Hedge| match relation {
