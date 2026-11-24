@@ -23,7 +23,7 @@ def fold_rule(delta: Delta, kind: str, runtime_annotation: bool = False) -> str 
     """The rule under which the table folds a relation of `kind` after `delta`, None when the relation is affected."""
     if delta.change in NEVER_FOLDED:
         return None
-    if delta.change == "doc_layout" and delta.shape == "callable" and not delta.decorated:
+    if delta.change == "doc_layout" and delta.shape == "callable" and not (delta.decorated and delta.doc_reworded):
         return "no-code-change"
     if delta.change == "body" and delta.shape == "callable":
         if kind == "overrides":

@@ -49,6 +49,7 @@ class Delta:
     typed: bool = False  # a callable's parameters and return type are declared; a variable's type is
     constructor: bool = False
     parameters: tuple[str, ...] = ()  # the parameters a compatible change added
+    doc_reworded: bool = False  # a `doc_layout` change whose docstring words changed: a re-indent alone leaves them
 
 
 def shape_of(definition: Definition) -> str:
@@ -238,27 +239,20 @@ def _visibility(declaration: Node | None, grammar: str, source: bytes) -> int:
     return 3 if exported or member else 1
 
 
-def _without_docstring(declaration: Node | None, grammar: str, source: bytes) -> list[str]:
-    """The tokens of a declaration with a leading Python docstring left out (comments are never tokens)."""
+def _code_and_doc(declaration: Node | None, grammar: str, source: bytes) -> tuple[list[str], list[str]]:
+    """The tokens of a declaration without its leading Python docstring (comments are never tokens), and the docstring's
+    words as the engine hashes them: a re-indent keeps the words, a rewording does not."""
     tokens = _tokens(declaration, source)
-    if declaration is None or grammar != "python":
-        return tokens
-    body = declaration.child_by_field_name("body")
+    body = declaration.child_by_field_name("body") if declaration is not None and grammar == "python" else None
     first = next(iter(syntax.kids(body, True)), None) if body is not None else None
-    doc = (
-        first
-        if first is not None
-        and first.type == "expression_statement"
-        and any(c.type == "string" for c in syntax.kids(first, True))
-        else None
-    )
-    if doc is None:
-        return tokens
-    inner = _tokens(doc, source)
+    if first is None or first.type != "expression_statement" or not any(c.type == "string" for c in syntax.kids(first, True)):
+        return tokens, []
+    words = source[first.start_byte : first.end_byte].decode("utf-8", "replace").split()
+    inner = _tokens(first, source)
     for i in range(len(tokens) - len(inner) + 1):
         if tokens[i : i + len(inner)] == inner:
-            return tokens[:i] + tokens[i + len(inner) :]
-    return tokens
+            return tokens[:i] + tokens[i + len(inner) :], words
+    return tokens, words
 
 
 def _ambiguous(snapshot: Snapshot, definition: Definition) -> bool:
@@ -300,8 +294,12 @@ def classify(item: ChangedDefinition, base: Snapshot, head: Snapshot) -> Delta:
         return Delta("other", shape, decorated)
     typed = _typed_callable(new, grammar, new_source)
     if before.signature == after.signature:
-        if _without_docstring(old, grammar, old_source) == _without_docstring(new, grammar, new_source):
-            return Delta("doc_layout", shape, decorated, typed, constructor)
+        (old_code, old_words), (new_code, new_words) = (
+            _code_and_doc(old, grammar, old_source),
+            _code_and_doc(new, grammar, new_source),
+        )
+        if old_code == new_code:
+            return Delta("doc_layout", shape, decorated, typed, constructor, doc_reworded=old_words != new_words)
         return Delta("body", shape, decorated, typed, constructor)
     added = _added_optional(old, new, grammar, old_source, new_source)
     if added:

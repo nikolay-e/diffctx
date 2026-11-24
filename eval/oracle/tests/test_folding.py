@@ -25,9 +25,13 @@ def test_a_doc_or_layout_edit_of_an_undecorated_callable_folds_every_relation():
     assert {fold_rule(undecorated, kind) for kind in KINDS} == {"no-code-change"}
 
 
-def test_a_decorator_may_read_the_docstring_so_a_decorated_callable_or_a_class_folds_nothing():
-    assert all(fold_rule(Delta("doc_layout", "callable", decorated=True), kind) is None for kind in KINDS)
+def test_a_decorator_may_read_the_docstring_so_a_decorated_callable_with_new_words_or_a_class_folds_nothing():
+    assert all(fold_rule(Delta("doc_layout", "callable", decorated=True, doc_reworded=True), kind) is None for kind in KINDS)
     assert all(fold_rule(Delta("doc_layout", "class"), kind) is None for kind in KINDS)
+
+
+def test_a_re_indented_docstring_reads_the_same_to_a_decorator_so_a_decorated_callable_folds_it():
+    assert {fold_rule(Delta("doc_layout", "callable", decorated=True), kind) for kind in KINDS} == {"no-code-change"}
 
 
 def test_marking_keeps_the_rule_on_each_relation_and_affected_means_no_rule():

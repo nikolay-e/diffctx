@@ -147,3 +147,25 @@ def test_a_constructor_is_marked_and_a_decorated_one_stays_decorated(tmp_path: P
     assert delta_of(tmp_path, "m.py", cls, cls.replace("pass", "self.x = 1"), "C.__init__").constructor
     found = delta_of(tmp_path, "m.py", cls, cls.replace("return 1", "return 2"), "C.v")
     assert found.decorated and found.change == "body"
+
+
+DOCUMENTED = (
+    "import functools\n\n\nclass C:\n    @classmethod\n    def f(cls, a):\n"
+    '        """Guess the lexer.\n\n        Needs a name.\n        """\n        return a\n'
+)
+
+
+@pytest.mark.parametrize(
+    ("old", "new", "reworded"),
+    [
+        (DOCUMENTED, DOCUMENTED.replace("        Needs", "    Needs").replace('        """\n', '    """\n'), False),
+        (DOCUMENTED, DOCUMENTED.replace("Needs a name", "Needs a path"), True),
+        (DOCUMENTED, DOCUMENTED.replace('        """Guess the lexer.\n\n        Needs a name.\n        """\n', ""), True),
+    ],
+)
+def test_a_decorated_callable_whose_docstring_was_only_re_indented_is_layout_and_one_reworded_is_not(
+    tmp_path, old, new, reworded
+):
+    delta = delta_of(tmp_path, "m.py", old, new, "C.f")
+
+    assert (delta.change, delta.decorated, delta.doc_reworded) == ("doc_layout", True, reworded)
