@@ -18,6 +18,8 @@ use once_cell::sync::Lazy;
 use regex::Regex;
 use rustc_hash::FxHashMap;
 
+use diffctx_base::paths::normalize_lexical;
+
 use super::{Naming, PATH_TOKEN, SCRIPT_EXTENSIONS, extension, is_document, naming};
 
 /// A file that a directory spelled alone stands for, and the extension of the
@@ -106,8 +108,8 @@ impl Spellings {
                             return None;
                         }
                         let to = match link.rsplit_once('/') {
-                            Some((dir, _)) => inside(&format!("{dir}/{text}")),
-                            None => inside(text),
+                            Some((dir, _)) => normalize_lexical(&format!("{dir}/{text}")),
+                            None => normalize_lexical(text),
                         }?;
                         Some((link, to))
                     })
@@ -263,22 +265,6 @@ fn role_of(path: &str) -> Option<&str> {
     (parent == "roles" || parent.ends_with("/roles")).then_some(name)
 }
 
-/// A relative `path` with `.` and `..` resolved, or `None` when it leaves the
-/// repository.
-fn inside(path: &str) -> Option<String> {
-    let mut parts: Vec<&str> = Vec::new();
-    for part in path.split('/') {
-        match part {
-            "" | "." => {}
-            ".." => {
-                parts.pop()?;
-            }
-            p => parts.push(p),
-        }
-    }
-    Some(parts.join("/"))
-}
-
 fn stem(path: &str) -> &str {
     let name = path.rsplit('/').next().unwrap_or(path);
     name.rsplit_once('.').map_or(name, |(stem, _)| stem)
@@ -416,7 +402,7 @@ fn script_dirs(path: &str, content: &str) -> Vec<(String, String)> {
                     && v.chars()
                         .all(|ch| ch.is_alphanumeric() || matches!(ch, '_' | '.' | '/' | '-'))
             })
-            .and_then(|v| inside(&v))
+            .and_then(|v| normalize_lexical(&v))
             .map(|d| if d.is_empty() { ".".to_string() } else { d });
         match held.iter_mut().find(|(n, _)| *n == name) {
             Some((_, old)) if *old != dir => *old = None,
