@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 
 from answer import Answer, AnswerCaller, Resolver, TargetAnswer, line_span
 from answer import parse_answer as parse_answer  # the scorer's callers read answers through this module
@@ -89,15 +89,35 @@ def _rank(caller: AnswerCaller) -> tuple[int, bool]:
     return EVIDENCE_RANK.get(caller.evidence, 0), not caller.folded_by
 
 
+def _under(callers: list[AnswerCaller], key: str) -> list[AnswerCaller]:
+    return [c for c in callers if c.from_key == key]
+
+
 def _in_file(callers: list[AnswerCaller], path: str) -> list[AnswerCaller]:
     return [c for c in callers if c.from_key.partition("::")[0] == path]
 
 
-def _naming(callers: list[AnswerCaller], path: str, sites: list[int]) -> AnswerCaller | None:
-    """The surest row or `also_changed` ref of `path` whose lines hold one of `sites`, whatever key it files the caller under:
+def _names(caller: AnswerCaller, path: str, site: int, changed: Mapping[str, set[int]]) -> bool:
+    """The answer names `site`: a row by one of its `sites`, an `also_changed` definition by a changed line of it. The engine
+    lists that definition whole, so an unchanged line inside its span is a line the answer says nothing of."""
+    lines = changed.get(path, ()) if caller.relation == "also_changed" else None
+    return any(first <= site <= last and (lines is None or site in lines) for first, last in caller.named)
+
+
+def _naming(callers: list[AnswerCaller], path: str, sites: list[int], changed: Mapping[str, set[int]]) -> AnswerCaller | None:
+    """The surest row or `also_changed` ref of `path` that names one of `sites`, whatever key it files the caller under:
     the oracle keys a use to the definition that encloses it, the engine to the nearest binding, member or container."""
-    named = [c for c in _in_file(callers, path) if any(first <= site <= last for first, last in c.named for site in sites)]
+    named = [c for c in _in_file(callers, path) if any(_names(c, path, site, changed) for site in sites)]
     return max(named, key=_rank, default=None)
+
+
+def _wrong_sites(rows: list[AnswerCaller], truth: list[Relation]) -> bool:
+    """Rows that stand for a truth pair under another key still name sites of their own: one the truth has no use at is a claim
+    of its own, and a wrong one."""
+    uses = {(r.from_key.partition("::")[0], r.site) for r in truth}
+    return any(
+        c.relation != "also_changed" and (c.from_key.partition("::")[0], first) not in uses for c in rows for first, _ in c.named
+    )
 
 
 def relation_group(kind: str) -> str | None:
@@ -216,12 +236,16 @@ def silent_loss(missing: list[dict], answer: Answer) -> dict:
     }
 
 
-def compare(target: Definition, truth: list[Relation], answer: Answer) -> tuple[list[dict], list[dict]]:
+def compare(
+    target: Definition, truth: list[Relation], answer: Answer, changed: Mapping[str, set[int]] | None = None
+) -> tuple[list[dict], list[dict]]:
     """Per-kind cells for `target` and one detail row per relation pair, for adjudication.
 
     A pair is (caller, target). Pairs whose every truth relation sits inside the diff are not scored, in either
-    direction: diffctx reports callers outside the diff.
+    direction: diffctx reports callers outside the diff. `changed` holds the changed lines of each file, on the truth's side:
+    an `also_changed` definition names only those.
     """
+    changed = changed or {}
     grouped: dict[str, list[Relation]] = {}
     for relation in truth:
         grouped.setdefault(relation.from_key, []).append(relation)
@@ -230,7 +254,8 @@ def compare(target: Definition, truth: list[Relation], answer: Answer) -> tuple[
     reported = entry_for(target, answer)
     listed = reported.callers if reported else []
     callers = _strongest(listed)
-    claimed: set[str] = set()  # answer rows that stand for a truth pair under another key: no false positives
+    # Answer rows that stand for a truth pair under another key: no false positive, except at sites the truth has no use at.
+    claimed: set[str] = set()
     # A symbol the cap cut callers from, or shed whole (its stub carries an "omitted ..." reason in `unresolved`),
     # is a partial answer: the listed callers count, the missing truth is abstention.
     abstained = (
@@ -261,7 +286,7 @@ def compare(target: Definition, truth: list[Relation], answer: Answer) -> tuple[
         row["truth"] += 1
         affected = any(r.rule is None for r in relations)
         row["truth_affected"] += affected
-        caller = callers.get(from_key) or _naming(listed, path, [r.site for r in relations])
+        caller = callers.get(from_key) or _naming(listed, path, [r.site for r in relations], changed)
         if caller is None:
             row["fn"] += 1
             status, evidence = "fn", None
@@ -294,7 +319,11 @@ def compare(target: Definition, truth: list[Relation], answer: Answer) -> tuple[
             )
         )
     for from_key, caller in callers.items():
-        if from_key in scored or from_key in ignored or from_key in claimed:
+        if (
+            from_key in scored
+            or from_key in ignored
+            or (from_key in claimed and not _wrong_sites(_under(listed, from_key), truth))
+        ):
             continue
         kind = caller.kind or {"call": "calls", "reexports": "reexports"}.get(caller.relation, "reads")
         moved = ["R14"] if caller.relation == "also_changed" else []

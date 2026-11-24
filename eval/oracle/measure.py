@@ -335,9 +335,8 @@ def _score_changed(
         counts["unmapped"] += 1
         run.sink.write("unmapped.jsonl", [{**context, "target": target.key, "status": item.status}])
         return None
-    relations = mark_in_diff(
-        relations_to(snapshot, target), changed_keys, _hunk_lines(prepared.changes, item.snapshot), item.status == "added"
-    )
+    changed = _hunk_lines(prepared.changes, item.snapshot)
+    relations = mark_in_diff(relations_to(snapshot, target), changed_keys, changed, item.status == "added")
     if item.status == "removed":
         paired = pairing(prepared.head, prepared.base, target, list(answer.targets))
         if paired is not None:
@@ -346,7 +345,7 @@ def _score_changed(
         relations = still_named(relations, prepared.head, prepared.changed, names)
     relations = mark_folding(relations, _delta(prepared, item, counts), snapshot)
     counts["scored"] += 1
-    _write_scored(run.sink, {**context, "status": item.status, "snapshot": item.snapshot}, target, relations, answer)
+    _write_scored(run.sink, {**context, "status": item.status, "snapshot": item.snapshot}, target, relations, answer, changed)
     return missing_definition(target, answer, filed)
 
 
@@ -367,11 +366,12 @@ def _score_symbol(
         return
     answer = parse_answer(answer_run.data, resolver)
     folded = mark_folding(relations_to(prepared.head, target), _delta(prepared, item, {}), prepared.head)
-    _write_scored(run.sink, {**context, "status": "sampled", "snapshot": "head"}, target, folded, answer)
+    changed = _hunk_lines(prepared.changes, "head")
+    _write_scored(run.sink, {**context, "status": "sampled", "snapshot": "head"}, target, folded, answer, changed)
 
 
-def _write_scored(sink: Sink, context: dict, target: Definition, relations: list[Relation], answer) -> None:
-    cells, details = compare(target, relations, answer)
+def _write_scored(sink: Sink, context: dict, target: Definition, relations: list[Relation], answer, changed) -> None:
+    cells, details = compare(target, relations, answer, changed)
     for row in (*cells, *details):
         row.update(context)
     sink.write("cells.jsonl", cells)

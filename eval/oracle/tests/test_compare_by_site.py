@@ -36,8 +36,8 @@ def answer_of(target, rows=(), also_changed=(), resolve=None):
     return parse_answer(doc, resolve or resolver())
 
 
-def scored(target_key, truth, answer):
-    cells, details = compare(target_key, truth, answer)
+def scored(target_key, truth, answer, changed=None):
+    cells, details = compare(target_key, truth, answer, changed)
     return {k: sum(c[k] for c in cells) for k in ("truth", "tp", "fn", "fp", "incomplete_complete")}, details
 
 
@@ -80,12 +80,41 @@ def test_one_row_that_names_two_sites_lists_the_truth_pairs_of_both_nested_defin
     assert (counts["truth"], counts["tp"], counts["fn"], counts["fp"], counts["incomplete_complete"]) == (2, 2, 0, 0, 0)
 
 
-def test_a_changed_definition_the_answer_lists_as_also_changed_holds_the_sites_inside_its_lines():
+def test_a_changed_definition_the_answer_lists_as_also_changed_names_the_changed_lines_inside_it():
     found = answer_of(TARGET_ENTRY, also_changed=[("src/css.ts", "190-196")])
 
-    counts, _ = scored(TARGET, [pair("src/css.ts::DefaultContextType.Style", 192, "type_use")], found)
+    counts, _ = scored(TARGET, [pair("src/css.ts::DefaultContextType.Style", 192, "type_use")], found, {"src/css.ts": {191, 192}})
 
     assert (counts["tp"], counts["fn"], counts["fp"]) == (1, 0, 0)
+
+
+def test_an_unchanged_use_inside_a_big_also_changed_definition_is_a_miss_the_answer_calls_complete():
+    # a class spanning 2-400 with a changed line 3 and an unchanged real call at 300: the engine lists the class whole
+    found = answer_of(TARGET_ENTRY, also_changed=[("src/b.ts", "2-400")])
+    truth = [pair("src/b.ts::Svc.limit", 3), pair("src/b.ts::Svc.run", 300)]
+
+    counts, details = scored(TARGET, truth, found, {"src/b.ts": {3}})
+
+    assert (counts["truth"], counts["tp"], counts["fn"], counts["incomplete_complete"]) == (2, 1, 1, 1)
+    assert [d["from"] for d in details if d["incomplete_complete"]] == ["src/b.ts::Svc.run"]
+
+
+def test_an_also_changed_definition_names_nothing_when_the_diff_gives_no_changed_lines():
+    found = answer_of(TARGET_ENTRY, also_changed=[("src/b.ts", "2-400")])
+
+    counts, _ = scored(TARGET, [pair("src/b.ts::Svc.run", 300)], found)
+
+    assert (counts["tp"], counts["fn"]) == (0, 1)
+
+
+def test_a_row_that_stands_for_a_truth_pair_under_another_key_is_a_false_positive_at_its_sites_the_truth_lacks():
+    # one row per call, all filed under the local `list`: the oracle has the use at 45 only (the others go through the binding)
+    found = answer_of(TARGET_ENTRY, [row("examples/map.js", "list", f"{site}-{site}", [site]) for site in (45, 55, 56)])
+
+    counts, details = scored(TARGET, [pair("examples/map.js::<module>", 45)], found)
+
+    assert (counts["tp"], counts["fp"]) == (1, 1)
+    assert [d["verdict"] for d in details] == ["tp", "fp"]
 
 
 def test_a_site_the_answer_names_in_another_file_or_not_at_all_is_still_a_miss():
