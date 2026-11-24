@@ -1,0 +1,585 @@
+# One measurement of the whole product on one sha, Linux runners only: the 1.20.0 wheel against the head on the
+# corpus and the 30 fixed cells, instructions and git processes, the two edge sets, line coverage from the Rust
+# suites and from pytest through the extension, determinism across thread counts, and the accounting identity.
+# It lives on a probe branch only. The product sha it names is the newest commit that is not the probe's own
+# (this file and .github/scoreboard/); every row of scoreboard.md carries it.
+name: scoreboard probe
+
+'on':
+  push:
+    branches: [ci/scoreboard-probe]
+  workflow_dispatch:
+
+concurrency:
+  group: scoreboard-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: never
+  # Fixture commits get fixed dates, so their ids (and the tokens an answer spends on them) match across runs.
+  GIT_AUTHOR_DATE: '2026-01-01T00:00:00+00:00'
+  GIT_COMMITTER_DATE: '2026-01-01T00:00:00+00:00'
+
+# An explicit bash runs with -eo pipefail: a check piped into tee fails its step when the check fails.
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      product: ${{ steps.p.outputs.product }}
+      probe: ${{ steps.p.outputs.probe }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+      - id: p
+        run: |
+          probe=$(git rev-parse HEAD)
+          sha=$probe
+          while :; do
+            outside=$(git diff --name-only "$sha^" "$sha" -- . ':(exclude).github/workflows/scoreboard-probe.yml' \
+              ':(exclude).github/scoreboard')
+            [ -z "$outside" ] || break
+            sha=$(git rev-parse "$sha^")
+          done
+          git diff --quiet "$sha" "$probe" -- . ':(exclude).github/workflows/scoreboard-probe.yml' \
+            ':(exclude).github/scoreboard'
+          echo "product $sha, probe $probe"
+          echo "product=$sha" >> "$GITHUB_OUTPUT"
+          echo "probe=$probe" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
+        with:
+          toolchain: "1.100.0"
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2  # v10.3.3
+        with:
+          python-version: '3.12'
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: scoreboard-build-${{ needs.plan.outputs.product }}
+          restore-keys: cargo-${{ runner.os }}-
+      - name: Release binary
+        run: cargo build --release --locked --bin diffctx
+      - name: Wheel
+        env:
+          PYO3_USE_ABI3_FORWARD_COMPATIBILITY: "1"
+        run: uvx --from 'maturin>=1.16,<1.17' maturin build --release --locked --out dist
+      - name: What was built
+        run: |
+          uv venv smoke
+          uv pip install --python smoke/bin/python dist/*.whl
+          mkdir manifest
+          {
+            echo "product sha: ${{ needs.plan.outputs.product }}"
+            echo "probe sha:   ${{ needs.plan.outputs.probe }}"
+            echo "rustc:       $(rustc --version)"
+            echo "binary:      $(target/release/diffctx --version)"
+            echo "wheel:       $(smoke/bin/diffctx --version) ($(basename dist/*.whl))"
+            sha256sum target/release/diffctx dist/*.whl
+          } | tee manifest/manifest.txt
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        with:
+          name: head-binary
+          path: target/release/diffctx
+          retention-days: 30
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        with:
+          name: head-wheel
+          path: dist/*.whl
+          retention-days: 30
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        with:
+          name: tab-build-manifest
+          path: manifest/manifest.txt
+
+  hedge:
+    needs: [plan, build]
+    name: hedge, corpus shard ${{ matrix.shard }} of 4
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2  # v10.3.3
+        with:
+          python-version: '3.12'
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333  # v8.0.2
+        with:
+          name: head-binary
+          path: ${{ runner.temp }}/head
+      - name: Both binaries
+        run: |
+          chmod +x "$RUNNER_TEMP/head/diffctx"
+          uv venv "$RUNNER_TEMP/tool"
+          uv pip install --python "$RUNNER_TEMP/tool/bin/python" pyyaml
+          uv venv "$RUNNER_TEMP/v120"
+          uv pip install --python "$RUNNER_TEMP/v120/bin/python" diffctx==1.20.0
+          "$RUNNER_TEMP/v120/bin/diffctx" --version
+          "$RUNNER_TEMP/head/diffctx" --version
+      - name: Every impact and symbol case, both binaries
+        run: |
+          "$RUNNER_TEMP/tool/bin/python" -I .github/scoreboard/hedge/run.py --cases-root tests/cases --out hedge-out \
+            --bin BASE="$RUNNER_TEMP/v120/bin/diffctx" --bin HEAD="$RUNNER_TEMP/head/diffctx" \
+            --shard ${{ matrix.shard }}/4 --jobs 4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        with:
+          name: tab-hedge-shard-${{ matrix.shard }}
+          path: hedge-out
+
+  hedge-cells:
+    needs: [plan, build]
+    name: hedge, the 30 fixed cells
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2  # v10.3.3
+        with:
+          python-version: '3.12'
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333  # v8.0.2
+        with:
+          name: head-binary
+          path: ${{ runner.temp }}/head
+      - name: Both binaries on the pinned fixture
+        run: |
+          chmod +x "$RUNNER_TEMP/head/diffctx"
+          uv venv "$RUNNER_TEMP/v120"
+          uv pip install --python "$RUNNER_TEMP/v120/bin/python" diffctx==1.20.0
+          git worktree add --detach "$RUNNER_TEMP/fixture" 99ff4abc
+          mkdir -p cells
+          python3 -I .github/scoreboard/cells.py run --bin "$RUNNER_TEMP/v120/bin/diffctx" --fixture \
+            "$RUNNER_TEMP/fixture" --out cells/base
+          python3 -I .github/scoreboard/cells.py run --bin "$RUNNER_TEMP/head/diffctx" --fixture \
+            "$RUNNER_TEMP/fixture" --out cells/head
+          python3 -I .github/scoreboard/cells.py report --base cells/base --head cells/head --sha \
+            "${{ needs.plan.outputs.product }}" \
+            | tee cells/cells.md >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        with:
+          name: tab-hedge-cells
+          path: cells
+
+  vs120:
+    needs: plan
+    name: head against 1.20.0, instructions and git processes
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
+        with:
+          toolchain: "1.100.0"
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: scoreboard-registry-${{ hashFiles('Cargo.lock') }}
+      - run: sudo apt-get update -qq && sudo apt-get install -y -qq valgrind strace >/dev/null
+      - name: Both binaries, symbols kept
+        env:
+          # The shipped profile strips symbols and packs line tables away: callgrind then names every function
+          # `???`. Kept in the binary they cost no instructions.
+          CARGO_PROFILE_RELEASE_STRIP: none
+          CARGO_PROFILE_RELEASE_SPLIT_DEBUGINFO: "off"
+        run: |
+          cargo build --release --locked --bin diffctx
+          git worktree add --detach "$RUNNER_TEMP/v120src" v1.20.0
+          CARGO_TARGET_DIR=$RUNNER_TEMP/v120-target cargo build --release --locked --manifest-path \
+            "$RUNNER_TEMP/v120src/Cargo.toml" --bin diffctx
+          mkdir -p "$RUNNER_TEMP/bin/head" "$RUNNER_TEMP/bin/v1.20.0"
+          cp target/release/diffctx "$RUNNER_TEMP/bin/head/diffctx"
+          cp "$RUNNER_TEMP/v120-target/release/diffctx" "$RUNNER_TEMP/bin/v1.20.0/diffctx"
+          git worktree add --detach "$RUNNER_TEMP/fixture" 99ff4abc
+          mkdir -p out
+          { echo "nproc $(nproc)"; grep -m1 'model name' /proc/cpuinfo; } > out/cpu.txt
+          cat out/cpu.txt
+      - name: Instructions, 1.20.0 against the head (callgrind, control cell)
+        run: |
+          set +e
+          LABEL_BASE=1.20.0 LABEL_STEP=head bash .github/scoreboard/perf.sh "$RUNNER_TEMP/bin/v1.20.0/diffctx" \
+            "$RUNNER_TEMP/bin/head/diffctx" "$RUNNER_TEMP/fixture" "$RUNNER_TEMP/perf" > out/perf.md 2> out/perf.err
+          echo "perf.sh exit $?" >> out/perf.err
+          set -e
+          cat out/perf.md out/perf.err | tee -a "$GITHUB_STEP_SUMMARY"
+          grep -q 'against itself' out/perf.md
+      - name: git processes, 1.20.0 against the head
+        run: |
+          bash .github/scoreboard/gitcount.sh "$RUNNER_TEMP/bin/v1.20.0/diffctx" "$RUNNER_TEMP/bin/head/diffctx" \
+            "$RUNNER_TEMP/fixture" "$RUNNER_TEMP/gitcount" | tee out/gitcount.md >> "$GITHUB_STEP_SUMMARY"
+      - name: Per-function inclusive profiles and git subcommands
+        run: |
+          python3 -I .github/scoreboard/profile.py "$RUNNER_TEMP/perf" "$RUNNER_TEMP/gitcount" | tee out/profile.md \
+            >> "$GITHUB_STEP_SUMMARY"
+          mkdir -p raw
+          for f in "$RUNNER_TEMP"/perf/*-base.cg "$RUNNER_TEMP"/perf/*-step.cg; do
+            callgrind_annotate --inclusive=yes --threshold=100 "$f" > "raw/$(basename "$f" .cg).inclusive.txt"
+          done
+          cp "$RUNNER_TEMP"/perf/*.cg "$RUNNER_TEMP"/gitcount/*.st raw/
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        if: ${{ !cancelled() }}
+        with:
+          name: tab-vs120
+          path: out
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        if: ${{ !cancelled() }}
+        with:
+          name: raw-vs120
+          path: raw
+          retention-days: 30
+
+  o15-perf:
+    needs: [plan, build]
+    name: O15 instructions, edges none against all
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333  # v8.0.2
+        with:
+          name: head-binary
+          path: ${{ runner.temp }}/head
+      - run: sudo apt-get update -qq && sudo apt-get install -y -qq valgrind >/dev/null
+      - name: Cells under callgrind
+        run: |
+          chmod +x "$RUNNER_TEMP/head/diffctx"
+          git worktree add --detach "$RUNNER_TEMP/fixture" 99ff4abc
+          mkdir -p out
+          { echo "nproc $(nproc)"; grep -m1 'model name' /proc/cpuinfo; } > out/cpu.txt
+          set +e
+          bash .github/scoreboard/o15_perf.sh "$RUNNER_TEMP/head/diffctx" "$RUNNER_TEMP/fixture" "$RUNNER_TEMP/o15" \
+            > out/perf.md 2> out/perf.err
+          echo "o15_perf.sh exit $?" >> out/perf.err
+          set -e
+          cat out/perf.md out/perf.err | tee -a "$GITHUB_STEP_SUMMARY"
+          grep -q 'against itself' out/perf.md
+          mkdir -p raw
+          cp "$RUNNER_TEMP"/o15/*.cg "$RUNNER_TEMP"/o15/*.json raw/
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        if: ${{ !cancelled() }}
+        with:
+          name: tab-o15-perf
+          path: out
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        if: ${{ !cancelled() }}
+        with:
+          name: raw-o15-perf
+          path: raw
+          retention-days: 30
+
+  o15-corpus:
+    needs: plan
+    name: O15 corpus selection, edges ${{ matrix.edges }}
+    strategy:
+      fail-fast: false
+      matrix:
+        edges: [none, all]
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
+        with:
+          toolchain: "1.100.0"
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: scoreboard-registry-${{ hashFiles('Cargo.lock') }}
+      - name: Every case, baseline ignored, every diff case reporting its score
+        run: |
+          mkdir -p out
+          # A minimum above 100 makes every diff case without a threshold of its own fail with its score in the
+          # message; the failures are the measurement.
+          DIFFCTX_CELL_EDGES=${{ matrix.edges }} DIFFCTX_YAML_IGNORE_BASELINE=1 DIFFCTX_YAML_MIN_SCORE=100.1 \
+            DIFFCTX_ORACLE_REPORT=$PWD/out/oracle-report.json \
+            cargo test --release --locked -p diffctx --test yaml_cases > "$RUNNER_TEMP/yaml_cases.log" 2>&1 || true
+          grep -E '^test result' "$RUNNER_TEMP/yaml_cases.log"
+      - name: Scores
+        run: |
+          python3 -I .github/scoreboard/o15_corpus.py parse --log "$RUNNER_TEMP/yaml_cases.log" \
+            --report out/oracle-report.json --out out | tee -a "$GITHUB_STEP_SUMMARY"
+          gzip -c "$RUNNER_TEMP/yaml_cases.log" > out/yaml_cases.log.gz
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        if: ${{ !cancelled() }}
+        with:
+          name: tab-o15-corpus-${{ matrix.edges }}
+          path: out
+
+  coverage-rust:
+    needs: plan
+    name: coverage, the Rust suites
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+      - name: Room for the profiles
+        run: sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
+        with:
+          toolchain: "1.100.0"
+          components: llvm-tools-preview
+      - run: cargo install cargo-llvm-cov --locked
+      - name: Every suite, instrumented
+        run: |
+          mkdir -p out
+          # A failing suite still leaves its profile; the report covers what ran.
+          cargo llvm-cov --release --workspace --no-fail-fast --no-report > "$RUNNER_TEMP/tests.log" 2>&1 || true
+          grep -E '^test result|FAILED|error(\[|:)' "$RUNNER_TEMP/tests.log" | sort | uniq -c | sort -rn | sed -n \
+            '1,40p' | tee out/suites.txt
+          cargo llvm-cov report --release --lcov --output-path out/lcov.info
+          gzip -c "$RUNNER_TEMP/tests.log" > out/tests.log.gz
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        if: ${{ !cancelled() }}
+        with:
+          name: tab-coverage-rust
+          path: out
+
+  coverage-python:
+    needs: plan
+    name: coverage, pytest through the extension
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          # tests/test_concurrent_deadlines.py runs the engine over this repository's own history.
+          fetch-depth: 0
+          fetch-tags: true
+      - name: Room for the profiles
+        run: sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2  # v10.3.3
+        with:
+          python-version: '3.12'
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
+        with:
+          toolchain: "1.100.0"
+          components: llvm-tools-preview
+      - name: The extension and the native binary, instrumented
+        env:
+          RUSTFLAGS: -C instrument-coverage
+          PYO3_USE_ABI3_FORWARD_COMPATIBILITY: "1"
+          LLVM_PROFILE_FILE: ${{ runner.temp }}/build-noise/%p-%m.profraw
+        run: |
+          uv sync --locked --no-build --extra dev --extra full --extra mcp --group eval
+          cargo build --locked --bin diffctx
+          so=$(find src .venv -name '_diffctx*.so' | head -1)
+          test -n "$so"
+          echo "extension: $so"
+          readelf -S "$so" | grep -E 'llvm_(prf_cnts|covfun)'
+          readelf -S target/debug/diffctx | grep -E 'llvm_(prf_cnts|covfun)'
+          echo "so=$so" >> "$GITHUB_ENV"
+      - name: pytest
+        env:
+          LLVM_PROFILE_FILE: ${{ github.workspace }}/covprof/py-%m.profraw
+          DIFFCTX_NATIVE_BIN: ${{ github.workspace }}/target/debug/diffctx
+          DIFFCTX_REQUIRE_NATIVE: "1"
+        run: |
+          mkdir -p out covprof
+          # Failing tests still leave their profiles; what ran is what is covered.
+          .venv/bin/pytest -p no:cacheprovider -q -rfE --junitxml=out/pytest.xml > "$RUNNER_TEMP/pytest.log" 2>&1 || \
+            true
+          tail -30 "$RUNNER_TEMP/pytest.log" | tee out/pytest-tail.txt
+          gzip -c "$RUNNER_TEMP/pytest.log" > out/pytest.log.gz
+          ls covprof
+          test -n "$(ls covprof)"
+      - name: Profiles to lcov
+        run: |
+          llvm=$(rustc --print sysroot)/lib/rustlib/x86_64-unknown-linux-gnu/bin
+          "$llvm/llvm-profdata" merge -sparse covprof/*.profraw -o "$RUNNER_TEMP/py.profdata"
+          "$llvm/llvm-cov" export --format=lcov --instr-profile="$RUNNER_TEMP/py.profdata" \
+            --ignore-filename-regex='/(\.cargo|\.rustup|rustc)/' "$so" -object target/debug/diffctx > out/lcov.info
+          grep -c '^SF:' out/lcov.info
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        if: ${{ !cancelled() }}
+        with:
+          name: tab-coverage-python
+          path: out
+
+  determinism:
+    needs: [plan, build]
+    name: determinism, 30 cells across thread counts
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333  # v8.0.2
+        with:
+          name: head-binary
+          path: ${{ runner.temp }}/head
+      - name: 30 cells, six runs
+        run: |
+          chmod +x "$RUNNER_TEMP/head/diffctx"
+          git worktree add --detach "$RUNNER_TEMP/fixture" 99ff4abc
+          nproc
+          rc=0
+          python3 -I .github/scoreboard/determinism.py --bin "$RUNNER_TEMP/head/diffctx" --fixture \
+            "$RUNNER_TEMP/fixture" \
+            --out det --sha "${{ needs.plan.outputs.product }}" || rc=$?
+          echo "determinism.py exit $rc"
+          test -f det/determinism.md
+          cat det/determinism.md >> "$GITHUB_STEP_SUMMARY"
+          mkdir -p tab
+          cp det/determinism.md tab/
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        if: ${{ !cancelled() }}
+        with:
+          name: tab-determinism
+          path: tab
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        if: ${{ !cancelled() }}
+        with:
+          name: raw-determinism
+          path: |
+            det/t1
+            det/t2
+            det/t4
+            det/t8
+            det/default
+            det/default-warm
+          retention-days: 30
+
+  identity:
+    needs: plan
+    name: identity_corpus, debug build
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
+        with:
+          toolchain: "1.100.0"
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: scoreboard-registry-${{ hashFiles('Cargo.lock') }}
+      - name: The identity over every language
+        run: |
+          mkdir -p out
+          cargo test --locked -p diffctx --test identity_corpus -- --ignored --nocapture > out/identity.log 2>&1 || true
+          cargo test --locked -p diffctx --test identity_corpus > out/identity-default.log 2>&1 || true
+          python3 -I .github/scoreboard/identity_summary.py out/identity.log out/identity-default.log | tee \
+            out/summary.md >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        if: ${{ !cancelled() }}
+        with:
+          name: tab-identity
+          path: out
+
+  report:
+    needs:
+      - plan
+      - build
+      - hedge
+      - hedge-cells
+      - vs120
+      - o15-perf
+      - o15-corpus
+      - coverage-rust
+      - coverage-python
+      - determinism
+      - identity
+    if: ${{ !cancelled() }}
+    name: scoreboard.md
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      actions: read
+    env:
+      NEEDS: ${{ toJSON(needs) }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2  # v10.3.3
+        with:
+          python-version: '3.12'
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333  # v8.0.2
+        with:
+          pattern: tab-*
+          path: art
+      - name: Reports
+        run: |
+          uv venv tool
+          uv pip install --python tool/bin/python pyyaml
+          for d in art/tab-*; do mv "$d" "art/${d#art/tab-}"; done
+          mkdir -p reports/hedge hedge-out
+          for d in art/hedge-shard-*; do cp -R "$d"/. hedge-out/; done
+          if [ -d hedge-out/BASE ]; then
+            tool/bin/python -I .github/scoreboard/hedge/compare.py --out hedge-out --cases-root tests/cases \
+              --baseline crates/diffctx-native/tests/known_below_threshold.txt --from BASE --to HEAD --report \
+                reports/hedge
+            tool/bin/python -I .github/scoreboard/hedge/classify.py --out hedge-out --cases-root tests/cases \
+              --report reports/hedge --sha "${{ needs.plan.outputs.product }}"
+          fi
+          if [ -f art/coverage-rust/lcov.info ] && [ -f art/coverage-python/lcov.info ]; then
+            python3 -I .github/scoreboard/cov_merge.py --rust art/coverage-rust/lcov.info --python \
+              art/coverage-python/lcov.info \
+              --out reports/coverage --sha "${{ needs.plan.outputs.product }}"
+          fi
+          if [ -f art/o15-corpus-none/scores.tsv ] && [ -f art/o15-corpus-all/scores.tsv ]; then
+            python3 -I .github/scoreboard/o15_corpus.py compare --a art/o15-corpus-none --b art/o15-corpus-all \
+              --label-a none --label-b all --sha "${{ needs.plan.outputs.product }}" > reports/o15-corpus.md
+          fi
+      - name: scoreboard.md
+        run: |
+          printf '%s' "$NEEDS" > needs.json
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/jobs?per_page=100" > jobs.json
+          python3 -I .github/scoreboard/scoreboard.py --art art --reports reports --sha \
+            "${{ needs.plan.outputs.product }}" \
+            --probe "${{ needs.plan.outputs.probe }}" --run \
+              "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
+            --needs needs.json --jobs jobs.json --out scoreboard.md >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        if: ${{ !cancelled() }}
+        with:
+          name: scoreboard
+          path: |
+            scoreboard.md
+            reports
+            jobs.json
