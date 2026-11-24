@@ -5,8 +5,9 @@
 #
 # The tests live in the `diffctx` package (crates/diffctx-native), not in the mutated crates, so
 # every mutant runs the crate's own tests plus the native suites that read it. Each job runs in two
-# phases over its shard of mutants: the fast suites on every mutant, then the heavy corpus suites on
-# the survivors alone (a corpus run is minutes, and a mutant the fast suites kill never needs it).
+# phases over its shard of mutants: the fast suites on every mutant, then the case suites on
+# the survivors alone (a case run is minutes, and a mutant the fast suites kill never needs it). The
+# class corpus runs per mutant took half an hour each, so 16 jobs judged 75 survivors in a whole run.
 name: mutants
 
 'on':
@@ -18,12 +19,12 @@ name: mutants
     inputs:
       shards:
         description: 'Shards per package (the matrix is two packages times this many)'
-        default: '8'
+        default: '15'
       pick:
         description: 'Only these jobs, as package:shard pairs (occurrence:0,answer:3); empty runs all'
         default: ''
       heavy:
-        description: 'Run the corpus suites on the survivors of the fast ones'
+        description: 'Run the case suites on the survivors of the fast ones'
         type: boolean
         default: true
 
@@ -58,7 +59,7 @@ jobs:
     steps:
       - id: m
         env:
-          SHARDS: ${{ inputs.shards || '8' }}
+          SHARDS: ${{ inputs.shards || '15' }}
           PICK: ${{ inputs.pick }}
         run: |
           python3 - <<'PY' >> "$GITHUB_OUTPUT"
@@ -139,7 +140,7 @@ jobs:
           cargo mutants --list "${scope[@]}" --shard "$SHARD" > shard-list.txt
           echo "mutants in shard $SHARD: $(wc -l < shard-list.txt)"
           rc=0
-          timeout -s INT 140m cargo mutants "${scope[@]}" "${args[@]}" --shard "$SHARD" \
+          timeout -s INT 150m cargo mutants "${scope[@]}" "${args[@]}" --shard "$SHARD" \
             --baseline=skip --timeout 900 || rc=$?
           echo "fast exit=$rc"
           echo "$rc" > fast.rc
@@ -175,14 +176,14 @@ jobs:
           if [ "${{ matrix.pkg }}" = answer ]; then
             scope+=(--file 'crates/diffctx-answer/src/decide/**')
           fi
-          suites=(class_completeness_corpus class_completeness impact yaml_cases)
+          suites=(class_completeness impact yaml_cases)
           args=(--in-place --cargo-arg=--release --test-workspace=false --test-package "$PKG,diffctx"
             --cargo-test-arg=--lib)
           for s in "${suites[@]}"; do args+=("--cargo-test-arg=--test" "--cargo-test-arg=$s"); done
           cargo mutants --list "${scope[@]}" "${args[@]}" --config survivors.toml > heavy-list.txt
           echo "mutants the survivor filter selects: $(wc -l < heavy-list.txt)"
           rc=0
-          timeout -s INT 170m cargo mutants "${scope[@]}" "${args[@]}" --config survivors.toml \
+          timeout -s INT 175m cargo mutants "${scope[@]}" "${args[@]}" --config survivors.toml \
             --baseline=skip --timeout 3000 || rc=$?
           echo "heavy exit=$rc"
           echo "$rc" > heavy.rc
