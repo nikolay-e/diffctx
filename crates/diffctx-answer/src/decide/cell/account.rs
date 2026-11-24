@@ -377,19 +377,26 @@ impl Cell {
     }
 
     /// What kept the base side of the range from saying all of it: it was not
-    /// resolved, or what it read was cut short. A removed or moved definition's
-    /// uses are accounted at the head, but only against a base that was read.
+    /// resolved, what it read was cut short, or it lacks a name the range moved.
+    /// A removed or moved definition's uses are accounted at the head, but only
+    /// against a base that was read and holds what is owed.
     pub(super) fn base_gap(&self, changed: &Changed) -> Option<Gap> {
         if changed.stale.is_empty() {
             return None;
         }
-        match self.base() {
-            Err(gap) => Some(gap),
-            Ok(base) => {
-                let reasons = stopped_by(base.losses());
-                (!reasons.is_empty()).then_some(Gap::Stopped { reasons })
-            }
+        let base = match self.base() {
+            Ok(base) => base,
+            Err(gap) => return Some(gap),
+        };
+        let reasons = stopped_by(base.losses());
+        if !reasons.is_empty() {
+            return Some(Gap::Stopped { reasons });
         }
+        let missing =
+            (changed.stale.iter()).any(|key| base.definitions().iter().all(|d| d.key != *key));
+        missing.then(|| Gap::BaseUnresolved {
+            reason: "a definition the range moved is not among the base's".to_string(),
+        })
     }
 
     /// Whether a head file of the family holds an import whose target the code
