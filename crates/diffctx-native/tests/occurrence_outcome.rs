@@ -632,24 +632,22 @@ fn a_member_spelled_like_a_local_is_no_bare_name() {
 
 #[test]
 fn an_untyped_member_read_in_a_file_no_import_reaches_is_not_ours() {
-    let unreached = snapshot(&[
-        ("lib.py", CONFIG),
-        ("app.py", "def g(a):\n    return a.config\n"),
-    ]);
+    let built = "def g(load):\n    a = load()\n    return a.config\n";
+    let unreached = snapshot(&[("lib.py", CONFIG), ("app.py", built)]);
     let found = unreached.outcomes(unreached.def("lib.py", "config"), "app.py", &["config"]);
     assert_eq!(
-        shape(on(&found, 2)),
+        shape(on(&found, 3)),
         ("not_ours", "unreached", Some(Relation::Reads)),
         "{found:#?}"
     );
     let imported = snapshot(&[
         ("lib.py", CONFIG),
-        ("app.py", "def g(a):\n    return a.config\n"),
+        ("app.py", built),
         ("main.py", "import app\nimport lib\n"),
     ]);
     let found = imported.outcomes(imported.def("lib.py", "config"), "app.py", &["config"]);
     assert_eq!(
-        on(&found, 2).outcome,
+        on(&found, 3).outcome,
         Outcome::Candidate(Reason::Unresolved(UnresolvedReason::UntypedRead)),
         "an importer of the file may hand it an object: {found:#?}"
     );
@@ -675,8 +673,22 @@ fn a_parameter_of_an_uncalled_function_reads_a_class_another_file_imports() {
     let (found, dump) = shape_in(uncalled, &[]);
     assert_eq!(
         found,
+        ("candidate", "unproven", Some(Relation::Reads)),
+        "lib.py is no script: code outside the snapshot imports it: {dump}"
+    );
+    let forwarded = "def g(a):\n    return a.config\n\n\ndef run(x):\n    return g(x)\n";
+    let (found, dump) = shape_in(forwarded, &importer);
+    assert_eq!(
+        found,
+        ("candidate", "unproven", Some(Relation::Reads)),
+        "`run` hands on what calls it, and nothing calls `run`: {dump}"
+    );
+    let built = "def g(a):\n    return a.config\n\n\ndef run():\n    return g(1)\n";
+    let (found, dump) = shape_in(built, &importer);
+    assert_eq!(
+        found,
         ("not_ours", "unreached", Some(Relation::Reads)),
-        "no file imports lib.py, so its objects stay in it: {dump}"
+        "`run` takes nothing and builds the object it passes: {dump}"
     );
     let called = "def g(a):\n    return a.config\n\n\nresult = g(1)\n";
     let (found, dump) = shape_in(called, &importer);
@@ -684,6 +696,14 @@ fn a_parameter_of_an_uncalled_function_reads_a_class_another_file_imports() {
         found,
         ("not_ours", "unreached", Some(Relation::Reads)),
         "a parameter of a function the module calls holds what the module hands it: {dump}"
+    );
+    let script = "def config():\n    return {}\n\n\nif __name__ == \"__main__\":\n    config()\n";
+    let world = snapshot(&[("lib.py", script), ("app.py", uncalled)]);
+    let found = world.outcomes(world.def("lib.py", "config"), "app.py", &["config"]);
+    assert_eq!(
+        shape(on(&found, 2)),
+        ("not_ours", "unreached", Some(Relation::Reads)),
+        "a script that no file imports keeps what it builds: {found:#?}"
     );
 }
 
