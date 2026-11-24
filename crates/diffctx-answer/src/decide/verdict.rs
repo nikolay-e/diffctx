@@ -1,7 +1,5 @@
 //! What a definition's uses add up to: the claim, the uses, the accounting and the verdict.
 
-use std::collections::HashSet;
-
 use std::ops::Range;
 
 use std::rc::Rc;
@@ -10,7 +8,7 @@ use crate::fold::Rule;
 
 use diffctx_facts::facts::{DefKey, Name, Scope};
 
-use diffctx_occurrence::tokens::occurrence::{Hedge, Standing};
+use diffctx_occurrence::tokens::occurrence::{Accounted, Hedge, Standing};
 
 use diffctx_resolve::resolve::Relation;
 
@@ -59,19 +57,12 @@ pub(crate) struct Use {
 /// answer knows: the callers of what the range removed and whether any of them is
 /// stranded.
 pub(crate) struct Accounting {
-    pub(super) hedges: Vec<(Relation, Hedge)>,
-    pub(super) unused: bool,
-    pub(super) whole: bool,
+    pub(super) accounted: Accounted,
     /// The lines that still spell what the range removed, at the places the base
     /// resolved a use to it: its callers whatever they land on now.
     pub(super) callers: Vec<Use>,
     /// One of them is at a place the base resolved a use to what the range removed.
     pub(super) stranded: bool,
-    /// The lines, at the head, whose quoted spelling resolved to another definition: a
-    /// literal on one of them is that use, not a mention the cell could not read.
-    pub(super) elsewhere: HashSet<(RepoPath, u32)>,
-    /// The whole strings that spell a name of the definition and no binding explains.
-    pub(super) quoted: usize,
 }
 
 /// The uses of a definition and what covered the search for them: the one
@@ -91,19 +82,19 @@ impl Verdict {
     /// Whether the accounting found no use of the definition and nothing it could
     /// not explain: what a holder needs of what it holds to be said unused.
     pub(crate) fn unused(&self) -> bool {
-        self.found.unused
+        self.found.accounted.unused
     }
 
     /// Whether a literal spelled on `line` of `file` is a use the accounting resolved to
     /// another definition (an `include` of a second chart's template of the same name).
     pub(crate) fn names_another(&self, file: &str, line: u32) -> bool {
-        RepoPath::new(file).is_ok_and(|file| self.found.elsewhere.contains(&(file, line)))
+        RepoPath::new(file).is_ok_and(|file| self.found.accounted.elsewhere.contains(&(file, line)))
     }
 
     /// Whether a whole string in the group's code spells a name of the definition and
     /// no binding explains it: a reflective use no tree reads.
     pub(crate) fn names_quoted(&self) -> bool {
-        self.found.quoted > 0
+        self.found.accounted.quoted > 0
     }
 
     /// The type calls reach the definition through, which no model traces: what

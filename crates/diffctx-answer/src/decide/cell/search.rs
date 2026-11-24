@@ -6,15 +6,15 @@ use std::rc::Rc;
 
 use diffctx_facts::facts::{DefKind, Disambig, Name, Scope};
 
-use diffctx_occurrence::tokens::occurrence::{Hedge, Reason as OccurrenceReason, Standing};
+use diffctx_occurrence::tokens::occurrence::{Hedge, Settled, Standing};
 
-use diffctx_resolve::resolve::{Binding, Relation, USES};
+use diffctx_resolve::resolve::{Binding, Relation};
 
 use diffctx_resolve::vocabulary::family::{Family, Group, Resolver};
 
 use super::super::gap::Gap;
 
-use super::super::coverage::{Coverage, Evidence};
+use super::super::coverage::Coverage;
 
 use super::super::verdict::{Accounting, Use};
 
@@ -25,8 +25,8 @@ use super::Cell;
 impl Cell {
     /// What covered the search of each relation of use: the gaps of every
     /// relation (`lead`, `tail`), the files outside the run's pathspecs that could
-    /// name the definition, a read the cell lost, and the hedges of the occurrence
-    /// account. `Coverage::close` makes the `Complete`, and so the cell never does.
+    /// name the definition, and the occurrence account, settled by the resolved uses and
+    /// sealed. `Coverage::close` makes the `Complete` from the seal, and so the cell never does.
     /// Whether the definition is unused is the occurrence account's.
     pub(super) fn coverage(
         &self,
@@ -147,56 +147,23 @@ impl Cell {
             gaps.push(gap);
         }
         let found = self.occurrences(changed, &gaps);
-        // A resolved use settles the occurrences of its own site: the name inside its
-        // span, or one no binding names beside it (a keyword argument's name, the
-        // second spelling of a shorthand). A candidate in a span of its own is
-        // another use that no binding settles, on a line already listed: counted,
-        // never listed again. A value the use hands on (returned, collected) still
-        // hedges the calls it leaves.
-        let resolved: Vec<&Use> = uses
-            .iter()
+        let resolved: Vec<Settled> = (uses.iter())
             .chain(&found.callers)
             .filter(|u| u.standing == Standing::Resolved)
-            .collect();
-        let hedges: Vec<(Relation, Hedge)> = (found.hedges.iter())
-            .map(|(relation, hedge)| (self.relation_of_hedge(changed, *relation, hedge), hedge))
-            .filter_map(|(relation, hedge)| {
-                let Hedge::Candidate {
-                    file,
-                    line,
-                    bytes,
-                    reason,
-                } = hedge
-                else {
-                    return Some((relation, hedge.clone()));
-                };
-                let beside: Vec<&&Use> = (resolved.iter())
-                    .filter(|u| {
-                        u.file == file.as_str() && u.line == *line && u.relation == relation
-                    })
-                    .collect();
-                let own_site = matches!(
-                    reason,
-                    OccurrenceReason::Unexplained | OccurrenceReason::WideBinding
-                ) || beside
-                    .iter()
-                    .any(|u| u.site.start < bytes.end && bytes.start < u.site.end);
-                if beside.is_empty() {
-                    Some((relation, hedge.clone()))
-                } else {
-                    (!own_site).then_some((relation, Hedge::Unlisted { occurrences: 1 }))
-                }
+            .map(|u| Settled {
+                file: &u.file,
+                line: u.line,
+                site: u.site.clone(),
+                relation: u.relation,
             })
             .collect();
-        let by_relation = USES.map(|relation| {
-            let own: Vec<Hedge> = (hedges.iter())
-                .filter(|(of, _)| *of == relation)
-                .map(|(_, hedge)| hedge.clone())
-                .collect();
-            let coverage = Coverage::close(Evidence::Occurrences(relation, &own), gaps.clone());
-            (relation, coverage)
+        let settlement = (found.accounted).settle(&resolved, |relation, hedge| {
+            self.relation_of_hedge(changed, relation, hedge)
         });
-        (by_relation, found, hedges)
+        let by_relation = (settlement.by_relation.each_ref()).map(|(relation, sealed)| {
+            (*relation, Coverage::close(*relation, sealed, gaps.clone()))
+        });
+        (by_relation, found, settlement.hedges)
     }
 
     /// The names a use of the definition could carry in a file of its group: its

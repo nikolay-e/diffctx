@@ -10,8 +10,7 @@ use std::sync::Arc;
 
 use diffctx_facts::facts::{DefKind, FactsCache, FileFacts, Lexical, facts_of};
 use diffctx_occurrence::tokens::occurrence::{
-    Account, Basis, Entry, FileOutcomes, Outcome, Reason, View, Witness, admitted, counts_against,
-    outcomes,
+    Basis, Entry, FileOutcomes, Outcome, Reason, View, Witness, admitted, counts_against, outcomes,
 };
 use diffctx_resolve::resolve::{
     Binding, CResolver, CandidateReason, Definition, Evidence, EvidenceKind, GoResolver,
@@ -301,23 +300,15 @@ fn a_local_variable_site_is_the_declaration_of_another_binding() {
         "{found:#?}"
     );
     assert!(
-        matches!(on(&found, 3).outcome, Outcome::NotOurs(Witness::Local(_))),
+        matches!(
+            on(&found, 3).outcome,
+            Outcome::NotOurs {
+                witness: Witness::Local(_),
+                ..
+            }
+        ),
         "{found:#?}"
     );
-}
-
-#[test]
-fn a_not_ours_occurrence_stands_in_the_way_of_nothing() {
-    let world = snapshot(&[
-        ("lib.py", LIB_F),
-        ("app.py", "def g():\n    f = 2\n    return f\n"),
-    ]);
-    let subject = world.def("lib.py", "f");
-    let found = world.outcomes(subject, "app.py", &["f"]);
-    assert_eq!(on(&found, 3).outcome.as_str(), "not_ours", "{found:#?}");
-    let mut tally = Account::new(subject.key.clone(), Relation::Calls, SideTag::Head);
-    tally.entries = found.entries;
-    assert!(tally.verdict().is_complete(), "{tally:#?}");
 }
 
 #[test]
@@ -1588,7 +1579,7 @@ fn a_call_of_the_name_a_local_also_bears_is_no_read_of_the_local() {
         let world = snapshot_in(lang, &[(file, source)]);
         let found = world.outcomes(world.def(file, name), file, &[name]);
         assert!(
-            !matches!(on(&found, call).outcome, Outcome::NotOurs(_)),
+            !matches!(on(&found, call).outcome, Outcome::NotOurs { .. }),
             "{file}: {found:#?}"
         );
     }
@@ -1675,7 +1666,10 @@ fn a_jvm_parameter_and_a_declarator_are_declared_at_the_name_and_a_call_in_the_i
         "{found:#?}"
     );
     assert!(
-        !matches!(line[1].outcome, Outcome::Declaration | Outcome::NotOurs(_)),
+        !matches!(
+            line[1].outcome,
+            Outcome::Declaration | Outcome::NotOurs { .. }
+        ),
         "{found:#?}"
     );
 }
@@ -1718,7 +1712,7 @@ fn a_segment_before_a_rust_path_separator_is_no_use_of_a_function_but_names_a_ty
     );
     let found = world.outcomes(world.def("src/lib.rs", "Reply"), "src/lib.rs", &["Reply"]);
     assert!(
-        !matches!(on(&found, 14).outcome, Outcome::NotOurs(_)),
+        !matches!(on(&found, 14).outcome, Outcome::NotOurs { .. }),
         "{found:#?}"
     );
 }
@@ -1733,7 +1727,7 @@ fn a_member_spelled_like_a_local_is_no_plain_read_of_it() {
         &["Total"],
     );
     assert!(
-        !matches!(on(&found, 9).outcome, Outcome::NotOurs(_)),
+        !matches!(on(&found, 9).outcome, Outcome::NotOurs { .. }),
         "{found:#?}"
     );
 }

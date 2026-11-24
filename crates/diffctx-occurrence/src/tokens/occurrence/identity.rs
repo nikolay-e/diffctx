@@ -59,7 +59,7 @@ fn record_of(outcome: &Outcome) -> Record {
     match outcome {
         Outcome::Ours | Outcome::Alias(_) | Outcome::Leak(_) => Record::Use,
         Outcome::Declaration => Record::Declaration,
-        Outcome::NotOurs(_) => Record::NotOurs,
+        Outcome::NotOurs { .. } => Record::NotOurs,
         Outcome::Candidate(_) => Record::Gap,
     }
 }

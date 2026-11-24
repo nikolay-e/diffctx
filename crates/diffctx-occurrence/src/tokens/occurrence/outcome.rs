@@ -409,7 +409,19 @@ impl Claim {
     }
 
     fn not_ours(relation: Option<Relation>, witness: Witness) -> Self {
-        Self::new(relation, Outcome::NotOurs(witness), Basis::Witnessed)
+        Self::new(relation, Outcome::NotOurs { witness }, Basis::Witnessed)
+    }
+
+    fn witness(&self) -> Option<&Witness> {
+        match &self.outcome {
+            Outcome::NotOurs { witness } => Some(witness),
+            _ => None,
+        }
+    }
+
+    fn other_definition(&self) -> bool {
+        self.witness()
+            .is_some_and(|witness| matches!(witness, Witness::OtherDefinition(_)))
     }
 
     fn at(self, occurrence: Occurrence) -> Entry {
@@ -439,8 +451,7 @@ fn settle(mut claims: Vec<Claim>) -> Claim {
         .iter()
         .position(|c| matches!(c.outcome, Outcome::Candidate(_)));
     let elsewhere = |c: &Claim| {
-        matches!(c.outcome, Outcome::NotOurs(Witness::OtherDefinition(_)))
-            && ours.is_some_and(|at| claims[at].relation != c.relation)
+        c.other_definition() && ours.is_some_and(|at| claims[at].relation != c.relation)
     };
     let other = claims
         .iter()
@@ -774,7 +785,7 @@ impl<'a> Reading<'a> {
         // A declaration needs no basis, so it is the better statement of a
         // `not_ours` at the place that declares.
         match declared {
-            Some((basis, _)) if matches!(claim.outcome, Outcome::NotOurs(_)) => {
+            Some((basis, _)) if matches!(claim.outcome, Outcome::NotOurs { .. }) => {
                 Claim::new(None, Outcome::Declaration, basis).at(occurrence)
             }
             _ => claim.at(occurrence),
@@ -784,9 +795,7 @@ impl<'a> Reading<'a> {
     /// The claim of the bindings at a span. Bound only to other definitions, a span that is also
     /// a plain read of a local of its name is that read (`S { a }` after `let a`).
     fn settled(&self, occurrence: &Occurrence, claims: Vec<Claim>) -> Claim {
-        let bound_elsewhere = claims
-            .iter()
-            .all(|c| matches!(c.outcome, Outcome::NotOurs(Witness::OtherDefinition(_))));
+        let bound_elsewhere = claims.iter().all(Claim::other_definition);
         let local = bound_elsewhere
             .then(|| self.plain_read(occurrence, self.spelled(occurrence)))
             .flatten();
@@ -850,11 +859,9 @@ impl<'a> Reading<'a> {
         let claim = self.claim(binding, spelled);
         match claim.outcome {
             Outcome::Ours
-            | Outcome::NotOurs(Witness::OtherDefinition(_) | Witness::OtherProject(_))
-                if !matches!(binding.relation, Relation::Imports | Relation::Reexports) =>
-            {
-                claim
-            }
+            | Outcome::NotOurs {
+                witness: Witness::OtherDefinition(_) | Witness::OtherProject(_),
+            } if !matches!(binding.relation, Relation::Imports | Relation::Reexports) => claim,
             _ => Claim::candidate(Some(binding.relation), Reason::WideBinding),
         }
     }
@@ -927,20 +934,13 @@ impl<'a> Reading<'a> {
         let claims: Vec<Claim> = imports
             .map(|binding| self.claim(binding, spelled))
             .collect();
-        let imported = claims.first().and_then(|c| match &c.outcome {
-            Outcome::NotOurs(witness) => Some(witness),
-            _ => None,
-        });
+        let imported = claims.first().and_then(Claim::witness);
         let defined =
             (self.file.defs()).any(|def| def.local.container.is_empty() && named(&def.local.name));
         if let Some(site) = local {
             Some(Witness::Local(site))
         } else if let Some(witness) = imported.filter(|_| {
-            !defined
-                && !claims.is_empty()
-                && claims
-                    .iter()
-                    .all(|c| matches!(c.outcome, Outcome::NotOurs(_)))
+            !defined && !claims.is_empty() && claims.iter().all(|c| c.witness().is_some())
         }) {
             Some(witness.clone())
         } else {

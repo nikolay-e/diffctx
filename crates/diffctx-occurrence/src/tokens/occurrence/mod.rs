@@ -13,6 +13,9 @@ mod implicit;
 mod outcome;
 mod rows;
 mod scanner;
+mod seal;
+#[cfg(test)]
+mod tests;
 
 use std::fmt;
 use std::ops::Range;
@@ -25,6 +28,7 @@ pub use diffctx_facts::facts::Lexical;
 pub use implicit::{Known, entered, implicit_kinds};
 pub use outcome::{FileOutcomes, Index, View, admitted, counts_against, outcomes};
 pub use scanner::{Case, Scan, scan};
+pub use seal::{Accounted, Sealed, Settled, Settlement};
 
 /// The longest chain of aliases of aliases the closure follows (*estimate*,
 /// measured in step 2).
@@ -265,8 +269,12 @@ pub enum Outcome {
     /// A use of the definition, by the relation of its entry.
     Ours,
     Declaration,
-    /// Not a use of the definition, and the witness says what it is instead.
-    NotOurs(Witness),
+    /// Not a use of the definition, and the witness says what it is instead. Another crate can
+    /// match it and cannot make one.
+    #[non_exhaustive]
+    NotOurs {
+        witness: Witness,
+    },
     /// A new name of the definition: accounted next.
     Alias(Alias),
     /// The definition passed on as a value: `calls` is partial.
@@ -279,7 +287,7 @@ impl Outcome {
         match self {
             Self::Ours => "ours",
             Self::Declaration => "declaration",
-            Self::NotOurs(_) => "not_ours",
+            Self::NotOurs { .. } => "not_ours",
             Self::Alias(_) => "alias",
             Self::Leak(_) => "leak",
             Self::Candidate(_) => "candidate",
@@ -313,7 +321,7 @@ impl Entry {
     /// The row that gave the outcome, as the debug line names it.
     pub const fn basis_str(&self) -> &'static str {
         match &self.outcome {
-            Outcome::NotOurs(witness) => witness.as_str(),
+            Outcome::NotOurs { witness } => witness.as_str(),
             _ => self.basis.as_str(),
         }
     }
@@ -371,39 +379,39 @@ impl Implicit {
 /// A file of the group no position was read for (not read, or lost before it
 /// could be scanned): one candidate row naming its loss.
 #[derive(Clone, PartialEq, Eq, Debug)]
-pub struct Unread {
-    pub file: RepoPath,
-    pub loss: Loss,
+pub(crate) struct Unread {
+    pub(crate) file: RepoPath,
+    pub(crate) loss: Loss,
 }
 
 /// Everything the accounting found for one (definition, relation) of one side.
 #[derive(Clone, PartialEq, Eq, Debug)]
-pub struct Account {
-    pub definition: DefKey,
-    pub relation: Relation,
-    pub side: SideTag,
+pub(crate) struct Account {
+    pub(crate) definition: DefKey,
+    pub(crate) relation: Relation,
+    pub(crate) side: SideTag,
     /// The files of the group whose occurrences were accounted.
-    pub files: usize,
+    pub(crate) files: usize,
     /// The code occurrences, each with its outcome.
-    pub entries: Vec<Entry>,
-    pub unread: Vec<Unread>,
+    pub(crate) entries: Vec<Entry>,
+    pub(crate) unread: Vec<Unread>,
     /// Occurrences in strings nobody explained: counted, never blocking.
-    pub mentions: usize,
-    pub implicit: Vec<Implicit>,
+    pub(crate) mentions: usize,
+    pub(crate) implicit: Vec<Implicit>,
     /// The definition's kind admits `calls`: only then a leak stands against it
     /// (a property is read, never called).
-    pub admits_calls: bool,
+    pub(crate) admits_calls: bool,
     /// A tool outside the repository consumes the definition by reading it (a
     /// configuration object, not a Dockerfile stage, which is built by name):
     /// `Outside` then stands against its `reads`.
-    pub consumed_by_reading: bool,
-    pub alias_bound: Option<AliasBound>,
+    pub(crate) consumed_by_reading: bool,
+    pub(crate) alias_bound: Option<AliasBound>,
     /// A name too common to list: its occurrences, folded into one row.
-    pub too_common: Option<usize>,
+    pub(crate) too_common: Option<usize>,
 }
 
 impl Account {
-    pub fn new(definition: DefKey, relation: Relation, side: SideTag) -> Self {
+    pub(crate) fn new(definition: DefKey, relation: Relation, side: SideTag) -> Self {
         Self {
             definition,
             relation,
@@ -424,12 +432,15 @@ impl Account {
     /// no leak and no implicit kind for `calls`, no file left unread, the alias
     /// closure within its bound, the name not too common. The run's own gaps
     /// (a deadline, withheld files, the scope) are the caller's.
-    pub fn verdict(&self) -> Verdict {
+    pub(crate) fn verdict(&self) -> Verdict {
         let mut hedges = Vec::new();
         for entry in &self.entries {
             let at = &entry.occurrence;
             match &entry.outcome {
-                Outcome::Ours | Outcome::Declaration | Outcome::NotOurs(_) | Outcome::Alias(_) => {}
+                Outcome::Ours
+                | Outcome::Declaration
+                | Outcome::NotOurs { .. }
+                | Outcome::Alias(_) => {}
                 Outcome::Leak(place) => {
                     if self.relation == Relation::Calls && self.admits_calls {
                         hedges.push(Hedge::Leak {
@@ -481,11 +492,7 @@ impl Account {
             self.too_common
                 .map(|occurrences| Hedge::TooCommon { occurrences }),
         );
-        if hedges.is_empty() {
-            Verdict::Complete(Proof(()))
-        } else {
-            Verdict::Partial(hedges)
-        }
+        Verdict::of(hedges)
     }
 }
 
@@ -548,45 +555,60 @@ impl fmt::Display for Hedge {
     }
 }
 
-/// What a `Complete` verdict carries: only [`Account::verdict`] makes one, because the field is
-/// private to this module tree. Another crate can match `Verdict::Complete(_)` and cannot write it.
+/// What a `Complete` verdict carries. Only the account of a real run makes one, because the field is
+/// private to this module tree: another crate holds a [`Sealed`] verdict and asks it for the proof.
 ///
 /// ```
-/// use diffctx_occurrence::tokens::occurrence::{Outcome, Verdict};
+/// use diffctx_occurrence::tokens::occurrence::{Outcome, Proof, Sealed};
 ///
-/// fn matched(outcome: &Outcome, verdict: &Verdict) -> bool {
-///     matches!(outcome, Outcome::NotOurs(_)) || matches!(verdict, Verdict::Complete(_))
+/// fn matched(outcome: &Outcome, sealed: &Sealed) -> Option<Proof> {
+///     matches!(outcome, Outcome::NotOurs { .. }).then(|| sealed.proof()).flatten()
 /// }
 /// ```
 ///
 /// ```compile_fail
-/// use diffctx_occurrence::tokens::occurrence::{Proof, Verdict};
-/// let _ = Verdict::Complete(Proof(()));
+/// use diffctx_occurrence::tokens::occurrence::Proof;
+/// let _ = Proof(());
 /// ```
 ///
 /// ```compile_fail
 /// use diffctx_occurrence::tokens::occurrence::Proof;
 /// let _ = Proof::default();
 /// ```
+///
+/// ```compile_fail
+/// use diffctx_facts::facts::Name;
+/// use diffctx_occurrence::tokens::occurrence::{Outcome, Witness};
+/// let _ = Outcome::NotOurs { witness: Witness::Statement(Name::new("drop")) };
+/// ```
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct Proof(());
 
-/// The shadow verdict of one account.
+/// The verdict of one account: complete, or what stands in the way.
 #[derive(Clone, PartialEq, Eq, Debug)]
-pub enum Verdict {
+pub(crate) enum Verdict {
     Complete(Proof),
     Partial(Vec<Hedge>),
 }
 
 impl Verdict {
-    pub const fn as_str(&self) -> &'static str {
+    /// The one place a `Proof` is made: no hedge stands in the way.
+    fn of(hedges: Vec<Hedge>) -> Self {
+        if hedges.is_empty() {
+            Self::Complete(Proof(()))
+        } else {
+            Self::Partial(hedges)
+        }
+    }
+
+    pub(crate) const fn as_str(&self) -> &'static str {
         match self {
             Self::Complete(_) => "complete",
             Self::Partial(_) => "partial",
         }
     }
 
-    pub const fn is_complete(&self) -> bool {
+    pub(crate) const fn is_complete(&self) -> bool {
         matches!(self, Self::Complete(_))
     }
 }

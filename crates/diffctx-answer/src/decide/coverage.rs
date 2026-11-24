@@ -1,10 +1,10 @@
-//! The witness that a search left nothing unread and the one place that makes it (`Coverage::close`),
-//! with the counts and claims that hold it.
+//! The witness that a search left nothing unread and the places that make it (`Coverage::close` for a
+//! definition, `Coverage::of_run` for the run), with the counts and claims that hold it.
 
 use std::collections::{BTreeMap, BTreeSet};
 
 use diffctx_occurrence::tokens::occurrence::{
-    Hedge, Implicit, Reason as OccurrenceReason, ValuePlace,
+    Hedge, Implicit, Reason as OccurrenceReason, Sealed, ValuePlace,
 };
 
 use diffctx_resolve::resolve::{Relation, UnresolvedReason};
@@ -14,23 +14,30 @@ use super::losses::{Effect, effect_of};
 use super::verdict::Verdict;
 
 /// The witness that the search for a definition's uses covered everything that
-/// could name it. It has no public field and no `Default`, and `Coverage::close`
-/// is the one place that makes it, so an absence or an exact count cannot be
-/// written without the coverage computation having found no gap and, for a
-/// definition, every file of its group accounted for.
+/// could name it. It has no public field and no `Default`: `Coverage::close` makes
+/// it from the one thing that proves a definition's account complete, a `Sealed`
+/// verdict of the occurrence accounting, and `Coverage::of_run` makes it for what
+/// is no definition's. An absence or an exact count cannot be written without it.
+///
+/// ```
+/// use diffctx_answer::decide::coverage::{Complete, Coverage};
+///
+/// fn held(coverage: &Coverage) -> Option<Complete> {
+///     coverage.witness()
+/// }
+/// ```
+///
+/// ```compile_fail
+/// use diffctx_answer::decide::coverage::{Complete, Coverage};
+/// let _ = Coverage::Complete(Complete(()));
+/// ```
+///
+/// ```compile_fail
+/// use diffctx_occurrence::tokens::occurrence::Accounted;
+/// let _ = Accounted { hedges: Vec::new(), unused: true, elsewhere: Default::default(), quoted: 0 };
+/// ```
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct Complete(());
-
-/// What a coverage rests on besides the gaps the search found.
-#[derive(Clone, Copy)]
-pub enum Evidence<'a> {
-    /// A definition's occurrence account of one relation: what stands in the way of
-    /// its absence.
-    Occurrences(Relation, &'a [Hedge]),
-    /// Not a definition: the run's own limits, the files it withheld, code it left
-    /// untraced.
-    Run,
-}
 
 /// What each hedge of an occurrence account of `relation` says in the answer's
 /// words: a candidate occurrence names its site, a file lost is unaccounted for by
@@ -117,19 +124,25 @@ pub enum Coverage {
 }
 
 impl Coverage {
-    /// The one place a `Complete` is made: the search found no gap, and, for a
-    /// definition, no occurrence of its names is left unexplained (the hedges join
-    /// the search's own gaps, so that a partial coverage always says what stood in
-    /// the way).
-    pub fn close(evidence: Evidence<'_>, mut gaps: Vec<Gap>) -> Self {
-        if let Evidence::Occurrences(relation, hedges) = evidence {
-            let dispatched = gaps.iter().any(|gap| matches!(gap, Gap::Dispatched { .. }));
-            for gap in hedge_gaps(relation, hedges, dispatched) {
-                if !gaps.contains(&gap) {
-                    gaps.push(gap);
-                }
+    /// The one place a definition's `Complete` is made: its `relation`'s account was sealed
+    /// complete, and the search found no gap of its own. The sealed hedges join the search's
+    /// gaps, so that a partial coverage always says what stood in the way.
+    pub fn close(relation: Relation, sealed: &Sealed, mut gaps: Vec<Gap>) -> Self {
+        let dispatched = gaps.iter().any(|gap| matches!(gap, Gap::Dispatched { .. }));
+        for gap in hedge_gaps(relation, sealed.hedges(), dispatched) {
+            if !gaps.contains(&gap) {
+                gaps.push(gap);
             }
         }
+        match sealed.proof() {
+            Some(_) if gaps.is_empty() => Self::Complete(Complete(())),
+            _ => Self::Partial(gaps),
+        }
+    }
+
+    /// What the run's own gaps leave of a coverage no definition's account stands behind: the
+    /// run's limits, a local whose every use lies in a body the answer lists.
+    pub fn of_run(gaps: Vec<Gap>) -> Self {
         if gaps.is_empty() {
             Self::Complete(Complete(()))
         } else {
@@ -251,8 +264,8 @@ impl Coverages {
     /// read in part).
     pub(crate) fn local(gaps: Vec<Gap>) -> Self {
         Self {
-            calls: Coverage::close(Evidence::Run, gaps.clone()),
-            reads: Coverage::close(Evidence::Run, gaps),
+            calls: Coverage::of_run(gaps.clone()),
+            reads: Coverage::of_run(gaps),
         }
     }
 
