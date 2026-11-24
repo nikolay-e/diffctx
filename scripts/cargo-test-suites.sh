@@ -69,62 +69,69 @@ report() {
 }
 trap report EXIT
 
-# Seconds per suite, the slowest of the Linux, macOS and Windows runs of
-# 2026-11-24 (`lib` is the library's inline tests, an estimate; the two corpus
-# suites keep their 2026-11-19 figures, and the class corpus is also split by
-# case, DIFFCTX_CLASS_SHARD). Suites under five seconds are not listed: they
-# weigh `default_weight`.
+# Seconds per suite, one column per OS (linux, macos, windows), from the runs of
+# 2026-11-24 (`lib` is the library's inline tests; the class corpus is also split
+# by case, DIFFCTX_CLASS_SHARD). Suites under five seconds on every OS are not
+# listed: they weigh `default_weight`. The shards balance the seconds of the OS
+# that runs them: a suite is slow on one OS and cheap on another (loss_sweep,
+# unknowns on Windows, git_faults on macOS), and one table for all three left a
+# macOS shard at twice the length of its sibling.
 default_weight=3
+case "${RUNNER_OS:-$(uname -s)}" in
+macOS | Darwin) column=3 ;;
+Windows | MINGW* | MSYS* | CYGWIN*) column=4 ;;
+*) column=2 ;;
+esac
 weights="
-class_completeness_corpus 4535
-yaml_cases 1689
-impact 1392
-loss_sweep 1093
-unknowns 1015
-metamorphic 968
-class_completeness 585
-git_faults 400
-hook_property 378
-occurrence_classes 296
-lane_f 218
-crate_graph 201
-hook 197
-facts_cache 146
-budget_contract 109
-resolve_python 88
-resolve_typescript 61
-native_cli 57
-deadline_answer 50
-untracked_budget 49
-resolve_java 29
-staged 29
-resolve_kotlin 28
-lane_ts 27
-resolve_rust 27
-kotlin 25
-lane_py 22
-tests_same_file 22
-bindings 21
-lane_e1 19
-lane_rs 16
-lane_sh 15
-resolve_go 13
-resolve_php 13
-fragment_snapshot 12
-data_file_added 11
-occurrence_debug 11
-test_claim 11
-edge_precision 10
-lib 10
-occurrence_outcome 10
-resolve_c 8
-resolve_cpp 8
-lane_swift 7
-resolve_terraform 7
-facts_changes 6
-git_processes 6
-git_together 6
-module_graph 5
+class_completeness_corpus 1222 2064 4409
+yaml_cases 266 957 915
+impact 925 1527 1448
+metamorphic 576 436 837
+loss_sweep 699 525 789
+unknowns 635 454 662
+class_completeness 377 319 610
+git_faults 257 464 0
+occurrence_classes 108 170 245
+hook 72 154 210
+hook_property 124 171 0
+lane_f 154 97 142
+budget_contract 103 82 140
+facts_cache 16 19 129
+resolve_python 10 52 87
+resolve_typescript 7 19 59
+native_cli 38 30 51
+deadline_answer 28 48 37
+untracked_budget 7 23 46
+resolve_java 2 11 32
+bindings 16 24 30
+resolve_kotlin 2 10 28
+lane_ts 20 17 27
+staged 15 12 27
+resolve_rust 3 7 25
+tests_same_file 14 13 22
+lane_py 11 15 18
+kotlin 13 12 17
+lane_rs 11 10 16
+lane_e1 13 14 14
+resolve_go 1 6 14
+fragment_snapshot 7 13 10
+resolve_php 2 5 13
+occurrence_outcome 1 6 11
+test_claim 7 9 11
+lane_sh 7 6 10
+lib 5 9 10
+occurrence_debug 6 5 10
+data_file_added 9 6 9
+edge_precision 4 5 9
+git_processes 2 3 9
+resolve_c 1 3 8
+resolve_cpp 1 3 8
+resolve_terraform 1 2 8
+lane_swift 5 5 7
+facts_changes 0 5 6
+gap_reasons 2 4 5
+module_graph 3 4 5
+orphan_children 2 5 0
 "
 
 # The names on stdin that fall to shard $1 of $2, one per line.
@@ -132,8 +139,8 @@ shard_of() {
   {
     echo "$weights"
     cat
-  } | awk -v fallback="$default_weight" '
-    NF == 2 { seconds[$1] = $2; next }
+  } | awk -v fallback="$default_weight" -v column="$column" '
+    NF == 4 { seconds[$1] = $column; next }
     NF == 1 { print (($1 in seconds) ? seconds[$1] : fallback), $1 }' |
     LC_ALL=C sort -k1,1nr -k2,2 |
     awk -v shard="$1" -v shards="$2" '
