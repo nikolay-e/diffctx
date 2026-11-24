@@ -71,15 +71,20 @@ jobs:
         with:
           toolchain: "1.100.0"
 
-      - name: Cache Cargo
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+      # Restore only: ci.yml saves the release profile under this key, and one
+      # saver per key keeps a second job from racing it. The old prefix is the
+      # entry a run before the rename left.
+      - name: Restore Cargo
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: cargo-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
-          restore-keys: cargo-${{ runner.os }}-
+          key: cargo-rust-${{ runner.os }}-release-${{ hashFiles('Cargo.lock') }}
+          restore-keys: |
+            cargo-rust-${{ runner.os }}-release-
+            cargo-${{ runner.os }}-
 
       - name: Run the corpus with one builder disabled
         working-directory: crates/diffctx-native

@@ -11,12 +11,19 @@ name: diffctx CI
       - main
       - relay/arch
       - 'probe/**'
-  # The full macOS set, on main (a schedule runs only the default branch's file).
+  # The full macOS set: a schedule runs only the default branch's file, so main
+  # has the cron and relay/arch a dispatch (full: true) fired by the lander.
   schedule:
     - cron: '23 2 * * *'
+  workflow_dispatch:
+    inputs:
+      full:
+        description: 'Run the full macOS and Python set, as a PR into main does'
+        type: boolean
+        default: false
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}
   cancel-in-progress: true
 
 jobs:
@@ -515,16 +522,17 @@ jobs:
   # macOS has five runner slots for the whole account, and GitHub Pro does not
   # raise them. A push (the head check of relay/arch, main, a probe) runs the
   # suites whose subject is the operating system and builds the Intel-Mac
-  # binary; a PR into main and the nightly add the two corpora. The suites that
-  # test only logic (impact, metamorphic, the resolvers) run on Linux and
-  # Windows. Four macOS Python versions run on the same two occasions.
+  # binary; a PR into main, the nightly and a dispatch with full add the two
+  # corpora. The suites that test only logic (impact, metamorphic, the
+  # resolvers) run on Linux and Windows. Four macOS Python versions run on the
+  # same occasions as the corpora.
   rust-diffctx-test-macos:
     name: Rust diffctx tests (macos-latest, ${{ matrix.label }})
     strategy:
       fail-fast: false
       matrix:
         include: >-
-          ${{ fromJSON((github.event_name == 'push')
+          ${{ fromJSON((github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && !inputs.full))
             && '[{"part":"platform","label":"platform","cache":"platform-intel"}]'
             || '[{"part":"platform","label":"platform","cache":"platform-intel"},
                  {"part":"corpus:2/2","label":"YAML corpus","cache":"release"},
@@ -586,13 +594,13 @@ jobs:
         # A stream check (a PR into relay/arch, or into any branch but main)
         # runs one Linux interpreter; exclude never drops an include-only
         # cell, so the ARM legs are an expression too. macOS has five slots:
-        # a push runs one interpreter there, a PR into main and the nightly
-        # run the four.
+        # a push (or a dispatch without full) runs one interpreter there, a PR
+        # into main and the nightly run the four.
         exclude: >-
           ${{ fromJSON((github.event_name == 'pull_request' && github.base_ref != 'main')
             && '[{"os":"macos-latest"},{"os":"windows-latest"},
                  {"python-version":"3.11"},{"python-version":"3.12"},{"python-version":"3.14"}]'
-            || (github.event_name == 'push')
+            || (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && !inputs.full))
             && '[{"os":"macos-latest","python-version":"3.11"},
                  {"os":"macos-latest","python-version":"3.12"},
                  {"os":"macos-latest","python-version":"3.14"}]'
