@@ -1,0 +1,52 @@
+name: go_struct_implementing_a_changed_interface_is_listed
+mode: impact
+source: synthetic
+issue_state: open
+tags: [go, interface, implementation]
+repo:
+  initial_files:
+    go.mod: |
+      module demo
+
+      go 1.21
+    source.go: |
+      package demo
+
+      type Source struct {
+          m map[string]any
+      }
+
+      func NewSource(m map[string]any) *Source {
+          return &Source{m: m}
+      }
+
+      func (s *Source) lookup(name string) (any, bool) {
+          v, ok := s.m[name]
+          return v, ok
+      }
+  changed_files:
+    source.go: |
+      package demo
+
+      type Source interface {
+          Lookup(string) (any, bool)
+      }
+
+      type source struct {
+          m map[string]any
+      }
+
+      func NewSource(m map[string]any) Source {
+          return &source{m: m}
+      }
+
+      func (s *source) Lookup(name string) (any, bool) {
+          v, ok := s.m[name]
+          return v, ok
+      }
+  commit_message: "source: Source becomes an interface"
+expect:
+  exact: false
+  relations:
+    # Source is now an interface and `source` implements it by its method set.
+    - {from: source.go::source, to: source.go::Source, kind: overrides, site: 7}
