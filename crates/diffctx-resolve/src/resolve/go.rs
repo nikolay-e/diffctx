@@ -815,6 +815,15 @@ impl Engine<'_> {
             else {
                 continue;
             };
+            for name in &required {
+                // A method of a receiver type the package lacks may still be an implementer's.
+                for (m, theirs) in (methods_named(name).into_iter().flatten())
+                    .filter(|m| self.owner_of(**m).is_none())
+                    .filter_map(|m| Some((*m, self.find_member(i, name, 0)?)))
+                {
+                    bind(m, theirs);
+                }
+            }
             let mut pool: Vec<usize> = (methods_named(rarest).into_iter().flatten())
                 .filter_map(|m| self.owner_of(*m))
                 .chain(embedders.iter().copied())
