@@ -267,45 +267,9 @@ impl std::fmt::Display for Gap {
     /// A gap in words, as a sentence about what was not covered.
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Unlanded { uses, .. } => write!(f, "{uses} use(s) no binding settles"),
-            Self::Unpaired { .. } => f.write_str("its two sides of the range pair ambiguously"),
-            Self::BaseUnresolved { reason } => {
-                write!(f, "the base side of the range was not resolved ({reason})")
-            }
-            Self::Stopped { reasons } => {
-                write!(
-                    f,
-                    "the run was limited ({})",
-                    impact::output::reason_names(reasons)
-                )
-            }
-            Self::OutsideScope { files } => write!(
-                f,
-                "{files} file(s) outside the run's pathspecs were left out"
-            ),
-            Self::Unaccounted { reason, files: 0 } => {
-                write!(f, "no file of its interaction group was read: {reason}")
-            }
-            Self::Unaccounted { reason, files } => write!(
-                f,
-                "{files} file(s) of its interaction group not read: {reason}"
-            ),
-            Self::Withheld { files } => write!(f, "{files} file(s) withheld by ignore rules"),
-            Self::Untracked { files, .. } => write!(
-                f,
-                "changed code outside any tracked definition in {files} file(s)"
-            ),
-            Self::Dispatched { via } => write!(
-                f,
-                "it is a member of `{via}`, whose calls through `dyn {via}` or a bound are candidates"
-            ),
             Self::Macros { files, what } => {
                 write!(f, "{files} file(s) that could name it {what}")
             }
-            Self::Capped => f.write_str("the answer cap shed it"),
-            Self::NotTraced => f.write_str("a route no model traces can reach it"),
-            Self::PassedAsValue { to } => decide::gap::write_passed_as_value(f, to),
-            Self::ImplicitlyConstructed => f.write_str("constructed implicitly"),
             Self::Ambiguous {
                 name,
                 definitions,
@@ -319,36 +283,13 @@ impl std::fmt::Display for Gap {
                 f,
                 "calls through {via} are not traced, and no direct caller was found"
             ),
-            Self::Templated { files } => {
-                write!(f, "{files} template file(s) were read around, not expanded")
-            }
-            Self::ContextUnbound { files } => write!(
-                f,
-                "{files} file(s) of a chart or release whose context is not determined"
-            ),
-            Self::RenderedElsewhere { files } => write!(
-                f,
-                "{files} file(s) generate objects whose names are not written in any file"
-            ),
-            Self::ExternalSource { pointers } => write!(
-                f,
-                "{pointers} source(s) outside the repository were not followed"
-            ),
-            Self::SourceFlag { files } => {
-                write!(f, "{files} file(s) read a path computed at run time")
-            }
-            Self::UnreadDirectories { directories, total } => {
-                write!(f, "{total} untracked director(y/ies) not read: ")?;
-                f.write_str(&directories.join(", "))?;
-                match total.saturating_sub(directories.len()) {
-                    0 => Ok(()),
-                    more => write!(f, " and {more} more"),
-                }
-            }
             Self::NameUnsearched { name } => write!(
                 f,
                 "`{name}` is too short or too common to search as text: a script, a template or a string that spells it was not looked for"
             ),
+            shared => shared
+                .in_cell()
+                .map_or(Ok(()), |cell| std::fmt::Display::fmt(&cell, f)),
         }
     }
 }
@@ -443,6 +384,49 @@ impl Gap {
                 name: name.to_string(),
             },
         }
+    }
+
+    /// The cell's gap this one is worded as, for the gaps whose sentence the cell
+    /// writes; the others word themselves.
+    fn in_cell(&self) -> Option<decide::gap::Gap> {
+        use decide::gap::Gap as Cell;
+        Some(match self {
+            Self::Unlanded { uses, .. } => Cell::Candidates {
+                uses: *uses,
+                sites: Vec::new(),
+            },
+            Self::Unpaired { .. } => Cell::Unpaired,
+            Self::BaseUnresolved { reason } => Cell::BaseUnresolved {
+                reason: reason.clone(),
+            },
+            Self::Stopped { reasons } => Cell::Stopped {
+                reasons: reasons.clone(),
+            },
+            Self::OutsideScope { files } => Cell::OutsideScope { files: *files },
+            Self::Unaccounted { reason, files } => Cell::Unaccounted {
+                reason: *reason,
+                files: *files,
+            },
+            Self::Withheld { files } => Cell::Withheld { files: *files },
+            Self::Untracked { files, .. } => Cell::Untracked { files: *files },
+            Self::Dispatched { via } => Cell::Dispatched { via: via.clone() },
+            Self::Capped => Cell::Capped,
+            Self::NotTraced => Cell::NotTraced,
+            Self::PassedAsValue { to } => Cell::PassedAsValue { to: to.clone() },
+            Self::ImplicitlyConstructed => Cell::ImplicitlyConstructed,
+            Self::Templated { files } => Cell::Templated { files: *files },
+            Self::ContextUnbound { files } => Cell::ContextUnbound { files: *files },
+            Self::RenderedElsewhere { files } => Cell::RenderedElsewhere { files: *files },
+            Self::ExternalSource { pointers } => Cell::ExternalSource {
+                pointers: *pointers,
+            },
+            Self::SourceFlag { files } => Cell::SourceFlag { files: *files },
+            Self::UnreadDirectories { directories, total } => Cell::UnreadDirectories {
+                directories: directories.clone(),
+                total: *total,
+            },
+            _ => return None,
+        })
     }
 }
 
