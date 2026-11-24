@@ -5,10 +5,15 @@ name: diffctx CI
   pull_request:
     branches: ['**']
   push:
-    # A push to relay/arch is the 2.0 migration's head check: every platform.
+    # A push to relay/arch is the 2.0 migration's head check; a push to probe/**
+    # rehearses it on a branch of its own.
     branches:
       - main
       - relay/arch
+      - 'probe/**'
+  # The full macOS set, on main (a schedule runs only the default branch's file).
+  schedule:
+    - cron: '23 2 * * *'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -454,27 +459,19 @@ jobs:
         run: scripts/cargo-test-suites.sh "$PART"
 
   # The Linux job above keeps its name because branch protection requires it;
-  # this one gates the same suites on macOS and Windows, where paths, line
-  # endings and process spawning differ. A run of the binary costs them two to
-  # five times what it costs Linux, so the corpus runs in its own parts: the
-  # YAML corpus, and the class corpus (`corpus:1/2`, the heavier suite)
-  # split by case. The account runs five macOS jobs at once and GitHub Pro does
-  # not raise that, so macOS is five parts (the rest in two, the class corpus in
-  # two) and the two macOS Python jobs queue behind them; Windows is four rest
-  # parts and four class parts. The 120-minute macOS limit is a hang guard.
-  # The Intel-Mac cross build rides with the YAML corpus, the lightest macOS part.
+  # this one gates the same suites on Windows, where paths, line endings and
+  # process spawning differ. A run of the binary costs it two to five times
+  # what it costs Linux, so the corpus runs in its own parts: the YAML corpus,
+  # and the class corpus (`corpus:1/2`, the heavier suite) split by case.
+  # A stream check (a PR into relay/arch, or into any branch but main) runs
+  # Linux only: the account runs 20 jobs at once (5 macOS), and six streams of
+  # ~27 jobs queued for hours.
   rust-diffctx-test-cross:
     name: Rust diffctx tests (${{ matrix.os }}, ${{ matrix.label }})
     strategy:
       fail-fast: false
       matrix:
         include:
-          - {os: macos-latest, part: "rest:1/2", label: "1/2", cache: debug}
-          - {os: macos-latest, part: "rest:2/2", label: "2/2", cache: debug}
-          # This part also cross-builds the Intel-Mac binary into target/, which no other part holds.
-          - {os: macos-latest, part: "corpus:2/2", label: "YAML corpus", cache: release-intel}
-          - {os: macos-latest, part: "corpus:1/2", class_shard: "1/2", label: "class corpus 1/2", cache: release}
-          - {os: macos-latest, part: "corpus:1/2", class_shard: "2/2", label: "class corpus 2/2", cache: release}
           - {os: windows-latest, part: "rest:1/4", label: "1/4", cache: debug}
           - {os: windows-latest, part: "rest:2/4", label: "2/4", cache: debug}
           - {os: windows-latest, part: "rest:3/4", label: "3/4", cache: debug}
@@ -484,13 +481,10 @@ jobs:
           - {os: windows-latest, part: "corpus:1/2", class_shard: "2/4", label: "class corpus 2/4", cache: release}
           - {os: windows-latest, part: "corpus:1/2", class_shard: "3/4", label: "class corpus 3/4", cache: release}
           - {os: windows-latest, part: "corpus:1/2", class_shard: "4/4", label: "class corpus 4/4", cache: release}
-    # A stream check (a PR into relay/arch) runs Linux only and leaves the other
-    # platforms to the head check (a push to relay/arch) and to main: the account runs 20
-    # jobs at once (5 macOS), and six streams of ~27 jobs queued for hours.
-    if: ${{ !(github.base_ref == 'relay/arch') }}
+    if: ${{ !(github.event_name == 'pull_request' && github.base_ref != 'main') }}
     runs-on: ${{ matrix.os }}
     # The hang guard of #510, no longer the margin of a whole run.
-    timeout-minutes: ${{ matrix.os == 'macos-latest' && 120 || 90 }}
+    timeout-minutes: 90
     permissions:
       contents: read
     steps:
@@ -518,10 +512,57 @@ jobs:
           DIFFCTX_CLASS_SHARD: ${{ matrix.class_shard }}
         run: scripts/cargo-test-suites.sh "$PART"
 
+  # macOS has five runner slots for the whole account, and GitHub Pro does not
+  # raise them. A push (the head check of relay/arch, main, a probe) runs the
+  # suites whose subject is the operating system and builds the Intel-Mac
+  # binary; a PR into main and the nightly add the two corpora. The suites that
+  # test only logic (impact, metamorphic, the resolvers) run on Linux and
+  # Windows. Four macOS Python versions run on the same two occasions.
+  rust-diffctx-test-macos:
+    name: Rust diffctx tests (macos-latest, ${{ matrix.label }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include: >-
+          ${{ fromJSON((github.event_name == 'push')
+            && '[{"part":"platform","label":"platform","cache":"platform-intel"}]'
+            || '[{"part":"platform","label":"platform","cache":"platform-intel"},
+                 {"part":"corpus:2/2","label":"YAML corpus","cache":"release"},
+                 {"part":"corpus:1/2","class_shard":"1/2","label":"class corpus 1/2","cache":"release"},
+                 {"part":"corpus:1/2","class_shard":"2/2","label":"class corpus 2/2","cache":"release"}]') }}
+    if: ${{ !(github.event_name == 'pull_request' && github.base_ref != 'main') }}
+    runs-on: macos-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
+        with:
+          toolchain: "1.100.0"
+
+      - name: Cache Cargo
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: cargo-rust-${{ runner.os }}-${{ matrix.cache }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: cargo-rust-${{ runner.os }}-${{ matrix.cache }}-
+
+      - name: Build and test
+        env:
+          PART: ${{ matrix.part }}
+          DIFFCTX_CLASS_SHARD: ${{ matrix.class_shard }}
+        run: scripts/cargo-test-suites.sh "$PART"
+
       # Release ships an Intel-Mac binary cross-built on this arm64 image; the
-      # first build of it must not be the release itself. One macOS part does it.
+      # first build of it must not be the release itself. The platform part does it.
       - name: Cross-build the Intel-Mac binary and run it under Rosetta
-        if: runner.os == 'macOS' && matrix.part == 'corpus:2/2'
+        if: matrix.part == 'platform'
         working-directory: crates/diffctx-native
         run: |
           rustup target add x86_64-apple-darwin
@@ -542,21 +583,24 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
         python-version: ['3.11', '3.12', '3.13', '3.14']
-        # A stream check (a PR into relay/arch, see rust-diffctx-test-cross)
+        # A stream check (a PR into relay/arch, or into any branch but main)
         # runs one Linux interpreter; exclude never drops an include-only
-        # cell, so the ARM legs are an expression too. macOS runs the lowest
-        # and the highest supported interpreter: it has five slots, which
-        # four interpreters held for half an hour behind the Rust parts.
+        # cell, so the ARM legs are an expression too. macOS has five slots:
+        # a push runs one interpreter there, a PR into main and the nightly
+        # run the four.
         exclude: >-
-          ${{ fromJSON((github.base_ref == 'relay/arch')
+          ${{ fromJSON((github.event_name == 'pull_request' && github.base_ref != 'main')
             && '[{"os":"macos-latest"},{"os":"windows-latest"},
                  {"python-version":"3.11"},{"python-version":"3.12"},{"python-version":"3.14"}]'
-            || '[{"os":"macos-latest","python-version":"3.12"},
-                 {"os":"macos-latest","python-version":"3.13"}]') }}
+            || (github.event_name == 'push')
+            && '[{"os":"macos-latest","python-version":"3.11"},
+                 {"os":"macos-latest","python-version":"3.12"},
+                 {"os":"macos-latest","python-version":"3.14"}]'
+            || '[]') }}
         # The ARM legs of the release matrix. Windows on ARM has native
         # CPython only from 3.11, so one current interpreter each.
         include: >-
-          ${{ fromJSON((github.base_ref == 'relay/arch') && '[]'
+          ${{ fromJSON((github.event_name == 'pull_request' && github.base_ref != 'main') && '[]'
             || '[{"os":"ubuntu-22.04-arm","python-version":"3.13"},
                  {"os":"windows-11-arm","python-version":"3.13"}]') }}
 
