@@ -241,3 +241,25 @@ def test_a_measure_run_that_excludes_a_commit_keeps_the_failed_build_log_under_i
         kept = out / "stderr" / f"t-{sha[:12]}-{side}.log"
         assert "What went wrong" in kept.read_text() and "padding-99" in kept.read_text()
         assert f"the index build's log is kept at {kept}" in said
+
+
+def test_the_exported_trees_of_a_commit_are_dropped_with_its_partial_leftovers_and_a_neighbours_stay(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    repo_dir = tmp_path / "repo"
+    repo_dir.mkdir()
+    subprocess.run(["git", "init", "-q", "-b", "main"], cwd=repo_dir, env=gitrepo.git_env(), check=True)
+    shas = []
+    for number in range(3):
+        commit(repo_dir, {"m.py": f"a = {number}\n"}, f"c{number}")
+        shas.append(subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo_dir, capture_output=True, text=True).stdout.strip())
+    monkeypatch.setattr(measure, "CACHE", tmp_path / "cache")
+    trees = tmp_path / "cache" / "trees" / "t"
+    for sha in shas:
+        gitrepo.export_tree(repo_dir / ".git", sha, trees / sha)
+    (trees / f"{shas[1]}.partial").mkdir()
+    (trees / shas[1] / "node_modules").mkdir()
+
+    measure.drop_trees(repo_dir / ".git", "t", shas[1])
+
+    assert sorted(path.name for path in trees.iterdir()) == [shas[2]]

@@ -13,6 +13,7 @@ import json
 import os
 import random
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -377,6 +378,15 @@ def _write_scored(sink: Sink, context: dict, target: Definition, relations: list
     sink.write("relations.jsonl", details)
 
 
+def drop_trees(git_dir: Path, repo: str, sha: str) -> None:
+    """Remove the exported snapshots of one commit: a TypeScript tree holds its installed dependencies (hono: about 1 GB
+    each), and a few dozen of them filled a runner's disk; a snapshot whose index is cached is exported again on demand."""
+    for commit in (sha, gitrepo.parent_of(git_dir, sha)):
+        if commit:
+            for leftover in (commit, f"{commit}.partial"):
+                shutil.rmtree(CACHE / "trees" / repo / leftover, ignore_errors=True)
+
+
 def measure_repo(run: RepoRun, count: int) -> tuple[int, int]:
     """Measure the sampled commits of one repository; returns how many ended `measured`, and how many were tried."""
     commits = sample_commits(run.corpus, run.repo, run.git_dir, count)
@@ -387,6 +397,7 @@ def measure_repo(run: RepoRun, count: int) -> tuple[int, int]:
             record = measure_commit(run, sha, rng)
         except Exception as error:  # one broken commit is counted and reported; the round goes on
             record = {"repo": run.repo.name, "commit": sha, "status": "error", "reason": f"{type(error).__name__}: {error}"}
+        drop_trees(run.git_dir, run.repo.name, sha)
         measured += record["status"] == "measured"
         run.sink.write("commits.jsonl", [record])
         print(f"[{run.repo.name} {number}/{len(commits)}] {sha[:10]} {record['status']} {record.get('reason', '')}", flush=True)
