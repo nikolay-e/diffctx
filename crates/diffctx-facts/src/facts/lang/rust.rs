@@ -793,7 +793,6 @@ impl<'t> Walker<'t> {
             generics: Rc::clone(&generics),
             ..cx.clone()
         };
-        // The type's name is a use of it, and its own arguments are uses.
         self.path_ref(head, &outer, UseKind::TypeUse, depth + 1);
         if ty.kind() == "generic_type" {
             if let Some(args) = ty.child_by_field_name("type_arguments") {
