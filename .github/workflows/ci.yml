@@ -311,8 +311,13 @@ jobs:
 
       # --workspace: diffctx asks the registry for diffctx-base, which is not
       # there until the release publishes it; cargo verifies the two together.
+      # Every commit packages our crates under the same version, and cargo
+      # reuses an unpacked copy of that version from the restored registry, so
+      # a stale one from an older commit is verified instead of this tree.
       - name: Package and verify
-        run: cargo publish --workspace --dry-run --locked
+        run: |
+          rm -rf ~/.cargo/registry/src/*/diffctx-* ~/.cargo/registry/cache/*/diffctx-*
+          cargo publish --workspace --dry-run --locked
 
   # ============================================================================
   # Docker image build. Gated here rather than only at release time: cd.yml's
