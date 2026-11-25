@@ -1,0 +1,210 @@
+# Mutation testing of the two places a false `Complete` or a lost hedge can be made: the occurrence
+# accounting (`diffctx-occurrence`) and the answer's decisions (`diffctx-answer`, `src/decide`).
+# Dispatch only: a full run is hours of runner time. A mutant that survives and could say "complete"
+# where the analysis cannot see, or drop a hedge, is a missing test.
+#
+# The tests live in `diffctx-native`, not in the mutated crates, so every mutant runs the crate's own
+# tests plus the native suites that read it. Each job runs in two phases over its shard of mutants:
+# the fast suites on every mutant, then the heavy corpus suites on the survivors alone (a corpus run
+# is minutes, and a mutant the fast suites kill never needs it).
+name: mutants
+
+'on':
+  workflow_dispatch:
+    inputs:
+      shards:
+        description: 'Shards per package (the matrix is two packages times this many)'
+        default: '8'
+      pick:
+        description: 'Only these jobs, as package:shard pairs (occurrence:0,answer:3); empty runs all'
+        default: ''
+      heavy:
+        description: 'Run the corpus suites on the survivors of the fast ones'
+        type: boolean
+        default: true
+
+concurrency:
+  group: mutants-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: never
+  # The shipped release profile is fat LTO in one codegen unit: minutes per rebuild, and a mutant
+  # rebuilds the crate and everything above it. Same optimisation level, no LTO, no debug info.
+  CARGO_PROFILE_RELEASE_LTO: 'off'
+  CARGO_PROFILE_RELEASE_CODEGEN_UNITS: '16'
+  CARGO_PROFILE_RELEASE_DEBUG: '0'
+  CARGO_PROFILE_RELEASE_SPLIT_DEBUGINFO: 'off'
+  CARGO_PROFILE_RELEASE_STRIP: 'none'
+  CARGO_INCREMENTAL: '0'
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      matrix: ${{ steps.m.outputs.matrix }}
+    steps:
+      - id: m
+        env:
+          SHARDS: ${{ inputs.shards }}
+          PICK: ${{ inputs.pick }}
+        run: |
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import json, os
+          shards = int(os.environ["SHARDS"])
+          pick = {p for p in os.environ["PICK"].replace(" ", "").split(",") if p}
+          jobs = [
+              {"pkg": pkg, "shard": k, "of": shards}
+              for pkg in ("occurrence", "answer")
+              for k in range(shards)
+              if not pick or f"{pkg}:{k}" in pick
+          ]
+          assert jobs, "nothing picked"
+          print("matrix=" + json.dumps({"include": jobs}))
+          PY
+
+  mutants:
+    needs: plan
+    name: ${{ matrix.pkg }} ${{ matrix.shard }}/${{ matrix.of }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.plan.outputs.matrix) }}
+    env:
+      CARGO_MUTANTS_VERSION: 27.1.0
+      CARGO_MUTANTS_SHA256: dfe6dc37d0342c891d2829b5a695aa57c2d0edecef7e7d0399a30cc6e206411e  # pragma: allowlist secret
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
+        with:
+          toolchain: "1.100.0"
+
+      # Restore only: ci.yml is the one job that saves this cache.
+      - name: Restore the Cargo cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: cargo-rust-${{ runner.os }}-release-${{ hashFiles('Cargo.lock') }}
+          restore-keys: cargo-rust-${{ runner.os }}-release-
+
+      - name: Install cargo-mutants
+        run: |
+          base=https://github.com/sourcefrog/cargo-mutants/releases/download
+          curl -fsSL -o cm.tgz "$base/v${CARGO_MUTANTS_VERSION}/cargo-mutants-x86_64-unknown-linux-gnu.tar.gz"
+          echo "${CARGO_MUTANTS_SHA256}  cm.tgz" | sha256sum -c -
+          tar xzf cm.tgz -C "$HOME/.cargo/bin" cargo-mutants
+          cargo mutants --help | head -1
+
+      # Every mutant runs these: the crates' own tests and the native suites that read them.
+      # `--lib` takes the lib tests of the mutated crate and of diffctx-native.
+      - name: Fast suites on every mutant
+        env:
+          PKG: diffctx-${{ matrix.pkg }}
+          SHARD: ${{ matrix.shard }}/${{ matrix.of }}
+        run: |
+          set -u
+          scope=(--package "$PKG")
+          if [ "${{ matrix.pkg }}" = answer ]; then
+            scope+=(--file 'crates/diffctx-answer/src/decide/**')
+          fi
+          suites=(occurrence_alias occurrence_classes occurrence_debug occurrence_implicit occurrence_outcome
+            occurrence_scan gap_reasons test_claim tests_same_file edge_precision data_file_added)
+          args=(--in-place --cargo-arg=--release --test-workspace=false --test-package "$PKG,diffctx-native"
+            --cargo-test-arg=--lib)
+          for s in "${suites[@]}"; do args+=("--cargo-test-arg=--test" "--cargo-test-arg=$s"); done
+          printf '%s\n' "${scope[@]}" "${args[@]}" > fast-args.txt
+          cargo mutants --list "${scope[@]}" --shard "$SHARD" > shard-list.txt
+          echo "mutants in shard $SHARD: $(wc -l < shard-list.txt)"
+          rc=0
+          timeout -s INT 140m cargo mutants "${scope[@]}" "${args[@]}" --shard "$SHARD" --timeout 900 || rc=$?
+          echo "fast exit=$rc"
+          echo "$rc" > fast.rc
+          # 0 all caught, 2 survivors, 3 timeouts; anything else is a broken run, not a result.
+          case "$rc" in 0|2|3|124|130) ;; *) exit "$rc" ;; esac
+          mv mutants.out mutants-fast.out
+
+      - name: Corpus suites on the survivors
+        if: inputs.heavy
+        env:
+          PKG: diffctx-${{ matrix.pkg }}
+        run: |
+          set -u
+          survivors=$(cat mutants-fast.out/missed.txt mutants-fast.out/timeout.txt 2>/dev/null | wc -l)
+          echo "survivors of the fast suites: $survivors"
+          [ "$survivors" -gt 0 ] || { echo 0 > heavy.rc; exit 0; }
+          python3 - <<'PY'
+          import json
+          names = []
+          for kind in ("missed", "timeout"):
+              try:
+                  names += [l.rstrip("\n") for l in open(f"mutants-fast.out/{kind}.txt") if l.strip()]
+              except FileNotFoundError:
+                  pass
+          # Full names, anchored: a name is one exact mutant.
+          import re
+          open("survivors.toml", "w").write(
+              "examine_re = [\n"
+              + "".join(f"  {json.dumps('^' + re.escape(n) + '$')},\n" for n in names)
+              + "]\n")
+          PY
+          scope=(--package "$PKG")
+          if [ "${{ matrix.pkg }}" = answer ]; then
+            scope+=(--file 'crates/diffctx-answer/src/decide/**')
+          fi
+          suites=(class_completeness_corpus class_completeness impact yaml_cases)
+          args=(--in-place --cargo-arg=--release --test-workspace=false --test-package "$PKG,diffctx-native"
+            --cargo-test-arg=--lib)
+          for s in "${suites[@]}"; do args+=("--cargo-test-arg=--test" "--cargo-test-arg=$s"); done
+          cargo mutants --list "${scope[@]}" "${args[@]}" --config survivors.toml > heavy-list.txt
+          echo "mutants the survivor filter selects: $(wc -l < heavy-list.txt)"
+          rc=0
+          timeout -s INT 170m cargo mutants "${scope[@]}" "${args[@]}" --config survivors.toml \
+            --baseline=skip --timeout 3000 || rc=$?
+          echo "heavy exit=$rc"
+          echo "$rc" > heavy.rc
+          exit 0
+
+      - name: Counts
+        if: always()
+        run: |
+          {
+            echo "## ${{ matrix.pkg }} ${{ matrix.shard }}/${{ matrix.of }}"
+            for d in mutants-fast.out mutants.out; do
+              [ -d "$d" ] || continue
+              echo "$d: caught $(wc -l < "$d/caught.txt" 2>/dev/null || echo 0)," \
+                "missed $(wc -l < "$d/missed.txt" 2>/dev/null || echo 0)," \
+                "timeout $(wc -l < "$d/timeout.txt" 2>/dev/null || echo 0)," \
+                "unviable $(wc -l < "$d/unviable.txt" 2>/dev/null || echo 0)"
+            done
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        if: always()
+        with:
+          name: mutants-${{ matrix.pkg }}-${{ matrix.shard }}
+          path: |
+            mutants.out
+            mutants-fast.out
+            shard-list.txt
+            heavy-list.txt
+            fast-args.txt
+            survivors.toml
+            fast.rc
+            heavy.rc
+          if-no-files-found: ignore
+          include-hidden-files: true
+          retention-days: 30
