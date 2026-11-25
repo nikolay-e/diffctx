@@ -669,6 +669,15 @@ impl FileFacts {
         self.blob.language
     }
 
+    pub fn package_clause(&self) -> Option<&str> {
+        self.blob.facts.iter().find_map(|fact| match fact {
+            Fact::Export(Export::Default {
+                local: Some(name), ..
+            }) => Some(name.as_str()),
+            _ => None,
+        })
+    }
+
     /// The blob's losses, each about this file.
     pub fn losses(&self) -> Vec<Loss> {
         self.blob

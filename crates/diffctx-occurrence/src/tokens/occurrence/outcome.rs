@@ -650,6 +650,13 @@ impl<'a> Reading<'a> {
         file.module == key.module && file.language() == key.language && file.project == key.project
     }
 
+    /// A Go `x_test` file sees none of the names of the package it tests.
+    fn is_external_test_of_subject(&self) -> bool {
+        (self.file.language() == Language::Go)
+            && (self.view.file(&self.subject.file))
+                .is_some_and(|own| own.package_clause() != self.file.package_clause())
+    }
+
     fn unresolved(&self, reason: UnresolvedReason, binding: &Binding, spelled: &[u8]) -> Claim {
         let relation = Some(binding.relation);
         let verified = |witness: Option<Witness>| {
@@ -673,7 +680,8 @@ impl<'a> Reading<'a> {
                     .iter()
                     .any(|import| self.binds(import, spelled))
                     && (!self.subject.key.local.container.is_empty()
-                        || !self.is_own_module(self.file)))
+                        || !self.is_own_module(self.file)
+                        || self.is_external_test_of_subject()))
                 .then(|| Witness::Builtin(self.file.path.clone())),
             ),
             UnresolvedReason::External => {
