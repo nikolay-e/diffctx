@@ -1,5 +1,4 @@
 pub(crate) mod base;
-mod cells;
 mod config_edges;
 mod document;
 mod history;

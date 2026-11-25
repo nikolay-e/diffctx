@@ -39,16 +39,7 @@ mod zig;
 
 use super::base::EdgeBuilder;
 
-/// The cells' builders for the groups drawn from them (none by default), then
-/// the text builders, each narrowed to what the cells do not cover
-/// (`CELL_EDGES`).
 pub(crate) fn get_semantic_builders() -> Vec<Box<dyn EdgeBuilder>> {
-    let mut builders = super::cells::builders();
-    builders.extend(text_builders().into_iter().map(super::cells::beside));
-    builders
-}
-
-pub(super) fn text_builders() -> Vec<Box<dyn EdgeBuilder>> {
     vec![
         Box::new(python::PythonEdgeBuilder),
         Box::new(javascript::JavaScriptEdgeBuilder),

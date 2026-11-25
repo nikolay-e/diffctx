@@ -23,7 +23,6 @@ const EDGES: &[(&str, &str)] = &[
     ("diffctx-select", "diffctx-snapshot"),
     ("diffctx-select", "diffctx-config"),
     ("diffctx-select", "diffctx-base"),
-    ("diffctx-graph", "diffctx-resolve"),
     ("diffctx-graph", "diffctx-facts"),
     ("diffctx-graph", "diffctx-snapshot"),
     ("diffctx-graph", "diffctx-config"),
