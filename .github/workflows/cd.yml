@@ -89,6 +89,21 @@ jobs:
           docker logout dhi.io >/dev/null
           echo "DHI_TOKEN logs in to dhi.io."
 
+  # The full platform set (macOS included) on the commit being released. It
+  # does not gate the publish jobs: a red run is read before the owner's yes.
+  ci:
+    name: CI on the full platform set
+    if: ${{ !inputs.build_only }}
+    uses: ./.github/workflows/ci.yml
+    with:
+      full: true
+    secrets:
+      DHI_USERNAME: ${{ secrets.DHI_USERNAME }}
+      DHI_TOKEN: ${{ secrets.DHI_TOKEN }}
+      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+    permissions:
+      contents: read
+
   prepare-version:
     name: Prepare Version Commit
     needs: check-credentials
