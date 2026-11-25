@@ -3,10 +3,10 @@
 # Started by hand: a full run is hours of runner time. A mutant that survives and could say "complete"
 # where the analysis cannot see, or drop a hedge, is a missing test.
 #
-# The tests live in `diffctx-native`, not in the mutated crates, so every mutant runs the crate's own
-# tests plus the native suites that read it. Each job runs in two phases over its shard of mutants:
-# the fast suites on every mutant, then the heavy corpus suites on the survivors alone (a corpus run
-# is minutes, and a mutant the fast suites kill never needs it).
+# The tests live in the `diffctx` package (crates/diffctx-native), not in the mutated crates, so
+# every mutant runs the crate's own tests plus the native suites that read it. Each job runs in two
+# phases over its shard of mutants: the fast suites on every mutant, then the heavy corpus suites on
+# the survivors alone (a corpus run is minutes, and a mutant the fast suites kill never needs it).
 name: mutants
 
 'on':
@@ -114,7 +114,7 @@ jobs:
           cargo mutants --help | head -1
 
       # Every mutant runs these: the crates' own tests and the native suites that read them.
-      # `--lib` takes the lib tests of the mutated crate and of diffctx-native.
+      # `--lib` takes the lib tests of the mutated crate and of the `diffctx` package.
       - name: Fast suites on every mutant
         env:
           PKG: diffctx-${{ matrix.pkg }}
@@ -127,7 +127,7 @@ jobs:
           fi
           suites=(occurrence_alias occurrence_classes occurrence_debug occurrence_implicit occurrence_outcome
             occurrence_scan gap_reasons test_claim tests_same_file edge_precision data_file_added)
-          args=(--in-place --cargo-arg=--release --test-workspace=false --test-package "$PKG,diffctx-native"
+          args=(--in-place --cargo-arg=--release --test-workspace=false --test-package "$PKG,diffctx"
             --cargo-test-arg=--lib)
           for s in "${suites[@]}"; do args+=("--cargo-test-arg=--test" "--cargo-test-arg=$s"); done
           printf '%s\n' "${scope[@]}" "${args[@]}" > fast-args.txt
@@ -170,7 +170,7 @@ jobs:
             scope+=(--file 'crates/diffctx-answer/src/decide/**')
           fi
           suites=(class_completeness_corpus class_completeness impact yaml_cases)
-          args=(--in-place --cargo-arg=--release --test-workspace=false --test-package "$PKG,diffctx-native"
+          args=(--in-place --cargo-arg=--release --test-workspace=false --test-package "$PKG,diffctx"
             --cargo-test-arg=--lib)
           for s in "${suites[@]}"; do args+=("--cargo-test-arg=--test" "--cargo-test-arg=$s"); done
           cargo mutants --list "${scope[@]}" "${args[@]}" --config survivors.toml > heavy-list.txt
