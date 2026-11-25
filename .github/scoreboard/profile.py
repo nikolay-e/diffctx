@@ -13,9 +13,16 @@ import sys
 perf, gitc = (pathlib.Path(p) for p in sys.argv[1:3])
 ROW = re.compile(r"^\s*([\d,]+) \(\s*[\d.]+%\)\s+(.*)$")
 SHORT = re.compile(r"\s*\[[^\]]*\]$")
+ENTRY = re.compile(r"__rust_begin_short_backtrace|run_with_deadline|profile::carry|delivery::deliver|/main\.rs")
 
 
-def top(cg, inclusive, n):
+def is_product(text):
+    """Thread starts, std and rayon plumbing and the entry chain carry the whole run's cost and say nothing about
+    where it goes: the listing keeps product code and the parser."""
+    return ("crates/" in text or "parser.c" in text) and not ENTRY.search(text)
+
+
+def top(cg, inclusive, n, product=False):
     out = subprocess.run(
         [
             "callgrind_annotate",
@@ -26,7 +33,7 @@ def top(cg, inclusive, n):
         capture_output=True,
         text=True,
     ).stdout
-    rows = [m for m in map(ROW.match, out.splitlines()) if m]
+    rows = [m for m in map(ROW.match, out.splitlines()) if m and (not product or is_product(m.group(2)))]
     return [f"{int(m.group(1).replace(',', '')):>16,}  {SHORT.sub('', m.group(2))[:150]}" for m in rows[:n]]
 
 
@@ -55,10 +62,10 @@ for cell in ("impact-narrow", "locate-ppr-narrow", "symbol", "pack-ego-wide"):
     if not (base.exists() and head.exists()):
         print(f"### {cell}: no callgrind files\n")
         continue
-    print(f"### {cell}: top functions by inclusive instructions\n")
+    print(f"### {cell}: product functions by inclusive instructions (entry chain and runtime frames left out)\n")
     for tag, cg in (("1.20.0", base), ("head", head)):
         print(f"{tag}:\n```")
-        print("\n".join(top(cg, True, 40)))
+        print("\n".join(top(cg, True, 40, product=True)))
         print("```")
     print("head, exclusive (self) instructions:\n```")
     print("\n".join(top(head, False, 20)))

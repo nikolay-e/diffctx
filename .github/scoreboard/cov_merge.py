@@ -106,11 +106,15 @@ def tally(rl, pl):
 def function_rows(rl, pl, rf, pf):
     rows = []
     for f in sorted(set(rf) | set(pf)):
-        merged = collections.defaultdict(lambda: [0, 0])
+        # One row per source span: generic functions and closures are instantiated once per crate and
+        # type, each under its own symbol, and the span is called when any instance was.
+        merged, names = collections.defaultdict(lambda: [0, 0]), {}
         for idx, table in ((0, rf.get(f, {})), (1, pf.get(f, {}))):
-            for key, count in table.items():
-                merged[key][idx] += count
-        for (start, end, name), (rc, pc) in sorted(merged.items()):
+            for (start, end, name), count in table.items():
+                merged[start, end][idx] += count
+                names.setdefault((start, end), name)
+        for (start, end), (rc, pc) in sorted(merged.items()):
+            name = names[start, end]
             span = [n for n in range(start, end + 1) if n in rl.get(f, {}) or n in pl.get(f, {})]
             if not span:
                 continue
