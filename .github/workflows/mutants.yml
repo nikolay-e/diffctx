@@ -144,6 +144,9 @@ jobs:
           scope=(--package "$PKG")
           if [ "${{ matrix.pkg }}" = answer ]; then
             scope+=(--file 'crates/diffctx-answer/src/decide/**')
+          else
+            # cfg(debug_assertions): absent from this release build, so its mutants can only survive
+            scope+=(--exclude 'crates/diffctx-occurrence/src/tokens/occurrence/identity.rs')
           fi
           suites=(occurrence_alias occurrence_classes occurrence_debug occurrence_implicit occurrence_outcome
             occurrence_scan gap_reasons test_claim tests_same_file edge_precision data_file_added)
@@ -195,6 +198,9 @@ jobs:
           scope=(--package "$PKG")
           if [ "${{ matrix.pkg }}" = answer ]; then
             scope+=(--file 'crates/diffctx-answer/src/decide/**')
+          else
+            # cfg(debug_assertions): absent from this release build, so its mutants can only survive
+            scope+=(--exclude 'crates/diffctx-occurrence/src/tokens/occurrence/identity.rs')
           fi
           suites=(class_completeness impact yaml_cases)
           args=(--in-place --cargo-arg=--release --test-workspace=false --test-package "$PKG,diffctx"
