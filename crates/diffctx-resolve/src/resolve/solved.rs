@@ -36,6 +36,8 @@ pub(super) struct Computer {
     builds_only: bool,
     /// The classes the calls are written on, when every one of them says.
     classes: Option<Vec<Name>>,
+    /// The literals the names start with, when every call gives one.
+    prefixes: Option<Vec<String>>,
 }
 
 /// The files of `files` that compute a name where the facts say so.
@@ -43,7 +45,7 @@ pub(super) fn computers_of(files: &[FileFacts]) -> Vec<Computer> {
     files
         .iter()
         .filter_map(|file| {
-            let calls: Vec<(bool, bool, Option<&Name>)> = file
+            let calls: Vec<(bool, bool, Option<&Name>, Option<&String>)> = file
                 .blob
                 .facts
                 .iter()
@@ -52,8 +54,9 @@ pub(super) fn computers_of(files: &[FileFacts]) -> Vec<Computer> {
                         member,
                         class,
                         builds,
+                        prefix,
                         ..
-                    } => Some((*member, *builds, class.as_ref())),
+                    } => Some((*member, *builds, class.as_ref(), prefix.as_ref())),
                     _ => None,
                 })
                 .collect();
@@ -61,11 +64,12 @@ pub(super) fn computers_of(files: &[FileFacts]) -> Vec<Computer> {
             Some(Computer {
                 file: file.path.clone(),
                 members_only: calls.iter().all(|(member, ..)| *member),
-                builds_only: calls.iter().all(|(_, builds, _)| *builds),
+                builds_only: calls.iter().all(|(_, builds, ..)| *builds),
                 classes: calls
                     .iter()
-                    .map(|(.., class)| class.cloned())
-                    .collect::<Option<Vec<Name>>>(),
+                    .map(|(_, _, class, _)| class.cloned())
+                    .collect(),
+                prefixes: calls.iter().map(|(.., prefix)| prefix.cloned()).collect(),
             })
         })
         .collect()
@@ -125,28 +129,36 @@ impl Solved {
         self.serialized.contains(key)
     }
 
-    /// How many files that `may_reach` compute a name that could be a definition's:
-    /// any of them for a function, the ones that reach members for a member of one
-    /// of `classes` (a call written on another class leaves it out), and the ones
-    /// that build a class only when `builds` (the definition is a class or its
-    /// constructor).
+    /// How many files that `may_reach` compute a name that could be one of `subjects`': any of
+    /// them for a function, the ones that reach members for a member of a class (a call written
+    /// on another class leaves it out), and the ones that build a class only when `builds` (a
+    /// subject is a class or its constructor). A call whose name starts with a literal reaches
+    /// only the subjects whose name does.
     pub fn name_computers(
         &self,
-        member: bool,
         builds: bool,
-        classes: &[Name],
+        subjects: &[&DefKey],
         may_reach: impl Fn(&str) -> bool,
     ) -> usize {
+        let member = subjects.iter().any(|k| !k.local.container.is_empty());
+        let on = |class: &Name| {
+            subjects
+                .iter()
+                .any(|k| k.local.container.last() == Some(class))
+        };
         (self.computers.iter())
             .filter(|c| {
                 (member || !c.members_only)
                     && (builds || !c.builds_only)
                     && may_reach(c.file.as_str())
-            })
-            .filter(|c| {
-                c.classes
-                    .as_ref()
-                    .is_none_or(|on| classes.iter().any(|class| on.contains(class)))
+                    && (c.classes.as_ref()).is_none_or(|classes| classes.iter().any(on))
+                    && (c.prefixes.as_ref()).is_none_or(|starts| {
+                        starts.iter().any(|start| {
+                            subjects
+                                .iter()
+                                .any(|k| k.local.name.as_str().starts_with(start))
+                        })
+                    })
             })
             .count()
     }

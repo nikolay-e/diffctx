@@ -10,9 +10,9 @@ use std::rc::Rc;
 use super::implicit::C_EXPORTS;
 use super::rows::{
     BARE_HEADS, CLASS_CANDIDATES, COMMAND_ARGUMENTS, DECLARING_KEYWORDS, DECLARING_LOCALS,
-    FOREIGN_TEXT, KEYWORD_ARGUMENTS, LOCAL_CALLS, MEMBER_OBJECTS, MODULE_PATHS, NAMED_LOCALS,
-    OFFERING_MODULES, PACKAGE_HEADS, PAIRED_PROTOTYPES, PATH_SEPARATORS, SCHEMA_OBJECTS,
-    SCOPED_LOCALS, STATEMENT_NAMES, STRUCTURAL_TYPES,
+    FOREIGN_TEXT, LOCAL_CALLS, MEMBER_OBJECTS, MODULE_PATHS, NAMED_LOCALS, OFFERING_MODULES,
+    PACKAGE_HEADS, PAIRED_PROTOTYPES, PATH_SEPARATORS, SCHEMA_OBJECTS, SCOPED_LOCALS,
+    STATEMENT_NAMES, STRUCTURAL_TYPES,
 };
 use super::scanner::dollar_joins;
 use super::{
@@ -28,6 +28,7 @@ use diffctx_resolve::resolve::{
 };
 use diffctx_resolve::vocabulary::family::Family;
 use diffctx_snapshot::snapshot::{Loss, RepoPath, WorkspaceModel};
+mod keyword;
 mod resolved;
 mod routes;
 
@@ -1163,62 +1164,6 @@ impl<'a> Reading<'a> {
         (after.starts_with(separator.as_bytes()) && !namespace).then(|| {
             Witness::Namespace(Name::new(String::from_utf8_lossy(self.spelled(occurrence))))
         })
-    }
-
-    /// The `(` of the call whose keyword argument is the occurrence (`f(name=value)`).
-    fn keyword_call(&self, occurrence: &Occurrence) -> Option<usize> {
-        if !KEYWORD_ARGUMENTS
-            .iter()
-            .any(|f| f.has(self.file.language()))
-        {
-            return None;
-        }
-        let (start, end) = (
-            occurrence.bytes.start as usize,
-            occurrence.bytes.end as usize,
-        );
-        let before = self.text[..start].trim_ascii_end();
-        let after = self.text[end..].trim_ascii_start();
-        if !matches!(before.last(), Some(b'(' | b','))
-            || !after.starts_with(b"=")
-            || after.starts_with(b"==")
-        {
-            return None;
-        }
-        let mut depth = 0;
-        before.iter().rposition(|b| match b {
-            b')' => {
-                depth += 1;
-                false
-            }
-            b'(' if depth > 0 => {
-                depth -= 1;
-                false
-            }
-            _ => *b == b'(',
-        })
-    }
-
-    /// `Reply(url=...)` writes the field `url` of the class it builds: the keyword is a use
-    /// of that field when the callee, found at the call's opening parenthesis, is its class.
-    fn keyword_field(&self, occurrence: &Occurrence) -> Option<Claim> {
-        let open = self.keyword_call(occurrence)?;
-        let (name, owner) = self.subject.key.local.container.split_last()?;
-        let callee = self.view.in_file(&self.file.path).find(|binding| {
-            binding.site.bytes.end as usize == open
-                && matches!(&binding.resolution, Resolution::Resolved { target, .. }
-                    if target.module == self.subject.key.module
-                        && target.local.name == *name
-                        && target.local.container == owner)
-        });
-        callee.map(|_| Claim::new(Some(Relation::Writes), Outcome::Ours, Basis::Resolved))
-    }
-
-    /// A keyword argument's name names a parameter or a field of the callee: no use of a subject
-    /// that no keyword can write.
-    fn keyword_name(&self, occurrence: &Occurrence) -> Option<Witness> {
-        (!writable(self.subject) && self.keyword_call(occurrence).is_some())
-            .then(|| Witness::Keyword(Name::new(String::from_utf8_lossy(self.spelled(occurrence)))))
     }
 
     /// A word after a listed command names no function (an unlisted command may run it); a script, only after a

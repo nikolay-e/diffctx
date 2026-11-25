@@ -4,7 +4,7 @@ use std::path::Path;
 
 use std::rc::Rc;
 
-use diffctx_facts::facts::{DefKind, Disambig, Name, Scope};
+use diffctx_facts::facts::{DefKey, DefKind, Disambig, Name, Scope};
 
 use diffctx_occurrence::tokens::occurrence::{Hedge, Settled, Standing};
 
@@ -123,18 +123,12 @@ impl Cell {
         }
         // A name the code computes (`getattr(obj, name)`, `eval`, `globals()[key]`) may
         // be the definition's, and nothing in the text says so.
-        let member = changed
-            .subjects
-            .iter()
-            .any(|s| !s.key.local.container.is_empty());
-        let classes: Vec<Name> = (changed.subjects.iter())
-            .filter_map(|s| s.key.local.container.last().cloned())
-            .collect();
+        let subjects: Vec<&DefKey> = changed.subjects.iter().map(|s| &s.key).collect();
         let builds = (changed.subjects.iter())
             .filter_map(|s| self.definition(&s.key))
             .any(|def| matches!(def.kind, DefKind::Class | DefKind::Constructor));
         let reach = |file: &str| self.ctx.workspace.may_reference(file, &changed.file);
-        if self.head.name_computers(member, builds, &classes, reach) > 0 {
+        if self.head.name_computers(builds, &subjects, reach) > 0 {
             tail.push(Gap::NotTraced);
         }
         let reasons = self.stops();

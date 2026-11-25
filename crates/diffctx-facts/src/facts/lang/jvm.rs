@@ -164,6 +164,7 @@ macro_rules! shared_reader_methods {
                     member: true,
                     class: call.class.as_deref().map(Name::new),
                     builds: false,
+                    prefix: None,
                 });
             }
         }

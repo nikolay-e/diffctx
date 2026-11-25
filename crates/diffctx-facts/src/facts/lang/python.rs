@@ -45,6 +45,17 @@ use diffctx_snapshot::snapshot::RunBudget;
 mod mutations;
 
 const MAX_DEPTH: u16 = 256;
+const DESTRUCTURING: [&str; 9] = [
+    "pattern_list",
+    "tuple_pattern",
+    "list_pattern",
+    "list_splat_pattern",
+    "as_pattern_target",
+    "parenthesized_expression",
+    "expression_list",
+    "tuple",
+    "list",
+];
 const POLL_EVERY: usize = 256;
 
 pub struct PythonExtractor;
@@ -235,6 +246,14 @@ fn has_child_of_kind(node: Node, kind: &str) -> bool {
     node.named_children(&mut cursor).any(|c| c.kind() == kind)
 }
 
+fn decorator_nodes(wrapper: Node) -> Vec<Node> {
+    let mut cursor = wrapper.walk();
+    wrapper
+        .named_children(&mut cursor)
+        .filter(|c| c.kind() == "decorator")
+        .collect()
+}
+
 /// Whether the namespace `globals()` or `locals()` returns is indexed (`globals()[k]`,
 /// `globals().get(k)`) rather than handed on whole (`render(**locals())`).
 fn looked_up_by_key(call: Node) -> bool {
@@ -403,6 +422,25 @@ struct Cand {
 }
 
 impl Cand {
+    /// A value or alias defined by the statement `statement`, where `ix` stands.
+    fn variable(ix: &Ix, id: usize, name: String, kind: DefKind, statement: usize) -> Self {
+        Self {
+            id,
+            container: ix.container.clone(),
+            kind,
+            shape: Shape::Plain,
+            type_checking: ix.type_checking,
+            conditional: ix.conditional,
+            fallback: ix.fallback_for.as_ref().is_some_and(|f| f.contains(&name)),
+            statement: Some(statement),
+            variable: true,
+            vis: visibility(&name, ix.in_class, false),
+            decorators: Vec::new(),
+            receiver: None,
+            name,
+        }
+    }
+
     fn group(&self) -> String {
         format!("{}\u{0}{}", self.container.join("\u{1}"), self.name)
     }
@@ -526,21 +564,19 @@ impl<'t> Walker<'t> {
         self.facts.extend(entries);
     }
 
-    fn is_type_checking(&self, condition: Node<'_>) -> bool {
-        let compact: String = self
-            .text(condition)
-            .chars()
+    fn unspaced(&self, node: Node<'_>) -> String {
+        (self.text(node).chars())
             .filter(|c| !c.is_whitespace())
-            .collect();
+            .collect()
+    }
+
+    fn is_type_checking(&self, condition: Node<'_>) -> bool {
+        let compact = self.unspaced(condition);
         compact == "TYPE_CHECKING" || compact.ends_with(".TYPE_CHECKING")
     }
 
     fn is_main_guard(&self, condition: Node<'_>) -> bool {
-        let compact: String = self
-            .text(condition)
-            .chars()
-            .filter(|c| !c.is_whitespace())
-            .collect();
+        let compact = self.unspaced(condition);
         matches!(
             compact.as_str(),
             "__name__==\"__main__\""
@@ -554,12 +590,8 @@ impl<'t> Walker<'t> {
         let Some(wrapper) = wrapper else {
             return Vec::new();
         };
-        let mut cursor = wrapper.walk();
         let mut out = Vec::new();
-        for decorator in wrapper
-            .named_children(&mut cursor)
-            .filter(|c| c.kind() == "decorator")
-        {
+        for decorator in decorator_nodes(wrapper) {
             let mut tokens = Vec::new();
             self.leaf_tokens(decorator, &mut tokens);
             if tokens.first() == Some(&"@") {
@@ -745,15 +777,7 @@ impl<'t> Walker<'t> {
     fn leaf_targets(&self, node: Node<'t>, out: &mut Vec<Node<'t>>) {
         match node.kind() {
             "identifier" | "attribute" | "subscript" => out.push(node),
-            "pattern_list"
-            | "tuple_pattern"
-            | "list_pattern"
-            | "list_splat_pattern"
-            | "as_pattern_target"
-            | "parenthesized_expression"
-            | "expression_list"
-            | "tuple"
-            | "list" => {
+            kind if DESTRUCTURING.contains(&kind) => {
                 let mut cursor = node.walk();
                 for child in node.named_children(&mut cursor) {
                     self.leaf_targets(child, out);
@@ -761,6 +785,17 @@ impl<'t> Walker<'t> {
             }
             _ => {}
         }
+    }
+
+    fn bound_names(&self, target: Option<Node<'t>>) -> Vec<&'t str> {
+        let mut leaves = Vec::new();
+        if let Some(target) = target {
+            self.leaf_targets(target, &mut leaves);
+        }
+        (leaves.into_iter())
+            .filter(|l| l.kind() == "identifier")
+            .map(|l| self.text(l))
+            .collect()
     }
 
     /// The name an attribute or item write is rooted in: `a` for `a.b[c]`.
@@ -868,7 +903,7 @@ impl<'t> Walker<'t> {
         while let Some(node) = stack.pop() {
             let field = |name: &str| node.child_by_field_name(name);
             match node.kind() {
-                "function_definition" | "class_definition" => {
+                "function_definition" | "class_definition" | "lambda" => {
                     if let Some(name) = field("name") {
                         declared.insert(self.text(name));
                         if node.kind() == "class_definition" {
@@ -879,35 +914,21 @@ impl<'t> Walker<'t> {
                         self.bind_parameters(list, &mut declared, &mut params);
                     }
                 }
-                "lambda" => {
-                    if let Some(list) = field("parameters") {
-                        self.bind_parameters(list, &mut declared, &mut params);
-                    }
-                }
                 "decorated_definition" => {
                     let name = field("definition")
                         .and_then(|d| d.child_by_field_name("name"))
                         .map(|n| self.text(n));
-                    let mut cursor = node.walk();
-                    for decorator in node
-                        .named_children(&mut cursor)
-                        .filter(|c| c.kind() == "decorator")
-                    {
-                        if let Some(name) = name {
-                            flows.push(Flow::Decorated { name, decorator });
-                        }
+                    if let Some(name) = name {
+                        flows.extend(
+                            decorator_nodes(node)
+                                .into_iter()
+                                .map(|decorator| Flow::Decorated { name, decorator }),
+                        );
                     }
                 }
                 "assignment" | "augmented_assignment" => {
                     if let (Some(target), Some(value)) = (field("left"), field("right")) {
-                        let mut leaves = Vec::new();
-                        self.leaf_targets(target, &mut leaves);
-                        declared.extend(
-                            leaves
-                                .iter()
-                                .filter(|l| l.kind() == "identifier")
-                                .map(|l| self.text(*l)),
-                        );
+                        declared.extend(self.bound_names(Some(target)));
                         flows.push(Flow::Assigned { target, value });
                     }
                 }
@@ -918,16 +939,7 @@ impl<'t> Walker<'t> {
                     }
                 }
                 "for_statement" | "for_in_clause" => {
-                    let mut leaves = Vec::new();
-                    if let Some(left) = field("left") {
-                        self.leaf_targets(left, &mut leaves);
-                    }
-                    declared.extend(
-                        leaves
-                            .iter()
-                            .filter(|l| l.kind() == "identifier")
-                            .map(|l| self.text(*l)),
-                    );
+                    declared.extend(self.bound_names(field("left")));
                 }
                 "as_pattern" => {
                     let mut leaves = Vec::new();
@@ -1386,21 +1398,7 @@ impl<'t> Walker<'t> {
                 } else {
                     DefKind::Variable
                 };
-                out.push(Cand {
-                    id: node.id(),
-                    container: ix.container.clone(),
-                    kind,
-                    shape: Shape::Plain,
-                    type_checking: ix.type_checking,
-                    conditional: ix.conditional,
-                    fallback: ix.fallback_for.as_ref().is_some_and(|f| f.contains(&name)),
-                    statement: Some(statement),
-                    variable: true,
-                    vis: visibility(&name, ix.in_class, false),
-                    decorators: Vec::new(),
-                    receiver: None,
-                    name,
-                });
+                out.push(Cand::variable(ix, node.id(), name, kind, statement));
             }
             "pattern_list" | "tuple_pattern" | "list_pattern" => {
                 let mut cursor = node.walk();
@@ -1420,21 +1418,13 @@ impl<'t> Walker<'t> {
             return;
         };
         let name = self.text(ident).to_string();
-        out.push(Cand {
-            id: ident.id(),
-            container: ix.container.clone(),
-            kind: DefKind::TypeAlias,
-            shape: Shape::Plain,
-            type_checking: ix.type_checking,
-            conditional: ix.conditional,
-            fallback: ix.fallback_for.as_ref().is_some_and(|f| f.contains(&name)),
-            statement: Some(statement.id()),
-            variable: true,
-            vis: visibility(&name, ix.in_class, false),
-            decorators: Vec::new(),
-            receiver: None,
+        out.push(Cand::variable(
+            ix,
+            ident.id(),
             name,
-        });
+            DefKind::TypeAlias,
+            statement.id(),
+        ));
     }
 
     /// Gives every candidate its key: a variable assigned twice is one
@@ -1696,14 +1686,7 @@ impl<'t> Walker<'t> {
 
     // ---- walk
 
-    fn children(&mut self, node: Node<'t>, cx: &Cx, depth: u16) {
-        let mut cursor = node.walk();
-        for child in node.named_children(&mut cursor) {
-            self.visit(child, cx, depth);
-        }
-    }
-
-    fn children_but(&mut self, node: Node<'t>, skip: Option<Node<'t>>, cx: &Cx, depth: u16) {
+    fn children(&mut self, node: Node<'t>, skip: Option<Node<'t>>, cx: &Cx, depth: u16) {
         let mut cursor = node.walk();
         for child in node.named_children(&mut cursor) {
             if skip.is_none_or(|s| s.id() != child.id()) {
@@ -1766,18 +1749,18 @@ impl<'t> Walker<'t> {
                     in_loop: cx.in_loop || node.kind() == "for_statement",
                     ..cx.clone()
                 };
-                self.children_but(node, left, &body, d);
+                self.children(node, left, &body, d);
             }
             "while_statement" => {
                 let body = Cx {
                     in_loop: true,
                     ..cx.clone()
                 };
-                self.children(node, &body, d);
+                self.children(node, None, &body, d);
             }
             "as_pattern" => {
                 let alias = node.child_by_field_name("alias");
-                self.children_but(node, alias, cx, d);
+                self.children(node, alias, cx, d);
                 if let Some(alias) = alias {
                     self.bind_targets(alias, cx, d);
                 }
@@ -1806,7 +1789,7 @@ impl<'t> Walker<'t> {
                     }
                 }
             }
-            _ => self.children(node, cx, d),
+            _ => self.children(node, None, cx, d),
         }
     }
 
@@ -1845,48 +1828,7 @@ impl<'t> Walker<'t> {
             receiver: known.receiver.clone().or_else(|| cx.receiver.clone()),
             read: UseKind::Read,
         };
-        if let Some(wrapper) = wrapper {
-            let mut cursor = wrapper.walk();
-            for decorator in wrapper
-                .named_children(&mut cursor)
-                .filter(|c| c.kind() == "decorator")
-            {
-                self.decorator(decorator, &inner, depth);
-            }
-        }
-        if is_class {
-            if let Some(bases) = def.child_by_field_name("superclasses") {
-                let mut cursor = bases.walk();
-                for base in bases.named_children(&mut cursor) {
-                    let value = if base.kind() == "keyword_argument" {
-                        base.child_by_field_name("value").unwrap_or(base)
-                    } else {
-                        base
-                    };
-                    self.type_node(
-                        value,
-                        &Cx {
-                            read: UseKind::TypeUse,
-                            ..inner.clone()
-                        },
-                        depth,
-                    );
-                }
-            }
-            if let Some(body) = body {
-                self.visit(body, &inner, depth);
-            }
-            return;
-        }
-        let saved = self.types.clone();
-        self.params(def.child_by_field_name("parameters"), &inner, depth);
-        if let Some(returns) = def.child_by_field_name("return_type") {
-            self.type_expr(returns, &inner, depth);
-        }
-        if let Some(body) = body {
-            self.visit(body, &inner, depth);
-        }
-        self.types = saved;
+        self.read_def(def, wrapper, &inner, depth);
     }
 
     /// A `def` or `class` inside a function that does not leave it: a local
@@ -1896,28 +1838,28 @@ impl<'t> Walker<'t> {
         if let Some(name) = def.child_by_field_name("name") {
             self.local(name, LocalKind::Closure, cx);
         }
-        if let Some(wrapper) = wrapper {
-            let mut cursor = wrapper.walk();
-            for decorator in wrapper
-                .named_children(&mut cursor)
-                .filter(|c| c.kind() == "decorator")
-            {
-                self.decorator(decorator, cx, depth);
-            }
+        self.read_def(def, wrapper, cx, depth);
+    }
+
+    /// What a definition reads: its decorators, a class's bases (as types, a `metaclass=`
+    /// keyword's value too) and body, a function's parameters, return type and body.
+    fn read_def(&mut self, def: Node<'t>, wrapper: Option<Node<'t>>, cx: &Cx, depth: u16) {
+        for decorator in wrapper.map_or_else(Vec::new, decorator_nodes) {
+            self.decorator(decorator, cx, depth);
         }
         let body = def.child_by_field_name("body");
         if def.kind() == "class_definition" {
             if let Some(bases) = def.child_by_field_name("superclasses") {
+                let read = Cx {
+                    read: UseKind::TypeUse,
+                    ..cx.clone()
+                };
                 let mut cursor = bases.walk();
                 for base in bases.named_children(&mut cursor) {
                     let value = if base.kind() == "keyword_argument" {
                         base.child_by_field_name("value").unwrap_or(base)
                     } else {
                         base
-                    };
-                    let read = Cx {
-                        read: UseKind::TypeUse,
-                        ..cx.clone()
                     };
                     self.type_node(value, &read, depth);
                 }
@@ -1987,15 +1929,7 @@ impl<'t> Walker<'t> {
         match node.kind() {
             "identifier" => self.local(node, LocalKind::Variable, cx),
             "attribute" => self.chain(node, cx, UseKind::Write, depth),
-            "pattern_list"
-            | "tuple_pattern"
-            | "list_pattern"
-            | "list_splat_pattern"
-            | "as_pattern_target"
-            | "parenthesized_expression"
-            | "expression_list"
-            | "tuple"
-            | "list" => {
+            kind if DESTRUCTURING.contains(&kind) => {
                 let mut cursor = node.walk();
                 for child in node.named_children(&mut cursor) {
                     self.bind_targets(child, cx, depth);
@@ -2273,22 +2207,35 @@ impl<'t> Walker<'t> {
         }));
     }
 
-    fn computed_class(&mut self, call: Node<'t>) {
-        self.facts.push(Fact::ComputedName {
-            site: span(call),
-            member: false,
-            class: None,
-            builds: true,
-        });
-    }
-
-    fn computed_name(&mut self, call: Node<'t>, member: bool) {
+    fn computed_name(
+        &mut self,
+        call: Node<'t>,
+        member: bool,
+        builds: bool,
+        prefix: Option<String>,
+    ) {
         self.facts.push(Fact::ComputedName {
             site: span(call),
             member,
             class: None,
-            builds: false,
+            builds,
+            prefix,
         });
+    }
+
+    /// The literal a name starts with: `"on_" + event`, `f"on_{event}"`.
+    fn literal_prefix(&self, node: Node<'t>) -> Option<String> {
+        match node.kind() {
+            "binary_operator" if node.child_by_field_name("operator")?.kind() == "+" => {
+                self.literal_prefix(node.child_by_field_name("left")?)
+            }
+            "string" => {
+                let inner = self.string_inner(node)?;
+                let prefix = inner.split(['{', '\\']).next()?;
+                (!prefix.is_empty()).then(|| prefix.to_string())
+            }
+            _ => None,
+        }
     }
 
     fn dynamic_import(&mut self, argument: Option<&Node<'t>>, cx: &Cx) {
@@ -2351,7 +2298,7 @@ impl<'t> Walker<'t> {
                 head.child_by_field_name("attribute"),
                 head.child_by_field_name("object"),
             ) else {
-                self.children(head, cx, depth);
+                self.children(head, None, cx, depth);
                 return;
             };
             names.push(attribute);
@@ -2390,7 +2337,7 @@ impl<'t> Walker<'t> {
                             .as_deref()
                             .is_some_and(|c| self.builds_foreign_class(cx, c))
                     {
-                        self.computed_class(node);
+                        self.computed_name(node, false, true, None);
                     }
                 }
                 _ => {
@@ -2407,7 +2354,7 @@ impl<'t> Walker<'t> {
                     // no name in the text says which.
                     let own = of.is_some_and(|v| cx.receiver.as_deref() == Some(self.text(v)));
                     if callee_kind == UseKind::Call && self.type_call(function) && !own {
-                        self.computed_class(node);
+                        self.computed_name(node, false, true, None);
                     }
                 }
             }
@@ -2449,10 +2396,13 @@ impl<'t> Walker<'t> {
                         .get(1)
                         .is_none_or(|n| self.plain_string(*n).is_none()) =>
                 {
-                    self.computed_name(node, true);
+                    let prefix = arguments.get(1).and_then(|n| self.literal_prefix(*n));
+                    self.computed_name(node, true, false, prefix);
                 }
-                ["eval" | "exec"] => self.computed_name(node, false),
-                ["globals" | "locals"] if looked_up_by_key(node) => self.computed_name(node, false),
+                ["eval" | "exec"] => self.computed_name(node, false, false, None),
+                ["globals" | "locals"] if looked_up_by_key(node) => {
+                    self.computed_name(node, false, false, None);
+                }
                 _ => {}
             }
         }

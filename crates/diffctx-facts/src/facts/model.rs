@@ -410,12 +410,14 @@ pub enum Fact {
     /// `member` is set when only a member of a class can be what it reaches;
     /// `class` names the one the call is written on, when it says (`Lib.class`).
     /// `builds` is set when only a class or its constructor can be what it reaches:
-    /// `type(x)(..)` builds the class of a value no name in the text gives.
+    /// `type(x)(..)` builds the class of a value no name in the text gives. `prefix` is
+    /// the literal the name starts with (`"on_" + event`), when the text gives one.
     ComputedName {
         site: Span,
         member: bool,
         class: Option<Name>,
         builds: bool,
+        prefix: Option<String>,
     },
 }
 

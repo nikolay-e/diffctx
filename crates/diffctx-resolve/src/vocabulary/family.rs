@@ -12,7 +12,7 @@ use crate::resolve::{
     KotlinResolver, PhpResolver, PythonResolver, RustResolver, ShellResolver, SqlResolver,
     SwiftResolver, TerraformResolver, TypeScriptResolver,
 };
-use diffctx_facts::facts::{DefKey, FactsCache, Language, Name};
+use diffctx_facts::facts::{DefKey, FactsCache, Language};
 use diffctx_snapshot::snapshot::{
     self, Admission, AdmissionPolicy, AnalysisContext, Loss, RangeSpec, RepoPath, RunBudget, Side,
     SideTag, WorkspaceModel,
@@ -284,15 +284,14 @@ impl Resolver {
     /// facts say so.
     pub fn name_computers(
         &self,
-        member: bool,
         builds: bool,
-        classes: &[Name],
+        subjects: &[&DefKey],
         may_reach: impl Fn(&str) -> bool,
     ) -> usize {
         match self {
-            Self::Python(r) => r.name_computers(member, builds, classes, may_reach),
-            Self::Kotlin(r) => r.name_computers(member, builds, classes, may_reach),
-            Self::Java(r) => r.name_computers(member, builds, classes, may_reach),
+            Self::Python(r) => r.name_computers(builds, subjects, may_reach),
+            Self::Kotlin(r) => r.name_computers(builds, subjects, may_reach),
+            Self::Java(r) => r.name_computers(builds, subjects, may_reach),
             _ => 0,
         }
     }
