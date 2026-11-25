@@ -637,6 +637,9 @@ pub(crate) enum SubjectKind {
     // A function of a class body: called through its receiver, never by a bare
     // name.
     Method,
+    // Declared in a Python file whose stem no import can name (`rotate-key.py`):
+    // no file spells it bare, and a string naming it may read it through the module.
+    Script,
 }
 
 // How a spelling of the subject is written.
@@ -657,7 +660,7 @@ impl SubjectKind {
             Self::Reachable | Self::Method => false,
             Self::Local => true,
             Self::Literal => shape == Shape::Region,
-            Self::Field => shape != Shape::Name,
+            Self::Field | Self::Script => shape != Shape::Name,
         }
     }
 }
@@ -672,6 +675,8 @@ pub(crate) fn subject_kind(path: &str, text: &str, name: &str) -> SubjectKind {
     };
     if local {
         SubjectKind::Local
+    } else if lang(path) == Some(Lang::Python) && !importable(path) {
+        SubjectKind::Script
     } else if literal_value(text, name) {
         SubjectKind::Literal
     } else if lang(path) == Some(Lang::Python) && python_field(text, name) {
@@ -683,6 +688,13 @@ pub(crate) fn subject_kind(path: &str, text: &str, name: &str) -> SubjectKind {
     } else {
         SubjectKind::Reachable
     }
+}
+
+fn importable(path: &str) -> bool {
+    let stem = std::path::Path::new(path)
+        .file_stem()
+        .and_then(|s| s.to_str());
+    stem.is_some_and(|s| s.chars().all(|c| c.is_alphanumeric() || c == '_'))
 }
 
 // Every declaration of `name` sits in the body of a `def`, not of a class.
