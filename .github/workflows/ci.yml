@@ -659,15 +659,28 @@ jobs:
           toolchain: "1.100.0"
           components: rustfmt, clippy
 
+      # One entry per OS and arch, saved by the 3.13 cell every matrix has: an entry per interpreter filled the
+      # repository's 10 GB of caches and evicted the oracle's indexes, whose rebuild then hit Maven Central's 429s.
       - name: Cache Cargo
+        if: matrix.python-version == '3.13'
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: cargo-${{ runner.os }}-${{ runner.arch }}-py${{ matrix.python-version }}-${{ hashFiles('Cargo.lock') }}
-          restore-keys: cargo-${{ runner.os }}-${{ runner.arch }}-py${{ matrix.python-version }}-
+          key: cargo-${{ runner.os }}-${{ runner.arch }}-py-${{ hashFiles('Cargo.lock') }}
+          restore-keys: cargo-${{ runner.os }}-${{ runner.arch }}-py
+      - name: Restore Cargo
+        if: matrix.python-version != '3.13'
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: cargo-${{ runner.os }}-${{ runner.arch }}-py-${{ hashFiles('Cargo.lock') }}
+          restore-keys: cargo-${{ runner.os }}-${{ runner.arch }}-py
 
       - name: Build and install diffctx (with Rust _diffctx) and dev deps
         shell: bash
