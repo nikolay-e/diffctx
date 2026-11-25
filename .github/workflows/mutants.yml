@@ -131,10 +131,16 @@ jobs:
             --cargo-test-arg=--lib)
           for s in "${suites[@]}"; do args+=("--cargo-test-arg=--test" "--cargo-test-arg=$s"); done
           printf '%s\n' "${scope[@]}" "${args[@]}" > fast-args.txt
+          # cargo-mutants' own baseline tests only the mutated package, which has none of the native
+          # suites: run the same set unmutated here, so every mutant is judged against a passing tree.
+          tests=(--lib)
+          for s in "${suites[@]}"; do tests+=(--test "$s"); done
+          cargo test --release --locked --package "$PKG" --package diffctx "${tests[@]}"
           cargo mutants --list "${scope[@]}" --shard "$SHARD" > shard-list.txt
           echo "mutants in shard $SHARD: $(wc -l < shard-list.txt)"
           rc=0
-          timeout -s INT 140m cargo mutants "${scope[@]}" "${args[@]}" --shard "$SHARD" --timeout 900 || rc=$?
+          timeout -s INT 140m cargo mutants "${scope[@]}" "${args[@]}" --shard "$SHARD" \
+            --baseline=skip --timeout 900 || rc=$?
           echo "fast exit=$rc"
           echo "$rc" > fast.rc
           # 0 all caught, 2 survivors, 3 timeouts; anything else is a broken run, not a result.
