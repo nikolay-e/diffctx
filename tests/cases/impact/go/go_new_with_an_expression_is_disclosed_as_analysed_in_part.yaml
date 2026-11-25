@@ -1,4 +1,4 @@
-name: go_new_with_an_expression_parses
+name: go_new_with_an_expression_is_disclosed_as_analysed_in_part
 mode: impact
 source: gh#690
 issue_state: open
@@ -28,6 +28,8 @@ repo:
 
       func F() *int { return new(42) }
   commit_message: Change go new with an expression parses
+# tree-sitter-go 0.25 reads the valid Go 1.26 `new(42)` as a parse error, so p.go is
+# analysed in part: the answer discloses it and still names the resolved caller `G`.
 expect:
   changed:
   - p.go::F

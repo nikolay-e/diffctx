@@ -1,0 +1,37 @@
+name: py_read_through_a_parameter_an_uncalled_function_forwards_is_a_gap
+mode: impact
+source: synthetic
+issue_state: open
+tags: [python, untyped-receiver, uncalled-function, coverage]
+repo:
+  initial_files:
+    pkg/__init__.py: ""
+    pkg/settings.py: |
+      class Settings:
+          timeout = 1
+    pkg/boot.py: |
+      from pkg.settings import Settings
+
+
+      def default():
+          return Settings()
+    pkg/job.py: |
+      def read(cfg):
+          return cfg.timeout
+
+
+      def run(x):
+          return read(x)
+  changed_files:
+    pkg/settings.py: |
+      class Settings:
+          timeout = 30
+  commit_message: "settings: wait longer"
+# `cfg` is an untyped parameter of `read`, which only `run` calls, and nothing in the
+# snapshot calls `run`: code outside it may hand `run` a `Settings`, whose module
+# pkg/boot.py imports, so `cfg.timeout` may read the changed attribute. It is no
+# caller, but the answer owes the read as an open gap, not a complete zero.
+expect:
+  partial:
+    pkg/settings.py::Settings.timeout:
+      reads: unlanded

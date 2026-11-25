@@ -13,3 +13,4 @@
 # fails to name it.
 impact/python/py_deleted_script_names_no_callers_by_word  # a removed `die`, `main` or `run` under the literal floor is named `name_unsearched` though the script's name has a hyphen, so no import reaches it, and the only shell sibling defines its own `die`
 symbol/web/web_symbol_css_class_and_its_markup_uses  # gh#631 open: `name_unsearched` and `not_traced` on a CSS class's calls and reads, though a class is never called and its one reader is a literal token in markup
+impact/python/py_error_code_literal_a_test_asserts_names_the_test_through_a_dynamic_dispatch  # `getattr(ledger, "check_" + kind)(payload)` is a dispatch no model traces, so the honest gap is `not_traced`; the answer names `unaccounted` (ingest.py spells the function in two pieces)

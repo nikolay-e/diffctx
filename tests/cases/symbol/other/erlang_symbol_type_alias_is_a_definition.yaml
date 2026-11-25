@@ -29,9 +29,16 @@ query:
   symbol: price
 expect:
   relations:
-  # Both `shop:price()` of the spec are one read at line 4; the type is not in an
-  # `-export_type`, so a remote use of it is a candidate, as the sibling case reads
-  # the qualified call.
+  # The bare `price()` of shop.erl's own spec (both at line 6) names the type its module
+  # declares and nothing else, so that read is certain.
+  - from: shop.erl::total
+    to: shop.erl::price
+    kind: reads
+    resolution: resolved
+    site: 6
+  # Both `shop:price()` of cart.erl's spec are one read at line 4. No binding model reads
+  # Erlang, so a remote use is a candidate whatever the module exports, as the sibling
+  # case reads the qualified call of an exported function.
   - from: cart.erl::sum
     to: shop.erl::price
     kind: reads

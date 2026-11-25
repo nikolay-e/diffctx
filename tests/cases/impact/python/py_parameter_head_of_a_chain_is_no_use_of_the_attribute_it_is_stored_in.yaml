@@ -19,4 +19,8 @@ repo:
               self.url = url
   commit_message: "models: normalise the request method"
 expect:
+  changed:
+  - net/models.py::Request
+  - net/models.py::configure
+  - net/models.py::method
   unknowns: {}
