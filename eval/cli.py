@@ -33,7 +33,6 @@ SUBCOMMANDS = {
     "external-timing": ("external.timing", "Per-instance engine time over external runs: base engine vs another"),
     "swerebench-infra": ("workflows.swerebench_infra", "SWE-rebench V2 infra slice (code <-> infra co-change recall)"),
     "cfgnet500": ("workflows.cfgnet500", "CfgNet-500 config-link precision (rag-config-val labels)"),
-    "compare": ("analysis.compare_runs", "A/B comparison of two result files"),
     "curve": ("analysis.budget_curve", "Budget curve analysis across budgets/modes"),
     "aggregate": ("analysis.aggregate_seeds", "Aggregate results across seeds"),
 }
