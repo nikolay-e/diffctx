@@ -338,10 +338,11 @@ impl<'a> TestsReach<'a> {
             .collect();
         // A test that does not spell the name cannot link to it.
         if let Some(name) = name.filter(|s| s.len() >= 3) {
+            let spelled = memchr::memmem::Finder::new(name);
             found.extend(
                 self.test_fragments
                     .iter()
-                    .filter(|t| t.content.contains(name))
+                    .filter(|t| spelled.find(t.content.as_bytes()).is_some())
                     .filter(|t| link(t, caller))
                     .map(|t| {
                         (
