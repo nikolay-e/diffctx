@@ -31,10 +31,12 @@ repo:
 expect:
   callers:
     columns: []
-  # `df = pd.read_csv(path)` holds what pandas hands back. No file imports
-  # models/table.py or reports/summary.py and the repository publishes no package,
-  # so no Table can reach `df`: `df.columns` is no read of the property, and the
-  # answer is complete. A published module keeps the hedge
+  # `df = pd.read_csv(path)` is a local the module builds from a call result, not a
+  # parameter an outside caller fills, and it holds what pandas hands back. No file
+  # imports models/table.py and the repository publishes no package, so no Table
+  # circulates beyond that file: `df.columns` is no read of the property, and the
+  # answer is complete. A parameter of an uncalled function reading a class another
+  # file imports stays an open gap, and a published module keeps its hedge
   # (py_published_module_nothing_imports_keeps_its_hedge).
   decoys:
     columns: [reports/summary.py]

@@ -59,4 +59,16 @@ repo:
       }
   commit_message: Change kotlin method and its caller change in one range
 expect:
+  changed:
+  - src/main/kotlin/demo/Copier.kt::copy
+  - src/main/kotlin/demo/Throttle.kt::MULTIPLE
+  - src/main/kotlin/demo/Throttle.kt::Throttle
+  - src/main/kotlin/demo/Throttle.kt::admit
+  - src/main/kotlin/demo/Throttle.kt::burst
+  - src/main/kotlin/demo/Throttle.kt::forRate
+  - src/main/kotlin/demo/Throttle.kt::nanoTime
+  - src/main/kotlin/demo/Throttle.kt::perSecond
+  - src/main/kotlin/demo/Throttle.kt::permits
+  - src/main/kotlin/demo/Throttle.kt::refilledAt
+  - src/main/kotlin/demo/Throttle.kt::sleepMillis
   unknowns: {}
