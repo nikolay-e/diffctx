@@ -71,7 +71,6 @@ pub struct Occurrence {
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum ValuePlace {
     Argument,
-    Return,
     /// An element of a collection.
     Element,
     /// The right side of an assignment to a field or an index.
@@ -160,12 +159,8 @@ pub enum Basis {
     Witnessed,
     /// `alias`: `import f as g`, `use m::f as g`; `declaration`: the new name `g`.
     RenamedImport,
-    /// `alias`: `export { f as g }`, `pub use m::f as g`.
-    RenamedExport,
     /// `alias`: `g = f`.
     Assignment,
-    /// `alias`: `{ f: g } = mod`.
-    Destructuring,
     /// `alias`: `typealias G = F`, `typedef F G`.
     TypeAlias,
     /// `leak`: an `ours` occurrence in a value position.
@@ -183,9 +178,7 @@ impl Basis {
             Self::LocalSite => "local_site",
             Self::Witnessed => "witnessed",
             Self::RenamedImport => "renamed_import",
-            Self::RenamedExport => "renamed_export",
             Self::Assignment => "assignment",
-            Self::Destructuring => "destructuring",
             Self::TypeAlias => "type_alias",
             Self::ValuePosition => "value_position",
             Self::Unproven => "unproven",

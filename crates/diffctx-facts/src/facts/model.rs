@@ -363,21 +363,6 @@ pub struct PathMention {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Serialize, Deserialize)]
-pub enum ConfigSource {
-    Env,
-    Setting,
-}
-
-/// A configuration key the code reads: an environment variable, a setting.
-#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
-pub struct ConfigKey {
-    pub site: Span,
-    pub enclosing: Scope,
-    pub key: String,
-    pub source: ConfigSource,
-}
-
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Serialize, Deserialize)]
 pub enum LocalKind {
     Parameter,
     Variable,
@@ -401,7 +386,6 @@ pub enum Fact {
     Export(Export),
     EntryPoint(EntryPoint),
     PathMention(PathMention),
-    ConfigKey(ConfigKey),
     LocalBinding(Local),
     ComputedImport(ComputedImport),
     /// A field of a configuration object that names another object.
@@ -448,7 +432,6 @@ impl Fact {
             ) => site,
             Self::EntryPoint(entry) => &entry.site,
             Self::PathMention(mention) => &mention.site,
-            Self::ConfigKey(key) => &key.site,
             Self::LocalBinding(local) => &local.site,
             Self::ComputedImport(computed) => &computed.site,
             Self::ConfigRef(reference) => &reference.site,
@@ -473,17 +456,16 @@ impl Fact {
             Self::LocalBinding(_) => 4,
             Self::Reference(_) => 5,
             Self::PathMention(_) => 6,
-            Self::ConfigKey(_) => 7,
-            Self::ComputedImport(_) => 8,
-            Self::ConfigRef(_) => 9,
-            Self::ConfigSelector(_) => 10,
-            Self::ConfigLabels(_) => 11,
-            Self::ConfigPointer(_) => 12,
-            Self::ConfigUse(_) => 13,
-            Self::ConfigRelease(_) => 14,
-            Self::ShellPath(_) => 15,
-            Self::HeldString(_) => 16,
-            Self::ComputedName { .. } => 17,
+            Self::ComputedImport(_) => 7,
+            Self::ConfigRef(_) => 8,
+            Self::ConfigSelector(_) => 9,
+            Self::ConfigLabels(_) => 10,
+            Self::ConfigPointer(_) => 11,
+            Self::ConfigUse(_) => 12,
+            Self::ConfigRelease(_) => 13,
+            Self::ShellPath(_) => 14,
+            Self::HeldString(_) => 15,
+            Self::ComputedName { .. } => 16,
         }
     }
 }

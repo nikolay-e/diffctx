@@ -46,10 +46,9 @@ pub use hash::{Hasher, hash_text, hash_tokens};
 pub use ids::{ModulePath, Name, ProjectId, Span, TypeName};
 pub use language::Language;
 pub use model::{
-    BlobFacts, ComputedImport, ConfigKey, ConfigSource, Def, DefKey, DefKind, Disambig, EntryKind,
-    EntryPoint, Export, Fact, FileFacts, Framework, HeldAs, HeldString, Import, ImportKind,
-    Initializer, Lexical, Local, LocalKey, LocalKind, Namespace, PathMention, Receiver, Ref, Scope,
-    Star, UseKind, Visibility,
+    BlobFacts, ComputedImport, Def, DefKey, DefKind, Disambig, EntryKind, EntryPoint, Export, Fact,
+    FileFacts, Framework, HeldAs, HeldString, Import, ImportKind, Initializer, Lexical, Local,
+    LocalKey, LocalKind, Namespace, PathMention, Receiver, Ref, Scope, Star, UseKind, Visibility,
 };
 
 /// The facts an extractor states about a file; `None` for a language none reads.

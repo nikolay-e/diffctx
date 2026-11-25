@@ -34,10 +34,8 @@ tokens::occurrence::AliasScope::Importers variant Importers(ModulePath)
 tokens::occurrence::Basis enum derive(Clone, Copy, Debug, Eq, Hash, PartialEq)
 tokens::occurrence::Basis::Assignment variant Assignment
 tokens::occurrence::Basis::DefinitionName variant DefinitionName
-tokens::occurrence::Basis::Destructuring variant Destructuring
 tokens::occurrence::Basis::LocalSite variant LocalSite
 tokens::occurrence::Basis::OwnModule variant OwnModule
-tokens::occurrence::Basis::RenamedExport variant RenamedExport
 tokens::occurrence::Basis::RenamedImport variant RenamedImport
 tokens::occurrence::Basis::Resolved variant Resolved
 tokens::occurrence::Basis::TypeAlias variant TypeAlias
@@ -108,7 +106,6 @@ tokens::occurrence::Standing::Resolved variant Resolved
 tokens::occurrence::ValuePlace enum derive(Clone, Copy, Debug, Eq, Hash, PartialEq)
 tokens::occurrence::ValuePlace::Argument variant Argument
 tokens::occurrence::ValuePlace::Element variant Element
-tokens::occurrence::ValuePlace::Return variant Return
 tokens::occurrence::ValuePlace::Store variant Store
 tokens::occurrence::Witness enum derive(Clone, Debug, Eq, PartialEq)
 tokens::occurrence::Witness::BareName variant BareName(Vec<Name>)

@@ -20,7 +20,7 @@ facts use file::facts_of
 facts use hash::{Hasher, hash_text, hash_tokens}
 facts use ids::{ModulePath, Name, ProjectId, Span, TypeName}
 facts use language::Language
-facts use model::{ BlobFacts, ComputedImport, ConfigKey, ConfigSource, Def, DefKey, DefKind, Disambig, EntryKind, EntryPoint, Export, Fact, FileFacts, Framework, HeldAs, HeldString, Import, ImportKind, Initializer, Lexical, Local, LocalKey, LocalKind, Namespace, PathMention, Receiver, Ref, Scope, Star, UseKind, Visibility, }
+facts use model::{ BlobFacts, ComputedImport, Def, DefKey, DefKind, Disambig, EntryKind, EntryPoint, Export, Fact, FileFacts, Framework, HeldAs, HeldString, Import, ImportKind, Initializer, Lexical, Local, LocalKey, LocalKind, Namespace, PathMention, Receiver, Ref, Scope, Star, UseKind, Visibility, }
 facts::config mod
 facts::config use candidates::{Candidate, candidates}
 facts::config use globs::{PathGlob, Selects, globs_of, may_select}

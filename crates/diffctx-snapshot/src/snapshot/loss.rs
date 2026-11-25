@@ -26,8 +26,6 @@ impl fmt::Display for SideTag {
 /// The stage of a run a stop fell in.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum Stage {
-    Listing,
-    Workspace,
     Extraction,
     Search,
 }
