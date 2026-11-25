@@ -9,13 +9,17 @@ permissions:
 
 jobs:
   mutants:
-    name: cargo mutants ${{ matrix.shard }}/8
+    name: cargo mutants ${{ matrix.target }} ${{ matrix.shard }}/8
     runs-on: ubuntu-latest
-    timeout-minutes: 350
+    timeout-minutes: 355
     strategy:
       fail-fast: false
       matrix:
         shard: [0, 1, 2, 3, 4, 5, 6, 7]
+        target: [occurrence, answer]
+        include:
+          - {target: occurrence, package: diffctx-occurrence, file: 'crates/diffctx-occurrence/src/**/*.rs'}
+          - {target: answer, package: diffctx-answer, file: 'crates/diffctx-answer/src/decide/**/*.rs'}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
@@ -41,40 +45,26 @@ jobs:
       - name: Install cargo-mutants
         run: cargo install --locked --version 27.1.0 cargo-mutants
 
-      # Two passes over each mutated package. First its own tests; then, for the mutants those left
-      # alive, the integration suites of diffctx that read real analyzer runs (--iterate skips what
-      # the first pass caught). A glob names a suite so a package without it is not an error.
-      - name: Mutate the occurrence crate
+      # Two passes. First the mutated package's own tests; then, for the mutants those left alive,
+      # the integration suites that read real analyzer runs (--iterate skips what the first pass
+      # caught). Mutants run in a random order and each pass has a time box, so a pass that does not
+      # finish is a sample, and the outcomes say how many of the mutants it reached.
+      - name: Mutate
         continue-on-error: true
         run: |
           set +e
-          mkdir -p mutants-out/occurrence
-          cargo mutants --cargo-arg=--locked --in-place \
-          --shard ${{ matrix.shard }}/8 --package diffctx-occurrence \
-          --output mutants-out/occurrence
-          cargo mutants --cargo-arg=--locked --in-place --iterate \
-          --shard ${{ matrix.shard }}/8 --package diffctx-occurrence --test-package diffctx \
-          --output mutants-out/occurrence -- --lib \
-          --test 'occurrence_*' --test 'class_completenes[s]' --test 'gap_reason[s]'
-
-      - name: Mutate the decision cell
-        continue-on-error: true
-        run: |
-          set +e
-          mkdir -p mutants-out/answer
-          cargo mutants --cargo-arg=--locked --in-place \
-          --shard ${{ matrix.shard }}/8 --package diffctx-answer \
-          --file 'crates/diffctx-answer/src/decide/**/*.rs' --output mutants-out/answer
-          cargo mutants --cargo-arg=--locked --in-place --iterate \
-          --shard ${{ matrix.shard }}/8 --package diffctx-answer --test-package diffctx \
-          --file 'crates/diffctx-answer/src/decide/**/*.rs' --output mutants-out/answer -- --lib \
-          --test 'occurrence_*' --test 'class_completenes[s]' --test 'gap_reason[s]'
+          mkdir -p mutants-out
+          timeout 40m cargo mutants --cargo-arg=--locked --in-place \
+            --shard ${{ matrix.shard }}/8 --package ${{ matrix.package }} \
+            --file '${{ matrix.file }}' --output mutants-out
+          timeout 270m cargo mutants --cargo-arg=--locked --in-place --iterate \
+            --shard ${{ matrix.shard }}/8 --package ${{ matrix.package }} \
+            --file '${{ matrix.file }}' --output mutants-out -- --workspace \
+            --test 'occurrence_*' --test 'class_completenes[s]' --test 'gap_reason[s]'
 
       - name: Keep the outcomes
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
         with:
-          name: mutants-${{ matrix.shard }}
-          path: |
-            mutants-out/occurrence
-            mutants-out/answer
+          name: mutants-${{ matrix.target }}-${{ matrix.shard }}
+          path: mutants-out
