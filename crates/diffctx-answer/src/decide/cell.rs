@@ -529,13 +529,7 @@ impl Cell {
             {
                 continue;
             }
-            let held: Vec<(u32, u32)> = self
-                .defs_by_file
-                .get(file)
-                .into_iter()
-                .flatten()
-                .map(|at| self.head.definitions()[*at].span.lines)
-                .collect();
+            let held: Vec<(u32, u32)> = self.defs_in(file).map(|d| d.span.lines).collect();
             let imported: Vec<(u32, u32)> = self
                 .bindings_by_file
                 .get(file)
@@ -699,6 +693,12 @@ impl Cell {
         by_key.into_values().collect()
     }
 
+    /// The head's definitions in `file`, in the resolver's order.
+    fn defs_in(&self, file: &str) -> impl Iterator<Item = &diffctx_resolve::resolve::Definition> {
+        let at = self.defs_by_file.get(file).into_iter().flatten();
+        at.map(|at| &self.head.definitions()[*at])
+    }
+
     /// The definition called `name` whose span is nearest `lines` in `file`.
     fn definition_at(
         &self,
@@ -706,10 +706,7 @@ impl Cell {
         name: &str,
         lines: (u32, u32),
     ) -> Option<&diffctx_resolve::resolve::Definition> {
-        self.defs_by_file
-            .get(file)?
-            .iter()
-            .map(|at| &self.head.definitions()[*at])
+        self.defs_in(file)
             .filter(|d| {
                 d.key.local.name.as_str() == name
                     || (d.key.language == Language::Sql

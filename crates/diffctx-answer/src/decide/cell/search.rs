@@ -56,12 +56,10 @@ impl Cell {
         if external > 0 && interface {
             tail.push(Gap::ExternalSource { pointers: external });
         }
+        let macros = (self.macro_files.iter())
+            .filter(|file| self.ctx.workspace.may_reference(file, &changed.file))
+            .count();
         if self.family == Family::Rust {
-            let macros = self
-                .macro_files
-                .iter()
-                .filter(|file| self.ctx.workspace.may_reference(file, &changed.file))
-                .count();
             if macros > 0 {
                 tail.push(Gap::Macros {
                     files: macros,
@@ -78,11 +76,6 @@ impl Cell {
             }
         }
         if self.family == Family::C {
-            let macros = self
-                .macro_files
-                .iter()
-                .filter(|file| self.ctx.workspace.may_reference(file, &changed.file))
-                .count();
             if macros > 0 {
                 tail.push(Gap::Macros {
                     files: macros,
@@ -166,6 +159,7 @@ impl Cell {
             .filter(|u| u.standing == Standing::Resolved)
             .collect();
         let hedges: Vec<(Relation, Hedge)> = (found.hedges.iter())
+            .map(|(relation, hedge)| (self.relation_of_hedge(changed, *relation, hedge), hedge))
             .filter_map(|(relation, hedge)| {
                 let Hedge::Candidate {
                     file,
@@ -174,11 +168,11 @@ impl Cell {
                     reason,
                 } = hedge
                 else {
-                    return Some((*relation, hedge.clone()));
+                    return Some((relation, hedge.clone()));
                 };
                 let beside: Vec<&&Use> = (resolved.iter())
                     .filter(|u| {
-                        u.file == file.as_str() && u.line == *line && u.relation == *relation
+                        u.file == file.as_str() && u.line == *line && u.relation == relation
                     })
                     .collect();
                 let own_site = matches!(
@@ -188,9 +182,9 @@ impl Cell {
                     .iter()
                     .any(|u| u.site.start < bytes.end && bytes.start < u.site.end);
                 if beside.is_empty() {
-                    Some((*relation, hedge.clone()))
+                    Some((relation, hedge.clone()))
                 } else {
-                    (!own_site).then_some((*relation, Hedge::Unlisted { occurrences: 1 }))
+                    (!own_site).then_some((relation, Hedge::Unlisted { occurrences: 1 }))
                 }
             })
             .collect();
@@ -325,17 +319,11 @@ impl Cell {
             let Some((holder, outer)) = subject.key.local.container.split_last() else {
                 continue;
             };
-            let in_object = self
-                .defs_by_file
-                .get(changed.file.as_str())
-                .into_iter()
-                .flatten()
-                .map(|at| &self.head.definitions()[*at])
-                .any(|d| {
-                    d.kind == DefKind::Object
-                        && d.key.local.container.as_slice() == outer
-                        && &d.key.local.name == holder
-                });
+            let in_object = self.defs_in(changed.file.as_str()).any(|d| {
+                d.kind == DefKind::Object
+                    && d.key.local.container.as_slice() == outer
+                    && &d.key.local.name == holder
+            });
             if in_object {
                 out.push("INSTANCE".to_string());
                 out.push("Companion".to_string());
@@ -368,10 +356,7 @@ impl Cell {
             return Some(last(tr.as_str()));
         }
         let (name, outer) = def.key.local.container.split_last()?;
-        self.defs_by_file
-            .get(def.file.as_str())?
-            .iter()
-            .map(|at| &self.head.definitions()[*at])
+        self.defs_in(def.file.as_str())
             .find(|d| {
                 d.kind == DefKind::Trait
                     && d.key.local.container.as_slice() == outer

@@ -408,15 +408,11 @@ impl Cell {
         name: &str,
         lines: (u32, u32),
     ) -> Option<&diffctx_resolve::resolve::Definition> {
-        self.defs_by_file
-            .get(file)?
-            .iter()
-            .map(|at| &self.head.definitions()[*at])
-            .find(|d| {
-                d.key.local.name.as_str() == name
-                    && d.span.lines.0 <= lines.1
-                    && lines.0 <= d.span.lines.1
-            })
+        self.defs_in(file).find(|d| {
+            d.key.local.name.as_str() == name
+                && d.span.lines.0 <= lines.1
+                && lines.0 <= d.span.lines.1
+        })
     }
 
     /// Whether the definition at the head is linked by its bare name: a C function the
@@ -898,56 +894,31 @@ impl Cell {
             .map(|at| &self.head.definitions()[*at])
     }
 
-    /// The enclosing class of a member: the definition its container names.
-    fn owner(
-        &self,
-        def: &diffctx_resolve::resolve::Definition,
-    ) -> Option<&diffctx_resolve::resolve::Definition> {
-        let (name, outer) = def.key.local.container.split_last()?;
-        self.defs_by_file
-            .get(def.file.as_str())?
-            .iter()
-            .map(|at| &self.head.definitions()[*at])
-            .find(|d| {
-                d.kind == DefKind::Class
-                    && d.key.local.container.as_slice() == outer
-                    && &d.key.local.name == name
-            })
-    }
-
     /// Whether a function is what holds the definition.
     fn inside_function(&self, def: &diffctx_resolve::resolve::Definition) -> bool {
         let Some((name, outer)) = def.key.local.container.split_last() else {
             return false;
         };
-        self.defs_by_file
-            .get(def.file.as_str())
-            .into_iter()
-            .flatten()
-            .map(|at| &self.head.definitions()[*at])
-            .any(|d| {
-                matches!(d.kind, DefKind::Function | DefKind::Method)
-                    && d.key.local.container.as_slice() == outer
-                    && &d.key.local.name == name
-            })
+        self.defs_in(def.file.as_str()).any(|d| {
+            matches!(d.kind, DefKind::Function | DefKind::Method)
+                && d.key.local.container.as_slice() == outer
+                && &d.key.local.name == name
+        })
     }
 
-    /// The class at the head that held a member the range removed.
+    /// The class at the head that holds a member, or held one the range removed:
+    /// the definition its container names.
     fn class_holding(
         &self,
         file: &str,
         key: &DefKey,
     ) -> Option<&diffctx_resolve::resolve::Definition> {
         let (name, outer) = key.local.container.split_last()?;
-        self.defs_by_file
-            .get(file)?
-            .iter()
-            .map(|at| &self.head.definitions()[*at])
-            .find(|d| {
-                d.kind == DefKind::Class
-                    && d.key.local.container.as_slice() == outer
-                    && &d.key.local.name == name
-            })
+        self.defs_in(file).find(|d| {
+            d.kind == DefKind::Class
+                && d.key.local.container.as_slice() == outer
+                && &d.key.local.name == name
+        })
     }
 
     pub(super) fn report_as(
@@ -983,7 +954,7 @@ impl Cell {
         };
         let edited = !matches!(how, How::Edited { layout_only: true });
         match def.kind {
-            DefKind::Constructor => match self.owner(def) {
+            DefKind::Constructor => match self.class_holding(def.file.as_str(), &def.key) {
                 Some(class) => {
                     let mut changed = own(class, Reach::Constructor);
                     changed.subjects.push(Subject {
@@ -1004,7 +975,7 @@ impl Cell {
                     out.push(own(def, Reach::Every));
                 }
                 if edited && holder && self.family == Family::Python {
-                    if let Some(class) = self.owner(def) {
+                    if let Some(class) = self.class_holding(def.file.as_str(), &def.key) {
                         let mut changed = own(class, Reach::Construction);
                         changed.stale = Vec::new();
                         changed.unpaired = false;

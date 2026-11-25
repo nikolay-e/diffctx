@@ -7,11 +7,15 @@ use std::ops::Range;
 
 use diffctx_facts::facts::{Def, DefChange, DefKey, DefKind, Lexical, Name, SemanticDef, facts_of};
 
+use diffctx_occurrence::tokens::occurrence::Hedge;
+
 use diffctx_resolve::resolve::{Binding, Definition, Relation};
+
+use diffctx_resolve::vocabulary::family::Family;
 
 use diffctx_snapshot::snapshot::{RepoPath, SideTag};
 
-use super::super::changed::bases_in;
+use super::super::changed::{Changed, bases_in, written_bases};
 
 use super::super::verdict::{Reach, Subject};
 
@@ -48,21 +52,6 @@ impl Arguments {
             _ => self.open = true,
         }
     }
-}
-
-/// Whether a class signature lists a base written as a call: `class A(make())`.
-fn call_base(signature: Option<&str>) -> bool {
-    let Some(text) = signature else {
-        return false;
-    };
-    let (Some(open), Some(close)) = (text.find('('), text.rfind(')')) else {
-        return false;
-    };
-    text.get(open + 1..close).is_some_and(|bases| {
-        bases
-            .split(',')
-            .any(|base| !base.contains('=') && base.contains('('))
-    })
 }
 
 fn open_paren(text: &[u8], at: usize) -> Option<usize> {
@@ -163,14 +152,20 @@ fn defaulted(text: &[u8], span: Range<usize>) -> bool {
 
 impl Cell {
     /// The file's bytes with its comments blanked and its strings filled with
-    /// `0`, so that only code is left to read the brackets and names of.
+    /// `0`, so that only code is left to read the brackets and names of. A read
+    /// that failed leaves none, and each caller takes its wide answer.
     fn code_of(&self, side: SideTag, path: &RepoPath) -> Option<Vec<u8>> {
         let reader = match side {
             SideTag::Base => &self.ctx.base,
             SideTag::Head => &self.ctx.head,
         };
-        let mut text = reader.read(path).ok()??.to_vec();
-        let facts = facts_of(&self.ctx, side, &self.cache, path).ok()??;
+        let (Ok(Some(bytes)), Ok(Some(facts))) = (
+            reader.read(path),
+            facts_of(&self.ctx, side, &self.cache, path),
+        ) else {
+            return None;
+        };
+        let mut text = bytes.to_vec();
         for (range, kind) in &facts.blob.lexical {
             let fill = match kind {
                 Lexical::Comment => b' ',
@@ -187,22 +182,28 @@ impl Cell {
     /// removal of `field`. `None`: every construction is, because the field had
     /// no default, or its name is not what a construction passes (an alias, an
     /// underscore, a base class of the repository that may rename its fields),
-    /// or the text does not say.
+    /// or the text does not say, or a read failed.
     pub(super) fn passed_to_reach(
         &self,
         file: &str,
         field: &DefKey,
         class: &Definition,
     ) -> Option<Vec<Name>> {
-        let path = RepoPath::new(file).ok()?;
-        let def = self.declared(SideTag::Base, &path, field).ok()??;
+        let Ok(path) = RepoPath::new(file) else {
+            return None;
+        };
+        let (Ok(Some(def)), Ok(Some(holder))) = (
+            self.declared(SideTag::Base, &path, field),
+            self.declared(SideTag::Base, &path, &class.key),
+        ) else {
+            return None;
+        };
         if !matches!(
             def.kind,
             DefKind::Field | DefKind::Variable | DefKind::Constant
         ) {
             return None;
         }
-        let holder = self.declared(SideTag::Base, &path, &class.key).ok()??;
         let bases_are_outside = bases_in(holder.signature.as_deref()).iter().all(|base| {
             !(self.head.definitions().iter())
                 .any(|d| d.kind == DefKind::Class && d.key.local.name.as_str() == base.as_str())
@@ -224,7 +225,8 @@ impl Cell {
     /// name an import gives it, or by a module-level name bound to it: the
     /// constructions of a subclass run the constructor too, and none of them is
     /// a use of the class. A base that is a call may return any class, so it
-    /// counts for every class.
+    /// counts for every class, and so does a class whose declaration could not
+    /// be read.
     fn subclassed(&self, class: &Definition) -> bool {
         let mut names = vec![class.key.local.name.as_str().to_string()];
         for b in self.head.references_to(&class.key) {
@@ -242,12 +244,14 @@ impl Cell {
                 && d.key != class.key
                 && self
                     .declared(SideTag::Head, &d.file, &d.key)
-                    .ok()
-                    .flatten()
-                    .is_some_and(|decl| {
-                        let signature = decl.signature.as_deref();
-                        bases_in(signature).iter().any(|base| names.contains(base))
-                            || call_base(signature)
+                    .map_or(true, |held| {
+                        held.is_some_and(|decl| {
+                            let signature = decl.signature.as_deref();
+                            bases_in(signature).iter().any(|base| names.contains(base))
+                                || written_bases(signature)
+                                    .iter()
+                                    .any(|base| base.contains('('))
+                        })
                     })
         })
     }
@@ -268,10 +272,9 @@ impl Cell {
                 .definitions()
                 .iter()
                 .any(|d| is_init(&d.key.local))
-            || facts_of(&self.ctx, SideTag::Base, &self.cache, path)
-                .ok()
-                .flatten()
-                .is_none_or(|facts| facts.defs().any(|d| is_init(&d.local)))
+            || facts_of(&self.ctx, SideTag::Base, &self.cache, path).map_or(true, |facts| {
+                facts.is_none_or(|facts| facts.defs().any(|d| is_init(&d.local)))
+            })
     }
 
     /// Whether `class` changed in nothing but removed fields a construction may
@@ -292,7 +295,8 @@ impl Cell {
         };
         let builds_constructor = !declared.decorators.is_empty()
             && declared.decorators.iter().all(|decorator| {
-                let callee = decorator.as_str().split('(').next().unwrap_or_default();
+                let name = decorator.as_str();
+                let callee = name.split_once('(').map_or(name, |(callee, _)| callee);
                 matches!(
                     callee.rsplit('.').next(),
                     Some("dataclass" | "define" | "frozen" | "mutable" | "attrs" | "s")
@@ -314,6 +318,40 @@ impl Cell {
                         self.passed_to_reach(base.as_str(), &m.key, head).is_some()
                     })
             })
+    }
+
+    /// The relation a hedge of `changed` stands in. A candidate type use in the
+    /// base list of a class that lists the changed class by name is a subclass no
+    /// binding resolved: it builds through the class's constructor, so it hedges
+    /// the constructions, which no use of the type does. A file that cannot be
+    /// read cannot say it is not one.
+    pub(super) fn relation_of_hedge(
+        &self,
+        changed: &Changed,
+        relation: Relation,
+        hedge: &Hedge,
+    ) -> Relation {
+        let Hedge::Candidate { file, bytes, .. } = hedge else {
+            return relation;
+        };
+        let subclass = relation == Relation::TypeUses
+            && self.family == Family::Python
+            && changed.kind == DefKind::Class
+            && facts_of(&self.ctx, SideTag::Head, &self.cache, file).map_or(true, |facts| {
+                facts.is_none_or(|facts| {
+                    facts.defs().any(|d| {
+                        d.kind == DefKind::Class
+                            && d.name_span.bytes.end <= bytes.start
+                            && bytes.end <= d.span.bytes.end
+                            && bases_in(d.signature.as_deref()).contains(&changed.name)
+                    })
+                })
+            });
+        if subclass {
+            Relation::Instantiates
+        } else {
+            relation
+        }
     }
 
     /// Whether the construction at `b` leaves out every field `subject` lost.

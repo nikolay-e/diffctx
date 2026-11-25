@@ -38,10 +38,7 @@ impl Cell {
     /// The function or method of `file` that holds `line`, the innermost: the test
     /// function a use inside a test file belongs to.
     pub(crate) fn function_at(&self, file: &str, line: u32) -> Option<&str> {
-        self.defs_by_file
-            .get(file)?
-            .iter()
-            .map(|at| &self.head.definitions()[*at])
+        self.defs_in(file)
             .filter(|d| {
                 matches!(
                     d.kind,

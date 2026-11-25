@@ -111,22 +111,26 @@ impl Changed {
     }
 }
 
-/// The simple names in the parentheses of a class signature: `class A(B, m.C[int],
-/// metaclass=M)` lists `B` and `C`.
-pub(super) fn bases_in(signature: Option<&str>) -> Vec<String> {
-    let Some(text) = signature else {
+/// The bases in the parentheses of a class signature, as written, keywords left
+/// out: `class A(B, m.C[int], metaclass=M)` lists `B` and `m.C[int]`.
+pub(super) fn written_bases(signature: Option<&str>) -> Vec<&str> {
+    let Some(inside) = signature.and_then(|text| {
+        let (open, close) = text.find('(').zip(text.rfind(')'))?;
+        text.get(open + 1..close)
+    }) else {
         return Vec::new();
     };
-    let (Some(open), Some(close)) = (text.find('('), text.rfind(')')) else {
-        return Vec::new();
-    };
-    if close <= open {
-        return Vec::new();
-    }
-    text[open + 1..close]
+    inside
         .split(',')
         .map(str::trim)
         .filter(|base| !base.contains('='))
+        .collect()
+}
+
+/// The simple names of those bases: `B` and `C`.
+pub(super) fn bases_in(signature: Option<&str>) -> Vec<String> {
+    written_bases(signature)
+        .into_iter()
         .filter_map(|base| {
             let last = base.rsplit('.').next()?;
             let word: String = last
