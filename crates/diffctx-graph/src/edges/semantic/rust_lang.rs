@@ -87,14 +87,16 @@ struct References {
 }
 
 fn extract_references(content: &str) -> References {
-    let type_refs: FxHashSet<String> = base::captures1(&TYPE_REF_RE, content)
-        .filter(|n| !RUST_KEYWORDS.contains(n.as_str()))
+    let type_refs: FxHashSet<String> = TYPE_REF_RE
+        .find_iter(content)
+        .map(|m| m.as_str())
+        .filter(|n| !RUST_KEYWORDS.contains(n))
+        .map(str::to_string)
         .collect();
     let mut fn_calls = FxHashSet::default();
     let mut method_calls = FxHashSet::default();
-    for c in FN_CALL_RE.captures_iter(content) {
-        let Some(m) = c.get(1) else { continue };
-        let name = m.as_str();
+    for m in FN_CALL_RE.find_iter(content) {
+        let name = m.as_str()[..m.len() - 1].trim_end();
         if RUST_KEYWORDS.contains(name) {
             continue;
         }

@@ -103,13 +103,19 @@ fn extract_defines(content: &str) -> FxHashSet<String> {
 }
 
 fn extract_calls(content: &str) -> FxHashSet<String> {
-    base::captures1(&CALL_RE, content)
-        .filter(|n| !PY_KEYWORDS.contains(n.as_str()))
+    CALL_RE
+        .find_iter(content)
+        .map(|m| m.as_str()[..m.len() - 1].trim_end())
+        .filter(|n| !PY_KEYWORDS.contains(n))
+        .map(str::to_string)
         .collect()
 }
 
 fn extract_type_refs(content: &str) -> FxHashSet<String> {
-    base::captures1(&TYPE_REF_RE, content).collect()
+    TYPE_REF_RE
+        .find_iter(content)
+        .map(|m| m.as_str().to_string())
+        .collect()
 }
 
 static PY_KEYWORDS: Lazy<FxHashSet<&str>> = Lazy::new(|| {
