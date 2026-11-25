@@ -3275,7 +3275,7 @@ fn a_rust_read_through_an_untyped_receiver_leaves_the_reads_undetermined_and_the
             ("src/cart.rs", "pub struct Cart {\n    pub total: u32,\n}\n"),
             (
                 "src/checkout.rs",
-                "use crate::cart::Cart;\n\npub fn totals(carts: Vec<Cart>) -> Vec<u32> {\n    carts.iter().map(|c| c.total).collect()\n}\n",
+                "use fetch::rows;\n\npub fn totals() -> Vec<u32> {\n    rows().map(|c| c.total).collect()\n}\n",
             ),
         ],
         &[("src/cart.rs", "pub struct Cart {\n    pub total: u64,\n}\n")],
@@ -3286,6 +3286,33 @@ fn a_rust_read_through_an_untyped_receiver_leaves_the_reads_undetermined_and_the
         "total",
         ("src/checkout.rs", 4),
     );
+}
+
+/// The closure parameter over a `Vec<Cart>` local is a `Cart`: its read is a
+/// resolved reference, where the sequence of an outside crate leaves it untyped.
+#[test]
+fn a_rust_closure_parameter_over_a_typed_sequence_reads_the_member_resolved() {
+    let tmp = repo(
+        &[
+            (
+                "Cargo.toml",
+                "[package]\nname = \"fixture\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+            ),
+            ("src/lib.rs", "pub mod cart;\npub mod checkout;\n"),
+            ("src/cart.rs", "pub struct Cart {\n    pub total: u32,\n}\n"),
+            (
+                "src/checkout.rs",
+                "use crate::cart::Cart;\n\npub fn totals(carts: Vec<Cart>) -> Vec<u32> {\n    carts.iter().map(|c| c.total).collect()\n}\n",
+            ),
+        ],
+        &[("src/cart.rs", "pub struct Cart {\n    pub total: u64,\n}\n")],
+    );
+    let md = impact_markdown(tmp.path());
+    assert!(
+        md.contains("referenced from src/checkout.rs::totals"),
+        "{md}"
+    );
+    assert!(!md.contains("callers not resolved"), "{md}");
 }
 
 #[test]
