@@ -21,6 +21,19 @@ name: diffctx CI
         description: 'Run the full macOS and Python set, as a PR into main does'
         type: boolean
         default: false
+  # cd.yml runs the full set on a release or a candidate.
+  workflow_call:
+    inputs:
+      full:
+        type: boolean
+        default: true
+    secrets:
+      DHI_USERNAME:
+        required: false
+      DHI_TOKEN:
+        required: false
+      CODECOV_TOKEN:
+        required: false
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}
