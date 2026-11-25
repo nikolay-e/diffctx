@@ -439,9 +439,17 @@ pub(super) fn searched_as_text(word: &str) -> bool {
 }
 
 /// Whether text outside the language can call `core` by its name: a stage of a
-/// Dockerfile is no function a script runs.
+/// Dockerfile is no function a script runs, nor a function of a Python file no
+/// import can name (`rotate-key.py`), which only a member access reaches.
 pub(super) fn callable_by_name(path: &str) -> bool {
-    diffctx_base::languages::get_language_for_file(path) != Some("dockerfile")
+    match diffctx_base::languages::get_language_for_file(path) {
+        Some("dockerfile") => false,
+        Some("python") => Path::new(path)
+            .file_stem()
+            .and_then(|stem| stem.to_str())
+            .is_some_and(|stem| stem.chars().all(super::keys::word_char)),
+        _ => true,
+    }
 }
 
 /// Code no cell reads (Objective-C, Scala and Groovy too, in the groups of the
@@ -462,18 +470,13 @@ fn unread_code(path: &str) -> bool {
         }
 }
 
-/// Code of a language no cell of `own`'s language binds to it: a shell script
-/// runs a program of any language by its bare name.
-fn foreign_code(path: &str, own: Option<diffctx_resolve::vocabulary::family::Group>) -> bool {
-    unread_code(path) && diffctx_resolve::vocabulary::family::Group::of_name(path) != own
-}
-
 /// A file that may spell a definition of `own`'s group where no cell accounts for
-/// the spelling: text the definition's own cell does not read, or foreign code.
+/// the spelling: text the definition's own cell does not read, or code of a language
+/// no cell of `own` binds to it (a shell script runs any program by its bare name).
 fn unaccounted_reader(path: &str, own: Option<diffctx_resolve::vocabulary::family::Group>) -> bool {
-    let read_by_own =
-        own.is_some() && diffctx_resolve::vocabulary::family::Group::of_name(path) == own;
-    (!is_code_file(path) && !read_by_own) || foreign_code(path, own)
+    let group = diffctx_resolve::vocabulary::family::Group::of_name(path);
+    let read_by_own = own.is_some() && group == own;
+    (!is_code_file(path) && !read_by_own) || (unread_code(path) && group != own)
 }
 
 /// The name a reader spells: `var.region` is written `region`, a C++ member
@@ -684,7 +687,9 @@ impl UntracedNamers {
                 .map(|(path, line)| UnanalysedFile::new(path, "not_traced", vec![line]))
                 .collect();
             spelled.extend(fresh);
-        } else if self.unread.could_spell(own) || self.unread.hides_beside(own, &sym.path) {
+        } else if callable_by_name(&sym.path)
+            && (self.unread.could_spell(own) || self.unread.hides_beside(own, &sym.path))
+        {
             sym.coverage = (sym.coverage.clone()).with(Some(decide::gap::Gap::NameUnsearched));
         }
         Self::disclose(sym, spelled);
@@ -768,14 +773,7 @@ impl UntracedNamers {
             .map(|(path, line)| UnanalysedFile::new(path, "not_traced", vec![line]))
             .collect();
         if !named.is_empty() {
-            sym.coverage = sym
-                .coverage
-                .clone()
-                .with(Some(decide::gap::Gap::Unaccounted {
-                    reason: decide::gap::Reason::OtherLanguage,
-                    files: named.len(),
-                }));
-            sym.missed_in.extend(named);
+            Self::disclose(sym, named);
         } else if !searched_as_text(literal_base(name)) && (quoted || self.unread.could_spell(own))
         {
             sym.coverage = sym

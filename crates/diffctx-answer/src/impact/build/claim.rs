@@ -146,21 +146,21 @@ pub(super) fn settle(
     let mut listed_namers = 0;
     let mut unlisted_namers = 0;
     // A string on the line of a call that computes a name (`globals()["handle_" +
-    // kind]`) is that call's: the route no model traces, already named.
-    let computes = |file: &UnanalysedFile| {
-        verdict
-            .as_ref()
-            .is_some_and(decide::verdict::Verdict::not_traced)
+    // kind]`) is that call's route no model traces, named by the verdict or the line.
+    let traced = verdict
+        .as_ref()
+        .is_some_and(decide::verdict::Verdict::not_traced);
+    let mut computed = false;
+    for (file, literal) in named {
+        let on_computed = literal
             && cells.of(&file.path).is_some_and(|cell| {
                 file.lines
                     .iter()
                     .any(|line| cell.computes_name_at(&file.path, *line))
-            })
-    };
-    for (file, literal) in named {
+            });
         if !missed_in.iter().any(|m| m.path == file.path)
             && !(literal
-                && (computes(&file)
+                && ((traced && on_computed)
                     || verdict.as_ref().is_some_and(|v| {
                         file.lines
                             .iter()
@@ -177,7 +177,8 @@ pub(super) fn settle(
             && !matches!(&unresolved, Some(Unknown::Candidates { sites, .. })
                     if sites.iter().any(|s| s.path == file.path))
         {
-            outside += 1;
+            computed |= on_computed;
+            outside += usize::from(!on_computed);
             outside_tests += usize::from(!literal || tests.is_test_file(&file.path));
             if listed_namers < MAX_UNTRACED_NAMERS {
                 listed_namers += 1;
@@ -204,6 +205,7 @@ pub(super) fn settle(
                     diffctx_resolve::vocabulary::family::Group::of_name(&rel(state, core.path())),
                 ));
     let coverage = search_coverage(verdict.as_ref(), unresolved.as_ref(), outside)
+        .with(computed.then_some(decide::gap::Gap::NotTraced))
         .with(unsearched.then_some(decide::gap::Gap::NameUnsearched));
     // No test found is an absence only from a closed search: the callers
     // accounted for and every definition above them. An open search says the
