@@ -73,10 +73,9 @@ fn final_state_fragments(repo: &MemoryRepo) -> Vec<Fragment> {
     fragments
 }
 
-/// The final tree written to a temporary repository, so the cells that read a
-/// snapshot (the ranking graph's edges for the languages that have one) have one
-/// to read. Removed on drop. A repository that cannot be made leaves the harness
-/// as it was: no root, and no cell edges.
+/// The final tree written to a temporary repository, so the builders and
+/// discovery that read a snapshot have one to read. Removed on drop. A
+/// repository that cannot be made leaves the harness as it was: no root.
 struct TempTree {
     root: PathBuf,
 }
