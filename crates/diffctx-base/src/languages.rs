@@ -215,9 +215,17 @@ pub static FILENAME_TO_LANGUAGE: Lazy<FxHashMap<&'static str, &'static str>> = L
 });
 
 pub fn file_ext(path: &Path) -> String {
-    path.extension()
-        .map(|e| format!(".{}", e.to_string_lossy().to_lowercase()))
-        .unwrap_or_default()
+    path.extension().map_or_else(String::new, |e| {
+        let e = e.to_string_lossy();
+        let mut ext = String::with_capacity(e.len() + 1);
+        ext.push('.');
+        if e.is_ascii() {
+            ext.extend(e.chars().map(|c| c.to_ascii_lowercase()));
+        } else {
+            ext.push_str(&e.to_lowercase());
+        }
+        ext
+    })
 }
 
 pub fn get_language_for_file(path: &str) -> Option<&'static str> {
