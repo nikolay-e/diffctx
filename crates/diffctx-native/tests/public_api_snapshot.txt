@@ -134,10 +134,8 @@ resource::classify_limits fn ( ctx: &RunContext, extra: &[LimitReason], relevant
 resource::current_changed_lines fn () -> Option<Arc<diffctx_base::changed_lines::ChangedLines>>
 resource::current_check fn () -> bool
 resource::current_head_rev fn () -> Option<String>
-resource::current_io_limits fn () -> Option<(Option<Instant>, Arc<AtomicBool>)>
 resource::current_source fn () -> crate::source::Source
 resource::memoized fn <T, E>( kind: &'static str, key: &std::path::Path, f: impl FnOnce() -> Result<T, E>, ) -> Result<T, E>
-resource::note_current fn (reason: LimitReason)
 resource::poll_current fn (i: usize, every: usize, produced: u64) -> bool
 resource::poll_current_every fn (i: usize, every: usize) -> bool
 resource::poll_emissions fn (i: usize, every: usize, emitted: u64, reported: &mut u64) -> bool

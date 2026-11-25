@@ -806,17 +806,6 @@ pub fn current_check() -> bool {
     with_current(RunContext::check).unwrap_or(true)
 }
 
-/// What bounds a read made for the current run: its I/O deadline and its
-/// cancellation. `None` outside a run.
-pub fn current_io_limits() -> Option<(Option<Instant>, Arc<AtomicBool>)> {
-    with_current(RunContext::io_limits)
-}
-
-/// The current run's note, when this thread runs one.
-pub fn note_current(reason: LimitReason) {
-    with_current(|ctx| ctx.note(reason));
-}
-
 /// What a failed git read leaves the answer missing, as a limit: out of time
 /// or cancelled is the deadline, an oversized blob its size, anything else a
 /// read that failed.
