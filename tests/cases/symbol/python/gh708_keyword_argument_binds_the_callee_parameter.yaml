@@ -46,7 +46,6 @@ repo:
 query:
   symbol: tz_offset_hours
 expect:
-  exact: false
   definitions: [bot/config.py::tz_offset_hours, record/tools.py::build_context]
   relations:
     - {from: bot/client.py::refresh, to: bot/config.py::tz_offset_hours, kind: reads, site: 6}

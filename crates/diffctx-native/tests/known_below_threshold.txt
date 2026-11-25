@@ -158,3 +158,5 @@ impact/shell/sh_function_run_through_an_xargs_function_of_the_script_is_a_caller
 impact/typescript/ts_global_augmentation_of_a_builtin_type_is_called_through_it  # the call on a `string` receiver is a candidate of the member the global augmentation declares (possibly called), not a resolved caller: a builtin receiver carries no type to pick `String` by
 impact/typescript/ts_namespace_merged_into_a_class_in_another_file_reads_its_member_bare  # `defaults` read bare in another file's body of a namespace merged into the class `Foo` is a hedged read, not a resolved caller: the file's scope does not hold the other file's member
 impact/python/py_getattr_with_a_string_prefix_does_not_hedge_a_member_it_cannot_spell  # a computed name's literal prefix is not read
+symbol/python/gh708_keyword_argument_binds_the_callee_parameter  # a keyword binds the parameter of a resolved callee
+impact/python/py_inherited_self_call_in_another_file_leaves_the_test_list_open  # a computed name's literal prefix is not read

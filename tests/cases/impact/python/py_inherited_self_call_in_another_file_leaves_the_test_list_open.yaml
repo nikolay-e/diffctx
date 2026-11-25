@@ -62,7 +62,6 @@ repo:
 expect:
   changed:
   - pkg/visitor.py::get_visitor
-  exact: false
   relations:
   - {from: pkg/visitor.py::visit, to: pkg/visitor.py::get_visitor, kind: calls}
   - {from: tests/test_api.py::test_visit, to: pkg/visitor.py::visit, kind: tests_reach}
