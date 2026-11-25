@@ -29,8 +29,8 @@ use super::{
 };
 use diffctx_facts::facts::FileFacts;
 use diffctx_facts::facts::{
-    Def, DefKey, DefKind, Export, Fact, FactsCache, Import, ImportKind, Language, Name, Receiver,
-    Ref, Star, UseKind, Visibility,
+    Def, DefKey, DefKind, Fact, FactsCache, Import, ImportKind, Language, Name, Receiver, Ref,
+    Star, UseKind, Visibility,
 };
 use diffctx_snapshot::snapshot::{
     AnalysisContext, Bytes, Loss, RepoPath, Result, SideTag, SnapshotReader, WorkspaceModel,
@@ -275,32 +275,16 @@ impl Index {
 
     /// A package is named by the clause of its files; a directory of `x` and
     /// `x_test` files is `x`.
-    #[allow(
-        clippy::disallowed_methods,
-        reason = "a package none of whose files has a clause has no name: an import of it is named by its path"
-    )]
     fn name_packages(&mut self) {
         for at in 0..self.pkgs.len() {
-            let mut names: Vec<String> = self.pkgs[at]
-                .files
-                .iter()
-                .flat_map(|f| self.files[*f].facts.blob.facts.iter())
-                .filter_map(|fact| match fact {
-                    Fact::Export(Export::Default {
-                        local: Some(name), ..
-                    }) => Some(name.as_str().to_string()),
-                    _ => None,
-                })
-                .collect();
-            names.sort();
-            names.dedup();
-            let own = names
-                .iter()
-                .find(|n| !n.ends_with("_test"))
-                .or_else(|| names.first())
-                .cloned()
-                .unwrap_or_default();
-            self.pkgs[at].name = own;
+            let clauses = || {
+                (self.pkgs[at].files.iter()).filter_map(|f| self.files[*f].facts.package_clause())
+            };
+            self.pkgs[at].name = clauses()
+                .filter(|n| !n.ends_with("_test"))
+                .min()
+                .or_else(|| clauses().min())
+                .map_or_else(String::new, str::to_string);
         }
     }
 
@@ -471,32 +455,32 @@ impl Engine<'_> {
                 && !i.blank
                 && match (&i.alias, i.target) {
                     (Some(alias), _) => alias.as_str() == name,
-                    (None, Located::Package(p)) => {
-                        let own = &self.ix.pkgs[p].name;
-                        if own.is_empty() {
-                            path_name(&i.path) == name
-                        } else {
-                            own == name
-                        }
+                    (None, Located::Package(p)) if !self.ix.pkgs[p].name.is_empty() => {
+                        self.ix.pkgs[p].name == name
                     }
                     (None, _) => path_name(&i.path) == name,
                 }
         })
     }
 
-    /// A top-level definition of a package by name.
-    fn item(&self, pkg: usize, name: &str, want: Want) -> Option<usize> {
+    /// A top-level definition of a package by name; `from` drops what its file, an external test, cannot see.
+    fn item(&self, pkg: usize, name: &str, want: Want, from: Option<usize>) -> Option<usize> {
         self.ix
             .items
             .get(&(pkg, Name::new(name)))?
             .iter()
             .copied()
             .filter(|d| {
-                want == Want::Any
+                let def = &self.ix.defs[*d];
+                from.is_none_or(|f| {
+                    !self.ix.files[f]
+                        .facts
+                        .is_external_test_of(Some(&self.ix.files[def.file].facts))
+                }) && (want == Want::Any
                     || matches!(
-                        self.ix.defs[*d].def.kind,
+                        def.def.kind,
                         DefKind::Struct | DefKind::Interface | DefKind::TypeAlias
-                    )
+                    ))
             })
             .min_by_key(|d| self.ix.defs[*d].def.local.disambig.is_some())
     }
@@ -504,13 +488,13 @@ impl Engine<'_> {
     /// An exported definition of a package.
     fn exported(&self, pkg: usize, name: &str, want: Want) -> Option<usize> {
         name.starts_with(char::is_uppercase)
-            .then(|| self.item(pkg, name, want))
+            .then(|| self.item(pkg, name, want, None))
             .flatten()
     }
 
     /// A bare name as the file's scope gives it: the package's, a dot import's.
     fn find_name(&self, f: usize, name: &str, want: Want) -> Option<(usize, EvidenceKind)> {
-        if let Some(d) = self.item(self.ix.files[f].pkg, name, want) {
+        if let Some(d) = self.item(self.ix.files[f].pkg, name, want, Some(f)) {
             return Some((d, EvidenceKind::SameScope));
         }
         self.ix.files[f]
@@ -759,7 +743,7 @@ impl Engine<'_> {
                 continue;
             };
             let pkg = self.pkg_of(*m);
-            let Some(t) = self.item(pkg, owner.as_str(), Want::Type) else {
+            let Some(t) = self.item(pkg, owner.as_str(), Want::Type, None) else {
                 continue;
             };
             if matches!(self.ix.defs[t].def.kind, DefKind::Interface) {
@@ -1067,7 +1051,7 @@ impl Engine<'_> {
             Located::External => Outcome::Unresolved(UnresolvedReason::External),
             Located::Missing => Outcome::Unresolved(UnresolvedReason::MissingModule),
             Located::Package(p) => self
-                .item(p, r.name.as_str(), Want::Any)
+                .item(p, r.name.as_str(), Want::Any, None)
                 .map_or(Outcome::Unresolved(UnresolvedReason::NoBinding), |d| {
                     Outcome::Found(d, EvidenceKind::ModuleAttribute)
                 }),

@@ -652,6 +652,7 @@ impl<'a> Reading<'a> {
 
     fn unresolved(&self, reason: UnresolvedReason, binding: &Binding, spelled: &[u8]) -> Claim {
         let relation = Some(binding.relation);
+        let key = &self.subject.key;
         let verified = |witness: Option<Witness>| {
             witness.map_or_else(
                 || Claim::candidate(relation, Reason::BasisUnverified),
@@ -672,8 +673,11 @@ impl<'a> Reading<'a> {
                     .imports
                     .iter()
                     .any(|import| self.binds(import, spelled))
-                    && (!self.subject.key.local.container.is_empty()
-                        || !self.is_own_module(self.file)))
+                    && (!key.local.container.is_empty()
+                        || !self.is_own_module(self.file)
+                        || self
+                            .file
+                            .is_external_test_of(self.view.file(&self.subject.file))))
                 .then(|| Witness::Builtin(self.file.path.clone())),
             ),
             UnresolvedReason::External => {
@@ -690,15 +694,9 @@ impl<'a> Reading<'a> {
                 // the subject's own too where a type is satisfied by shape.
                 let lower = String::from_utf8_lossy(spelled).to_ascii_lowercase();
                 let own = usize::from(
-                    !self.subject.key.local.container.is_empty()
+                    !key.local.container.is_empty()
                         && !STRUCTURAL_TYPES.iter().any(|f| f.has(self.file.language()))
-                        && self
-                            .subject
-                            .key
-                            .local
-                            .name
-                            .as_str()
-                            .eq_ignore_ascii_case(&lower),
+                        && key.local.name.as_str().eq_ignore_ascii_case(&lower),
                 );
                 let others =
                     (self.view.index.members.get(&lower)).map_or(0, |n| n.saturating_sub(own));
@@ -707,7 +705,7 @@ impl<'a> Reading<'a> {
                 let removed = Family::ALL
                     .iter()
                     .any(|f| f.names_are_global() && f.has(self.file.language()))
-                    && !self.view.index.definitions.contains(&self.subject.key);
+                    && !self.view.index.definitions.contains(key);
                 let bare = named.is_empty() && others == 0 && !removed;
                 // An override names its base by its declaration, whatever else shares the name.
                 let nameless = bare || binding.relation == Relation::Overrides;
@@ -727,7 +725,7 @@ impl<'a> Reading<'a> {
             // A values file a release gives a chart is that chart's: another's read of it is none.
             UnresolvedReason::NoMatch
                 if self.file.language() == Language::HelmTemplate
-                    && self.view.index.released.contains(&self.subject.key) =>
+                    && self.view.index.released.contains(key) =>
             {
                 Claim::not_ours(relation, Witness::OtherProject(self.subject.file.clone()))
             }

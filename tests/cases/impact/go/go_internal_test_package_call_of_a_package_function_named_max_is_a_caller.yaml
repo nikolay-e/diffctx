@@ -1,0 +1,44 @@
+name: go_internal_test_package_call_of_a_package_function_named_max_is_a_caller
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [go, builtin, test-package]
+repo:
+  initial_files:
+    go.mod: |
+      module example.com/app
+
+      go 1.21
+    util/max.go: |
+      package util
+
+      func max(a, b int) int {
+          if a > b {
+              return a
+          }
+          return b
+      }
+    util/use_test.go: |
+      package util
+
+      import "testing"
+
+      func TestTop(t *testing.T) {
+          _ = max(1, 2)
+      }
+  changed_files:
+    util/max.go: |
+      package util
+
+      func max(a, b int) int {
+          if a >= b {
+              return a
+          }
+          return b
+      }
+  commit_message: change
+expect:
+  changed: ['util/max.go::max']
+  relations:
+  - {from: 'util/use_test.go::TestTop', to: 'util/max.go::max', kind: calls, resolution: resolved}
+  exact: false

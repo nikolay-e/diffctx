@@ -669,6 +669,23 @@ impl FileFacts {
         self.blob.language
     }
 
+    pub fn package_clause(&self) -> Option<&str> {
+        self.blob.facts.iter().find_map(|fact| match fact {
+            Fact::Export(Export::Default { local, .. }) => local.as_ref().map(Name::as_str),
+            _ => None,
+        })
+    }
+
+    /// Proof that this is the external test package (`x_test` in a `_test.go` file) of the
+    /// package `tested` is in: it sees none of its names. A missing or other clause proves nothing.
+    pub fn is_external_test_of(&self, tested: Option<&Self>) -> bool {
+        let clauses = tested.and_then(|t| self.package_clause().zip(t.package_clause()));
+        self.language() == Language::Go
+            && self.path.file_name().ends_with("_test.go")
+            && tested.is_some_and(|t| t.path.parent() == self.path.parent())
+            && clauses.is_some_and(|(own, pkg)| own.strip_suffix("_test") == Some(pkg))
+    }
+
     /// The blob's losses, each about this file.
     pub fn losses(&self) -> Vec<Loss> {
         self.blob
