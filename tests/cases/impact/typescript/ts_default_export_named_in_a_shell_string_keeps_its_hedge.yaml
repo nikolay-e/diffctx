@@ -1,0 +1,26 @@
+name: ts_default_export_named_in_a_shell_string_keeps_its_hedge
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [typescript, default-export, gap, rule-i]
+repo:
+  initial_files:
+    src/rate.ts: |
+      export default (x: number, y: number): number => x * y;
+    scripts/run.sh: |
+      node -e "console.log(require('./src/rate').default(2, 3))"
+  changed_files:
+    src/rate.ts: |
+      export default function mono(x: number, y: number): number {
+        return x * y;
+      }
+  commit_message: "rate: a named function declaration"
+# The decoy of the case beside it: `.default` is read inside a shell string, code no
+# extractor reads. A real use of the name `default` the analysis cannot see keeps the
+# `unlanded` hedge on both groups; only the declaring `default` stopped counting.
+expect:
+  changed: ['src/rate.ts::mono']
+  partial:
+    src/rate.ts::mono:
+      calls: unlanded
+      reads: unlanded

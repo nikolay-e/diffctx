@@ -1,0 +1,28 @@
+name: ts_default_export_renamed_from_an_anonymous_one_is_no_unlanded_use
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [typescript, default-export, gap, rule-i]
+repo:
+  initial_files:
+    src/rate.ts: |
+      export default (x: number, y: number): number => x * y;
+    src/use.ts: |
+      import rate from './rate';
+
+      export function total(): number {
+        return rate(2, 3);
+      }
+  changed_files:
+    src/rate.ts: |
+      export default function mono(x: number, y: number): number {
+        return x * y;
+      }
+  commit_message: "rate: a named function declaration"
+# The `default` after `export` declares the export; it is no use of the name `default` the
+# arrow function had. The importer is resolved, so the function's calls and reads are
+# complete, with no `unlanded` gap on `mono`.
+expect:
+  changed: ['src/rate.ts::mono']
+  callers:
+    mono: ['src/use.ts::total']
