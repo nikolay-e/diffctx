@@ -18,32 +18,10 @@ pub struct SelectionConfig {
     pub per_file_budget_fraction: f64,
 }
 
-impl Default for SelectionConfig {
-    fn default() -> Self {
-        Self {
-            // cbf margin over 0.5 is small but consistent in direction on
-            // both the calibration and held-out manifests. Surface flat and
-            // monotone, as in v4.
-            core_budget_fraction: DEFAULT_CORE_BUDGET_FRACTION,
-            r_cap_min: 0.01,
-            per_file_budget_fraction: 0.25,
-        }
-    }
-}
-
 #[derive(Clone)]
 pub struct RescueConfig {
     pub budget_fraction: f64,
     pub min_score_percentile: f64,
-}
-
-impl Default for RescueConfig {
-    fn default() -> Self {
-        Self {
-            budget_fraction: 0.05,
-            min_score_percentile: 0.80,
-        }
-    }
 }
 
 #[derive(Clone)]
@@ -67,6 +45,8 @@ impl Default for BoltzmannConfig {
 
 pub fn selection() -> SelectionConfig {
     SelectionConfig {
+        // cbf margin over 0.5 is small but consistent in direction on both the
+        // calibration and held-out manifests. Surface flat and monotone, as in v4.
         core_budget_fraction: read_env_fraction(
             "DIFFCTX_OP_SELECTION_CORE_BUDGET_FRACTION",
             DEFAULT_CORE_BUDGET_FRACTION,

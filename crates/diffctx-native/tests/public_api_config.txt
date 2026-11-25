@@ -49,22 +49,11 @@ config::edge_weights::BUILD_SYSTEM const BuildSystemWeights
 config::edge_weights::BuildSystemWeights struct
 config::edge_weights::BuildSystemWeights.file_ref_weight field f64
 config::edge_weights::BuildSystemWeights.reverse_factor field f64
-config::edge_weights::CELL_EDGES static once_cell::sync::Lazy<CellEdgeWeights>
-config::edge_weights::CELL_EDGE_GROUPS const [&str; 12]
 config::edge_weights::CFamilySemanticWeights struct
 config::edge_weights::CFamilySemanticWeights.base_weight field f64
 config::edge_weights::CFamilySemanticWeights.max_files_per_name field usize
 config::edge_weights::CICD const CicdWeights
 config::edge_weights::C_FAMILY_SEMANTIC const CFamilySemanticWeights
-config::edge_weights::CellEdgeWeights struct derive(Clone, Debug)
-config::edge_weights::CellEdgeWeights.candidate_factor field f64
-config::edge_weights::CellEdgeWeights.candidates field bool
-config::edge_weights::CellEdgeWeights.max_candidates field usize
-config::edge_weights::CellEdgeWeights.max_unresolved_targets field usize
-config::edge_weights::CellEdgeWeights.resolved field f64
-config::edge_weights::CellEdgeWeights.unresolved field bool
-config::edge_weights::CellEdgeWeights.unresolved_factor field f64
-config::edge_weights::CellEdgeWeights::draws fn (&self, group: &str) -> bool
 config::edge_weights::CicdWeights struct
 config::edge_weights::CicdWeights.reverse_factor field f64
 config::edge_weights::CicdWeights.script_modifier field f64
@@ -77,7 +66,6 @@ config::edge_weights::DockerWeights.compose_volume_modifier field f64
 config::edge_weights::DockerWeights.compose_weight field f64
 config::edge_weights::DockerWeights.copy_weight field f64
 config::edge_weights::DockerWeights.reverse_factor field f64
-config::edge_weights::DockerWeights.weight field f64
 config::edge_weights::GO_SEMANTIC const GoSemanticWeights
 config::edge_weights::GoSemanticWeights struct
 config::edge_weights::GoSemanticWeights.init_same_package_weight field f64
@@ -240,7 +228,6 @@ config::limits::SiblingConfig struct
 config::limits::SiblingConfig.max_files_per_dir field usize
 config::limits::UNGATED_STOPPING_THRESHOLD const f64
 config::limits::UTILITY static Lazy<UtilityConfig>
-config::limits::UtilityConfig impl Default for UtilityConfig
 config::limits::UtilityConfig struct
 config::limits::UtilityConfig.eta field f64
 config::limits::UtilityConfig.proximity_decay field f64
@@ -322,11 +309,9 @@ config::selection::BoltzmannConfig.beta_lo field f64
 config::selection::BoltzmannConfig.bisect_iters field u32
 config::selection::BoltzmannConfig.calibration_tolerance field f64
 config::selection::DEFAULT_CORE_BUDGET_FRACTION const f64
-config::selection::RescueConfig impl Default for RescueConfig
 config::selection::RescueConfig struct derive(Clone)
 config::selection::RescueConfig.budget_fraction field f64
 config::selection::RescueConfig.min_score_percentile field f64
-config::selection::SelectionConfig impl Default for SelectionConfig
 config::selection::SelectionConfig struct derive(Clone)
 config::selection::SelectionConfig.core_budget_fraction field f64
 config::selection::SelectionConfig.per_file_budget_fraction field f64

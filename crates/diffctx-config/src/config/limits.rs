@@ -160,17 +160,6 @@ pub struct UtilityConfig {
     pub proximity_decay: f64,
 }
 
-impl Default for UtilityConfig {
-    fn default() -> Self {
-        Self {
-            eta: 0.20,
-            structural_bonus_weight: 0.10,
-            r_cap_sigma: 2.0,
-            proximity_decay: 0.30,
-        }
-    }
-}
-
 pub static LIMITS: Lazy<AlgorithmLimits> = Lazy::new(AlgorithmLimits::default);
 pub static PPR: Lazy<PPRConfig> = Lazy::new(|| PPRConfig {
     alpha: read_env_open_fraction("DIFFCTX_OP_PPR_ALPHA", DEFAULT_PPR_ALPHA),
