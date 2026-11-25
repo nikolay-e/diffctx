@@ -152,9 +152,6 @@ vocabulary::family::Group::Web variant Web
 vocabulary::family::Group::has_path fn (self, name: &str) -> bool
 vocabulary::family::Group::of_name fn (name: &str) -> Option<Self>
 vocabulary::family::Group::of_path fn (path: &RepoPath) -> Option<Self>
-vocabulary::family::HeadFamily struct
-vocabulary::family::HeadFamily::bindings fn (&self) -> &[Binding]
-vocabulary::family::HeadFamily::definitions fn (&self) -> &[Definition]
 vocabulary::family::Resolver enum
 vocabulary::family::Resolver::C variant C(CResolver)
 vocabulary::family::Resolver::Config variant Config(ConfigResolver)
@@ -183,7 +180,6 @@ vocabulary::family::Resolver::references_to fn (&self, key: &DefKey) -> Vec<&Bin
 vocabulary::family::Resolver::root_module fn (&self, file: &str) -> bool
 vocabulary::family::Resolver::serialized fn (&self, key: &DefKey) -> bool
 vocabulary::family::context_in fn ( root: &std::path::Path, limits: ( Option<std::time::Instant>, Arc<std::sync::atomic::AtomicBool>, ), range: Option<&str>, symbol: bool, ) -> Result<AnalysisContext>
-vocabulary::family::open_head fn ( root: &std::path::Path, range: Option<&str>, family: Family, ) -> Result<Arc<HeadFamily>>
 vocabulary::is_precise fn (language: &str, relation: &str) -> bool
 vocabulary::kind_of_use fn (relation: crate::resolve::Relation) -> RelationKind
 vocabulary::stated_kind_of fn (path: &str, kind: RelationKind) -> Option<&'static str>

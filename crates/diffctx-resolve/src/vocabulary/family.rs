@@ -1,5 +1,5 @@
 //! The languages one resolver reads, and the resolver behind each: the layer the
-//! impact answer and the ranking graph's cells share.
+//! impact answer's cells share.
 
 #![deny(clippy::disallowed_methods)]
 
@@ -459,47 +459,4 @@ pub fn context_in(
         budget,
         Arc::new(admission),
     )?)
-}
-
-/// What the ranking graph reads of one family's resolved head snapshot: the
-/// bindings and the definitions, as plain data. The resolver itself stays with
-/// the cell (the TypeScript one is not `Send`, so a run cannot hold one for
-/// every thread that builds edges).
-pub struct HeadFamily {
-    bindings: Vec<Binding>,
-    definitions: Vec<Definition>,
-}
-
-impl HeadFamily {
-    pub fn bindings(&self) -> &[Binding] {
-        &self.bindings
-    }
-
-    pub fn definitions(&self) -> &[Definition] {
-        &self.definitions
-    }
-}
-
-/// `family` resolved over the head snapshot of the run at `root`: the range the
-/// run analysed, `HEAD` and the working tree for a run with none. Opened once
-/// per run and family however many edge builders and discovery ask; the run's
-/// I/O deadline and cancellation are the current run's. A family that cannot be
-/// read is an `Err`, never kept: the caller notes it and draws no edge.
-pub fn open_head(
-    root: &std::path::Path,
-    range: Option<&str>,
-    family: Family,
-) -> Result<Arc<HeadFamily>> {
-    let key = std::path::PathBuf::from(format!("{}@{}", root.display(), range.unwrap_or("")));
-    diffctx_snapshot::resource::memoized(family.name(), &key, || -> Result<Arc<HeadFamily>> {
-        let limits = diffctx_snapshot::resource::current_io_limits()
-            .unwrap_or_else(|| (None, Arc::new(std::sync::atomic::AtomicBool::new(false))));
-        let ctx = context_in(root, limits, range, false)?;
-        let cache = FactsCache::user();
-        let resolver = Resolver::open(family, &ctx, SideTag::Head, &cache)?;
-        Ok(Arc::new(HeadFamily {
-            bindings: resolver.bindings().to_vec(),
-            definitions: resolver.definitions().to_vec(),
-        }))
-    })
 }
