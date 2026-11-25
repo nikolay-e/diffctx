@@ -89,8 +89,8 @@ jobs:
           docker logout dhi.io >/dev/null
           echo "DHI_TOKEN logs in to dhi.io."
 
-  # The full platform set (macOS included) on the commit being released. It
-  # does not gate the publish jobs: a red run is read before the owner's yes.
+  # The full platform set (macOS included) on the commit being released. A red
+  # run blocks the publish and finalize jobs, and so everything behind them.
   ci:
     name: CI on the full platform set
     if: ${{ !inputs.build_only }}
@@ -747,7 +747,7 @@ jobs:
 
   publish-to-pypi:
     name: Publish to PyPI
-    needs: [prepare-version, build-wheels, build-sdist]
+    needs: [ci, prepare-version, build-wheels, build-sdist]
     if: github.event.inputs.publish_to_pypi == 'true'
     runs-on: ubuntu-latest
     environment:
@@ -1104,6 +1104,7 @@ jobs:
   finalize-release:
     name: Push Release and Create GitHub Release
     needs:
+      - ci
       - prepare-version
       - build-wheels
       - build-sdist
@@ -1114,6 +1115,7 @@ jobs:
     if: |
       always() &&
       !inputs.build_only &&
+      needs.ci.result == 'success' &&
       needs.prepare-version.result == 'success' &&
       needs.build-wheels.result == 'success' &&
       needs.build-sdist.result == 'success' &&
