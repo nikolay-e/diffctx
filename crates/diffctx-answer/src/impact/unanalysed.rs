@@ -494,9 +494,12 @@ pub(super) fn left_words(def: &decide::changed::Changed) -> impl Iterator<Item =
 }
 
 /// The word a reader spells for `def`: none for a script named by its path, whose
-/// last dotted part is its extension (`sh`), the word that runs every script.
+/// last dotted part is its extension (`sh`), the word that runs every script, nor for a
+/// module's default export, which its importers name by the module's path.
 pub(super) fn spelled_word(def: &decide::changed::Changed) -> Option<&str> {
-    (!def.named_by_its_path()).then(|| literal_base(&def.name))
+    let default = def.name == "default"
+        && diffctx_resolve::vocabulary::family::Family::TypeScript.has_path(&def.file);
+    (!def.named_by_its_path() && !default).then(|| literal_base(&def.name))
 }
 
 /// The word a reader spells for `core`.
@@ -776,10 +779,7 @@ impl UntracedNamers {
             Self::disclose(sym, named);
         } else if !searched_as_text(literal_base(name)) && (quoted || self.unread.could_spell(own))
         {
-            sym.coverage = sym
-                .coverage
-                .clone()
-                .with(Some(decide::gap::Gap::NameUnsearched));
+            sym.coverage = (sym.coverage.clone()).with(Some(decide::gap::Gap::NameUnsearched));
         }
     }
 

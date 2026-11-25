@@ -117,7 +117,8 @@ pub(super) const OFFERING_MODULES: &[Family] = &[Family::Python];
 
 /// The words after which a SQL name is declared or names an object of another namespace, never
 /// called (the extractor reads no fact there), for a subject of the kinds listed: `DROP FUNCTION
-/// f`, `INSERT INTO f`, `CREATE TABLE f` are no use of the routine `f`.
+/// f`, `INSERT INTO f`, `CREATE TABLE f` are no use of the routine `f`; the word after TypeScript's
+/// `export` is the `default` of `export default function f`, which declares the export.
 pub(super) const STATEMENT_NAMES: &[(Family, &[DefKind], &str)] = &[
     (
         Family::Sql,
@@ -125,6 +126,11 @@ pub(super) const STATEMENT_NAMES: &[(Family, &[DefKind], &str)] = &[
         "function procedure table into references type copy view",
     ),
     (Family::Sql, &[DefKind::Object], "view"),
+    (
+        Family::TypeScript,
+        &[DefKind::Function, DefKind::Class, DefKind::Variable],
+        "export",
+    ),
 ];
 
 /// The instructions whose words are another language's text: a shell's word is no name of a
