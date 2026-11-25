@@ -1,6 +1,6 @@
 # Mutation testing of the two places a false `Complete` or a lost hedge can be made: the occurrence
 # accounting (`diffctx-occurrence`) and the answer's decisions (`diffctx-answer`, `src/decide`).
-# Dispatch only: a full run is hours of runner time. A mutant that survives and could say "complete"
+# Started by hand: a full run is hours of runner time. A mutant that survives and could say "complete"
 # where the analysis cannot see, or drop a hedge, is a missing test.
 #
 # The tests live in `diffctx-native`, not in the mutated crates, so every mutant runs the crate's own
@@ -10,6 +10,10 @@
 name: mutants
 
 'on':
+  # A workflow file is dispatchable only from the default branch; until it lands there, a push to
+  # this branch starts the full run.
+  push:
+    branches: [ci/mutants]
   workflow_dispatch:
     inputs:
       shards:
@@ -54,7 +58,7 @@ jobs:
     steps:
       - id: m
         env:
-          SHARDS: ${{ inputs.shards }}
+          SHARDS: ${{ inputs.shards || '8' }}
           PICK: ${{ inputs.pick }}
         run: |
           python3 - <<'PY' >> "$GITHUB_OUTPUT"
@@ -138,7 +142,7 @@ jobs:
           mv mutants.out mutants-fast.out
 
       - name: Corpus suites on the survivors
-        if: inputs.heavy
+        if: github.event_name == 'push' || inputs.heavy
         env:
           PKG: diffctx-${{ matrix.pkg }}
         run: |
