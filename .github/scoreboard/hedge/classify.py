@@ -37,17 +37,28 @@ import judge
 CLASSES = ("confident-right", "confident-wrong", "hedged-list-complete", "hedged-list-incomplete")
 
 
-def hedged(n):
-    return any(d["gaps"] or d["missed_in"] for d in n["defs"].values())
+def hedged(case, n):
+    """Some definition names a gap, or files it did not analyse, that the case does not list as the
+    candidate it discloses (judge.rs named_gaps: a gap whose every site lies in a file the case lists as
+    a non-resolved code relation to the definition is set aside)."""
+    wants, _ = judge.compile_expect(case)
+    for d in n["defs"].values():
+        candidates = judge.candidate_files(wants, judge.node_of(d))
+        kept = [g for g in d["gaps"] if not g.get("sites") or not set(g["sites"]) <= candidates]
+        if kept or d["missed_in"]:
+            return True
+    return False
 
 
 def classify(case, n):
+    """(class, right). right: the case's expectations hold, and the oracle's gate holds (a subject
+    definition hedges only where the case declares `expect.partial`, and does where it declares one)."""
     v = judge.Verdicts(case, n)
-    right = not judge.case_red(v)
+    right = not judge.case_red(v) and not judge.gate_failures(case, n)
     bare = judge.Verdicts(case, n)
     bare.coverage, bare.unknowns = {}, None
     list_ok = not judge.case_red(bare)
-    if hedged(n):
+    if hedged(case, n):
         return ("hedged-list-complete" if list_ok else "hedged-list-incomplete"), right
     return ("confident-right" if right else "confident-wrong"), right
 

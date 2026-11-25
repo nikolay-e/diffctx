@@ -312,6 +312,22 @@ def _v2_gaps(d):
     return gaps
 
 
+def _v2_groups(d):
+    """{calls|reads: [(kind, [files])]} of the coverage groups the answer calls incomplete, as the
+    oracle's engine.rs reads them; a group with no gap named holds one `unnamed`."""
+    groups = {}
+    for group in ("calls", "reads"):
+        cov = (d.get("coverage") or {}).get(group) or {}
+        if cov.get("complete") is not False:
+            continue
+        gaps = [
+            (g.get("kind") or "unnamed", [x["path"] for x in g.get("sites") or [] if x.get("path")])
+            for g in cov.get("gaps") or []
+        ]
+        groups[group] = gaps or [("unnamed", [])]
+    return groups
+
+
 def _v2_definition(d, unmapped):
     _unmapped("definitions[].", d, V2_DEF_CONSUMED, unmapped)
     rows = []
@@ -325,6 +341,7 @@ def _v2_definition(d, unmapped):
         "kind": d.get("kind"),
         "rows": rows,
         "gaps": _v2_gaps(d),
+        "groups": _v2_groups(d),
         "missed_in": [m.get("path", "") for m in d.get("missed_in") or []],
     }
 

@@ -401,3 +401,77 @@ def case_red(verdicts):
 
 def node_of(d):
     return Node(d["path"], d["symbol"])
+
+
+GROUP_OF_KIND = {
+    "calls": "calls",
+    "instantiates": "calls",
+    "overrides": "calls",
+    "reads": "reads",
+    "writes": "reads",
+    "passes_as_value": "reads",
+}
+
+
+def _declared_partial(expect):
+    """judge.rs compile: [(target, {group: {reasons}})] of `expect.partial`."""
+    out = []
+    for target, kinds in (expect.get("partial") or {}).items():
+        groups = {}
+        for kind, reasons in kinds.items():
+            groups.setdefault(GROUP_OF_KIND[kind], set()).update([reasons] if isinstance(reasons, str) else reasons)
+        out.append((Node.target(target), groups))
+    return out
+
+
+def candidate_files(wants, node):
+    """The files the case lists as the `from` of a code relation to `node` that is no resolved one."""
+    return {w.frm.path for w in wants if w.family == "code" and w.resolution != "resolved" and w.to.covers(node)}
+
+
+def named_gaps(d, group, candidates):
+    """judge.rs named_gaps: the gap kinds a group names once the gaps whose every site lies in a file the
+    case lists as a candidate are set aside; None when complete or nothing is left. A 1.20.0 answer has no
+    groups: its gaps stand for both, unset aside."""
+    groups = d.get("groups")
+    if groups is None:
+        kinds = {g["cls"] for g in d["gaps"]} | ({"missed_in"} if d["missed_in"] else set())
+        return kinds or None
+    kinds = {kind for kind, files in groups.get(group, []) if not files or not all(f in candidates for f in files)}
+    return kinds or None
+
+
+def gate_failures(case, norm):
+    """judge.rs gate: in an exact case a subject definition holds no coverage gap beyond the sites a listed
+    candidate names, unless `expect.partial` declares the group, which must then be incomplete and name
+    exactly the declared kinds."""
+    expect = case.get("expect") or {}
+    wants, listed = compile_expect(case)
+    partial = _declared_partial(expect)
+    key = "changed" if case.get("mode") == "impact" else "definitions"
+    subjects = [Node.target(t) for t in expect.get(key) or []] + [t for t, fam in listed if fam == "code"]
+    failures = []
+    for d in norm["defs"].values():
+        node = Node(d["path"], d["symbol"])
+        declared = [groups for target, groups in partial if target.covers(node)]
+        gated = expect.get("exact", True) and any(s.covers(node) for s in subjects)
+        if not declared and not gated:
+            continue
+        candidates = candidate_files(wants, node)
+        for group in ("calls", "reads"):
+            got = named_gaps(d, group, candidates)
+            wanted = {r for groups in declared for r in groups.get(group, ())}
+            declared_group = any(group in groups for groups in declared)
+            if got is None and declared_group:
+                failures.append(f"{node} {group}: declared partial but the answer calls it complete")
+            elif got is not None and not declared_group and gated:
+                failures.append(f"{node} {group}: the answer hedges ({', '.join(sorted(got))}) with no partial declared")
+            elif got is not None and declared_group and d.get("groups") is not None and got != wanted:
+                failures.append(
+                    f"{node} {group}: declared partial ({', '.join(sorted(wanted))}), the answer names ({', '.join(sorted(got))})"
+                )
+    known = {node_of(d) for d in norm["defs"].values()}
+    for target, _ in partial:
+        if not any(target.covers(k) for k in known):
+            failures.append(f"partial of {target}: the answer reports no such definition")
+    return failures
