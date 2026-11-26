@@ -1,0 +1,34 @@
+name: py_field_pulled_up_into_the_base_is_not_removed
+mode: impact
+source: synthetic
+tags: [python, move, removed, fields, inheritance]
+repo:
+  initial_files:
+    base.py: |
+      class Base:
+          pass
+    a.py: |
+      from base import Base
+
+
+      class A(Base):
+          x: int
+    use.py: |
+      from a import A
+
+
+      def go():
+          return A().x
+  changed_files:
+    base.py: |
+      class Base:
+          x: int
+    a.py: |
+      from base import Base
+
+
+      class A(Base):
+          pass
+  commit_message: Pull x up into Base
+expect:
+  removed: []
