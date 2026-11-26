@@ -131,12 +131,17 @@ fn check_in_scratch(
         ),
         Basis::Tree { files } => {
             let work = scratch.path().join("work");
-            let init = {
-                let mut cmd = git_command(scratch.path());
-                cmd.args(["init", "-q", "--template=", "work"]);
-                cmd
-            };
-            exec.finish(init, &["init"], &[])?;
+            // What git needs to take a directory for a repository, written
+            // here: a `git init` per tree is a child per tree.
+            let git_dir = work.join(".git");
+            std::fs::create_dir_all(git_dir.join("objects"))?;
+            std::fs::create_dir(git_dir.join("refs"))?;
+            std::fs::write(git_dir.join("HEAD"), "ref: refs/heads/main\n")?;
+            // `git init` turns on `core.ignorecase` when the file system
+            // answers to a name in the wrong case; it changes ignore verdicts.
+            if git_dir.join("head").exists() {
+                std::fs::write(git_dir.join("config"), "[core]\n\tignorecase = true\n")?;
+            }
             let mut patterns = Vec::new();
             for (path, bytes) in *files {
                 if path.file_name() == ".gitignore" {
