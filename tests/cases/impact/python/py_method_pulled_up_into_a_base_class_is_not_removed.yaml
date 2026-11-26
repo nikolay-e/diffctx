@@ -1,0 +1,36 @@
+name: py_method_pulled_up_into_a_base_class_is_not_removed
+mode: impact
+source: synthetic
+tags: [python, move, removed, inheritance]
+repo:
+  initial_files:
+    a.py: |
+      class Base:
+          def a(self):
+              return 1
+
+
+      class Sub(Base):
+          def total(self):
+              return 2
+    use.py: |
+      from a import Sub
+
+
+      def go(s: Sub):
+          return s.total()
+  changed_files:
+    a.py: |
+      class Base:
+          def a(self):
+              return 1
+
+          def total(self):
+              return 2
+
+
+      class Sub(Base):
+          pass
+  commit_message: Pull total up into Base
+expect:
+  removed: []

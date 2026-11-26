@@ -1,0 +1,29 @@
+name: kotlin_method_pulled_up_into_a_base_class_is_not_removed
+mode: impact
+source: synthetic
+tags: [kotlin, move, removed, inheritance]
+repo:
+  initial_files:
+    Base.kt: |
+      open class Base {
+          fun a(): Int = 1
+      }
+
+      class Sub : Base() {
+          fun total(): Int = 2
+      }
+    Use.kt: |
+      fun go(s: Sub): Int = s.total()
+  changed_files:
+    Base.kt: |
+      open class Base {
+          fun a(): Int = 1
+
+          fun total(): Int = 2
+      }
+
+      class Sub : Base() {
+      }
+  commit_message: Pull total up into Base
+expect:
+  removed: []
