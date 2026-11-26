@@ -87,7 +87,7 @@ const CELLS: [Cell; 4] = [
     }),
 ];
 
-const IMPACT_CEILING: usize = 24;
+const IMPACT_CEILING: usize = 22;
 const PACK_CEILING: usize = 15;
 const LOCATE_CEILING: usize = 15;
 const SYMBOL_CEILING: usize = 12;
