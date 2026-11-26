@@ -648,3 +648,37 @@ def test_a_gap_in_the_reads_search_leaves_the_calls_claim_complete_and_the_reads
     by_kind = {c["kind"]: c for c in cells}
     assert (by_kind["calls"]["incomplete_complete"], by_kind["calls"]["abstained"]) == (1, False)
     assert (by_kind["reads"]["incomplete_complete"], by_kind["reads"]["abstained"]) == (0, True)
+
+
+def test_a_type_satisfying_a_changed_interface_inside_the_range_is_a_weak_caller_not_a_missing_one():
+    iface = Definition("source.go", "interface", "Source", (), 3, 5, 3, 4, "()", "h", "s")
+    impl = Definition("source.go", "struct", "source", (), 7, 9, 7, 4, "()", "h", "s")
+    resolve = make_resolver(lambda path: [iface, impl] if path == "source.go" else [])
+    # The shape the engine writes: the use sits in a changed definition and its binding is a dispatch candidate.
+    found = parse_answer(
+        {
+            "schema": "diffctx.impact.v2",
+            "definitions": [
+                {
+                    "path": "source.go",
+                    "symbol": "Source",
+                    "lines": "3-5",
+                    "change": {"kind": "edited"},
+                    "rows": [],
+                    "possibly_also_changed": [{"path": "source.go", "lines": "7"}],
+                    "coverage": {"calls": {"complete": True}, "reads": {"complete": True}},
+                    "shed": {},
+                }
+            ],
+            "empty": False,
+            "summary": {"shed": 0},
+            "coverage": {"scope": {"complete": True}, "limits": [], "unanalysed": {"total": 0, "items": []}},
+            "unlisted": {},
+        },
+        resolve,
+    )
+    truth = [Relation(impl.key, iface.key, "overrides", 7, moved=("R14",))]
+
+    cells, _ = compare(iface, truth, found)
+
+    assert (cells[0]["truth"], cells[0]["tp_weak"], cells[0]["fn"], cells[0]["incomplete_complete"]) == (1, 1, 0, 0)
