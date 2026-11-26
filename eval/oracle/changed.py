@@ -2,7 +2,7 @@
 
 A hunk is mapped to the innermost enclosing definition on head for added and modified lines and on base for
 deleted lines. A definition that reappears elsewhere or under another name with the same body was moved or
-renamed, which is no removal.
+renamed, which is no removal; so is one that reappears edited, when its name has a single new home.
 """
 
 from __future__ import annotations
@@ -108,10 +108,11 @@ def changed_definitions(
                         touched_base[(d.path, d.start, d.end)] = d
     head_index = _identity_index(head_all)
     base_index = _identity_index(base_all)
+    fresh = [h for h in head_all if (moved_from.get(h.path, h.path), h.container, h.name) not in base_index]
     out: list[ChangedDefinition] = []
     used: set[tuple[str, int, int]] = set()
     for b in touched_base.values():
-        match = _match_forward(b, moved_to, base_index, head_index, head_all)
+        match = _match_forward(b, moved_to, base_index, head_index, fresh)
         out.append(match)
         if match.head is not None:
             used.add((match.head.path, match.head.start, match.head.end))
@@ -138,16 +139,21 @@ def _match_forward(
     moved_to: dict[str, str],
     base_index: dict[tuple[str, tuple[str, ...], str], list[Definition]],
     head_index: dict[tuple[str, tuple[str, ...], str], list[Definition]],
-    head_all: list[Definition],
+    fresh: list[Definition],
 ) -> ChangedDefinition:
+    """What became of a base definition touched by the range. `fresh` holds the head definitions no base definition stands
+    behind: a move or a rename lands on one of those, never on a definition the base already had under its own name."""
     here = head_index.get((moved_to.get(b.path, b.path), b.container, b.name))
     if here:
         ordinal = base_index[(b.path, b.container, b.name)].index(b)
         return _pair(b, _nth(here, ordinal))
-    same_body = [h for h in head_all if h.name == b.name and h.signature == b.signature and h.body_hash == b.body_hash]
+    same_body = [h for h in fresh if h.name == b.name and h.signature == b.signature and h.body_hash == b.body_hash]
     if same_body:
         return ChangedDefinition("moved", same_body[0], b)
-    renamed = [h for h in head_all if h.name != b.name and h.signature == b.signature and h.shape_hash == b.shape_hash]
+    renamed = [h for h in fresh if h.name != b.name and h.signature == b.signature and h.shape_hash == b.shape_hash]
     if len(renamed) == 1:
         return ChangedDefinition("renamed", renamed[0], b)
+    relocated = [h for h in fresh if h.name == b.name and h.container == b.container and h.kind == b.kind]
+    if len(relocated) == 1:  # edited on the way to its one new home
+        return ChangedDefinition("moved", relocated[0], b)
     return ChangedDefinition("removed", None, b)

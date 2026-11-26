@@ -157,3 +157,56 @@ def test_the_doc_comment_of_an_added_member_is_no_change_of_the_class():
     found = changed_definitions([change], lambda p: [shop_base], lambda p: [shop_head, added], no_inert, lambda p: {4, 5, 6, 7})
 
     assert statuses(found) == {"m.py::Shop.stop": "added"}
+
+
+def by_path(base, head):
+    return (lambda p: base.get(p, [])), (lambda p: head.get(p, []))
+
+
+def test_a_removal_is_not_paired_with_a_head_definition_the_base_already_held_unchanged():
+    """fd 2381562481: `Config.case_sensitive` left config.rs; `Opts.case_sensitive` of cli.rs, unchanged, has its body."""
+    gone = definition("config.rs", "case_sensitive", 3, 3, container=("Config",), body="x")
+    kept = definition("cli.rs", "case_sensitive", 10, 10, container=("Opts",), body="x")
+    pattern = definition("cli.rs", "pattern", 15, 20, container=("Opts",), body="old")
+    edited = definition("cli.rs", "pattern", 15, 20, container=("Opts",), body="new")
+    base, head = by_path({"config.rs": [gone], "cli.rs": [kept, pattern]}, {"config.rs": [], "cli.rs": [kept, edited]})
+    changes = [FileChange("config.rs", "config.rs", (Hunk(3, 1, 2, 0),)), FileChange("cli.rs", "cli.rs", (Hunk(16, 1, 16, 1),))]
+
+    found = changed_definitions(changes, base, head, no_inert, no_inert)
+
+    assert statuses(found) == {"config.rs::Config.case_sensitive": "removed", "cli.rs::Opts.pattern": "modified"}
+
+
+def test_a_removal_is_not_a_rename_into_a_head_definition_no_hunk_touches():
+    """hono 5086956298: a removed local `index` has the shape of the untouched property `Accept.q`."""
+    local = definition("m.ts", "index", 20, 20, container=("parse",), shape="s")
+    kept = definition("m.ts", "q", 4, 4, container=("Accept",), shape="s")
+    base, head = by_path({"m.ts": [kept, local]}, {"m.ts": [kept]})
+
+    found = changed_definitions([FileChange("m.ts", "m.ts", (Hunk(20, 1, 19, 0),))], base, head, no_inert, no_inert)
+
+    assert statuses(found) == {"m.ts::parse.index": "removed"}
+
+
+def test_a_definition_edited_while_it_moves_to_a_new_file_is_a_move_when_the_name_has_one_new_home():
+    """gin fd8a65b252: `TestRenderMsgPack` left render_test.go and is named at its new path with another body."""
+    old = definition("render_test.go", "TestRenderMsgPack", 28, 50, body="a")
+    new = definition("render_msgpack_test.go", "TestRenderMsgPack", 21, 43, body="b")
+    base, head = by_path({"render_test.go": [old]}, {"render_msgpack_test.go": [new]})
+    changes = [FileChange("render_test.go", "render_test.go", (Hunk(28, 23, 27, 0),)), FileChange(None, "render_msgpack_test.go", (Hunk(0, 0, 1, 23),))]  # fmt: skip
+
+    found = changed_definitions(changes, base, head, no_inert, no_inert)
+
+    assert [(c.status, c.base.key, c.head.key) for c in found] == [("moved", "render_test.go::TestRenderMsgPack", "render_msgpack_test.go::TestRenderMsgPack")]  # fmt: skip
+
+
+def test_a_removal_with_two_new_homes_of_its_name_stays_a_removal():
+    """echo bc37a3a792: `proxyHTTP` became two build-tag variants: no one of them is the successor."""
+    old = definition("proxy.go", "proxyHTTP", 5, 7, body="a")
+    variants = [definition(name, "proxyHTTP", 5, 7, body=name) for name in ("proxy_1_11.go", "proxy_1_11_n.go")]
+    base, head = by_path({"proxy.go": [old]}, {variants[0].path: [variants[0]], variants[1].path: [variants[1]]})
+    changes = [FileChange("proxy.go", "proxy.go", (Hunk(5, 3, 4, 0),))] + [FileChange(None, v.path, (Hunk(0, 0, 1, 3),)) for v in variants]  # fmt: skip
+
+    found = changed_definitions(changes, base, head, no_inert, no_inert)
+
+    assert statuses(found)["proxy.go::proxyHTTP"] == "removed"
