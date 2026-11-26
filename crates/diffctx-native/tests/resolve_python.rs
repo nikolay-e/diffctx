@@ -893,6 +893,18 @@ const RED: &[(&str, &str)] = &[
         "impact/python/fj253_metaclass_method_called_on_the_class_may_build_it",
         "the resolver answers `Model.create()` as a resolved read of the class, which is true at its layer; the candidate instantiation through a metaclass method is the impact layer's fj#253 rule, no binding states it",
     ),
+    (
+        "impact/python/py_main_guard_of_another_file_is_a_caller",
+        "the resolver records no relation for the call under the `__main__` guard; the impact answer names the script through its entry-point rule",
+    ),
+    (
+        "impact/python/py_removed_defaulted_field_written_with_brackets_keeps_only_the_sites_naming_it",
+        "every build() instantiates `Item`, which is true at the resolver's layer; keeping only the constructions that name the removed field is the impact layer's removed-field rule",
+    ),
+    (
+        "symbol/python/py_module_imported_inside_a_function_names_that_function",
+        "the queried symbol is a module: the symbol answer names its file as the definition; the resolver has no definition for a module",
+    ),
 ];
 
 #[test]
