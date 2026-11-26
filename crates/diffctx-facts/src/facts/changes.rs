@@ -268,9 +268,14 @@ impl Walk {
         }
     }
 
-    /// Pairs equal keys, in source order where one key repeats (a redefinition).
+    /// Pairs equal keys, in source order where one key repeats (a redefinition),
+    /// the one in the same file first: a package is one module, so a key may
+    /// stand in two files, and a pair across them is a move.
     /// Returns what is left of the base and of the head, as indexes.
     fn pair_by_key(&self, found: &mut Vec<SemanticDef>) -> (Vec<usize>, Vec<usize>) {
+        let same_file = |before: &Item, after: &Item| {
+            after.path == before.path || after.renamed_from.as_ref() == Some(&before.path)
+        };
         let mut waiting: HashMap<&DefKey, VecDeque<usize>> = HashMap::new();
         for (index, item) in self.head.iter().enumerate() {
             waiting.entry(&item.key).or_default().push_back(index);
@@ -278,17 +283,26 @@ impl Walk {
         let mut taken = vec![false; self.head.len()];
         let mut removed = Vec::new();
         for (index, before) in self.base.iter().enumerate() {
-            let paired = waiting.get_mut(&before.key).and_then(VecDeque::pop_front);
+            let paired = waiting.get_mut(&before.key).and_then(|queue| {
+                let here = queue
+                    .iter()
+                    .position(|&at| same_file(before, &self.head[at]));
+                queue.remove(here.unwrap_or(0))
+            });
             match paired {
                 Some(at) => {
                     taken[at] = true;
                     let after = &self.head[at];
-                    let change = compare(&before.def, &after.def, Origin::Same).or_else(|| {
-                        self.reordered(index, at).then(|| DefChange::Changed {
-                            origin: Origin::Same,
-                            delta: Delta::default(),
+                    let change = if same_file(before, after) {
+                        compare(&before.def, &after.def, Origin::Same).or_else(|| {
+                            self.reordered(index, at).then(|| DefChange::Changed {
+                                origin: Origin::Same,
+                                delta: Delta::default(),
+                            })
                         })
-                    });
+                    } else {
+                        Some(compare_moved(before, after))
+                    };
                     if let Some(change) = change {
                         found.push(entry(
                             &after.key,
@@ -341,42 +355,24 @@ impl Walk {
         removed: Vec<usize>,
         added: Vec<usize>,
     ) -> (Vec<usize>, Vec<usize>) {
-        type Group = (Vec<usize>, Vec<usize>);
-        let mut groups: BTreeMap<(Language, DefKind, u64), Group> = BTreeMap::new();
-        let mut left_removed = Vec::new();
-        let mut left_added = Vec::new();
-        for index in removed {
-            let item = &self.base[index];
-            let def = &item.def;
-            if def.body_hash == 0 {
-                left_removed.push(index);
-            } else {
-                groups
-                    .entry((item.key.language, def.kind, def.body_hash))
-                    .or_default()
-                    .0
-                    .push(index);
+        let mut groups: BTreeMap<(Language, DefKind, u64), [Vec<usize>; 2]> = BTreeMap::new();
+        let mut left = [Vec::new(), Vec::new()];
+        for (side, (items, indexes)) in [(&self.base, removed), (&self.head, added)]
+            .into_iter()
+            .enumerate()
+        {
+            for index in indexes {
+                let item = &items[index];
+                if item.def.body_hash == 0 {
+                    left[side].push(index);
+                } else {
+                    let group = (item.key.language, item.def.kind, item.def.body_hash);
+                    groups.entry(group).or_default()[side].push(index);
+                }
             }
         }
-        for index in added {
-            let item = &self.head[index];
-            let def = &item.def;
-            if def.body_hash == 0 {
-                left_added.push(index);
-            } else {
-                groups
-                    .entry((item.key.language, def.kind, def.body_hash))
-                    .or_default()
-                    .1
-                    .push(index);
-            }
-        }
-        for (_, (before, after)) in groups {
-            if before.is_empty() || after.is_empty() {
-                left_removed.extend(before);
-                left_added.extend(after);
-                continue;
-            }
+        let [mut left_removed, mut left_added] = left;
+        for (_, [before, after]) in groups {
             let alone = before.len() == 1 && after.len() == 1;
             let (pairs, rest_before, rest_after) = self.narrow(&before, &after);
             for (b, a) in pairs {

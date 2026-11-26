@@ -316,12 +316,13 @@ pub(super) fn strands(family: Family, relation: Relation) -> bool {
 }
 
 /// Reports one definition once, with the subjects of every reason it is
-/// reported for.
-pub(super) fn merge(by_key: &mut BTreeMap<DefKey, Changed>, changed: Changed) {
+/// reported for: a key in two files of a package is two definitions.
+pub(super) fn merge(by_key: &mut BTreeMap<(DefKey, String), Changed>, changed: Changed) {
     let Some(first) = changed.subjects.first() else {
         return;
     };
-    match by_key.get_mut(&first.key) {
+    let id = (first.key.clone(), changed.file.clone());
+    match by_key.get_mut(&id) {
         Some(known) => {
             for subject in changed.subjects {
                 match known.subjects.iter_mut().find(|s| s.key == subject.key) {
@@ -363,7 +364,7 @@ pub(super) fn merge(by_key: &mut BTreeMap<DefKey, Changed>, changed: Changed) {
             };
         }
         None => {
-            by_key.insert(first.key.clone(), changed);
+            by_key.insert(id, changed);
         }
     }
 }

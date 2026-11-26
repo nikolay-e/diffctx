@@ -13,11 +13,3 @@
 #   awk -F'\t' '{print $1" | "$2" | "$3" | "$4" | "$5" | "$6" # "$7}' <file> | sort -u
 # The synthetic suite's rows are below. The corpus suite's rows ("corpus A/…"
 # and "corpus B/…") come from its own run on the release profile.
-corpus A/go | A | go | impact/go/go_verbatim_move_between_files_of_a_package_is_named | unchanged .xyz | impact # complete_empty=true
-corpus A/go | A | go | impact/go/go_verbatim_move_between_files_of_a_package_is_named | unchanged, after a parse error | impact # complete_empty=true
-corpus A/go | A | go | impact/go/go_verbatim_move_between_files_of_a_package_is_named | unchanged, command position (CI step) | impact # complete_empty=true
-corpus A/go | A | go | impact/go/go_verbatim_move_between_files_of_a_package_is_named | unchanged, command position (Makefile) | impact # complete_empty=true
-corpus A/go | A | go | impact/go/go_verbatim_move_between_files_of_a_package_is_named | unchanged, command position (script) | impact # complete_empty=true
-corpus A/go | A | go | impact/go/go_verbatim_move_between_files_of_a_package_is_named | unchanged, string literal in a call | impact # complete_empty=true
-corpus A/go | A | go | impact/go/go_verbatim_move_between_files_of_a_package_is_named | unchanged, template text (html) | impact # complete_empty=true
-corpus A/go | A | go | impact/go/go_verbatim_move_between_files_of_a_package_is_named | unchanged, template text (jinja) | impact # complete_empty=true

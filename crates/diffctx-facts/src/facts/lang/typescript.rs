@@ -1699,16 +1699,15 @@ impl<'t> Declarer<'t> {
         match node.kind() {
             "export_statement" => self.export_statement(node, container, stack),
             "import_statement" => self.import_statement(node),
-            "ambient_declaration" => {
-                let mut inner = Vec::new();
-                for child in kids(node) {
-                    if child.kind() == "statement_block" {
-                        inner.extend(kids(child));
-                    } else {
-                        inner.push(child);
-                    }
-                }
-                Self::push_statements(stack, inner, &container, exported);
+            // A block of the file still defines what it declares.
+            "ambient_declaration"
+            | "if_statement"
+            | "else_clause"
+            | "try_statement"
+            | "catch_clause"
+            | "finally_clause"
+            | "statement_block" => {
+                Self::push_statements(stack, kids(node), &container, exported);
             }
             "function_declaration" | "generator_function_declaration" | "function_signature" => {
                 self.function(node, container, exported);

@@ -149,7 +149,7 @@ impl Cell {
                             && from.local.container.as_slice() == outer)
                 })
         };
-        let mut by_key: BTreeMap<DefKey, Changed> = BTreeMap::new();
+        let mut by_key: BTreeMap<(DefKey, String), Changed> = BTreeMap::new();
         let mut removed: Vec<Changed> = Vec::new();
         for d in &python {
             match &d.change {
@@ -237,7 +237,14 @@ impl Cell {
                 }
                 _ if folded(d) => {}
                 change => {
-                    let Some(def) = self.definition(&d.key) else {
+                    let in_file =
+                        |file: &RepoPath| self.defs_in(file.as_str()).find(|def| def.key == d.key);
+                    let Some(def) = d
+                        .head
+                        .as_ref()
+                        .and_then(in_file)
+                        .or_else(|| self.definition(&d.key))
+                    else {
                         continue;
                     };
                     if wholes.get(&d.key) == Some(&Whole::Members)

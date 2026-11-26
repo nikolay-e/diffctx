@@ -3,7 +3,7 @@
 
 use std::cell::{OnceCell, RefCell};
 
-use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 
 use std::rc::Rc;
 
@@ -31,7 +31,6 @@ use diffctx_snapshot::resource::LimitReason;
 
 use diffctx_snapshot::snapshot::{AnalysisContext, ChangeKind, Loss, RepoPath, SideTag};
 
-use super::cells::merge;
 use super::changed::{Changed, How, Hunks};
 use super::gap::{Gap, Reason};
 use super::losses::{Losses, stopped_by};
@@ -680,17 +679,13 @@ impl Cell {
         let Some(def) = self.definition_at(file, name, lines) else {
             return Vec::new();
         };
-        let mut by_key: BTreeMap<DefKey, Changed> = BTreeMap::new();
-        for changed in self.report_as(
+        self.report_as(
             def,
             How::Edited { layout_only: false },
             Vec::new(),
             false,
             false,
-        ) {
-            merge(&mut by_key, changed);
-        }
-        by_key.into_values().collect()
+        )
     }
 
     /// The head's definitions in `file`, in the resolver's order.
