@@ -31,19 +31,21 @@ const PATTERNS_PER_SEARCH: usize = 50;
 /// Past this many removed names a run traces the rest no further.
 const REMOVED_NAMES: usize = 2000;
 
-/// Counts the patterns of every `git grep` (its `-e` arguments, and the lines of
-/// a `-f` file), and with `FAKE_GREP_STALL` set stalls the first search that
+/// Counts the patterns of every `git grep` (its `-e` arguments, the alternatives
+/// of a `-P` one, and the lines of a `-f` file), and with `FAKE_GREP_STALL` set stalls the first search that
 /// carries more than one: the one a removed definition's names go to. `exec`,
 /// so the stalled process is git's own pid and nothing it forks.
 const GREP_SHIM: &str = r#"#!/bin/sh
 case " $* " in *" grep "*) ;; *) exec "$REAL_GIT" "$@" ;; esac
 n=0
 prev=
+pcre=
 for a in "$@"; do
   case "$prev" in
-    -e) n=$((n + 1)) ;;
+    -e) if [ -n "$pcre" ]; then n=$((n + 1 + $(printf '%s' "$a" | tr -cd '|' | wc -c))); else n=$((n + 1)); fi ;;
     -f) n=$((n + $(wc -l < "$a"))) ;;
   esac
+  [ "$a" = -P ] && pcre=1
   prev=$a
 done
 echo "$n" >> "$FAKE_GREP_COUNTS"
