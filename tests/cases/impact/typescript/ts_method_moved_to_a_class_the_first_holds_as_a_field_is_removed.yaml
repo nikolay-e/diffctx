@@ -1,0 +1,41 @@
+name: ts_method_moved_to_a_class_the_first_holds_as_a_field_is_removed
+mode: impact
+source: synthetic
+tags: [typescript, move, removed, collaborator]
+repo:
+  initial_files:
+    b.ts: |
+      export class B {
+        a(): number { return 1; }
+      }
+    a.ts: |
+      import { B } from './b';
+
+      export class A {
+        b: B = new B();
+        total(): number { return 2; }
+      }
+    use.ts: |
+      import { A } from './a';
+
+      export function go(x: A): number {
+        return x.total();
+      }
+  changed_files:
+    b.ts: |
+      export class B {
+        a(): number { return 1; }
+
+        total(): number { return 2; }
+      }
+    a.ts: |
+      import { B } from './b';
+
+      export class A {
+        b: B = new B();
+      }
+  commit_message: Move total to the collaborator B
+expect:
+  removed: ['a.ts::A.total']
+  relations:
+  - {from: 'use.ts::go', to: 'a.ts::A.total', kind: calls, resolution: resolved}

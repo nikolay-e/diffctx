@@ -1,0 +1,44 @@
+name: py_method_moved_to_a_class_the_first_holds_as_a_class_attribute_is_removed
+mode: impact
+source: synthetic
+tags: [python, move, removed, collaborator]
+repo:
+  initial_files:
+    b.py: |
+      class B:
+          def a(self):
+              return 1
+    a.py: |
+      from b import B
+
+
+      class A:
+          b = B()
+
+          def total(self):
+              return 2
+    use.py: |
+      from a import A
+
+
+      def go(x: A):
+          return x.total()
+  changed_files:
+    b.py: |
+      class B:
+          def a(self):
+              return 1
+
+          def total(self):
+              return 2
+    a.py: |
+      from b import B
+
+
+      class A:
+          b = B()
+  commit_message: Move total to the collaborator B
+expect:
+  removed: ['a.py::A.total']
+  relations:
+  - {from: 'use.py::go', to: 'a.py::A.total', kind: calls, resolution: resolved}

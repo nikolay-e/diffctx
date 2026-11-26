@@ -1,0 +1,36 @@
+name: java_method_moved_to_a_class_the_first_holds_as_a_field_is_removed
+mode: impact
+source: synthetic
+tags: [java, move, removed, collaborator]
+repo:
+  initial_files:
+    B.java: |
+      public class B {
+          public int a() { return 1; }
+      }
+    A.java: |
+      public class A {
+          private B b;
+
+          public int total() { return 2; }
+      }
+    Use.java: |
+      public class Use {
+          public int go(A x) { return x.total(); }
+      }
+  changed_files:
+    B.java: |
+      public class B {
+          public int a() { return 1; }
+
+          public int total() { return 2; }
+      }
+    A.java: |
+      public class A {
+          private B b;
+      }
+  commit_message: Move total to the collaborator B
+expect:
+  removed: ['A.java::A.total']
+  relations:
+  - {from: 'Use.java::Use.go', to: 'A.java::A.total', kind: calls, resolution: resolved}

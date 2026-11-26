@@ -1,0 +1,41 @@
+name: php_method_moved_to_a_class_the_first_holds_as_a_field_is_removed
+mode: impact
+source: synthetic
+tags: [php, move, removed, collaborator]
+repo:
+  initial_files:
+    B.php: |
+      <?php
+      class B {
+          public function a() { return 1; }
+      }
+    A.php: |
+      <?php
+      class A {
+          private B $b;
+
+          public function total() { return 2; }
+      }
+    use.php: |
+      <?php
+      function go(A $x) {
+          return $x->total();
+      }
+  changed_files:
+    B.php: |
+      <?php
+      class B {
+          public function a() { return 1; }
+
+          public function total() { return 2; }
+      }
+    A.php: |
+      <?php
+      class A {
+          private B $b;
+      }
+  commit_message: Move total to the collaborator B
+expect:
+  removed: ['A.php::A.total']
+  relations:
+  - {from: 'use.php::go', to: 'A.php::A.total', kind: calls, resolution: resolved}

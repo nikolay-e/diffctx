@@ -1,0 +1,31 @@
+name: kotlin_method_moved_to_a_class_the_first_holds_as_a_field_is_removed
+mode: impact
+source: synthetic
+tags: [kotlin, move, removed, collaborator]
+repo:
+  initial_files:
+    B.kt: |
+      class B {
+          fun a(): Int = 1
+      }
+    A.kt: |
+      class A(val b: B) {
+          fun total(): Int = 2
+      }
+    Use.kt: |
+      fun go(x: A): Int = x.total()
+  changed_files:
+    B.kt: |
+      class B {
+          fun a(): Int = 1
+
+          fun total(): Int = 2
+      }
+    A.kt: |
+      class A(val b: B) {
+      }
+  commit_message: Move total to the collaborator B
+expect:
+  removed: ['A.kt::A.total']
+  relations:
+  - {from: 'Use.kt::go', to: 'A.kt::A.total', kind: calls, resolution: resolved}
