@@ -1,0 +1,60 @@
+name: go_verbatim_move_between_files_of_a_package_is_named
+mode: impact
+source: synthetic
+tags: [go, silent-loss, move]
+repo:
+  initial_files:
+    go.mod: |
+      module example.com/p
+
+      go 1.13
+    binding_test.go: |
+      package binding
+
+      import "testing"
+
+      func TestKeep(t *testing.T) {}
+
+      func TestBindingMsgPack(t *testing.T) {
+      	testMsgPackBodyBinding(t, "msgpack", "/")
+      }
+
+      func testMsgPackBodyBinding(t *testing.T, name, path string) {
+      	if name == "" || path == "" {
+      		t.Fatal("x")
+      	}
+      }
+  changed_files:
+    binding_test.go: |
+      package binding
+
+      import "testing"
+
+      func TestKeep(t *testing.T) {}
+    binding_msgpack_test.go: |
+      // +build !nomsgpack
+
+      package binding
+
+      import "testing"
+
+      func TestBindingMsgPack(t *testing.T) {
+      	testMsgPackBodyBinding(t, "msgpack", "/")
+      }
+
+      func testMsgPackBodyBinding(t *testing.T, name, path string) {
+      	if name == "" || path == "" {
+      		t.Fatal("x")
+      	}
+      }
+
+      func TestBindingDefaultMsgPack(t *testing.T) {}
+  commit_message: "move the msgpack tests behind a build tag"
+# A verbatim move inside one package may change no caller, but the answer says what moved and from where:
+# silence would read as a change of nothing.
+expect:
+  exact: false
+  changed:
+    - binding_msgpack_test.go::TestBindingMsgPack
+    - binding_msgpack_test.go::testMsgPackBodyBinding
+    - binding_msgpack_test.go::TestBindingDefaultMsgPack

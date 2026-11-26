@@ -1,0 +1,29 @@
+name: py_names_added_beside_a_removal_are_counted_as_changed_code
+mode: impact
+source: synthetic
+tags: [python, silent-loss, module-assignment]
+repo:
+  initial_files:
+    m.py: |
+      Old = 1
+
+
+      def f():
+          return Old
+  changed_files:
+    m.py: |
+      A = 1
+      B = 2
+
+
+      def f():
+          return A + B
+  commit_message: "replace one constant with two"
+# A name the range adds is no definition of its own (`py_added_definition_names_no_user_of_its_own_range`
+# for a function; a variable has no reader outside the range), so the answer counts its lines as changed code
+# outside every tracked definition. The removed `Old` sits at base line 1, where the head holds `A`: its
+# span is no cover for the head's lines.
+expect:
+  exact: false
+  changed: [m.py::f]
+  outside: ["m.py:1", "m.py:2"]

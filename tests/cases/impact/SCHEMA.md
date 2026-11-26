@@ -90,6 +90,7 @@ expect:
   removed: [legacy]
   never_empty: true
   discloses: true
+  outside: ["m.py:1"]
   no_negative_claims: true
 ```
 
@@ -194,7 +195,9 @@ Everything is optional; an absent field asserts nothing.
   untested lists. A definition the answer does not list at all is not
   "untested".
 - `never_empty` fails when `empty` is true. `discloses` needs a named limit,
-  unanalysed or withheld file, unknown or textual-only name.
+  unanalysed or withheld file, unknown or textual-only name. `outside` lists
+  `path:line` places the answer must count as changed code outside every tracked
+  definition (an `outside_definitions` run of the unanalysed files).
   `no_negative_claims` runs `-f md` too and fails on an absence claim
   ("nothing calls them", "No resolved static callers", "No changes to
   analyse", a count of `0 caller(s)` beside a note that callers were not

@@ -623,6 +623,19 @@ fn check_lists(case: &Case, answer: &Answer, failures: &mut Vec<String>) {
     if expect.discloses && !(answer.run_disclosure || !answer.gapped.is_empty()) {
         failures.push("the answer names no limit, unanalysed file or unknown".to_string());
     }
+    for place in &expect.outside {
+        let (path, line) = place.rsplit_once(':').unwrap_or((place, "0"));
+        let line: u32 = line.parse().unwrap_or(0);
+        if !answer
+            .outside
+            .iter()
+            .any(|(p, first, last)| p == path && (*first..=*last).contains(&line))
+        {
+            failures.push(format!(
+                "`{place}` is changed code no definition holds, and the answer does not count it"
+            ));
+        }
+    }
     if expect.no_negative_claims {
         let claims = answer
             .markdown

@@ -62,6 +62,8 @@ pub(crate) struct Answer {
     pub counted_not_listed: u64,
     /// A limit, an unanalysed or withheld file, or a name no file defines.
     pub run_disclosure: bool,
+    /// The runs `(path, first, last)` of changed code no tracked definition holds.
+    pub outside: Vec<(String, u32, u32)>,
     /// Every definition's incomplete coverage group, with the gaps it names.
     pub coverage: Vec<GroupCoverage>,
     pub markdown: Option<String>,
@@ -651,6 +653,16 @@ pub(crate) fn extract(doc: &Value) -> Result<Answer, String> {
         }
         if !missed.is_empty() {
             answer.gapped.push(definition);
+        }
+    }
+    for file in listing(&doc["coverage"], "unanalysed")
+        .iter()
+        .filter(|f| text(f, "reason") == Some("outside_definitions"))
+    {
+        for run in lines_in(file).chunks_exact(2) {
+            answer
+                .outside
+                .push((text(file, "path").unwrap_or("").to_string(), run[0], run[1]));
         }
     }
     // What the cap shed whole is a gap the answer discloses, never a caller list.

@@ -195,6 +195,9 @@ pub(crate) struct Expect {
     pub never_empty: bool,
     #[serde(default)]
     pub discloses: bool,
+    /// `path:line` places the answer counts as changed code outside every tracked definition.
+    #[serde(default)]
+    pub outside: Vec<String>,
     #[serde(default)]
     pub no_negative_claims: bool,
 }

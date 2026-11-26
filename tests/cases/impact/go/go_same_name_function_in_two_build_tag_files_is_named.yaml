@@ -1,0 +1,53 @@
+name: go_same_name_function_in_two_build_tag_files_is_named
+mode: impact
+source: synthetic
+tags: [go, silent-loss, build-tag, move]
+repo:
+  initial_files:
+    go.mod: |
+      module example.com/p
+
+      go 1.13
+    proxy.go: |
+      package p
+
+      type Target struct{ URL string }
+
+      func proxyHTTP(t *Target) string {
+      	return t.URL
+      }
+
+      func Run(t *Target) string {
+      	return proxyHTTP(t)
+      }
+  changed_files:
+    proxy.go: |
+      package p
+
+      type Target struct{ URL string }
+
+      func Run(t *Target) string {
+      	return proxyHTTP(t, nil)
+      }
+    proxy_1_11.go: |
+      // +build go1.11
+
+      package p
+
+      func proxyHTTP(t *Target, c *int) string {
+      	return t.URL
+      }
+    proxy_1_11_n.go: |
+      // +build !go1.11
+
+      package p
+
+      func proxyHTTP(t *Target, c *int) string {
+      	return t.URL + "!"
+      }
+  commit_message: "split proxyHTTP by build tag"
+# One function leaves its file for two build-tag variants in new files. A package is one module for the
+# facts, so the three share a key: each variant is a definition of its own file, whatever the key says.
+expect:
+  exact: false
+  changed: [proxy.go::Run, proxy_1_11.go::proxyHTTP, proxy_1_11_n.go::proxyHTTP]

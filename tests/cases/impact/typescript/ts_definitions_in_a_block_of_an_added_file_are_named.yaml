@@ -1,0 +1,43 @@
+name: ts_definitions_in_a_block_of_an_added_file_are_named
+mode: impact
+source: synthetic
+tags: [typescript, silent-loss, added-definition]
+repo:
+  initial_files:
+    src/price.ts: |
+      export function total(items: number[]): number {
+        return items.reduce((a, b) => a + b, 0);
+      }
+  changed_files:
+    src/price.ts: |
+      export function total(items: number[]): number {
+        return items.reduce((a, b) => a + b, 0);
+      }
+    test/abort.ts: |
+      import test from 'ava';
+
+      if (globalThis.AbortController !== undefined) {
+        const prepareServer = (n: number): Promise<number> => {
+          const promise = new Promise<number>(resolve => {
+            resolve(n);
+          });
+
+          return promise;
+        };
+
+        function drain(n: number): number {
+          return n;
+        }
+
+        test('aborts', async t => {
+          t.is(await prepareServer(drain(1)), 1);
+        });
+      }
+  commit_message: "Add an abort test behind a feature check"
+# A definition inside a block of the new file (an `if` around the whole test file, a `try`) is as much a
+# definition the range adds as one at the top: the answer names it, whatever scope the language gives it.
+expect:
+  exact: false
+  changed:
+  - test/abort.ts::prepareServer
+  - test/abort.ts::drain
