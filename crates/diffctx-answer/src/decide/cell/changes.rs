@@ -170,7 +170,7 @@ impl Cell {
                     {
                         continue;
                     }
-                    if holder_moved(&d.key) || self.moved_within_type(&d.key, kind) {
+                    if holder_moved(&d.key) || self.moved_within_type(&d.key, kind, None) {
                         continue;
                     }
                     let gone = Changed {
@@ -273,21 +273,20 @@ impl Cell {
                         } => vec![from.clone()],
                         _ => Vec::new(),
                     };
-                    // A Rust definition that moved while a file still names the old
+                    // A definition that moved while a file still names the old
                     // path is a removal as well: what names it broke, and says so
                     // under the old path, not as a caller of the new one.
                     if let (
-                        Family::Rust,
                         DefChange::Changed {
                             origin: Origin::Moved { from },
                             ..
                         },
                         Some(base_file),
-                    ) = (self.family, change, d.base.as_ref())
+                    ) = (change, d.base.as_ref())
                     {
                         if let Some((kind, lines, public)) = self
                             .base_definition(base_file, from)?
-                            .filter(|(kind, ..)| !self.moved_within_type(from, *kind))
+                            .filter(|(kind, ..)| !self.moved_within_type(from, *kind, Some(&d.key)))
                         {
                             let gone = Changed {
                                 name: from.local.name.as_str().to_string(),
@@ -361,10 +360,11 @@ impl Cell {
     /// Whether a Rust member that left its `impl` is still a member of its type:
     /// an `impl` of that type, in any module, has one of its name and kind. An
     /// inherent member is matched by an inherent one and a trait impl's by the
-    /// impl of the same trait.
-    fn moved_within_type(&self, key: &DefKey, kind: DefKind) -> bool {
+    /// impl of the same trait. Elsewhere only a move (`moved_to`) keeps its owner,
+    /// the container its key names.
+    fn moved_within_type(&self, key: &DefKey, kind: DefKind, moved_to: Option<&DefKey>) -> bool {
         let Resolver::Rust(head) = &self.head else {
-            return false;
+            return moved_to.is_some_and(|to| to.local.container == key.local.container);
         };
         if key.local.container.is_empty() {
             return false;
