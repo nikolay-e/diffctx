@@ -716,3 +716,16 @@ def test_a_definition_listed_as_also_changed_beside_another_is_named_even_when_i
 
     assert missing_definition(receive, answered) is None
     assert missing_definition(send, answered) is not None  # the one it names nowhere is still lost
+
+
+def test_a_removed_method_is_not_read_as_the_lone_head_method_of_its_name_that_sits_elsewhere():
+    """fd 84bf65e023: `Negations.from_arg_matches` (base lines 25-27) left; head holds `Exec.from_arg_matches` at 300-310."""
+    head = {"cli.rs": [Definition("cli.rs", "function", "from_arg_matches", ("Exec",), 300, 310, 299, 4, "()", "h", "s")]}
+    base = {"cli.rs": [Definition("cli.rs", "function", "from_arg_matches", ("Negations",), 25, 27, 24, 4, "()", "b", "t")]}
+    resolve = make_resolver(lambda path: head.get(path, []), lambda path: base.get(path, []))
+
+    assert resolve("cli.rs", "from_arg_matches", "25-27") == "cli.rs::Negations.from_arg_matches"
+    assert resolve("cli.rs", "from_arg_matches", "301-305") == "cli.rs::Exec.from_arg_matches"
+    assert (
+        resolve("cli.rs", "from_arg_matches", "40-41") == "cli.rs::Exec.from_arg_matches"
+    )  # no snapshot holds it: the lone name

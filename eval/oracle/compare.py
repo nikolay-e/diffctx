@@ -47,9 +47,9 @@ def make_resolver(*providers: Callable[[str], list[Definition]]) -> Resolver:
             if named:
                 if span:
                     named.sort(key=lambda d: -(max(0, min(span[1], d.end) - max(span[0], d.start) + 1)))
-                if len(named) == 1 or not span or _overlap(named[0], span):
+                if not span or _overlap(named[0], span):
                     return named[0].key
-                fallback = fallback or named[0].key  # overloads, none of them at the span: another snapshot may hold it
+                fallback = fallback or named[0].key  # none of them at the span: another snapshot may hold it
         return fallback or f"{path}::{symbol}"
 
     def by_span(path: str, lines: str) -> str:
