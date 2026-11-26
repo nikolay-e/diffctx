@@ -52,8 +52,8 @@ fn admitted_files(source: &Source, repo_root: &Path, rels: Vec<String>) -> Grepp
     }
 }
 
-/// Every line matching the extended regex `pattern` at `rev` (the working
-/// tree when `None`) in the files `pathspec` names: (path, line, text).
+/// Every line matching `pattern` (PCRE and POSIX ERE read it alike) at `rev` (the
+/// working tree when `None`) in the files `pathspec` names: (path, line, text).
 pub fn grep_lines_matching(
     repo_root: &Path,
     source: &Source,

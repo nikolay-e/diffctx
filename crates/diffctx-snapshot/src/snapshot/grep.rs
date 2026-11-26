@@ -18,7 +18,7 @@ pub type Row = (String, u32, String);
 
 /// Needles sent to one `git grep` by [`needle_lines`] and [`word_lines`], and
 /// the bytes of them: `-e` arguments past `ARG_MAX` fail the search (#440), and
-/// git's matcher spends 22, 57 and 242 ms a pattern at 50, 200 and 1000 a call.
+/// `-F`'s matcher spends 22, 57 and 242 ms a pattern at 50, 200 and 1000 a call.
 const NEEDLES_PER_CALL: usize = 50;
 const NEEDLE_BYTES_PER_CALL: usize = 32 * 1024;
 
@@ -65,21 +65,27 @@ fn rows(root: &Path, args: &[&str], rev: Option<&str>) -> Result<Vec<Row>> {
         .collect())
 }
 
-/// Every line matching the extended regex `pattern` at `rev` (the working tree
-/// when `None`) in the files `pathspec` names.
+/// Every line matching `pattern` at `rev` (the working tree when `None`) in the
+/// files `pathspec` names.
+///
+/// PCRE answers a 3.4 kB alternation in 0.27 s where git's POSIX dialect takes
+/// 10.8 s, so a pattern must mean the same in both.
 pub fn lines_matching(
     root: &Path,
     pattern: &str,
     rev: Option<&str>,
     pathspec: &[&str],
 ) -> Result<Vec<Row>> {
-    let mut args: Vec<&str> = vec!["grep", "-n", "-z", "-I", "-E", "-e", pattern];
-    args.extend(rev);
-    if !pathspec.is_empty() {
-        args.push("--");
-        args.extend_from_slice(pathspec);
-    }
-    rows(root, &args, rev)
+    let search = |dialect: &str| {
+        let mut args: Vec<&str> = vec!["grep", "-n", "-z", "-I", dialect, "-e", pattern];
+        args.extend(rev);
+        if !pathspec.is_empty() {
+            args.push("--");
+            args.extend_from_slice(pathspec);
+        }
+        rows(root, &args, rev)
+    };
+    search("-P").or_else(|_| search("-E"))
 }
 
 /// The files (repo-relative, inside the repository) tracked or untracked and
@@ -245,23 +251,33 @@ fn chunked(
     flags: &[&str],
     pathspec: &[&str],
 ) -> Result<Vec<Row>> {
+    let mut needles: Vec<&str> = needles.iter().map(String::as_str).collect();
+    needles.retain(|n| !n.is_empty());
     let mut found = Vec::new();
-    for chunk in chunks(needles) {
-        if chunk.iter().all(String::is_empty) {
-            continue;
-        }
+    for words in chunks(&needles) {
         if !more() {
             break;
         }
-        let mut args: Vec<&str> = vec!["grep", "-n", "-z", "-I", "-F"];
-        args.extend(flags);
-        args.extend(patterns(chunk));
-        args.extend(rev);
-        if !pathspec.is_empty() {
-            args.push("--");
-            args.extend(pathspec);
+        // 50 needles as one `-P` alternation take 0.13 s on a monorepo, 102 s as `-F -e`.
+        // `-w` tries only the first alternative matching at a place: boundaries go in the pattern.
+        let escaped: Vec<_> = words.iter().map(|w| escape(w)).collect();
+        let mut pattern = escaped.join("|");
+        if flags.contains(&"-w") {
+            pattern = format!(r"(?<!\w)(?:{pattern})(?!\w)");
         }
-        found.extend(rows(root, &args, rev)?);
+        let search = |pcre: bool| {
+            let mut args = vec!["grep", "-n", "-z", "-I", if pcre { "-P" } else { "-F" }];
+            args.extend(flags.iter().filter(|f| !pcre || **f != "-w"));
+            let patterns: &[&str] = if pcre { &[pattern.as_str()] } else { words };
+            args.extend(patterns.iter().flat_map(|p| ["-e", *p]));
+            args.extend(rev);
+            if !pathspec.is_empty() {
+                args.push("--");
+                args.extend(pathspec);
+            }
+            rows(root, &args, rev)
+        };
+        found.extend(search(true).or_else(|_| search(false))?);
     }
     found.sort_unstable();
     found.dedup();
@@ -270,7 +286,7 @@ fn chunked(
 
 /// The needles in runs one search takes. They go as `-e` arguments: a pattern
 /// file would outlive a run that is killed (fj#211).
-fn chunks(needles: &[String]) -> impl Iterator<Item = &[String]> {
+fn chunks<'a>(needles: &'a [&'a str]) -> impl Iterator<Item = &'a [&'a str]> {
     let mut rest = needles;
     std::iter::from_fn(move || {
         if rest.is_empty() {
@@ -290,13 +306,4 @@ fn chunks(needles: &[String]) -> impl Iterator<Item = &[String]> {
         rest = tail;
         Some(chunk)
     })
-}
-
-/// `-e` per pattern. An empty pattern would match every line.
-fn patterns(chunk: &[String]) -> impl Iterator<Item = &str> {
-    chunk
-        .iter()
-        .map(String::as_str)
-        .filter(|w| !w.is_empty())
-        .flat_map(|w| ["-e", w])
 }

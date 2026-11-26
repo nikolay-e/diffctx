@@ -3757,8 +3757,10 @@ fn a_run_stopped_at_any_poll_names_the_deadline_or_answers_in_full() {
 /// fj#157: the needle searches of an impact run poll the run's limits, so one
 /// more poll lets one more search start. They ran outside the run's scope: a
 /// stopped run still started every chunk. Counted in git calls, not timed: a
-/// chunk is one `git grep -I -F -e …` call (patterns went from a `-f` file to
-/// `-e` arguments in fj#211, one call per chunk either way).
+/// chunk is one `git grep -I -P -e n1|n2…` call, or `-I -F -e …` on a git without
+/// PCRE (patterns went from a `-f` file to `-e` arguments in fj#211, one call
+/// per chunk either way). The pattern searches also run as `-P`; theirs open a
+/// group, an escaped needle alternation never does.
 #[cfg(unix)]
 #[test]
 fn a_stopped_impact_run_starts_one_needle_search_per_poll() {
@@ -3798,7 +3800,15 @@ fn a_stopped_impact_run_starts_one_needle_search_per_poll() {
             ];
             let doc = impact_env(repo, "HEAD~1..HEAD", &env);
             let calls = std::fs::read_to_string(&log).unwrap_or_default();
-            let searches = calls.lines().filter(|l| l.contains("-I -F -e")).count();
+            let searches = calls
+                .lines()
+                .filter(|l| {
+                    l.contains("-I -F -e")
+                        || l.split_once("-I -P -e ").is_some_and(|(_, rest)| {
+                            !rest.split(' ').next().unwrap_or_default().contains('(')
+                        })
+                })
+                .count();
             (
                 doc["coverage"]["limits"].to_string().contains("deadline"),
                 searches,

@@ -900,7 +900,7 @@ fn literal_pattern(names: &[&str]) -> String {
         .join("|");
     let mut forms = vec![
         format!(
-            r#"["'`]([^"'`[:space:]=]+[[:space:]]*=[[:space:]]*)?([^"'`[:space:]]*[.:#/\\@])?({all})["'`(=:\[}}]"#
+            r#"["'`]([^"'`[:space:]=]+[[:space:]]*=[[:space:]]*)?([^"'`[:space:]]*[.:#/\\@])?({all})["'`(=:\\[}}]"#
         ),
         format!(r#"@dataProvider[[:space:]]+([^[:space:]]*::)?({all})([[:space:]*]|$)"#),
         format!(r#"[:=][[:space:]]*([^[:space:]"']*[.:#/\\])?({all})([[:space:],;'"]|$)"#),
