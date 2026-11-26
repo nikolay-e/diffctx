@@ -41,11 +41,12 @@ pub(super) fn findings(cx: &Impact<'_>, t: &Targets<'_>, found: Findings) -> Imp
         traced_definitions,
         traced_names,
     } = found;
-    // Symbols with something to say first: callers, then commit overlap.
+    // What the cap costs the reader: callers outside the diff, fewer changed users, commit overlap.
     changed.sort_by(|a, b| {
         b.callers
             .len()
             .cmp(&a.callers.len())
+            .then_with(|| a.also_changed.len().cmp(&b.also_changed.len()))
             .then_with(|| b.commits.cmp(&a.commits))
             .then_with(|| a.path.cmp(&b.path))
             .then_with(|| a.lines.cmp(&b.lines))
@@ -89,7 +90,7 @@ pub(super) fn findings(cx: &Impact<'_>, t: &Targets<'_>, found: Findings) -> Imp
     } else {
         (Vec::new(), changed)
     };
-    let (named_by, named_by_path_omitted) = {
+    let (mut named_by, named_by_path_omitted) = {
         let _named = diffctx_base::profile::phase("impact.named_by");
         let (mut named, omitted) = named_by_path(state, cells, analysed);
         if query.is_none() {
@@ -210,7 +211,6 @@ pub(super) fn findings(cx: &Impact<'_>, t: &Targets<'_>, found: Findings) -> Imp
     } else {
         (Vec::new(), Vec::new(), Vec::new(), Vec::new())
     };
-    let mut named_by = named_by;
     let (key_searches, key_files_unsearched, named_by_key_omitted) = {
         let untraced: Vec<String> = unanalysed
             .iter()
