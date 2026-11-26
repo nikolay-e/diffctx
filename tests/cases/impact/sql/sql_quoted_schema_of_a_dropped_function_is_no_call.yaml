@@ -1,0 +1,46 @@
+name: sql_quoted_schema_of_a_dropped_function_is_no_call
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [sql, namespaces, coverage]
+repo:
+  initial_files:
+    db/V1__fn.sql: |
+      CREATE SCHEMA lib;
+
+      CREATE FUNCTION lib.refresh_book(target_album UUID) RETURNS INTEGER
+      LANGUAGE plpgsql AS $$
+      BEGIN
+        RETURN 1;
+      END;
+      $$;
+    db/V2__use.sql: |
+      SELECT lib.refresh_book(b.album_id) FROM books b;
+    db/V3__drop.sql: |
+      DROP FUNCTION IF EXISTS "lib".refresh_book(uuid);
+  changed_files:
+    db/V1__fn.sql: |
+      CREATE SCHEMA lib;
+
+      CREATE FUNCTION lib.refresh_book(target_album UUID) RETURNS INTEGER
+      LANGUAGE plpgsql AS $$
+      BEGIN
+        RETURN 2;
+      END;
+      $$;
+  commit_message: Change the routine body
+expect:
+  changed:
+  - db/V1__fn.sql::lib.refresh_book
+  relations:
+  - from: db/V2__use.sql
+    to: db/V1__fn.sql::lib.refresh_book
+    kind: calls
+    resolution: resolved
+    site: 1
+  decoys:
+    db/V1__fn.sql::lib.refresh_book:
+    - db/V3__drop.sql
+  coverage:
+    db/V1__fn.sql::lib.refresh_book:
+      calls: complete
