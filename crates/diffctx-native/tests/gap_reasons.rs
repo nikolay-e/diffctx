@@ -14,7 +14,12 @@ const APP_CHANGED: &str = "package app\n\nvar ready bool\n\nfunc init() {\n\trea
 const USE: &str = "package app\n\nfunc Ready() bool {\n\treturn ready\n}\n";
 
 fn impact(repo: &std::path::Path, format: &str) -> std::process::Output {
+    impact_with(repo, format, &[])
+}
+
+fn impact_with(repo: &std::path::Path, format: &str, env: &[(&str, &str)]) -> std::process::Output {
     let out = diffctx_unclocked()
+        .envs(env.iter().copied())
         .current_dir(repo)
         .args([
             "--diff",
@@ -36,8 +41,16 @@ fn impact(repo: &std::path::Path, format: &str) -> std::process::Output {
 }
 
 fn gaps_of(repo: &std::path::Path, symbol: &str) -> Vec<serde_json::Value> {
+    gaps_under(repo, symbol, &[])
+}
+
+fn gaps_under(
+    repo: &std::path::Path,
+    symbol: &str,
+    env: &[(&str, &str)],
+) -> Vec<serde_json::Value> {
     let doc: serde_json::Value =
-        serde_json::from_slice(&impact(repo, "json").stdout).expect("impact JSON");
+        serde_json::from_slice(&impact_with(repo, "json", env).stdout).expect("impact JSON");
     let definition = doc["definitions"]
         .as_array()
         .and_then(|all| all.iter().find(|d| d["symbol"] == symbol))
@@ -102,4 +115,80 @@ fn a_value_handed_to_a_component_in_a_returned_group_names_no_return() {
         "{text}"
     );
     assert!(!text.contains("`return`"), "{text}");
+}
+
+#[test]
+fn uses_no_binding_settles_are_counted_with_the_ones_beside_a_resolved_call() {
+    let tmp = repo(
+        &[
+            ("lib.py", "def f(a):\n    return a\n"),
+            (
+                "app.py",
+                "from lib import f\n\n\ndef main(y):\n    f(1); y.f(2)\n    y.f(3)\n",
+            ),
+        ],
+        &[("lib.py", "def f(a):\n    return a + 1\n")],
+    );
+    assert_eq!(
+        gaps_of(tmp.path(), "f"),
+        [serde_json::json!({
+            "kind": "unlanded", "name": "f", "uses": 2,
+            "sites": [{"path": "app.py", "line": 6, "via": "call"}]
+        })]
+    );
+}
+
+#[test]
+fn files_that_did_not_parse_are_one_gap_counting_them() {
+    let go_mod = "module example.com/p\n\ngo 1.22\n";
+    let tmp = repo(
+        &[
+            ("go.mod", go_mod),
+            ("p.go", "package p\n\nfunc F() int { return 1 }\n"),
+            (
+                "q.go",
+                "package p\n\nfunc G() int {\n    return F()\n}\n\nfunc Broken( {\n",
+            ),
+            (
+                "r.go",
+                "package p\n\nfunc H() int {\n    return F()\n}\n\nfunc Broken2( {\n",
+            ),
+        ],
+        &[("p.go", "package p\n\nfunc F() int { return 2 }\n")],
+    );
+    assert_eq!(
+        gaps_of(tmp.path(), "F"),
+        [serde_json::json!({"kind": "unaccounted", "reason": "unparsed", "files": 2})]
+    );
+}
+
+const LIB: &str = "def f(a):\n    return a\n";
+const LIB_CHANGED: &str = "def f(a):\n    return a + 1\n";
+const CALLER: &str = "from lib import f\n\n\ndef main():\n    return f(1)\n";
+
+#[test]
+fn a_file_the_run_could_not_read_stops_the_search_for_that_reason() {
+    let tmp = repo(
+        &[("lib.py", LIB), ("app.py", CALLER)],
+        &[("lib.py", LIB_CHANGED)],
+    );
+    assert_eq!(
+        gaps_under(tmp.path(), "f", &[("DIFFCTX_TEST_LOSS", "read_failed:1")]),
+        [
+            serde_json::json!({"kind": "unaccounted", "reason": "read_failed", "files": 1}),
+            serde_json::json!({"kind": "stopped", "reasons": ["read_failed"]}),
+        ]
+    );
+}
+
+#[test]
+fn a_deadline_stops_the_search_for_that_reason() {
+    let tmp = repo(
+        &[("lib.py", LIB), ("app.py", CALLER)],
+        &[("lib.py", LIB_CHANGED)],
+    );
+    assert_eq!(
+        gaps_under(tmp.path(), "f", &[("DIFFCTX_TEST_LOSS", "deadline:1")]),
+        [serde_json::json!({"kind": "stopped", "reasons": ["deadline"]})]
+    );
 }
