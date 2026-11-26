@@ -205,3 +205,162 @@ fn a_kotlin_declarator_in_a_lambda_opened_right_after_an_equals_is_still_a_decla
         "{found:#?}"
     );
 }
+
+#[test]
+fn a_call_no_local_of_its_name_holds_is_not_a_local_whatever_other_locals_are_in_force() {
+    let lib = "mod util;\n\npub fn early() -> i64 {\n    total(1);\n    let total = 2;\n    total\n}\n\npub fn beside(other: i64) -> i64 {\n    let held = 5;\n    total(held + other)\n}\n";
+    let world = snapshot_in(
+        Lang::Rust,
+        &[
+            ("src/lib.rs", lib),
+            ("src/util.rs", "pub fn total(x: i64) -> i64 {\n    x\n}\n"),
+        ],
+    );
+    let found = world.outcomes(world.def("src/util.rs", "total"), "src/lib.rs", &["total"]);
+    assert!(
+        !is_local(only(&found, 11)),
+        "beside locals of other names: {found:#?}"
+    );
+    assert!(
+        !is_local(entries_on(&found, 4)[0]),
+        "before its own local: {found:#?}"
+    );
+}
+
+fn local_site_line(entry: &Entry) -> Option<u32> {
+    match &entry.outcome {
+        Outcome::NotOurs {
+            witness: Witness::Local(site),
+            ..
+        } => Some(site.lines.0),
+        _ => None,
+    }
+}
+
+const UTIL: &str = "pub fn total(x: i64) -> i64 {\n    x\n}\n";
+
+fn outcomes_in_lib(lib: &str) -> FileOutcomes {
+    let world = snapshot_in(Lang::Rust, &[("src/lib.rs", lib), ("src/util.rs", UTIL)]);
+    world.outcomes(world.def("src/util.rs", "total"), "src/lib.rs", &["total"])
+}
+
+#[test]
+fn a_call_of_a_closure_held_in_a_let_names_that_let_and_not_another_local_in_force() {
+    let found = outcomes_in_lib(
+        "mod util;\n\npub fn run() -> i64 {\n    let held = 5;\n    let total = |x: i64| x + held;\n    total(1)\n}\n",
+    );
+    assert_eq!(
+        local_site_line(only(&found, 6)),
+        Some(5),
+        "the closure's own let, not `held` on line 4: {found:#?}"
+    );
+}
+
+#[test]
+fn a_closure_of_a_closed_block_holds_its_name_no_longer() {
+    let found = outcomes_in_lib(
+        "mod util;\n\npub fn run() -> i64 {\n    {\n        let total = |x: i64| x;\n        total(1);\n    }\n    total(2)\n}\n",
+    );
+    assert!(is_local(only(&found, 6)), "inside its block: {found:#?}");
+    assert!(
+        !is_local(only(&found, 8)),
+        "after its block closed: {found:#?}"
+    );
+}
+
+#[test]
+fn a_closure_stays_in_force_past_a_block_opened_and_closed_after_it() {
+    let found = outcomes_in_lib(
+        "mod util;\n\npub fn run(flag: bool) -> i64 {\n    let total = |x: i64| x;\n    if flag {\n        prepare();\n    }\n    total(1)\n}\n",
+    );
+    assert!(is_local(only(&found, 8)), "{found:#?}");
+}
+
+#[test]
+fn a_semicolon_inside_a_block_of_the_initializer_does_not_end_the_statement() {
+    let found = outcomes_in_lib(
+        "mod util;\n\npub fn run(flag: bool) -> i64 {\n    let total = if flag { prepare(); 1 } else { total(2) };\n    total\n}\n",
+    );
+    let call = entries_on(&found, 4);
+    assert!(
+        call.iter().skip(1).all(|entry| !is_local(entry)),
+        "the call in the initializer reads the outer name: {found:#?}"
+    );
+}
+
+fn java_item_beside(method: &str) -> FileOutcomes {
+    let source = format!(
+        "package shop;\n\npublic class Other {{\n    void run(Item first) {{\n{method}    }}\n}}\n"
+    );
+    let world = snapshot_in(
+        Lang::Java,
+        &[
+            (
+                "src/main/java/shop/Item.java",
+                "package shop;\n\npublic class Item {\n}\n",
+            ),
+            ("src/main/java/shop/Other.java", source.as_str()),
+        ],
+    );
+    world.outcomes(
+        world.def("src/main/java/shop/Item.java", "Item"),
+        "src/main/java/shop/Other.java",
+        &["Item"],
+    )
+}
+
+#[test]
+fn a_read_of_a_local_after_its_declaration_is_no_declaration() {
+    let found = java_item_beside("        Item Item = first;\n        System.out.println(Item);\n");
+    for entry in entries_on(&found, 6) {
+        assert_ne!(entry.outcome, Outcome::Declaration, "{found:#?}");
+    }
+    assert_eq!(
+        shape(entries_on(&found, 5)[1]),
+        ("declaration", "local_site", None),
+        "{found:#?}"
+    );
+}
+
+#[test]
+fn a_name_read_before_a_later_local_of_it_is_no_declaration() {
+    let found = java_item_beside("        System.out.println(Item);\n        Item Item = first;\n");
+    for entry in entries_on(&found, 5) {
+        assert_ne!(entry.outcome, Outcome::Declaration, "{found:#?}");
+    }
+}
+
+#[test]
+fn a_qualified_type_beside_a_local_of_its_name_is_no_declaration() {
+    let found = java_item_beside("        outside.Item Item = first;\n");
+    let line = entries_on(&found, 5);
+    assert_eq!(line.len(), 2, "{found:#?}");
+    assert_ne!(line[0].outcome, Outcome::Declaration, "{found:#?}");
+    assert_eq!(
+        shape(line[1]),
+        ("declaration", "local_site", None),
+        "{found:#?}"
+    );
+}
+
+#[test]
+fn a_loop_binding_of_the_name_of_a_module_level_static_keeps_its_hedge() {
+    let world = snapshot_in(
+        Lang::Rust,
+        &[
+            (
+                "src/lib.rs",
+                "mod util;\n\npub fn run(items: Vec<i64>) -> i64 {\n    for count in items {\n        prepare(count);\n    }\n    0\n}\n",
+            ),
+            ("src/util.rs", "pub static mut count: i64 = 0;\n"),
+        ],
+    );
+    let found = world.outcomes(world.def("src/util.rs", "count"), "src/lib.rs", &["count"]);
+    for entry in entries_on(&found, 4) {
+        assert_ne!(entry.outcome, Outcome::Declaration, "{found:#?}");
+    }
+    assert!(
+        !entries_on(&found, 4).is_empty(),
+        "the binding is read: {found:#?}"
+    );
+}

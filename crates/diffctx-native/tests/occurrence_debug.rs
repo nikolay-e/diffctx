@@ -422,3 +422,45 @@ fn a_name_on_the_right_of_a_type_alias_is_the_alias_it_defines() {
         aliased[0]
     );
 }
+
+#[test]
+fn a_main_function_is_entered_by_the_runtime_and_leaves_its_calls_complete() {
+    let unit = |n: u8| format!("int main(void) {{\n    return {n};\n}}\n");
+    let repo = one_file(Family::C, "a.c", &unit(0), &unit(1), "main");
+    assert_eq!(reasons_of(repo, "a.c::main", "calls"), Vec::<String>::new());
+}
+
+#[test]
+fn a_holder_with_a_row_of_its_own_still_open_is_not_complete_whatever_it_holds() {
+    let repo = Repo {
+        family: Family::TypeScript,
+        base: files(&[
+            (
+                "src/t.ts",
+                "export class Base {}\n\nexport class Retry {\n  attempt: number = 1;\n}\n",
+            ),
+            (
+                "src/u.ts",
+                "export function build(factory) {\n  return new factory.Retry();\n}\n",
+            ),
+        ]),
+        change: files(&[(
+            "src/t.ts",
+            "export class Base {}\n\nexport class Retry extends Base {\n  attempt: number = 2;\n}\n",
+        )]),
+        caller: None,
+        definition: "src/t.ts".to_string(),
+        symbol: "Retry".to_string(),
+    };
+    let (_, _, lines) = shadow_of(repo);
+    let holder: Vec<&Value> = of(&lines, "src/t.ts::Retry", "head")
+        .into_iter()
+        .filter(|l| l["held"].is_u64())
+        .collect();
+    assert_eq!(holder.len(), 1, "one holder line: {lines:?}");
+    let own_rows_open = of(&lines, "src/t.ts::Retry", "head")
+        .into_iter()
+        .any(|l| l["complete"] == false && l["relation"].is_string());
+    assert!(own_rows_open, "a candidate stays on the class: {lines:?}");
+    assert_eq!(holder[0]["complete"], false, "{}", holder[0]);
+}

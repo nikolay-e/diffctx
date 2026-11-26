@@ -1,0 +1,23 @@
+name: py_call_on_an_untyped_receiver_in_another_file_keeps_the_calls_partial
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [python, untyped-receiver, coverage]
+repo:
+  initial_files:
+    lib.py: |
+      def f(a):
+          return a
+    app.py: |
+      def go(o):
+          return o.f(1)
+  changed_files:
+    lib.py: |
+      def f(a):
+          return a + 1
+  commit_message: "lib: f adds one"
+expect:
+  # `o` has no type: its `.f` may be the changed function, and it is in another file.
+  coverage:
+    lib.py::f:
+      calls: partial

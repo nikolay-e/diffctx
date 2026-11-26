@@ -4,6 +4,7 @@
 
 mod support;
 use support::{diffctx_unclocked, repo};
+use tempfile::TempDir;
 
 const HANDLERS: &str = "def on_event(e):\n    return e\n";
 const HANDLERS_CHANGED: &str = "def on_event(e):\n    return e + 1\n";
@@ -18,9 +19,19 @@ fn impact(repo: &std::path::Path, format: &str) -> std::process::Output {
 }
 
 fn impact_with(repo: &std::path::Path, format: &str, env: &[(&str, &str)]) -> std::process::Output {
+    impact_in(repo, None, format, env)
+}
+
+fn impact_in(
+    repo: &std::path::Path,
+    subtree: Option<&str>,
+    format: &str,
+    env: &[(&str, &str)],
+) -> std::process::Output {
     let out = diffctx_unclocked()
         .envs(env.iter().copied())
         .current_dir(repo)
+        .args(subtree)
         .args([
             "--diff",
             "HEAD~1..HEAD",
@@ -214,4 +225,170 @@ fn changed_statements_no_definition_holds_are_named_as_runs_of_lines() {
             "lines": [5, 6, 8, 8]
         }])
     );
+}
+
+fn limits_under_loss(repo: &std::path::Path) -> serde_json::Value {
+    let doc: serde_json::Value = serde_json::from_slice(
+        &impact_with(repo, "json", &[("DIFFCTX_TEST_LOSS", "read_failed:1")]).stdout,
+    )
+    .expect("impact JSON");
+    doc["coverage"]["limits"].clone()
+}
+
+const TWO_PYTHON: [(&str, &str); 2] = [
+    ("a.py", "def a():\n    return 1\n"),
+    ("b.py", "def b():\n    return 2\n"),
+];
+
+#[test]
+fn a_family_no_changed_file_belongs_to_is_not_read_so_it_cannot_lose_a_file() {
+    let rust = ("src/lib.rs", "pub fn f(a: i64) -> i64 {\n    a\n}\n");
+    let rust_changed = ("src/lib.rs", "pub fn f(a: i64) -> i64 {\n    a + 1\n}\n");
+    let mut base = TWO_PYTHON.to_vec();
+    base.push(rust);
+    let tmp = repo(&base, &[rust_changed]);
+    assert_eq!(limits_under_loss(tmp.path()), serde_json::Value::Null);
+
+    let note = ("notes.xyz", "#!/usr/bin/env python3\nprint(1)\n");
+    let mut base = TWO_PYTHON.to_vec();
+    base.push(note);
+    let tmp = repo(
+        &base,
+        &[("notes.xyz", "#!/usr/bin/env python3\nprint(2)\n")],
+    );
+    assert_eq!(
+        limits_under_loss(tmp.path()),
+        serde_json::Value::Null,
+        "a shebang counts only in a file without an extension"
+    );
+
+    let script = ("bin/run", "echo 1\n");
+    let mut base = TWO_PYTHON.to_vec();
+    base.push(script);
+    let tmp = repo(&base, &[("bin/run", "echo 2\n")]);
+    assert_eq!(
+        limits_under_loss(tmp.path()),
+        serde_json::Value::Null,
+        "a file without an extension and without a shebang is of no family"
+    );
+}
+
+#[test]
+fn a_run_asked_about_a_subtree_names_the_files_outside_it_and_reads_none() {
+    let tmp = repo(
+        &[
+            ("pkg/lib.py", "def f(a):\n    return a\n"),
+            ("other/app.py", "def go(o):\n    return o.f(1)\n"),
+        ],
+        &[("pkg/lib.py", "def f(a):\n    return a + 1\n")],
+    );
+    let doc: serde_json::Value =
+        serde_json::from_slice(&impact_in(tmp.path(), Some("pkg"), "json", &[]).stdout)
+            .expect("impact JSON");
+    let gaps = doc["definitions"][0]["gaps"].clone();
+    assert_eq!(
+        gaps,
+        serde_json::json!([{"kind": "outside_scope", "files": 1}]),
+        "{doc:#}"
+    );
+}
+
+#[test]
+fn a_run_asked_about_a_subtree_counts_a_file_outside_it_only_when_it_spells_every_word_of_the_name()
+{
+    let tmp = repo(
+        &[
+            ("other/a.yaml", "labels: 1\n"),
+            ("other/b.yaml", "ref: pod-labels\n"),
+            ("other/c.yaml", "pod: 1\n"),
+            ("pkg/values.yaml", "pod-labels: a\n"),
+        ],
+        &[("pkg/values.yaml", "pod-labels: b\n")],
+    );
+    let doc: serde_json::Value =
+        serde_json::from_slice(&impact_in(tmp.path(), Some("pkg"), "json", &[]).stdout)
+            .expect("impact JSON");
+    let outside: Vec<&serde_json::Value> = doc["definitions"][0]["gaps"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|gap| gap["kind"] == "outside_scope")
+        .collect();
+    assert_eq!(
+        outside,
+        [&serde_json::json!({"kind": "outside_scope", "files": 1})],
+        "{doc:#}"
+    );
+}
+
+fn files_under(dir: &std::path::Path) -> Vec<std::path::PathBuf> {
+    let mut found = Vec::new();
+    for entry in std::fs::read_dir(dir).into_iter().flatten().flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            found.extend(files_under(&path));
+        } else {
+            found.push(path);
+        }
+    }
+    found
+}
+
+/// The token store is a cache, never a source: a set cut short on disk is read again and not taken
+/// for a set with fewer tokens, whose file outside the subtree would then go uncounted.
+#[test]
+fn a_token_set_cut_short_on_disk_is_read_again_and_the_outside_files_are_still_counted() {
+    let tmp = repo(
+        &[
+            ("other/a.yaml", "labels: 1\n"),
+            ("other/b.yaml", "ref: pod-labels\n"),
+            ("pkg/values.yaml", "pod-labels: a\n"),
+        ],
+        &[("pkg/values.yaml", "pod-labels: b\n")],
+    );
+    let corrupted = |change: &dyn Fn(&str) -> Option<String>, why: &str| {
+        let cache = TempDir::new().expect("tempdir");
+        let dir = cache.path().to_str().expect("utf-8 path");
+        let env = [("DIFFCTX_CACHE_DIR", dir)];
+        let run = || impact_in(tmp.path(), Some("pkg"), "json", &env).stdout;
+        let warm = run();
+        assert!(
+            String::from_utf8_lossy(&warm).contains("\"outside_scope\""),
+            "the file outside the subtree is counted"
+        );
+        let stored = files_under(&cache.path().join("diffctx").join("facts").join("tokens"));
+        assert!(!stored.is_empty(), "the run stored token sets");
+        for path in &stored {
+            let text = std::fs::read_to_string(path).expect("a stored set");
+            if let Some(cut) = change(&text) {
+                std::fs::write(path, cut).expect("write");
+            }
+        }
+        assert_eq!(
+            String::from_utf8_lossy(&run()),
+            String::from_utf8_lossy(&warm),
+            "{why}"
+        );
+    };
+    corrupted(
+        &|text| (!text.starts_with("0\n")).then(|| text[..text.len() - 2].to_string()),
+        "last token cut mid-word",
+    );
+    corrupted(
+        &|text| (!text.starts_with("0\n")).then(|| text[..text.len() - 1].to_string()),
+        "closing newline missing",
+    );
+    for dropped in 0..3 {
+        corrupted(
+            &|text| {
+                let (count, body) = text.split_once('\n')?;
+                let mut tokens: Vec<&str> = body.lines().collect();
+                (dropped < tokens.len() && tokens.len() > 1).then(|| {
+                    tokens.remove(dropped);
+                    format!("{count}\n{}\n", tokens.join("\n"))
+                })
+            },
+            &format!("token line {dropped} missing"),
+        );
+    }
 }

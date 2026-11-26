@@ -1,0 +1,36 @@
+name: py_published_module_named_by_the_project_keeps_the_hedge_of_an_untyped_read_it_holds
+mode: impact
+source: synthetic
+tags: [python, attribute-read, published-module]
+repo:
+  initial_files:
+    pyproject.toml: |
+      [project]
+      name = "tablekit"
+      version = "0.1.0"
+    tablekit/table.py: |
+      class Table:
+          def __init__(self, rows):
+              self.rows = rows
+    tablekit/report.py: |
+      def names(load):
+          frame = load()
+          return list(frame.columns)
+  changed_files:
+    tablekit/table.py: |
+      class Table:
+          def __init__(self, rows):
+              self.rows = rows
+
+          @property
+          def columns(self):
+              return sorted(self.rows[0])
+  commit_message: "table: expose the column names"
+expect:
+  callers:
+    columns: []
+  partial:
+    # No `__init__.py` makes tablekit a package, but the project's name names the top module under
+    # its root: whoever installs it imports report.py, which nothing in the repository does.
+    tablekit/table.py::columns:
+      reads: unlanded

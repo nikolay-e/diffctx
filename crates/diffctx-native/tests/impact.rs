@@ -7996,3 +7996,426 @@ fn a_class_built_by_type_of_self_possibly_calls_a_subclass_constructor() {
     assert_eq!(clone["standing"], "candidate", "{doc:#}");
     assert_eq!(clone["sites"], serde_json::json!([6]), "{doc:#}");
 }
+
+/// What changed in a definition and where it came from are named on its row: a body
+/// edit changes the body alone, a rename changes the signature (the name is written
+/// there) and says it came from another name.
+#[test]
+fn a_changed_definition_names_what_changed_and_where_it_came_from() {
+    let app = "from lib import f\n\n\ndef go():\n    return f(1)\n";
+    let tmp = repo(
+        &[("lib.py", "def f(a):\n    return a\n"), ("app.py", app)],
+        &[("lib.py", "def f(a):\n    return a + 1\n")],
+    );
+    let doc = impact(tmp.path(), "HEAD~1..HEAD");
+    assert_eq!(
+        doc["definitions"][0]["change"],
+        serde_json::json!({"kind": "edited", "delta": {
+            "signature": false, "body": true, "doc": false, "visibility": false,
+            "decorators": false
+        }}),
+        "{doc:#}"
+    );
+
+    let tmp = repo(
+        &[("lib.py", "def f(a):\n    return a\n"), ("app.py", app)],
+        &[("lib.py", "def g(a):\n    return a\n")],
+    );
+    let doc = impact(tmp.path(), "HEAD~1..HEAD");
+    assert_eq!(doc["definitions"][0]["symbol"], "g", "{doc:#}");
+    assert_eq!(
+        doc["definitions"][0]["change"]["origin"], "renamed",
+        "{doc:#}"
+    );
+    assert_eq!(
+        doc["definitions"][0]["change"]["delta"]["signature"], true,
+        "{doc:#}"
+    );
+}
+
+/// Two calls on one line are one use of the function there: the row names the line once.
+#[test]
+fn two_calls_on_one_line_are_one_site_of_the_caller() {
+    let tmp = repo(
+        &[
+            ("lib.py", "def f(a):\n    return a\n"),
+            (
+                "app.py",
+                "from lib import f\n\n\ndef main():\n    return f(1) + f(2)\n",
+            ),
+        ],
+        &[("lib.py", "def f(a):\n    return a + 1\n")],
+    );
+    let doc = impact(tmp.path(), "HEAD~1..HEAD");
+    let rows = &doc["definitions"][0]["rows"];
+    assert_eq!(rows.as_array().map(Vec::len), Some(1), "{doc:#}");
+    assert_eq!(rows[0]["sites"], serde_json::json!([5]), "{doc:#}");
+}
+
+/// Two modules the range deletes together, the second importing the first: a module
+/// that goes with its importer has no importer left.
+#[test]
+fn a_deleted_module_imported_only_by_another_deleted_module_has_no_importer() {
+    let tmp = TempDir::new().expect("tempdir");
+    let repo = tmp.path();
+    init_repo(repo);
+    write(repo, "pkg/__init__.py", "");
+    write(repo, "pkg/first.py", "class First:\n    title = \"\"\n");
+    write(
+        repo,
+        "pkg/second.py",
+        "from pkg.first import First\n\n\nclass Second(First):\n    pass\n",
+    );
+    commit_all(repo, "initial");
+    std::fs::remove_dir_all(repo.join("pkg")).expect("delete the package");
+    commit_all(repo, "drop the package");
+    let doc = impact(tmp.path(), "HEAD~1..HEAD");
+    let items = &doc["deleted_modules"]["items"];
+    assert_eq!(
+        items
+            .as_array()
+            .map(|all| all.iter().filter(|m| m["importers"].is_null()).count()),
+        Some(2),
+        "{doc:#}"
+    );
+}
+
+/// An annotation of a changed typed alias folds as a type use that cannot have changed, unless
+/// something may run it: the signature of a decorated function, a class body, or a file that
+/// imports a framework that reads annotations.
+#[test]
+fn an_annotation_of_a_changed_typed_alias_folds_unless_a_framework_may_run_it() {
+    let uses = |import: &str, body: &str| format!("{import}from aliases import Alias\n\n\n{body}");
+    let function = "def g(a: Alias) -> Alias:\n    return a\n";
+    let tmp = repo(
+        &[
+            (
+                "aliases.py",
+                "from typing import TypeAlias\n\nAlias: TypeAlias = int\n",
+            ),
+            ("use_plain.py", &uses("", function)),
+            ("use_module_variable.py", &uses("", "v: Alias = 1\n")),
+            (
+                "use_decorated.py",
+                &uses("", &format!("@register\n{function}")),
+            ),
+            (
+                "use_class_body.py",
+                &uses("", "class M:\n    x: Alias = 1\n"),
+            ),
+            ("use_framework.py", &uses("import pydantic\n", function)),
+        ],
+        &[(
+            "aliases.py",
+            "from typing import TypeAlias\n\nAlias: TypeAlias = int | None\n",
+        )],
+    );
+    let doc = impact(tmp.path(), "HEAD~1..HEAD");
+    assert_eq!(
+        callers_of(&doc, "Alias"),
+        ["use_class_body.py", "use_decorated.py", "use_framework.py"],
+        "{doc:#}"
+    );
+    assert_eq!(doc["summary"]["folded"], 2, "{doc:#}");
+}
+
+/// A key a config file changes is searched for in every file the token index does not group,
+/// read whole up to 1 MiB; one past that is named as unread, never as a use.
+#[test]
+fn a_changed_key_is_read_in_an_ungrouped_file_up_to_a_mebibyte_and_the_larger_is_unread() {
+    let big = format!("{}\nAPI_URL\n", "x".repeat(1_100_000));
+    let tmp = repo(
+        &[
+            (".env", "API_URL=http://a\n"),
+            ("deploy.xyz", "run --url $API_URL\n"),
+            ("big.xyz", &big),
+        ],
+        &[(".env", "API_URL=http://b\n")],
+    );
+    let doc = impact(tmp.path(), "HEAD~1..HEAD");
+    let named: Vec<&str> = doc["named"]["by_key"]["items"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|item| item["path"].as_str())
+        .collect();
+    assert_eq!(named, ["deploy.xyz"], "{doc:#}");
+    assert_eq!(
+        doc["coverage"]["unanalysed"]["items"],
+        serde_json::json!([{"path": "big.xyz", "reason": "too_large"}]),
+        "{doc:#}"
+    );
+}
+
+/// A Terraform file its cell reads whole is traced inside; nothing outside consumes it the way a
+/// workflow runs a Dockerfile, so it is no gap.
+#[test]
+fn a_terraform_file_the_cell_reads_whole_is_not_listed_as_untraced() {
+    let tmp = repo(
+        &[
+            ("main.tf", "variable \"region\" {\n  default = \"a\"\n}\n"),
+            ("net.tf", "resource \"x_net\" \"n\" {\n  zone = \"a\"\n}\n"),
+        ],
+        &[("main.tf", "variable \"region\" {\n  default = \"b\"\n}\n")],
+    );
+    let doc = impact(tmp.path(), "HEAD~1..HEAD");
+    let listed = doc["coverage"]["unanalysed"]["items"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
+    assert!(
+        listed.iter().all(|f| f["path"] != "main.tf"),
+        "the cell traced it: {doc:#}"
+    );
+}
+
+/// A default export that changed its form is renamed, with the body a change of it: the importers
+/// are not told "no code changed".
+#[test]
+fn a_default_export_that_changed_its_form_keeps_the_importers_it_had() {
+    let tmp = repo(
+        &[
+            (
+                "src/rate.ts",
+                "export default (x: number, y: number): number => x * y;\n",
+            ),
+            (
+                "src/use.ts",
+                "import rate from \"./rate\";\n\nexport function run(): number {\n  return rate(1, 2);\n}\n",
+            ),
+        ],
+        &[(
+            "src/rate.ts",
+            "export default function mono(x: number, y: number): number {\n  return x * y;\n}\n",
+        )],
+    );
+    let doc = impact(tmp.path(), "HEAD~1..HEAD");
+    assert_eq!(callers_of(&doc, "mono"), ["src/use.ts"], "{doc:#}");
+}
+
+#[test]
+fn a_default_export_only_named_keeps_the_importers_it_had() {
+    let tmp = repo(
+        &[
+            (
+                "src/rate.ts",
+                "export default function (x: number, y: number): number {\n  return x * y;\n}\n",
+            ),
+            (
+                "src/use.ts",
+                "import rate from \"./rate\";\n\nexport function run(): number {\n  return rate(1, 2);\n}\n",
+            ),
+        ],
+        &[(
+            "src/rate.ts",
+            "export default function mono(x: number, y: number): number {\n  return x * y;\n}\n",
+        )],
+    );
+    let doc = impact(tmp.path(), "HEAD~1..HEAD");
+    assert_eq!(callers_of(&doc, "mono"), ["src/use.ts"], "{doc:#}");
+}
+
+#[test]
+fn a_default_export_moved_to_a_named_declaration_keeps_the_importers_it_had() {
+    let tmp = repo(
+        &[
+            (
+                "src/rate.ts",
+                "export default function (x: number, y: number): number {\n  return x * y;\n}\n",
+            ),
+            (
+                "src/use.ts",
+                "import rate from \"./rate\";\n\nexport function run(): number {\n  return rate(1, 2);\n}\n",
+            ),
+        ],
+        &[(
+            "src/rate.ts",
+            "function mono(x: number, y: number): number {\n  return x * y;\n}\n\nexport default mono;\n",
+        )],
+    );
+    let doc = impact(tmp.path(), "HEAD~1..HEAD");
+    assert_eq!(callers_of(&doc, "mono"), ["src/use.ts"], "{doc:#}");
+}
+
+/// A body and a docstring changing together is an edit of code: the override of it is folded, the
+/// override replacing the body and not running it.
+#[test]
+fn a_body_edit_with_its_docstring_still_folds_what_a_body_edit_folds() {
+    let tmp = repo(
+        &[
+            (
+                "base.py",
+                "class A:\n    def m(self):\n        \"\"\"Old.\"\"\"\n        return 1\n",
+            ),
+            (
+                "sub.py",
+                "from base import A\n\n\nclass B(A):\n    def m(self):\n        return 2\n",
+            ),
+        ],
+        &[(
+            "base.py",
+            "class A:\n    def m(self):\n        \"\"\"New.\"\"\"\n        return 3\n",
+        )],
+    );
+    let doc = impact(tmp.path(), "HEAD~1..HEAD");
+    assert_eq!(doc["summary"]["folded"], 1, "{doc:#}");
+}
+
+fn reads_gap_names(doc: &serde_json::Value, symbol: &str) -> Vec<String> {
+    row(doc, symbol)["coverage"]["reads"]["gaps"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|gap| gap["name"].as_str().map(str::to_string))
+        .collect()
+}
+
+fn stage_repo(line: &str) -> TempDir {
+    let file = |n: u8| {
+        format!(
+            "FROM alpine:3.20 AS tools\nRUN echo {n}\n\nFROM alpine:3.20 AS final\n{line}\nCMD [\"true\"]\n"
+        )
+    };
+    repo(&[("Dockerfile", &file(1))], &[("Dockerfile", &file(2))])
+}
+
+#[test]
+fn a_stage_a_flag_of_a_later_instruction_copies_from_is_a_caller_of_it() {
+    let tmp = stage_repo("RUN --mount=type=bind,from=tools,target=/t ls");
+    let doc = impact(tmp.path(), "HEAD~1..HEAD");
+    assert_eq!(callers_of(&doc, "tools"), ["Dockerfile"], "{doc:#}");
+    assert_eq!(row(&doc, "tools")["coverage"]["reads"]["complete"], true);
+}
+
+#[test]
+fn a_stage_name_joined_to_a_variable_or_a_flag_in_a_shell_line_stays_a_hedge_not_a_caller() {
+    for line in [
+        "RUN echo tools$X",
+        "RUN echo $tools",
+        "RUN --network=tools ls",
+    ] {
+        let tmp = stage_repo(line);
+        let doc = impact(tmp.path(), "HEAD~1..HEAD");
+        assert!(callers_of(&doc, "tools").is_empty(), "{line}: {doc:#}");
+        assert_eq!(reads_gap_names(&doc, "tools"), ["tools"], "{line}: {doc:#}");
+    }
+}
+
+#[test]
+fn a_stage_name_as_a_plain_word_of_a_shell_line_is_no_reference_and_no_hedge() {
+    for line in ["RUN echo tools now", "RUN apk add go && \\\ntools ./..."] {
+        let tmp = stage_repo(line);
+        let doc = impact(tmp.path(), "HEAD~1..HEAD");
+        assert_eq!(doc["definitions"], serde_json::json!([]), "{line}: {doc:#}");
+        assert_eq!(
+            doc["unlisted"]["no_caller"]["items"][0]["symbol"], "tools",
+            "{line}: {doc:#}"
+        );
+    }
+}
+
+#[test]
+fn a_stage_name_an_arg_of_the_first_line_spells_is_no_reference_and_no_hedge() {
+    let file = |n: u8| format!("ARG tools=x\nFROM alpine:3.20 AS tools\nRUN echo {n}\n");
+    let tmp = repo(&[("Dockerfile", &file(1))], &[("Dockerfile", &file(2))]);
+    let doc = impact(tmp.path(), "HEAD~1..HEAD");
+    assert_eq!(doc["definitions"], serde_json::json!([]), "{doc:#}");
+}
+
+#[test]
+fn an_alias_a_variable_wraps_in_an_annotation_still_reaches_the_variable() {
+    for (why, user, holder) in [
+        (
+            "module variable",
+            "from typing import Optional\nfrom aliases import Alias\n\nMaybe = Optional[Alias]\n",
+            "Maybe",
+        ),
+        (
+            "class variable",
+            "from typing import Optional\nfrom aliases import Alias\n\n\nclass M:\n    Maybe = Optional[Alias]\n",
+            "M",
+        ),
+    ] {
+        let tmp = repo(
+            &[
+                (
+                    "aliases.py",
+                    "from typing import TypeAlias\n\nAlias: TypeAlias = int\n",
+                ),
+                ("use.py", user),
+            ],
+            &[(
+                "aliases.py",
+                "from typing import TypeAlias\n\nAlias: TypeAlias = int | None\n",
+            )],
+        );
+        let doc = impact(tmp.path(), "HEAD~1..HEAD");
+        let rows = row(&doc, "Alias")["rows"].as_array().expect("rows");
+        assert_eq!(rows.len(), 1, "{why}: {doc:#}");
+        assert_eq!(rows[0]["symbol"], holder, "{why}: {doc:#}");
+        assert_eq!(rows[0]["standing"], "resolved", "{why}: {doc:#}");
+        assert_eq!(row(&doc, "Alias")["coverage"]["reads"]["complete"], true);
+    }
+}
+
+#[test]
+fn a_typeof_annotation_of_an_imported_constant_reaches_the_constant() {
+    let tmp = repo(
+        &[
+            ("src/limits.ts", "export const LIMIT: number = 10;\n"),
+            (
+                "src/use.ts",
+                "import { LIMIT } from \"./limits\";\n\nexport class C {\n  y: typeof LIMIT = 1;\n}\n",
+            ),
+        ],
+        &[("src/limits.ts", "export const LIMIT: number = 20;\n")],
+    );
+    let doc = impact(tmp.path(), "HEAD~1..HEAD");
+    assert_eq!(callers_of(&doc, "LIMIT"), ["src/use.ts"], "{doc:#}");
+    assert_eq!(row(&doc, "LIMIT")["coverage"]["reads"]["complete"], true);
+}
+
+/// A file the run cannot read is no file without callers: the answer says it stopped.
+#[test]
+fn a_file_whose_blob_cannot_be_read_stops_the_answer_instead_of_calling_it_complete() {
+    let tmp = repo(
+        &[
+            ("app/__init__.py", ""),
+            ("app/handlers.py", "def on_event(e):\n    return e\n"),
+            (
+                "app/bus.py",
+                "from app.handlers import on_event\n\n\ndef setup(bus):\n    on_event(bus)\n",
+            ),
+        ],
+        &[("app/handlers.py", "def on_event(e):\n    return e + 1\n")],
+    );
+    let out = std::process::Command::new("git")
+        .current_dir(tmp.path())
+        .args(["rev-parse", "HEAD:app/bus.py"])
+        .output()
+        .expect("git rev-parse");
+    let sha = String::from_utf8(out.stdout).expect("utf-8");
+    let sha = sha.trim();
+    let object = tmp
+        .path()
+        .join(".git/objects")
+        .join(&sha[..2])
+        .join(&sha[2..]);
+    std::fs::remove_file(&object).expect("a loose object");
+    let doc = impact(tmp.path(), "HEAD~1..HEAD");
+    let on_event = row(&doc, "on_event");
+    assert_eq!(on_event["coverage"]["calls"]["complete"], false, "{doc:#}");
+    assert_eq!(
+        on_event["coverage"]["calls"]["gaps"][0]["reasons"],
+        serde_json::json!(["read_failed"]),
+        "{doc:#}"
+    );
+}
+
+#[test]
+fn a_stage_name_on_the_first_line_of_the_file_is_read_without_looking_before_it() {
+    let file = |n: u8| format!("RUN echo tools\nFROM alpine:3.20 AS tools\nRUN echo {n}\n");
+    let tmp = repo(&[("Dockerfile", &file(1))], &[("Dockerfile", &file(2))]);
+    let doc = impact(tmp.path(), "HEAD~1..HEAD");
+    assert_eq!(doc["definitions"], serde_json::json!([]), "{doc:#}");
+}

@@ -1,0 +1,29 @@
+name: py_call_in_another_file_on_lines_the_function_spans_is_still_a_caller
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [python, recursion, own-span]
+repo:
+  initial_files:
+    a.py: |
+      def f(n):
+          if n:
+              return f(n - 1)
+          return 0
+    b.py: |
+      from a import f
+
+      x = f(1)
+  changed_files:
+    a.py: |
+      def f(n):
+          if n:
+              return f(n - 1)
+          return 1
+  commit_message: "a: f ends in one"
+expect:
+  # The recursive call is the function's own; `b.py` line 3 only falls on lines the
+  # function spans in another file, and is a caller.
+  exact: true
+  relations:
+    - {from: b.py, to: a.py::f, kind: calls, resolution: resolved, site: 3}

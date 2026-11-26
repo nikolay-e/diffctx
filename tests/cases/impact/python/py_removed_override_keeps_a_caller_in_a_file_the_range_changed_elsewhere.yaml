@@ -1,0 +1,46 @@
+name: py_removed_override_keeps_a_caller_in_a_file_the_range_changed_elsewhere
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [python, removed, override, inheritance]
+repo:
+  initial_files:
+    models.py: |
+      class A:
+          def m(self):
+              return 1
+
+
+      class B(A):
+          def m(self):
+              return 2
+    app.py: |
+      from models import B
+
+
+      def go(b: B):
+          return b.m()
+  changed_files:
+    models.py: |
+      class A:
+          def m(self):
+              return 1
+
+
+      class B(A):
+          pass
+    app.py: |
+      from models import B
+
+      LIMIT = 3
+
+
+      def go(b: B):
+          return b.m()
+  commit_message: "models: B inherits m; app: add a limit"
+expect:
+  # `b.m()` was B.m and now lands on the inherited A.m. The lines the range added to app.py
+  # never spell `m`: nobody moved the use, so it stays a caller of the removed override.
+  exact: false
+  relations:
+    - {from: app.py::go, to: models.py::B.m, kind: calls, resolution: candidate, site: 7}

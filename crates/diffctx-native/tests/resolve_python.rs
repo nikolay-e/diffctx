@@ -905,6 +905,10 @@ const RED: &[(&str, &str)] = &[
         "symbol/python/py_module_imported_inside_a_function_names_that_function",
         "the queried symbol is a module: the symbol answer names its file as the definition; the resolver has no definition for a module",
     ),
+    (
+        "impact/python/py_removed_override_keeps_a_caller_in_a_file_the_range_changed_elsewhere",
+        "the resolver binds `b.m()` to the inherited `A.m` the head holds and relates nothing to the removed override; keeping the caller of the removed `B.m` as a candidate is the impact layer's removed-row rule",
+    ),
 ];
 
 #[test]
