@@ -528,7 +528,16 @@ impl Cell {
             {
                 continue;
             }
-            let held: Vec<(u32, u32)> = self.defs_in(file).map(|d| d.span.lines).collect();
+            // A Python name the range adds is reported as no definition: no holder.
+            let held: Vec<(u32, u32)> = self
+                .defs_in(file)
+                .filter(|d| {
+                    self.family != Family::Python
+                        || !matches!(d.kind, DefKind::Variable | DefKind::Constant)
+                        || self.changed.iter().any(|c| c.key() == Some(&d.key))
+                })
+                .map(|d| d.span.lines)
+                .collect();
             let imported: Vec<(u32, u32)> = self
                 .bindings_by_file
                 .get(file)

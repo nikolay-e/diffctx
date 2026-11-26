@@ -29,6 +29,15 @@ use super::super::cells::merge;
 use super::Cell;
 use super::within_scope;
 
+fn subject(def: &diffctx_resolve::resolve::Definition, reach: Reach) -> Subject {
+    Subject {
+        key: def.key.clone(),
+        reach,
+        within: own_span(def.kind, def.span.lines),
+        passing: None,
+    }
+}
+
 impl Cell {
     /// What the range did to the family's definitions: the cell's changed list.
     pub(super) fn read_changes(&mut self) -> Result<()> {
@@ -177,16 +186,10 @@ impl Cell {
                         file: file.as_str().to_string(),
                         lines,
                         how: How::Removed,
-                        subjects: Vec::new(),
                         stale: vec![d.key.clone()],
                         unpaired,
-                        local: false,
                         public,
-                        basis: None,
-                        not_layout: false,
-                        api: false,
-                        delta: None,
-                        origin: None,
+                        ..Changed::default()
                     };
                     // A class that lost its constructor or a field is changed like
                     // one whose constructor or field was edited: what builds,
@@ -213,20 +216,10 @@ impl Cell {
                                     lines: class.span.lines,
                                     how: How::Edited { layout_only: false },
                                     subjects: vec![Subject {
-                                        key: class.key.clone(),
-                                        reach,
-                                        within: own_span(class.kind, class.span.lines),
                                         passing,
+                                        ..subject(class, reach)
                                     }],
-                                    stale: Vec::new(),
-                                    unpaired: false,
-                                    local: false,
-                                    public: false,
-                                    basis: None,
-                                    not_layout: false,
-                                    api: false,
-                                    delta: None,
-                                    origin: None,
+                                    ..Changed::default()
                                 },
                             );
                         }
@@ -292,16 +285,9 @@ impl Cell {
                                 file: base_file.as_str().to_string(),
                                 lines,
                                 how: How::Removed,
-                                subjects: Vec::new(),
                                 stale: vec![from.clone()],
-                                unpaired: false,
-                                local: false,
                                 public,
-                                basis: None,
-                                not_layout: false,
-                                api: false,
-                                delta: None,
-                                origin: None,
+                                ..Changed::default()
                             };
                             if self.stranded(&gone) {
                                 removed.push(gone);
@@ -940,33 +926,18 @@ impl Cell {
             file: def.file.as_str().to_string(),
             lines: def.span.lines,
             how,
-            subjects: vec![Subject {
-                key: def.key.clone(),
-                reach,
-                within: own_span(def.kind, def.span.lines),
-                passing: None,
-            }],
+            subjects: vec![subject(def, reach)],
             stale: stale.clone(),
             unpaired,
             local: self.inside_function(def),
-            public: false,
-            basis: None,
-            not_layout: false,
-            api: false,
-            delta: None,
-            origin: None,
+            ..Changed::default()
         };
         let edited = !matches!(how, How::Edited { layout_only: true });
         match def.kind {
             DefKind::Constructor => match self.class_holding(def.file.as_str(), &def.key) {
                 Some(class) => {
                     let mut changed = own(class, Reach::Constructor);
-                    changed.subjects.push(Subject {
-                        key: def.key.clone(),
-                        reach: Reach::Every,
-                        within: own_span(def.kind, def.span.lines),
-                        passing: None,
-                    });
+                    changed.subjects.push(subject(def, Reach::Every));
                     out.push(changed);
                 }
                 None => out.push(own(def, Reach::Every)),

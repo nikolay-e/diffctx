@@ -146,14 +146,13 @@ pub(super) fn nameless_changes(
         let (first, last) = h.new_range();
         let touches = |&(lo, hi): &(u32, u32)| lo <= last && hi >= first;
         let accounted = match cells.of(path) {
-            // What a cell reads is its own: a removal is its removal, at the
-            // base's lines, and lines outside its definitions are its own.
+            // What a cell reads is its own: a removal is its removal, and
+            // lines outside its definitions are its `outside_definitions`.
             Some(cell) => {
                 h.added.is_empty()
                     || cell
                         .changed()
                         .iter()
-                        .filter(|d| d.how != decide::changed::How::Removed)
                         .any(|d| d.file == path && touches(&d.lines))
                     || outside
                         .get(path)

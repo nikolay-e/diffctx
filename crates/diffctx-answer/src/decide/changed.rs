@@ -50,17 +50,20 @@ pub(super) enum Whole {
     Unaccounted,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
 pub enum How {
-    Edited { layout_only: bool },
+    Edited {
+        layout_only: bool,
+    },
     Added,
+    #[default]
     Removed,
 }
 
 /// A definition the range changed, as the answer reports it. A constructor is
 /// reported as its class (its callers build the class), and a class-level field
 /// also touches the class that holds it.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct Changed {
     pub name: String,
     pub kind: DefKind,

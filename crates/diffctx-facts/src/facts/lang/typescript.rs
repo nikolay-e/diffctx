@@ -24,6 +24,7 @@ use crate::facts::{
     hash_tokens,
 };
 use diffctx_snapshot::snapshot::RunBudget;
+mod blocks;
 
 /// A blob names no path: the path of a loss is bound by whoever holds the file.
 const POLL_EVERY: u32 = 256;
@@ -1699,7 +1700,6 @@ impl<'t> Declarer<'t> {
         match node.kind() {
             "export_statement" => self.export_statement(node, container, stack),
             "import_statement" => self.import_statement(node),
-            // A block of the file still defines what it declares.
             "ambient_declaration"
             | "if_statement"
             | "else_clause"
@@ -1707,7 +1707,7 @@ impl<'t> Declarer<'t> {
             | "catch_clause"
             | "finally_clause"
             | "statement_block" => {
-                Self::push_statements(stack, kids(node), &container, exported);
+                Self::push_statements(stack, blocks::statements(node), &container, exported);
             }
             "function_declaration" | "generator_function_declaration" | "function_signature" => {
                 self.function(node, container, exported);

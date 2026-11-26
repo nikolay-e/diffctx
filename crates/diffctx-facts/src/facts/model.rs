@@ -81,8 +81,11 @@ pub struct DefKey {
     pub local: LocalKey,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Debug, Serialize, Deserialize)]
+#[derive(
+    Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Debug, Serialize, Deserialize, Default,
+)]
 pub enum DefKind {
+    #[default]
     Function,
     Method,
     Constructor,
