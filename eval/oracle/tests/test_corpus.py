@@ -18,7 +18,7 @@ def test_every_repository_is_pinned_to_a_full_commit_and_a_permissive_licence():
     for repo in loaded.repos:
         assert re.fullmatch(r"[0-9a-f]{40}", repo.sha), repo.name
         assert repo.url.startswith("https://"), repo.name
-        assert set(repo.license.split(" OR ")) <= {"MIT", "BSD-3-Clause", "Apache-2.0", "BSD-2-Clause", "Unlicense"}, repo.name
+        assert set(repo.license.split(" OR ")) <= corpus.PERMISSIVE_LICENSES, repo.name
 
 
 def test_every_release_binary_has_a_checksum_for_each_build_it_names():

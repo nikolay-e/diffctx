@@ -12,6 +12,8 @@ from pathlib import Path
 from adjudication import SHA_PREFIX
 
 ROOT = Path(__file__).resolve().parent
+CORPUS_VARIABLE = "ORACLE_CORPUS"  # a corpus file, relative to this directory, in place of corpus.toml
+PERMISSIVE_LICENSES = frozenset({"MIT", "Apache-2.0", "BSD-2-Clause", "BSD-3-Clause", "Unlicense"})  # a dual licence is `A OR B`
 # Mirrors, exported trees, work checkouts, indexes and release binaries. Outside every Cargo workspace by default:
 # a measured Rust project that finds our workspace root refuses to build, and the runner must not edit the project
 # to say otherwise. Point ORACLE_CACHE at an existing cache to reuse it.
@@ -102,6 +104,8 @@ class Corpus:
     diffctx_seconds: int
     tools: dict[str, Tool]
     spent: dict[str, frozenset[str]]  # repository -> commits an earlier run sampled: never drawn again
+    label: str = "corpus"  # the file's stem: what a cache key and a report name the set by
+    holdout: bool = False  # a set whose rows nobody may read: it is measured blind or only indexed
 
     def quota(self, repo: Repo) -> int:
         """The commits `repo` draws: its language's count split evenly, the first repositories taking the remainder."""
@@ -132,8 +136,25 @@ def load_spent(path: Path) -> dict[str, frozenset[str]]:
     return {repo: frozenset(shas) for repo, shas in spent.items()}
 
 
-def load_corpus(path: Path = ROOT / "corpus.toml") -> Corpus:
+def corpus_path() -> Path:
+    """The corpus file this process works on: `ORACLE_CORPUS` (relative to this directory), else corpus.toml."""
+    return ROOT / (os.environ.get(CORPUS_VARIABLE) or "corpus.toml")
+
+
+def read_corpus_file(path: Path) -> dict:
+    """The file's tables, with the ones it leaves out taken from the file it `extends` (a seed set carries only its
+    repositories, its seed and its header; counts, thresholds and pinned tools are corpus.toml's, never copied)."""
     raw = tomllib.loads(path.read_text(encoding="utf-8"))
+    if "extends" not in raw:
+        return raw
+    base = read_corpus_file((path.parent / raw["extends"]).resolve())
+    sampling = {k: v for k, v in base["sampling"].items() if k != "spent"} | raw.get("sampling", {})
+    return {**base, **{k: v for k, v in raw.items() if k != "extends"}, "sampling": sampling}
+
+
+def load_corpus(path: Path | None = None) -> Corpus:
+    path = corpus_path() if path is None else path
+    raw = read_corpus_file(path)
     repos = tuple(Repo(**entry) for entry in raw["repo"])
     for repo in repos:
         if repo.language not in LANGUAGES:
@@ -147,7 +168,7 @@ def load_corpus(path: Path = ROOT / "corpus.toml") -> Corpus:
     tools = {name: Tool(name=name, **entry) for name, entry in raw["tools"].items()}
     missing = [tool for tool in INDEXER_TOOLS.values() if tool not in tools]
     if missing:
-        raise ValueError(f"corpus.toml pins no release for {missing}")
+        raise ValueError(f"{path.name} pins no release for {missing}")
     return Corpus(
         repos=repos,
         sampling=Sampling(
@@ -162,7 +183,9 @@ def load_corpus(path: Path = ROOT / "corpus.toml") -> Corpus:
         index_seconds=raw["timeouts"]["index_seconds"],
         diffctx_seconds=raw["timeouts"]["diffctx_seconds"],
         tools=tools,
-        spent=load_spent(path.parent / s["spent"]),
+        spent=load_spent(path.parent / s["spent"]) if "spent" in s else {},
+        label=path.stem,
+        holdout=bool(raw.get("holdout", False)),
     )
 
 
