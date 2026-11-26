@@ -879,6 +879,23 @@ fn an_amend_is_reviewed_onto_the_parent() {
     }
 }
 
+/// A commit made after an amend on the same line grows from the amended
+/// commit, which is not a descendant of where the line started: the review
+/// runs from the amend's parent to the later commit.
+#[test]
+fn a_commit_after_an_amend_on_one_line_is_reviewed_with_it() {
+    let tmp = repo_with_pending_change();
+    let cache = TempDir::new().unwrap();
+    let repo = tmp.path();
+    commit_all(repo, "vat");
+    write(repo, "docs/NOTES.md", "fixup\n");
+    add_unrelated_edit(repo);
+    let command = "git add docs/NOTES.md && git commit -q --amend --no-edit && git add -A && git commit -qm second";
+    let context = context_of(&run_line(repo, cache.path(), command));
+    assert!(context.contains("shop/checkout.py::charge"), "{context}");
+    assert!(context.contains("shop/shelf.py::refill"), "{context}");
+}
+
 /// A Claude Code transcript at `dir/b.jsonl` whose session edited `edited`;
 /// `by_subagent` was edited by a subagent of it, whose transcript sits in
 /// `dir/b/subagents/`.
