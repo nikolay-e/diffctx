@@ -3,5 +3,6 @@
 //! function or a header ends, never off a run.
 
 mod locals;
+mod routes;
 mod shell;
 mod unresolved;

@@ -44,11 +44,16 @@ fn python(base: &[(&str, &str)], change: &[(&str, &str)], definition: &str) -> R
 
 /// The answer without the knob, the answer and the lines with it.
 fn shadow_of(repo: Repo) -> (Value, Value, Vec<Value>) {
+    shadow_under(repo, &[])
+}
+
+fn shadow_under(repo: Repo, env: &[(&str, &str)]) -> (Value, Value, Vec<Value>) {
     let planted = Planted::new(repo);
     let plain = planted.ask(Query::Impact, &[]).expect("the plain answer");
     let out = TempDir::new().expect("tempdir");
     let sink = out.path().join("occurrences.jsonl");
-    let knob = [("DIFFCTX_DEBUG_OCCURRENCES", sink.to_str().expect("a path"))];
+    let mut knob = vec![("DIFFCTX_DEBUG_OCCURRENCES", sink.to_str().expect("a path"))];
+    knob.extend_from_slice(env);
     let shadow = planted
         .ask(Query::Impact, &knob)
         .expect("the shadow answer");
@@ -269,4 +274,151 @@ fn a_removed_override_is_reached_through_the_member_it_overrode() {
         .unwrap_or_else(|| panic!("the dispatching call is not accounted: {removed:?}"));
     assert_eq!(call["outcome"], "candidate", "{call}");
     assert_ne!(call["basis"], "other_definition", "{call}");
+}
+
+const LIB: &str = "def f(a):\n    return a\n";
+const LIB_CHANGED: &str = "def f(a):\n    return a + 1\n";
+const APP: &str = "from lib import f\n\n\ndef main():\n    return f(1)\n";
+
+fn lib_and_app(env: &[(&str, &str)]) -> Vec<Value> {
+    let repo = Repo {
+        family: Family::Python,
+        base: files(&[("lib.py", LIB), ("app.py", APP)]),
+        change: files(&[("lib.py", LIB_CHANGED)]),
+        caller: None,
+        definition: "lib.py".to_string(),
+        symbol: "f".to_string(),
+    };
+    shadow_under(repo, env).2
+}
+
+#[test]
+fn a_pair_whose_run_was_limited_is_never_complete() {
+    let lines = lib_and_app(&[("DIFFCTX_TEST_LOSS", "deadline:1")]);
+    let pairs: Vec<&Value> = of(&lines, "lib.py::f", "head")
+        .into_iter()
+        .filter(|l| l["occurrences"].is_string())
+        .collect();
+    assert!(!pairs.is_empty(), "no pair lines: {lines:?}");
+    for pair in pairs {
+        assert_eq!(pair["occurrences"], "complete", "{pair}");
+        assert_eq!(
+            pair["gaps"],
+            serde_json::json!(["the run was limited (deadline)"]),
+            "{pair}"
+        );
+        assert_eq!(pair["complete"], false, "{pair}");
+    }
+}
+
+#[test]
+fn a_definition_holding_nothing_writes_no_holder_line() {
+    let lines = lib_and_app(&[]);
+    let holders: Vec<&Value> = lines.iter().filter(|l| l.get("holder").is_some()).collect();
+    assert!(holders.is_empty(), "{holders:?}");
+}
+
+fn reasons_of(repo: Repo, def: &str, relation: &str) -> Vec<String> {
+    let (_, _, lines) = shadow_of(repo);
+    of(&lines, def, "head")
+        .into_iter()
+        .find(|l| l["relation"] == relation && l["occurrences"].is_string())
+        .unwrap_or_else(|| panic!("no {relation} pair for {def}"))["reasons"]
+        .as_array()
+        .expect("reasons")
+        .iter()
+        .map(|r| r.as_str().expect("text").to_string())
+        .collect()
+}
+
+fn one_file(family: Family, path: &str, base: &str, change: &str, symbol: &str) -> Repo {
+    Repo {
+        family,
+        base: files(&[(path, base)]),
+        change: files(&[(path, change)]),
+        caller: None,
+        definition: path.to_string(),
+        symbol: symbol.to_string(),
+    }
+}
+
+#[test]
+fn a_function_a_script_guard_runs_leaves_its_calls_complete() {
+    let guarded = |n: u8| {
+        format!("def main():\n    return {n}\n\n\nif __name__ == \"__main__\":\n    main()\n")
+    };
+    let repo = one_file(Family::Python, "cli.py", &guarded(1), &guarded(2), "main");
+    assert_eq!(
+        reasons_of(repo, "cli.py::main", "calls"),
+        Vec::<String>::new()
+    );
+}
+
+#[test]
+fn a_constructor_in_a_file_with_main_is_still_called_implicitly() {
+    let unit = |body: &str| {
+        format!(
+            "__attribute__((constructor)) static void setup(void) {{\n    {body}\n}}\n\nint main(void) {{\n    return 0;\n}}\n"
+        )
+    };
+    let repo = one_file(
+        Family::C,
+        "a.c",
+        &unit("return;"),
+        &unit("int x = 1; (void)x;"),
+        "setup",
+    );
+    assert_eq!(
+        reasons_of(repo, "a.c::setup", "calls"),
+        ["called implicitly (entry)"]
+    );
+}
+
+#[test]
+fn a_protocol_method_is_called_implicitly_by_the_protocol() {
+    let class = |n: u8| format!("class Box:\n    def __len__(self):\n        return {n}\n");
+    let repo = one_file(Family::Python, "m.py", &class(1), &class(2), "__len__");
+    assert_eq!(
+        reasons_of(repo, "m.py::Box.__len__", "calls"),
+        ["called implicitly (protocol)"]
+    );
+}
+
+#[test]
+fn a_name_on_the_right_of_a_type_alias_is_the_alias_it_defines() {
+    let repo = Repo {
+        family: Family::TypeScript,
+        base: files(&[
+            (
+                "src/f.ts",
+                "export function f(): number {\n  return 1;\n}\n",
+            ),
+            (
+                "src/h.ts",
+                "import { f } from \"./f\";\n\nexport type Handler = typeof f;\n",
+            ),
+        ]),
+        change: files(&[(
+            "src/f.ts",
+            "export function f(): number {\n  return 2;\n}\n",
+        )]),
+        caller: None,
+        definition: "src/f.ts".to_string(),
+        symbol: "f".to_string(),
+    };
+    let (_, _, lines) = shadow_of(repo);
+    let aliased: Vec<&Value> = of(&lines, "src/f.ts::f", "head")
+        .into_iter()
+        .filter(|l| l["file"] == "src/h.ts" && l["line"] == 3 && l["outcome"] == "alias")
+        .collect();
+    assert_eq!(aliased.len(), 1, "{lines:?}");
+    assert_eq!(aliased[0]["basis"], "type_alias");
+    assert!(
+        aliased[0]["detail"]
+            .as_str()
+            .expect("detail")
+            .contains("Name(\"Handler\")"),
+        "{}",
+        aliased[0]
+    );
 }
