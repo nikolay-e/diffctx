@@ -39,6 +39,7 @@ const SCOPES: &[(&str, Option<&[&str]>)] = &[
     ("change_class.rs", None),
     ("parsers/mod.rs", None),
     ("parsers/tree_sitter_strategy.rs", None),
+    ("parsers/tree_sitter_strategy/node_kind.rs", None),
     (LANG_CONFIG_FILE, None),
     ("facts/lexical.rs", None),
     ("facts/lang/mod.rs", None),
