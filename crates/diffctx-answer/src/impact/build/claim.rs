@@ -204,9 +204,17 @@ pub(super) fn settle(
                 || untraced.unread.could_spell(
                     diffctx_resolve::vocabulary::family::Group::of_name(&rel(state, core.path())),
                 ));
-    let coverage = search_coverage(verdict.as_ref(), unresolved.as_ref(), outside)
-        .with(computed.then_some(decide::gap::Gap::NotTraced))
-        .with(unsearched.then_some(decide::gap::Gap::NameUnsearched));
+    let coverage = match &c.class_use {
+        Some(class) => class.coverage(match &unresolved {
+            Some(Unknown::Unfinished { stops }) => Some(decide::gap::Gap::Stopped {
+                reasons: stops.clone(),
+            }),
+            _ => None,
+        }),
+        None => search_coverage(verdict.as_ref(), unresolved.as_ref(), outside)
+            .with(computed.then_some(decide::gap::Gap::NotTraced))
+            .with(unsearched.then_some(decide::gap::Gap::NameUnsearched)),
+    };
     // No test found is an absence only from a closed search: the callers
     // accounted for and every definition above them. An open search says the
     // tests are not established; incomplete callers say nothing here, their

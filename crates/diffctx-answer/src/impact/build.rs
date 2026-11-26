@@ -18,6 +18,7 @@ use super::unanalysed::later_needles;
 
 mod apart;
 mod claim;
+mod class_use;
 mod context;
 mod contract;
 mod definition;

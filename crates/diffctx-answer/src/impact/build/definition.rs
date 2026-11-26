@@ -27,6 +27,7 @@ pub(super) struct Core<'a, 't> {
     pub(super) core_lang: &'static str,
     pub(super) binding_model: bool,
     pub(super) ambiguous: bool,
+    pub(super) class_use: Option<super::class_use::ClassUse>,
 }
 
 /// `None` when the definition is layout only, or only borders a deleted one: nothing is traced for it.
@@ -126,5 +127,6 @@ pub(super) fn read<'a, 't>(
         core_lang,
         binding_model,
         ambiguous,
+        class_use: super::class_use::of(cx, core),
     })
 }

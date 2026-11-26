@@ -43,6 +43,8 @@ pub(super) struct Impact<'a> {
     hunk_lines: FxHashMap<&'a str, Vec<(u32, u32)>>,
     scala_import_memo: RefCell<FxHashMap<String, Rc<Vec<Import>>>>,
     metric_readers: OnceCell<Vec<Counterpart>>,
+    /// Whether a file of the run could build a class name at run time.
+    pub(super) composed: OnceCell<bool>,
 }
 
 /// What the phases have found of the range, in the order they report it.
@@ -157,6 +159,7 @@ impl<'a> Impact<'a> {
             hunk_lines,
             scala_import_memo: RefCell::default(),
             metric_readers: OnceCell::new(),
+            composed: OnceCell::new(),
         }
     }
 

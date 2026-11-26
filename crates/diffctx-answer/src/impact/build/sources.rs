@@ -132,7 +132,7 @@ pub(super) fn of<'a>(cx: &Impact<'a>, t: &Targets<'a>, c: &Core<'a, '_>) -> Sour
     // over the language says the same thing on every definition ("too common
     // to trace"), so nothing is searched for it: a text row per definition
     // would be the noise that line folds.
-    if py.is_none() && !ambiguous {
+    if py.is_none() && !ambiguous && c.class_use.is_none() {
         let _t = diffctx_base::profile::detail("impact.callers.text", "");
         let names = symbol.map_or_else(Vec::new, names_of);
         for path in spelling_files(state, cells, &rel(state, core.path()), &names) {
@@ -174,7 +174,7 @@ pub(super) fn of<'a>(cx: &Impact<'a>, t: &Targets<'a>, c: &Core<'a, '_>) -> Sour
     let mut also_changed: Vec<String> = Vec::new();
     let mut possibly_also_changed: Vec<String> = Vec::new();
     // Uses on lines no fragment owns keep the resolver's own row.
-    let mut loose: Vec<Caller> = Vec::new();
+    let mut loose: Vec<Caller> = c.class_use.iter().flat_map(|u| u.readers.clone()).collect();
     for u in verdict.iter().flat_map(|v| v.uses.iter()) {
         if u.relation == diffctx_resolve::resolve::Relation::Reexports && !u.also_changed {
             loose.push(cell_row(u));

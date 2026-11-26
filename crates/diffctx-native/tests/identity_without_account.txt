@@ -82,7 +82,8 @@ impact/web/web_astro_collection_entry_is_read_by_its_page proven only a Markdown
 impact/web/web_astro_component_import_is_a_consumer proven Index.astro changes in markup only (<ul> to <ol>): its frontmatter declares no definition that changed
 impact/web/web_deleted_static_file_is_still_referenced_by_markup proven only portrait.jpg is deleted: a binary asset has no definition
 impact/web/web_removed_css_rule_is_still_used_by_markup proven global.css is no Language: a CSS rule is no definition
-symbol/web/web_symbol_css_class_and_its_markup_uses proven a CSS class is no definition: the symbol answer is text-only
+symbol/web/web_symbol_css_class_and_its_markup_uses proven global.css has no family in Family::ALL: a CSS class's markup reads are searched by class_use, outside occurrence accounting
+symbol/web/web_symbol_css_class_composed_in_a_script_keeps_its_reads_open proven global.css has no family in Family::ALL: a CSS class's markup reads are searched by class_use, outside occurrence accounting
 impact/typescript/ts_block_scoped_const_is_no_definition_called_from_a_sibling_block proven the changed const sits in a bare block of a script: a block-scoped local, no definition
 impact/typescript/ts_function_local_const_has_no_callers_in_other_files_or_languages proven the changed const is a local of a test callback: no definition changed
 impact/typescript/ts_loop_variable_in_a_top_level_block_is_not_a_changed_definition proven the changed lines are a loop and its variable in a top-level block: no definition changed

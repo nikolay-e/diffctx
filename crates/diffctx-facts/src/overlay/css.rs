@@ -1,6 +1,6 @@
 //! CSS, for the fragments of a stylesheet: a rule is named by the class it styles,
-//! which a rule fragment carries no name for. Who spells the class in markup is
-//! read by no cell: the answer says so.
+//! which a rule fragment carries no name for. Who reads the class in markup is the
+//! impact answer's class-use search, not a cell's.
 
 use diffctx_base::types::FragmentKind;
 use tree_sitter::Node;

@@ -290,6 +290,15 @@ impl Coverages {
         }
     }
 
+    /// The same coverages with one more reads gap, when there is one.
+    #[must_use]
+    pub(crate) fn with_reads(self, gap: Option<Gap>) -> Self {
+        Self {
+            calls: self.calls,
+            reads: self.reads.with(gap),
+        }
+    }
+
     pub(crate) const fn calls(&self) -> &Coverage {
         &self.calls
     }
