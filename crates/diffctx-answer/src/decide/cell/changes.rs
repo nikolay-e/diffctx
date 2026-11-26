@@ -14,7 +14,7 @@ use diffctx_facts::facts::{
     members_of, semantic_changes,
 };
 
-use diffctx_resolve::resolve::Definition;
+use diffctx_resolve::resolve::{Binding, Definition};
 
 use diffctx_resolve::vocabulary::family::{Family, Resolver};
 
@@ -384,41 +384,47 @@ impl Cell {
     }
 
     /// Whether the class holding `old` extends, through the head's bindings, the
-    /// class holding `new`: the member still resolves for the old class's callers.
+    /// one holding `new`: the old class's callers still reach the member.
     fn derives_from(&self, old: &DefKey, new: &DefKey) -> bool {
         let (Some(sub), Some(sup)) = (self.owner_class(old), self.owner_class(new)) else {
             return false;
         };
-        let mut down = vec![sup];
-        let mut at = 0;
+        let (mut down, mut at) = (vec![sup], 0);
         while let Some(base) = down.get(at).cloned() {
             at += 1;
-            for b in self.head.references_to(&base) {
-                let holder = self.key_in(b.file.as_str(), &b.from);
-                let class = |d: &Definition| {
-                    matches!(d.kind, DefKind::Class | DefKind::Interface | DefKind::Trait)
-                };
-                match holder.filter(|h| self.definition(h).is_some_and(class)) {
-                    Some(holder) if holder == sub => return true,
-                    Some(holder) if !down.contains(&holder) => down.push(holder),
-                    _ => {}
-                }
-            }
+            let found: Vec<_> = (self.head.references_to(&base).into_iter())
+                .filter_map(|b| self.extended_in_header(b))
+                .filter(|holder| !down.contains(holder))
+                .collect();
+            down.extend(found);
         }
-        false
+        down.contains(&sub)
     }
 
-    /// The head's class that holds the member.
+    /// The class that names the binding before its first member, so extends it.
+    fn extended_in_header(&self, b: &Binding) -> Option<DefKey> {
+        let key = self.key_in(b.file.as_str(), &b.from)?;
+        let class = self.definition(&key)?;
+        let body = (self.defs_by_file.get(class.file.as_str())?.iter())
+            .map(|at| self.head.definitions()[*at].span.bytes.start)
+            .filter(|at| (class.span.bytes.start + 1..class.span.bytes.end).contains(at))
+            .min();
+        (matches!(
+            class.kind,
+            DefKind::Class | DefKind::Interface | DefKind::Trait
+        ) && body.is_none_or(|start| b.site.bytes.start < start))
+        .then_some(key)
+    }
+
     fn owner_class(&self, member: &DefKey) -> Option<DefKey> {
         let (name, outer) = member.local.container.split_last()?;
-        let holds = |d: &&Definition| {
-            (&d.key.local.name, &d.key.local.container[..]) == (name, outer)
-                && (&d.key.project, &d.key.module) == (&member.project, &member.module)
-        };
-        self.head
-            .definitions()
-            .iter()
-            .find(holds)
+        (self.head.definitions().iter())
+            .find(|d| {
+                d.key.local.name == *name
+                    && d.key.local.container[..] == *outer
+                    && d.key.module == member.module
+                    && d.key.project == member.project
+            })
             .map(|d| d.key.clone())
     }
 
@@ -763,7 +769,6 @@ impl Cell {
         }
         struct Field<'a> {
             entry: &'a SemanticDef,
-            file: &'a RepoPath,
             declaration: Def,
         }
         let mut gone: Vec<Field<'_>> = Vec::new();
@@ -781,18 +786,13 @@ impl Cell {
                 declaration.kind,
                 DefKind::Field | DefKind::Variable | DefKind::Constant
             ) {
-                into.push(Field {
-                    entry,
-                    file,
-                    declaration,
-                });
+                into.push(Field { entry, declaration });
             }
         }
         let mut moved = HashSet::new();
         for from in &gone {
             for to in added.iter().filter(|to| {
-                to.file == from.file
-                    && to.entry.key.local.name == from.entry.key.local.name
+                to.entry.key.local.name == from.entry.key.local.name
                     && to.declaration.signature == from.declaration.signature
                     && to.declaration.body_hash == from.declaration.body_hash
                     && to.declaration.visibility == from.declaration.visibility
