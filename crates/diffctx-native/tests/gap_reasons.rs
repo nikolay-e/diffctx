@@ -192,3 +192,26 @@ fn a_deadline_stops_the_search_for_that_reason() {
         [serde_json::json!({"kind": "stopped", "reasons": ["deadline"]})]
     );
 }
+
+#[test]
+fn changed_statements_no_definition_holds_are_named_as_runs_of_lines() {
+    let tmp = repo(
+        &[(
+            "cfg.py",
+            "def f():\n    return 1\n\n\nregister(f)\nregister(f, 2)\n\nsetup(1)\n",
+        )],
+        &[(
+            "cfg.py",
+            "def f():\n    return 1\n\n\nregister(f, 3)\nregister(f, 4)\n\nsetup(2)\n",
+        )],
+    );
+    let doc: serde_json::Value =
+        serde_json::from_slice(&impact(tmp.path(), "json").stdout).expect("impact JSON");
+    assert_eq!(
+        doc["coverage"]["unanalysed"]["items"],
+        serde_json::json!([{
+            "path": "cfg.py", "language": "python", "reason": "outside_definitions",
+            "lines": [5, 6, 8, 8]
+        }])
+    );
+}
