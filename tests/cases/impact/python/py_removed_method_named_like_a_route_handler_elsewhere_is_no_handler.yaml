@@ -1,0 +1,43 @@
+name: py_removed_method_named_like_a_route_handler_elsewhere_is_no_handler
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [python, flask, route, removed, coverage]
+repo:
+  initial_files:
+    app.py: |
+      from flask import Flask
+
+      app = Flask(__name__)
+
+
+      class Users:
+          @app.route("/u")
+          def list(self):
+              return 1
+
+
+      class Items:
+          def list(self):
+              return 2
+  changed_files:
+    app.py: |
+      from flask import Flask
+
+      app = Flask(__name__)
+
+
+      class Users:
+          @app.route("/u")
+          def list(self):
+              return 1
+
+
+      class Items:
+          pass
+  commit_message: "app: drop Items.list"
+expect:
+  removed: [list]
+  coverage:
+    app.py::Items.list:
+      calls: complete

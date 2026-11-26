@@ -1,0 +1,27 @@
+name: py_removed_route_handler_is_reached_over_http_and_not_traced
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [python, flask, route, removed, coverage]
+repo:
+  initial_files:
+    app.py: |
+      from flask import Flask
+
+      app = Flask(__name__)
+
+
+      @app.route("/u")
+      def show():
+          return 1
+  changed_files:
+    app.py: |
+      from flask import Flask
+
+      app = Flask(__name__)
+  commit_message: "app: drop the show route"
+expect:
+  removed: [show]
+  coverage:
+    app.py::show:
+      calls: partial
