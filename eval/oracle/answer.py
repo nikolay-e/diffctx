@@ -60,6 +60,7 @@ class Answer:
     # answers do: every listed list may be one of the cut ones.
     truncated_unattributed: int = 0
     truncated: int = 0  # callers the cap dropped, wherever they were (the answer's top-level count)
+    deleted: set[str] = field(default_factory=set)  # files it reports deleted: the definitions in them went with the file
 
 
 def parse_answer(data: dict, resolve: Resolver) -> Answer:

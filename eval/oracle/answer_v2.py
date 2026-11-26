@@ -97,6 +97,8 @@ def parse_v2(data: dict, resolve: Resolver) -> Answer:
     coverage = data.get("coverage", {})
     stopped = [gap for gap in coverage.get("scope", {}).get("gaps", []) if gap["kind"] == "stopped"]
     shed_all = int(data.get("summary", {}).get("shed", 0) or 0)
+    deleted = {item["path"] for item in (data.get("deleted_modules") or {}).get("items", [])}
+    deleted |= set(((data.get("inventory") or {}).get("deleted") or {}).get("items", []))
     return Answer(
         targets=targets,
         limits=[json.dumps(limit, sort_keys=True) for limit in [*coverage.get("limits", []), *stopped]],
@@ -105,4 +107,5 @@ def parse_v2(data: dict, resolve: Resolver) -> Answer:
         unnamed_omitted=unnamed,
         truncated_unattributed=0 if attributed else shed_all,
         truncated=shed_all,
+        deleted=deleted,
     )

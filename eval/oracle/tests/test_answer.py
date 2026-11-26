@@ -20,9 +20,12 @@ class Resolve:
         return f"{path}::span:{lines}"
 
 
+V2_ONLY = ("named", "deleted")
+
+
 def normal(value):
     if isinstance(value, dict):
-        return {k: normal(v) for k, v in sorted(value.items()) if (k, v) != ("named", ())}  # `named` is read from v2 only
+        return {k: normal(v) for k, v in sorted(value.items()) if not (k in V2_ONLY and not v)}  # read from v2 only
     if isinstance(value, (list, tuple)):
         return [normal(x) for x in value]
     if isinstance(value, set):

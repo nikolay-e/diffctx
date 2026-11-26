@@ -682,3 +682,37 @@ def test_a_type_satisfying_a_changed_interface_inside_the_range_is_a_weak_caller
     cells, _ = compare(iface, truth, found)
 
     assert (cells[0]["truth"], cells[0]["tp_weak"], cells[0]["fn"], cells[0]["incomplete_complete"]) == (1, 1, 0, 0)
+
+
+V2_DOCUMENT = "diffctx.impact.v2"
+
+
+def test_a_definition_of_a_file_the_answer_reports_deleted_went_with_it_and_is_named_not_lost():
+    """cli cc200ffd56: `deleted_modules` lists the file with its definition count and `inventory.deleted` its path."""
+    gone = Definition("old/helpers.go", "function", "TestOld", (), 11, 69, 10, 5, "()", "h", "s")
+    kept = Definition("old/other.go", "function", "TestKept", (), 1, 3, 0, 5, "()", "h", "s")
+    listed = {"schema": V2_DOCUMENT, "deleted_modules": {"total": 1, "items": [{"path": "old/helpers.go", "definitions": 5}]}}
+    inventory = {"schema": V2_DOCUMENT, "inventory": {"deleted": {"total": 1, "items": ["old/helpers.go"]}}}
+
+    for data in (listed, inventory):
+        answered = parse_answer(data, RESOLVE)
+        assert missing_definition(gone, answered) is None
+        assert missing_definition(kept, answered) is not None  # only the file it reports deleted
+
+
+def test_a_definition_listed_as_also_changed_beside_another_is_named_even_when_it_has_no_entry():
+    """httpx ef06f7d076: `Receive` rides in the `also_changed` of `Message` and appears nowhere else."""
+    message = {"path": "tests/conftest.py", "symbol": "Message", "lines": "51-51", "also_changed": [{"path": "tests/conftest.py", "symbol": "Receive", "lines": "52-52"}]}  # fmt: skip
+    receive = Definition("tests/conftest.py", "variable", "Receive", (), 52, 52, 51, 0, "", "h", "s")
+    send = Definition("tests/conftest.py", "variable", "Send", (), 53, 53, 52, 0, "", "h", "s")
+    defs = {
+        "tests/conftest.py": [
+            Definition("tests/conftest.py", "variable", "Message", (), 51, 51, 50, 0, "", "h", "s"),
+            receive,
+            send,
+        ]
+    }
+    answered = parse_answer({"schema": V2_DOCUMENT, "definitions": [message]}, make_resolver(lambda path: defs.get(path, [])))  # fmt: skip
+
+    assert missing_definition(receive, answered) is None
+    assert missing_definition(send, answered) is not None  # the one it names nowhere is still lost
