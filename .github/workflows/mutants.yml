@@ -35,7 +35,7 @@ name: mutants
         type: boolean
         default: true
       per_job:
-        description: 'Survivors per heavy job, empty for 27 (raised until the jobs fit the 40 runner slots)'
+        description: 'Survivors per heavy job, empty for 27 (raised until they fit 40 jobs, run 20 at a time)'
         default: ''
       reuse:
         description: 'Run id whose fast and heavy verdicts count as done (skips the fast stage); empty starts fresh'
@@ -157,6 +157,8 @@ jobs:
     timeout-minutes: 300
     strategy:
       fail-fast: false
+      # The 40 concurrent slots are the whole account's: one run leaves half to every other repository.
+      max-parallel: 20
       matrix: ${{ fromJson(needs.plan.outputs.matrix) }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
@@ -277,6 +279,8 @@ jobs:
     timeout-minutes: 355
     strategy:
       fail-fast: false
+      # The 40 concurrent slots are the whole account's: one run leaves half to every other repository.
+      max-parallel: 20
       matrix: ${{ fromJson(needs.survive.outputs.matrix) }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
