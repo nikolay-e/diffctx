@@ -169,23 +169,27 @@ enum Mode {
     Symbol,
 }
 
-// A seed as a repository.
+// A seed as a repository. The answer prints the directory's name and the token
+// cap counts it, so at the cap edge a longer name sheds one more caller (counted,
+// never silent): every repository a property compares lives at `<tmp>/repo`.
 struct Built {
-    dir: TempDir,
+    tmp: TempDir,
     seed: Seed,
 }
 
 impl Built {
     fn new(seed: Seed) -> Self {
-        let dir = TempDir::new().expect("tempdir");
-        seed.commit_into(dir.path());
-        Self { dir, seed }
+        let tmp = TempDir::new().expect("tempdir");
+        let work = tmp.path().join("repo");
+        std::fs::create_dir(&work).expect("mkdir");
+        seed.commit_into(&work);
+        Self { tmp, seed }
     }
 
     fn ask(&self, mode: Mode, extra: &[&str], env: &[(&str, &str)]) -> Result<Value, String> {
         let symbol = format!("{}:{}", self.seed.target_path, self.seed.target);
         let mut command = diffctx();
-        command.current_dir(self.dir.path()).arg(".");
+        command.current_dir(self.tmp.path().join("repo")).arg(".");
         match mode {
             Mode::Impact => command.args(["--diff", RANGE, "--mode", "impact"]),
             Mode::Symbol => command.args(["--symbol", symbol.as_str()]),
@@ -969,10 +973,12 @@ fn every_family_has_a_seed_with_a_caller_and_a_control_without() {
 #[test]
 fn removed_definition_with_a_surviving_reference_is_never_an_absence() {
     for removal in removals() {
-        let dir = TempDir::new().expect("tempdir");
-        removal.commit_into(dir.path());
+        let tmp = TempDir::new().expect("tempdir");
+        let dir = tmp.path().join("repo");
+        std::fs::create_dir(&dir).expect("mkdir");
+        removal.commit_into(&dir);
         let out = diffctx()
-            .current_dir(dir.path())
+            .current_dir(&dir)
             .args([".", "--diff", RANGE, "--mode", "impact"])
             .args(["-f", "json", "-q", "--unfold"])
             .env("GIT_CONFIG_GLOBAL", "/dev/null")
