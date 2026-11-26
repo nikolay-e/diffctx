@@ -100,7 +100,7 @@ impl Engine<'_> {
             let Receiver::Typed(owner) = &invocation.receiver else {
                 continue;
             };
-            let site = self.site(*g, &invocation.enclosing);
+            let site = self.site(*g, super::scope_path(&invocation.enclosing));
             if !matches!(self.macro_outcome(&site, invocation), Outcome::Found(m, _) if m == definition)
             {
                 continue;

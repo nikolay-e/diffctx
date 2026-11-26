@@ -222,9 +222,18 @@ struct DefRec {
     /// The container beyond the modules: empty for an item of a module, a type
     /// (or trait) for its member, a function for an item local to it.
     rest: Vec<Name>,
+    /// The path written before the type name of the `impl` a member sits in
+    /// (`super` of `impl super::Foo`).
+    via: Vec<Name>,
 }
 
 impl DefRec {
+    /// The inline modules the definition sits in, within its file.
+    fn module_scope(&self) -> &[Name] {
+        let container = &self.def.local.container;
+        &container[..container.len() - self.rest.len()]
+    }
+
     fn is_member(&self) -> bool {
         matches!(
             self.def.kind,
@@ -256,9 +265,9 @@ struct Index {
     files_of: HashMap<usize, Vec<usize>>,
     /// The groups of members, by the type's name.
     groups_named: HashMap<Name, Vec<(usize, Vec<usize>)>>,
-    /// `impl Tr for X` headers: the file, the module, the type's name and the
+    /// `impl Tr for X` headers: the file, the scope, the type's name and the
     /// trait's reference.
-    impls: Vec<(usize, usize, Name, Ref)>,
+    impls: Vec<(usize, Vec<Name>, Name, Ref)>,
     /// Macro invocations made as items of an `impl`: the file and the reference,
     /// whose receiver is that impl's type.
     expansions: Vec<(usize, Ref)>,
@@ -440,27 +449,38 @@ impl Index {
                 _ => {}
             }
         }
-        let mut recs: Vec<(Def, usize, Vec<Name>)> = Vec::new();
+        let mut recs: Vec<(Def, usize, Vec<Name>, Vec<Name>)> = Vec::new();
+        // The path each type name was last written with in a module's scope: an
+        // `impl` writes its type just before its members.
+        let mut written: HashMap<(Vec<Name>, Name), Vec<Name>> = HashMap::new();
         for fact in &facts.blob.facts {
             match fact {
                 Fact::Definition(def) => {
                     names.insert(def.local.name.clone());
                     let container = &def.local.container;
-                    let mut home = module;
-                    let mut taken = 0;
-                    while taken < container.len() && inline.contains(&container[..=taken]) {
-                        home = self.child_module(home, container[taken].as_str());
-                        taken += 1;
-                    }
-                    recs.push((def.clone(), home, container[taken..].to_vec()));
+                    let (home, taken) = self.home_of(module, container, &inline);
+                    let rest = container[taken..].to_vec();
+                    let via = match rest.as_slice() {
+                        [owner] if !matches!(def.kind, DefKind::Field | DefKind::EnumMember) => {
+                            written
+                                .get(&(container[..taken].to_vec(), owner.clone()))
+                                .map_or_else(Vec::new, Clone::clone)
+                        }
+                        _ => Vec::new(),
+                    };
+                    recs.push((def.clone(), home, rest, via));
                 }
                 Fact::Reference(r) => {
                     names.insert(r.name.clone());
                     names.extend(r.qualifier.iter().cloned());
+                    if r.use_kind == UseKind::TypeUse {
+                        let scope = (scope_path(&r.enclosing), r.name.clone());
+                        written.insert(scope, r.qualifier.clone());
+                    }
                 }
                 Fact::Import(import) => {
                     let scope = scope_path(&import.enclosing);
-                    let home = self.home_of(module, &scope, &inline);
+                    let (home, _) = self.home_of(module, &scope, &inline);
                     self.add_import(import, scope, home, &mut imports, &mut names);
                 }
                 _ => {}
@@ -468,7 +488,7 @@ impl Index {
         }
         // Inline modules a definition does not name (an empty `mod m {}`) still
         // exist; the definitions make them.
-        for (def, home, rest) in recs {
+        for (def, home, rest, via) in recs {
             let id = self.defs.len();
             let key = facts.key(&def.local);
             if def.kind == DefKind::Module && rest.is_empty() {
@@ -482,6 +502,7 @@ impl Index {
                 key,
                 home,
                 rest: rest.clone(),
+                via,
             };
             if rest.is_empty() {
                 self.items.push(home, &rec.def.local.name, id);
@@ -523,8 +544,8 @@ impl Index {
                     if let Scope::Def(subject) = &r.enclosing {
                         if subject.ns == Namespace::Type && subject.disambig.is_none() {
                             let scope = subject.container.clone();
-                            let home = self.home_of(module, &scope, &inline);
-                            self.impls.push((at, home, subject.name.clone(), r.clone()));
+                            self.impls
+                                .push((at, scope, subject.name.clone(), r.clone()));
                         }
                     }
                 }
@@ -548,15 +569,21 @@ impl Index {
         });
     }
 
-    /// The module a scope path leads to through the file's inline modules.
-    fn home_of(&mut self, module: usize, scope: &[Name], inline: &HashSet<Vec<Name>>) -> usize {
+    /// The module a scope path leads to through the file's inline modules, and
+    /// how many of its names those are.
+    fn home_of(
+        &mut self,
+        module: usize,
+        scope: &[Name],
+        inline: &HashSet<Vec<Name>>,
+    ) -> (usize, usize) {
         let mut home = module;
         let mut taken = 0;
         while taken < scope.len() && inline.contains(&scope[..=taken]) {
             home = self.child_module(home, scope[taken].as_str());
             taken += 1;
         }
-        home
+        (home, taken)
     }
 
     fn add_import(
@@ -602,10 +629,14 @@ impl Index {
     /// Marks the re-exports and indexes what needs every file read.
     fn settle(&mut self) {
         for ((home, name), ids) in &self.groups {
-            self.groups_named
-                .entry(name.clone())
-                .or_default()
-                .push((*home, ids.clone()));
+            let mut ids = ids.clone();
+            ids.sort_by_key(|id| &self.defs[*id].via);
+            for group in ids.chunk_by(|a, b| self.defs[*a].via == self.defs[*b].via) {
+                self.groups_named
+                    .entry(name.clone())
+                    .or_default()
+                    .push((*home, group.to_vec()));
+            }
         }
         for file in &mut self.files {
             let exports: Vec<(&Name, Option<&Name>)> = file
@@ -773,8 +804,7 @@ impl<'a> Engine<'a> {
 
     reachable_by_project!();
 
-    fn site(&self, f: usize, scope: &Scope) -> Site {
-        let path = scope_path(scope);
+    fn site(&self, f: usize, path: Vec<Name>) -> Site {
         let mut module = self.ix.files[f].module;
         // The inline modules the scope passes through.
         let mut taken = 0;
@@ -965,21 +995,11 @@ impl<'a> Engine<'a> {
         // Guard against a cycle: the name is unresolved while it is looked up.
         self.imported.borrow_mut().insert(key, None);
         self.guards.enter(lookup::IMPORT, f, at);
-        let site = Site {
-            file: f,
-            module: import.module,
-            scope: import.scope.clone(),
-        };
-        let found = self.walk_import(&site, &import.segs, want, depth + 1);
+        let site = self.site(f, import.scope.clone());
+        let found = self.walk(&site, &import.segs, want, depth + 1);
         self.guards.leave(lookup::IMPORT, f, at);
         self.imported.borrow_mut().insert(key, found);
         found
-    }
-
-    /// An import's path: its first segment is a crate, `crate`, `self`,
-    /// `super`, or a name of the module around it.
-    fn walk_import(&self, site: &Site, segs: &[Name], want: Want, depth: usize) -> Option<Ent> {
-        self.walk(site, segs, want, depth)
     }
 
     /// The head segment of a path.
@@ -1084,7 +1104,6 @@ impl<'a> Engine<'a> {
                     DefKind::Struct | DefKind::Enum | DefKind::Trait => {
                         self.member_named(d, seg).map(Ent::Def)
                     }
-                    DefKind::Module => None,
                     _ => None,
                 }
             }
@@ -1127,11 +1146,7 @@ impl<'a> Engine<'a> {
 
     fn def_site(&self, d: usize) -> Site {
         let rec = &self.ix.defs[d];
-        Site {
-            file: rec.file,
-            module: rec.home,
-            scope: rec.def.local.container.clone(),
-        }
+        self.site(rec.file, rec.def.local.container.clone())
     }
 
     /// The type a written type name stands for, where `site` writes it.
@@ -1189,20 +1204,17 @@ impl<'a> Engine<'a> {
         let mut found = Vec::new();
         for (home, ids) in self.ix.groups_named.get(&name).into_iter().flatten() {
             // The group is this type's when the name resolves to it from there.
-            let first = ids[0];
-            let site = Site {
-                file: self.ix.defs[first].file,
-                module: *home,
-                scope: Vec::new(),
-            };
+            let first = &self.ix.defs[ids[0]];
+            let site = self.site(first.file, first.module_scope().to_vec());
             let same = self.ix.mods[*home].krate == self.ix.mods[rec.home].krate
-                || self.reachable(self.ix.defs[first].file, t);
+                || self.reachable(first.file, t);
             if !same {
                 continue;
             }
+            let written: Vec<Name> = first.via.iter().chain([&name]).cloned().collect();
             let here = matches!(
-                self.find(&site, &name, Want::Type, 0),
-                Some((Ent::Def(d), _)) if self.follow_alias(d, 0) == Some(t) || d == t
+                self.walk(&site, &written, Want::Type, 0),
+                Some(Ent::Def(d)) if self.follow_alias(d, 0) == Some(t) || d == t
             );
             if here {
                 found.extend(ids.iter().copied());
@@ -1280,12 +1292,8 @@ impl<'a> Engine<'a> {
         }
         *self.implemented.borrow_mut() = Traits::Building;
         let mut table: HashMap<usize, Vec<usize>> = HashMap::new();
-        for (file, home, type_name, tr) in &self.ix.impls {
-            let site = Site {
-                file: *file,
-                module: *home,
-                scope: Vec::new(),
-            };
+        for (file, scope, type_name, tr) in &self.ix.impls {
+            let site = self.site(*file, scope.clone());
             let Some(subject) = self.type_named(&site, type_name) else {
                 continue;
             };
@@ -1447,7 +1455,7 @@ impl<'a> Engine<'a> {
             && !r.name.as_str().ends_with('!')
             && r.qualifier.as_slice() != [Name::new("Self")]
         {
-            let site = self.site(f, &r.enclosing);
+            let site = self.site(f, scope_path(&r.enclosing));
             if let Some(Ent::Def(d)) = self.walk(&site, &r.qualifier, Want::Type, 0) {
                 if matches!(
                     self.ix.defs[d].def.kind,
@@ -1527,7 +1535,7 @@ impl<'a> Engine<'a> {
     }
 
     fn outcome(&self, f: usize, r: &Ref) -> Outcome {
-        let site = self.site(f, &r.enclosing);
+        let site = self.site(f, scope_path(&r.enclosing));
         if r.name.as_str().ends_with('!') {
             return self.macro_outcome(&site, r);
         }
@@ -1699,7 +1707,7 @@ impl<'a> Engine<'a> {
         }
         match receiver {
             Receiver::Typed(t) | Receiver::New(t) => t.as_str().rsplit("::").next().map(Name::new),
-            Receiver::SelfType => self.owner_name(site),
+            Receiver::SelfType => self.owner_at(site).map(|at| site.scope[at].clone()),
             _ => None,
         }
     }
@@ -1745,7 +1753,7 @@ impl<'a> Engine<'a> {
     /// not hold and a trait object say nothing of ours. A member its type lacks
     /// is the line a removal strands: it is bound to nothing, as the last name is.
     fn chain_reads(&self, f: usize, r: &Ref) -> Vec<(usize, Name, Resolution)> {
-        let site = self.site(f, &r.enclosing);
+        let site = self.site(f, scope_path(&r.enclosing));
         let (mut at, skip, evidence) = match self.chain_start(&site, r, &r.receiver) {
             Some(start) => start,
             None if r.receiver == Receiver::Unknown => (Typed::Unknown, 1, EvidenceKind::SameScope),
@@ -1817,15 +1825,11 @@ impl<'a> Engine<'a> {
     fn self_typed(&self, site: &Site) -> Typed {
         // The method's container is the type or trait the `impl` or the trait
         // names.
-        let Some(owner) = self.owner_name(site) else {
+        let Some(at) = self.owner_at(site) else {
             return Typed::Unknown;
         };
-        let owner_site = Site {
-            file: site.file,
-            module: site.module,
-            scope: Vec::new(),
-        };
-        match self.find(&owner_site, &owner, Want::Type, 0) {
+        let owner_site = self.site(site.file, site.scope[..at].to_vec());
+        match self.find(&owner_site, &site.scope[at], Want::Type, 0) {
             Some((Ent::Def(d), _)) => match self.follow_alias(d, 0) {
                 Some(t) => self.typed_def(t),
                 None => Typed::Unknown,
@@ -1835,20 +1839,15 @@ impl<'a> Engine<'a> {
         }
     }
 
-    /// The type name that holds the method the site is in: the container before
-    /// the method's own name.
-    fn owner_name(&self, site: &Site) -> Option<Name> {
+    /// Where in the site's scope the type name that holds the method the site is
+    /// in stands: the container before the method's own name.
+    fn owner_at(&self, site: &Site) -> Option<usize> {
         // The scope path is the method's container then its name; closures and
         // nested functions lengthen it. Walk out until a name that has members.
-        for len in (1..=site.scope.len()).rev() {
-            if len >= 2 {
-                let owner = &site.scope[len - 2];
-                if self.ix.groups.contains_key(&(site.module, owner.clone())) {
-                    return Some(owner.clone());
-                }
-            }
-        }
-        None
+        (0..site.scope.len().saturating_sub(1)).rev().find(|&at| {
+            let owner = site.scope[at].clone();
+            self.ix.groups.contains_key(&(site.module, owner))
+        })
     }
 
     fn call_result(&self, site: &Site, path: &[Name]) -> Typed {
@@ -1976,7 +1975,7 @@ impl<'a> Engine<'a> {
     // ---- imports
 
     fn import(&self, f: usize, import: &Import, out: &mut Vec<Binding>) {
-        let site = self.site(f, &import.enclosing);
+        let site = self.site(f, scope_path(&import.enclosing));
         let head: Vec<Name> = if import.module.as_str().is_empty() {
             Vec::new()
         } else {

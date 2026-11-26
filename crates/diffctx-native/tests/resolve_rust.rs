@@ -687,26 +687,6 @@ const RED: &[(&str, &str)] = &[
      resolver binds the base as the base is, `classify` calls it there, and which of the base's \
      callers still reach a definition at the head is the cell's stale-use rule (decide.rs)",
     ),
-    (
-        "impact/rust/rust_method_of_an_impl_in_an_inline_module_reaches_its_caller",
-        "the type's member lookup skips the `use` an inline module writes, so the call binds to no member of the impl written there",
-    ),
-    (
-        "impact/rust/rust_method_moved_into_an_inline_module_impl_is_not_removed",
-        "the type's member lookup skips the `use` an inline module writes, so the call binds to no member of the impl written there",
-    ),
-    (
-        "impact/rust/rust_method_moved_into_a_pub_inline_module_impl_is_not_removed",
-        "the type's member lookup skips the `use` an inline module writes, so the call binds to no member of the impl written there",
-    ),
-    (
-        "impact/rust/rust_method_moved_into_an_inline_module_impl_of_a_super_path_is_not_removed",
-        "the type's member lookup skips the `use` an inline module writes, so the call binds to no member of the impl written there",
-    ),
-    (
-        "impact/rust/rust_method_moved_into_an_inline_module_impl_of_a_crate_import_is_not_removed",
-        "the type's member lookup skips the `use` an inline module writes, so the call binds to no member of the impl written there",
-    ),
 ];
 
 #[test]
