@@ -288,6 +288,18 @@ fn a_semicolon_inside_a_block_of_the_initializer_does_not_end_the_statement() {
     );
 }
 
+#[test]
+fn a_closure_with_a_block_body_is_held_once_its_statement_is_over() {
+    let found = outcomes_in_lib(
+        "mod util;\n\npub fn run() -> i64 {\n    let total = |x: i64| {\n        x + 1\n    };\n    total(1)\n}\n",
+    );
+    assert_eq!(
+        local_site_line(only(&found, 7)),
+        Some(4),
+        "the call after the closure's block and its `;` is the closure's: {found:#?}"
+    );
+}
+
 fn java_item_beside(method: &str) -> FileOutcomes {
     let source = format!(
         "package shop;\n\npublic class Other {{\n    void run(Item first) {{\n{method}    }}\n}}\n"
