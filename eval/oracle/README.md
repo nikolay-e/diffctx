@@ -68,6 +68,22 @@ with `--directory`: the repository root has its own pytest configuration.
 `DIFFCTX_BIN=... python run.py selftest` runs the engine against fixtures with
 a body-only edit, a deletion and a move.
 
+## Blind sets
+
+`corpus.toml` is a regression set: its rows were read and the engine and the
+judge were tuned on them. Acceptance uses `seeds/seed-<n>.toml`, sets drawn by
+the rule written at the top of `seeds.py` (a pool by stars per language,
+feasibility from metadata, a hash of a CSPRNG seed and the repository name, no
+replacement between sets; the frozen pool and the seeds are `seeds/pool.json`
+and `seeds/draw.toml`). A seed file `extends` corpus.toml for counts and tools;
+`ORACLE_CORPUS=seeds/seed-2.toml` points every command at it.
+
+A set with `holdout = true` is always measured blind: `run.py lane --counters
+DIR` prints no row, and `run.py blind` joins the counters (incomplete_complete,
+false_fold, silent_loss and the coverage counts per language, mode and budget)
+and gates them with `gates.toml`. `run.py lane --index-only` builds and caches
+the indexes without measuring. In CI see the header of `oracle.yml`.
+
 ## Thresholds and the verdict
 
 `gates.toml` holds every threshold the oracle judges by; no number lives in

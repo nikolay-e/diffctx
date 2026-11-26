@@ -25,6 +25,20 @@ name: oracle
 # the oracle starts it in a throwaway container (the runner's Docker) and never runs it on the runner itself. The JDKs
 # the toolchains name come from actions/setup-java and reach the container by read-only mount.
 #
+# The corpus is corpus.toml unless the round names another (`corpus` input, or a label on a pull request). The seed
+# sets in eval/oracle/seeds are blind oracle sets drawn by a written rule (eval/oracle/seeds.py): `oracle:seed-2`,
+# `oracle:seed-3` and `oracle:seed-4` measure one, and `oracle:index-seeds` only builds and caches the indexes of all
+# three (no engine, no measuring). A holdout (seed-3, seed-4) is always blind, and `blind` makes any round so: the
+# measure jobs write only counters (incomplete_complete, false_fold, silent_loss per language, mode and budget;
+# coverage counts), print no commit and no row, and upload only the counters; the parts with their rows never leave
+# the runner.
+#
+# The index cache key is a digest of what decides which snapshots are indexed and how (plan.py `index_key`): the
+# repository's pin, the indexer and toolchain pins, the sampling inputs. A run that changes none of them restores that
+# exact entry and saves nothing; only a miss saves, so one entry holds each index once. corpus.toml's first run also
+# restores the newest entry saved under the earlier per-run keys (`oracle-index-<repo>-<run>-<attempt>`), which are
+# never deleted here.
+#
 # Nothing here has a secret. Indexing runs third-party tooling, so every job holds a read-only token that is not
 # persisted into the checkout, and the oracle hands its indexers a scrubbed environment. The cargo target directory is
 # never cached: the indexes alone come close to the 10 GB a repository's caches share.
@@ -42,6 +56,22 @@ name: oracle
         default: fast
         type: choice
         options: [fast, full]
+      corpus:
+        description: 'the corpus file under eval/oracle; a holdout is always blind'
+        required: false
+        default: corpus.toml
+        type: choice
+        options: [corpus.toml, seeds/seed-2.toml, seeds/seed-3.toml, seeds/seed-4.toml]
+      blind:
+        description: 'only counters: no row in the report, the job logs or any artifact'
+        required: false
+        default: false
+        type: boolean
+      index_only:
+        description: 'build and cache the indexes without measuring (no engine is built)'
+        required: false
+        default: false
+        type: boolean
   schedule:
     - cron: '23 3 * * 1'
 
@@ -63,11 +93,19 @@ jobs:
       github.event_name != 'pull_request'
       || contains(github.event.pull_request.labels.*.name, 'oracle')
       || contains(github.event.pull_request.labels.*.name, 'oracle:full')
+      || contains(github.event.pull_request.labels.*.name, 'oracle:seed-2')
+      || contains(github.event.pull_request.labels.*.name, 'oracle:seed-3')
+      || contains(github.event.pull_request.labels.*.name, 'oracle:seed-4')
+      || contains(github.event.pull_request.labels.*.name, 'oracle:index-seeds')
     runs-on: ubuntu-latest
     timeout-minutes: 15
     outputs:
       scope: ${{ steps.plan.outputs.scope }}
       matrix: ${{ steps.plan.outputs.matrix }}
+      blind: ${{ steps.plan.outputs.blind }}
+      index_only: ${{ steps.plan.outputs.index_only }}
+      default_corpus: ${{ steps.plan.outputs.default_corpus }}
+      corpus: ${{ steps.plan.outputs.corpus }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
@@ -84,19 +122,42 @@ jobs:
       - name: One matrix entry per corpus repository
         id: plan
         env:
-          FULL_LABEL: ${{ contains(github.event.pull_request.labels.*.name, 'oracle:full') }}
-          REQUESTED: ${{ github.event.inputs.scope }}
+          LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
+          REQUESTED_SCOPE: ${{ github.event.inputs.scope }}
+          REQUESTED_CORPUS: ${{ github.event.inputs.corpus }}
+          REQUESTED_BLIND: ${{ github.event.inputs.blind }}
+          REQUESTED_INDEX_ONLY: ${{ github.event.inputs.index_only }}
         run: |
+          labelled() { jq -e --arg label "$1" 'index($label) != null' <<< "${LABELS:-[]}" > /dev/null; }
           scope=fast
-          if [ "$FULL_LABEL" = true ] || [ "$REQUESTED" = full ]; then scope=full; fi
+          corpora=("${REQUESTED_CORPUS:-corpus.toml}")
+          flags=()
+          if labelled oracle:full || [ "$REQUESTED_SCOPE" = full ]; then scope=full; fi
           case "$GITHUB_EVENT_NAME" in schedule | push) scope=full ;; esac
-          echo "scope=$scope" >> "$GITHUB_OUTPUT"
-          matrix="$(uv run --frozen --directory eval/oracle python run.py plan --scope "$scope")"
-          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+          [ "$REQUESTED_BLIND" = true ] && flags+=(--blind)
+          [ "$REQUESTED_INDEX_ONLY" = true ] && flags+=(--index-only)
+          for number in 2 3 4; do
+            if labelled "oracle:seed-$number"; then corpora=("seeds/seed-$number.toml"); scope=full; fi
+          done
+          if labelled oracle:index-seeds; then
+            corpora=(seeds/seed-2.toml seeds/seed-3.toml seeds/seed-4.toml)
+            flags+=(--index-only)
+            scope=full
+          fi
+          args=()
+          for file in "${corpora[@]}"; do args+=(--corpus "$file"); done
+          round="$(uv run --frozen --directory eval/oracle python run.py plan \
+            --scope "$scope" "${args[@]}" "${flags[@]}")"
+          {
+            echo "scope=$scope"
+            echo "matrix=$(jq -c .matrix <<< "$round")"
+            for key in blind index_only default_corpus corpus; do echo "$key=$(jq -r ".$key" <<< "$round")"; done
+          } >> "$GITHUB_OUTPUT"
 
   build:
     name: Build diffctx
     needs: plan
+    if: needs.plan.outputs.index_only != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
@@ -135,6 +196,7 @@ jobs:
   suites:
     name: YAML corpus, metamorphic and fault suites
     needs: plan
+    if: needs.plan.outputs.default_corpus == 'true' && needs.plan.outputs.index_only != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 180
     env:
@@ -199,6 +261,7 @@ jobs:
   metamorphic:
     name: Metamorphic ${{ matrix.family }}
     needs: plan
+    if: needs.plan.outputs.default_corpus == 'true' && needs.plan.outputs.index_only != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 120
     strategy:
@@ -264,13 +327,18 @@ jobs:
           if-no-files-found: warn
 
   measure:
-    name: Measure ${{ matrix.repo }}
+    name: ${{ needs.plan.outputs.index_only == 'true' && 'Index' || 'Measure' }} ${{ matrix.repo }}
     needs: [plan, build]
+    if: >-
+      ${{ !cancelled() && needs.plan.result == 'success'
+      && (needs.build.result == 'success' || needs.build.result == 'skipped') }}
     runs-on: ubuntu-latest
     timeout-minutes: 350
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    env:
+      ORACLE_CORPUS: ${{ matrix.corpus }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
@@ -283,12 +351,14 @@ jobs:
           echo "DIFFCTX_BIN=${RUNNER_TEMP}/bin/diffctx" >> "$GITHUB_ENV"
 
       - name: Get the binary built from this head
+        if: needs.plan.outputs.index_only != 'true'
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333  # v8.0.2
         with:
           name: diffctx-bin
           path: ${{ runner.temp }}/bin
 
       - name: Make it executable
+        if: needs.plan.outputs.index_only != 'true'
         run: chmod +x "$DIFFCTX_BIN" && "$DIFFCTX_BIN" --version
 
       - name: Set up uv
@@ -321,13 +391,13 @@ jobs:
             17
             21
 
-      - name: Restore the latest index of this repository
+      - name: Restore the indexes of this repository (the exact key, never a run's)
         id: index-cache
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
           path: ${{ runner.temp }}/oracle-cache/index/${{ matrix.repo }}
-          key: oracle-index-${{ matrix.repo }}-${{ github.run_id }}-${{ github.run_attempt }}
-          restore-keys: oracle-index-${{ matrix.repo }}-
+          key: ${{ matrix.index_key }}
+          restore-keys: ${{ matrix.legacy_prefix }}
 
       - name: Mark the moment the restored index is in place
         run: touch "$RUNNER_TEMP/index-restored"
@@ -337,39 +407,49 @@ jobs:
         timeout-minutes: 320
         env:
           FAST: ${{ matrix.fast }}
+          BLIND: ${{ needs.plan.outputs.blind }}
+          INDEX_ONLY: ${{ needs.plan.outputs.index_only }}
         run: |
           mkdir -p "$ORACLE_CACHE"
           flags=(--retry-failed)
-          if [ "$FAST" = true ]; then flags+=(--fast); fi
+          if [ "$INDEX_ONLY" = true ]; then
+            flags+=(--index-only)
+          else
+            flags+=(--out "$RUNNER_TEMP/part")
+            if [ "$FAST" = true ]; then flags+=(--fast); fi
+            if [ "$BLIND" = true ]; then flags+=(--counters "$RUNNER_TEMP/counters"); fi
+          fi
           uv run --frozen --directory eval/oracle python run.py lane \
             --lane "${{ matrix.lane }}" --repos "${{ matrix.repo }}" \
-            --job "$RUNNER_TEMP/job" --out "$RUNNER_TEMP/part" "${flags[@]}"
+            --job "$RUNNER_TEMP/job" "${flags[@]}"
 
       - name: What the index cache did
         id: index-changes
         if: ${{ !cancelled() }}
         env:
           MATCHED: ${{ steps.index-cache.outputs.cache-matched-key }}
+          EXACT: ${{ steps.index-cache.outputs.cache-hit }}
         run: |
           dir="$ORACLE_CACHE/index/${{ matrix.repo }}"
           indexed="$(find "$dir" -name meta.json -newer "$RUNNER_TEMP/index-restored" 2>/dev/null | wc -l | tr -d ' ')"
+          held="$(find "$dir" -name meta.json -print -quit 2>/dev/null)"
           size="$(du -sh "$dir" 2>/dev/null | cut -f1)"
-          echo "changed=$([ "$indexed" -gt 0 ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          echo "save=$([ "$EXACT" != true ] && [ -n "$held" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
           {
             echo "### ${{ matrix.repo }}"
             echo "- index cache: ${size:-none}, restored from: ${MATCHED:-nothing}"
             echo "- snapshots indexed in this run: ${indexed}"
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Save the index when this run changed it, under a new key
-        if: ${{ always() && steps.index-changes.outputs.changed == 'true' }}
+      - name: Save the indexes on a miss, under the key that names their inputs
+        if: ${{ always() && steps.index-changes.outputs.save == 'true' }}
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
           path: ${{ runner.temp }}/oracle-cache/index/${{ matrix.repo }}
-          key: oracle-index-${{ matrix.repo }}-${{ github.run_id }}-${{ github.run_attempt }}
+          key: ${{ matrix.index_key }}
 
       - name: Upload the default-budget part
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && needs.plan.outputs.blind != 'true' && needs.plan.outputs.index_only != 'true' }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
         with:
           name: oracle-part-default-${{ matrix.repo }}
@@ -378,7 +458,7 @@ jobs:
           if-no-files-found: warn
 
       - name: Upload the uncapped-budget part
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && needs.plan.outputs.blind != 'true' && needs.plan.outputs.index_only != 'true' }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
         with:
           name: oracle-part-uncapped-${{ matrix.repo }}
@@ -386,12 +466,23 @@ jobs:
           retention-days: 30
           if-no-files-found: warn
 
+      - name: Upload the counters of a blind round (the only thing of it that leaves the runner)
+        if: ${{ !cancelled() && needs.plan.outputs.blind == 'true' && needs.plan.outputs.index_only != 'true' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        with:
+          name: oracle-blind-${{ matrix.repo }}
+          path: ${{ runner.temp }}/counters
+          retention-days: 30
+          if-no-files-found: warn
+
   report:
     name: Report and gate
     needs: [plan, build, suites, metamorphic, measure]
-    if: ${{ !cancelled() && needs.plan.result == 'success' }}
+    if: ${{ !cancelled() && needs.plan.result == 'success' && needs.plan.outputs.index_only != 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      ORACLE_CORPUS: ${{ needs.plan.outputs.corpus }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
@@ -416,7 +507,21 @@ jobs:
           bin="$RUNNER_TEMP/artifacts/diffctx-bin/diffctx"
           uv run --frozen --directory eval/oracle python run.py selftest --bin "$bin"
 
+      - name: Join the counters of a blind round and gate every budget
+        if: needs.plan.outputs.blind == 'true'
+        env:
+          ARTIFACTS: ${{ runner.temp }}/artifacts
+          OUT: ${{ github.workspace }}/oracle-out
+        run: |
+          mkdir -p "$OUT"
+          status=0
+          uv run --frozen --directory eval/oracle python run.py blind \
+            --out "$OUT/blind" --gate "$ARTIFACTS"/oracle-blind-* || status=1
+          cat "$OUT/blind/blind.md" >> "$GITHUB_STEP_SUMMARY"
+          exit "$status"
+
       - name: Join the parts, report and gate both budgets
+        if: needs.plan.outputs.blind != 'true'
         env:
           ARTIFACTS: ${{ runner.temp }}/artifacts
           OUT: ${{ github.workspace }}/oracle-out

@@ -7,6 +7,7 @@ import sys
 
 import adjudicate
 import bench
+import blind
 import lane
 import measure
 import merge
@@ -38,6 +39,7 @@ COMMANDS = {
     "merge": merge.main,
     "bench": bench.main,
     "report": report.main,
+    "blind": blind.main,
     "adjudicate": adjudicate.main,
     "selftest": selftest.main,
 }
