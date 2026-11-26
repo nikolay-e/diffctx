@@ -1,5 +1,5 @@
 //! Reading what a range changed into changed definitions: the semantic changes, the moved declarations,
-//! lineages and the reshaped defaults.
+//! the reshaped defaults.
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::ops::Range;
@@ -10,8 +10,8 @@ use crate::fold::{self, Basis};
 
 use diffctx_facts::facts::{
     Def, DefChange, DefKey, DefKind, Delta, EntryKind, Export, Fact, Framework, HeldAs, Import,
-    ImportKind, Language, Lexical, Name, Origin, Scope, SemanticDef, Visibility, facts_of,
-    holds_data, members_of, semantic_changes,
+    ImportKind, Language, Lexical, Origin, Scope, SemanticDef, Visibility, facts_of, holds_data,
+    members_of, semantic_changes,
 };
 
 use diffctx_resolve::resolve::Definition;
@@ -22,9 +22,7 @@ use diffctx_snapshot::snapshot::{ChangeKind, RepoPath, SideTag};
 
 use super::super::verdict::{Reach, Subject};
 
-use super::super::changed::{
-    Changed, How, Whole, bases_in, is_label_definition, own_span, own_tokens_held,
-};
+use super::super::changed::{Changed, How, Whole, is_label_definition, own_span, own_tokens_held};
 
 use super::super::cells::merge;
 
@@ -360,11 +358,13 @@ impl Cell {
     /// Whether a Rust member that left its `impl` is still a member of its type:
     /// an `impl` of that type, in any module, has one of its name and kind. An
     /// inherent member is matched by an inherent one and a trait impl's by the
-    /// impl of the same trait. Elsewhere only a move (`moved_to`) keeps its owner,
-    /// the container its key names.
+    /// impl of the same trait. Elsewhere only a move (`moved_to`) keeps its owner:
+    /// the container its key names, or a class the old one derives from.
     fn moved_within_type(&self, key: &DefKey, kind: DefKind, moved_to: Option<&DefKey>) -> bool {
         let Resolver::Rust(head) = &self.head else {
-            return moved_to.is_some_and(|to| to.local.container == key.local.container);
+            return moved_to.is_some_and(|to| {
+                to.local.container == key.local.container || self.derives_from(key, to)
+            });
         };
         if key.local.container.is_empty() {
             return false;
@@ -381,6 +381,45 @@ impl Cell {
                 && d.key.local.disambig == key.local.disambig
                 && head.owner_of(&d.key) == Some(owner)
         })
+    }
+
+    /// Whether the class holding `old` extends, through the head's bindings, the
+    /// class holding `new`: the member still resolves for the old class's callers.
+    fn derives_from(&self, old: &DefKey, new: &DefKey) -> bool {
+        let (Some(sub), Some(sup)) = (self.owner_class(old), self.owner_class(new)) else {
+            return false;
+        };
+        let mut down = vec![sup];
+        let mut at = 0;
+        while let Some(base) = down.get(at).cloned() {
+            at += 1;
+            for b in self.head.references_to(&base) {
+                let holder = self.key_in(b.file.as_str(), &b.from);
+                let class = |d: &Definition| {
+                    matches!(d.kind, DefKind::Class | DefKind::Interface | DefKind::Trait)
+                };
+                match holder.filter(|h| self.definition(h).is_some_and(class)) {
+                    Some(holder) if holder == sub => return true,
+                    Some(holder) if !down.contains(&holder) => down.push(holder),
+                    _ => {}
+                }
+            }
+        }
+        false
+    }
+
+    /// The head's class that holds the member.
+    fn owner_class(&self, member: &DefKey) -> Option<DefKey> {
+        let (name, outer) = member.local.container.split_last()?;
+        let holds = |d: &&Definition| {
+            (&d.key.local.name, &d.key.local.container[..]) == (name, outer)
+                && (&d.key.project, &d.key.module) == (&member.project, &member.module)
+        };
+        self.head
+            .definitions()
+            .iter()
+            .find(holds)
+            .map(|d| d.key.clone())
     }
 
     /// Whether the range moved the definition's place in the module's surface: it
@@ -715,7 +754,7 @@ impl Cell {
     }
 
     /// A field declaration only one side has, with an equal one on the other
-    /// side in a class of the same lineage: it moved between a base and its
+    /// side in a class that derives from the other's: it moved between a base and its
     /// subclass (merged into the subclass, lifted into a new base), and the
     /// field is the same. Annotation-only fields have no body to pair them by.
     fn moved_declarations(&self, entries: &[&SemanticDef]) -> Result<HashSet<DefKey>> {
@@ -725,15 +764,11 @@ impl Cell {
         struct Field<'a> {
             entry: &'a SemanticDef,
             file: &'a RepoPath,
-            class: Name,
             declaration: Def,
         }
         let mut gone: Vec<Field<'_>> = Vec::new();
         let mut added: Vec<Field<'_>> = Vec::new();
         for &entry in entries {
-            let Some(class) = entry.key.local.container.last().cloned() else {
-                continue;
-            };
             let (side, file, into) = match (&entry.change, &entry.base, &entry.head) {
                 (DefChange::Removed, Some(file), None) => (SideTag::Base, file, &mut gone),
                 (DefChange::Added, None, Some(file)) => (SideTag::Head, file, &mut added),
@@ -749,7 +784,6 @@ impl Cell {
                 into.push(Field {
                     entry,
                     file,
-                    class,
                     declaration,
                 });
             }
@@ -763,23 +797,11 @@ impl Cell {
                     && to.declaration.body_hash == from.declaration.body_hash
                     && to.declaration.visibility == from.declaration.visibility
                     && to.declaration.decorators == from.declaration.decorators
+                    && (self.derives_from(&from.entry.key, &to.entry.key)
+                        || self.derives_from(&to.entry.key, &from.entry.key))
             }) {
-                let mut related = false;
-                for side in [SideTag::Base, SideTag::Head] {
-                    related = related
-                        || self
-                            .lineage(side, to.file, &to.class)?
-                            .iter()
-                            .any(|n| n == from.class.as_str())
-                        || self
-                            .lineage(side, from.file, &from.class)?
-                            .iter()
-                            .any(|n| n == to.class.as_str());
-                }
-                if related {
-                    moved.insert(from.entry.key.clone());
-                    moved.insert(to.entry.key.clone());
-                }
+                moved.insert(from.entry.key.clone());
+                moved.insert(to.entry.key.clone());
             }
         }
         Ok(moved)
@@ -793,30 +815,6 @@ impl Cell {
     ) -> Result<Option<Def>> {
         Ok(facts_of(&self.ctx, side, &self.cache, file)?
             .and_then(|facts| facts.defs().find(|d| d.local == key.local).cloned()))
-    }
-
-    /// The names a class lists as bases on one side, and theirs in turn, within
-    /// its file.
-    fn lineage(&self, side: SideTag, file: &RepoPath, class: &Name) -> Result<Vec<String>> {
-        let Some(facts) = facts_of(&self.ctx, side, &self.cache, file)? else {
-            return Ok(Vec::new());
-        };
-        let mut seen: Vec<String> = Vec::new();
-        let mut queue = vec![class.as_str().to_string()];
-        while let Some(name) = queue.pop() {
-            for def in facts
-                .defs()
-                .filter(|d| d.kind == DefKind::Class && d.local.name.as_str() == name)
-            {
-                for base in bases_in(def.signature.as_deref()) {
-                    if !seen.contains(&base) {
-                        seen.push(base.clone());
-                        queue.push(base);
-                    }
-                }
-            }
-        }
-        Ok(seen)
     }
 
     /// The module's default export when it changed its form and nothing else: `export
