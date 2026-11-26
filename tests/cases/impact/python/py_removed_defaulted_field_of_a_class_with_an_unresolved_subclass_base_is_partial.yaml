@@ -1,0 +1,38 @@
+name: py_removed_defaulted_field_of_a_class_with_an_unresolved_subclass_base_is_partial
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [python, removed-field, construction, dataclass, inheritance, coverage]
+repo:
+  initial_files:
+    svc/__init__.py: ""
+    svc/model.py: |
+      from dataclasses import dataclass
+
+
+      @dataclass
+      class Item:
+          id: int
+          size: int = 0
+          note: str = ""
+    svc/sub.py: |
+      class Sub(Item):
+          pass
+  changed_files:
+    svc/model.py: |
+      from dataclasses import dataclass
+
+
+      @dataclass
+      class Item:
+          id: int
+          note: str = ""
+  commit_message: "model: drop the size field"
+expect:
+  exact: false
+  removed: [size]
+  # `Item` in the base list binds to nothing: the subclass builds through the
+  # constructor the dataclass generates, so the unbound name stands as a
+  # possible construction and the class is never answered complete with no callers.
+  partial:
+    "svc/model.py::Item": {calls: unlanded}
