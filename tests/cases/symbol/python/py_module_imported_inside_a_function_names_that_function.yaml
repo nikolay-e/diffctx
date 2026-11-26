@@ -1,0 +1,30 @@
+name: py_module_imported_inside_a_function_names_that_function
+mode: symbol
+source: synthetic
+issue_state: closed
+tags: [python, module, imports]
+repo:
+  initial_files:
+    pkg/__init__.py: ""
+    pkg/report_tools.py: |
+      def helper():
+          return 1
+    pkg/main.py: |
+      def run():
+          from pkg import report_tools
+
+          return report_tools.helper()
+    pkg/top.py: |
+      from pkg import report_tools
+
+
+      def go():
+          return report_tools.helper()
+query:
+  symbol: report_tools
+expect:
+  definitions: [pkg/report_tools.py]
+  relations:
+    - {from: "pkg/main.py::run", to: pkg/report_tools.py, kind: imports, resolution: resolved, site: 2}
+    - {from: pkg/top.py, to: pkg/report_tools.py, kind: imports, resolution: resolved, site: 1}
+  exact: false
