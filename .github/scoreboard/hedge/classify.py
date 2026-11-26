@@ -41,6 +41,8 @@ def hedged(case, n):
     """Some definition names a gap, or files it did not analyse, that the case does not list as the
     candidate it discloses (judge.rs named_gaps: a gap whose every site lies in a file the case lists as
     a non-resolved code relation to the definition is set aside)."""
+    if n["run_gaps"]:  # disclosed at run level (limits, unanalysed files), as judge.py's partial counts it
+        return True
     wants, _ = judge.compile_expect(case)
     for d in n["defs"].values():
         candidates = judge.candidate_files(wants, judge.node_of(d))
