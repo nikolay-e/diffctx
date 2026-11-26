@@ -4,6 +4,7 @@
 //! `not_ours` whose basis the accounting cannot verify, and the base side. The
 //! expectations are read off the sources below, never off a run of diffctx.
 
+mod outcome_edges;
 mod snapshot_fixture;
 
 use std::sync::Arc;
