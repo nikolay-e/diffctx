@@ -117,6 +117,11 @@ synthetic/balanced/suite-4/cross-module/bal4_crossmod_013_java_service_calls_rep
 
 # Other languages, triaged.
 impact/rust/rust_constant_read_by_its_own_files_function  # gh#503 regression
+impact/rust/rust_method_of_an_impl_in_an_inline_module_reaches_its_caller  # the type's member lookup skips the use an inline module writes, so the call stays unlanded
+impact/rust/rust_method_moved_into_an_inline_module_impl_is_not_removed  # the new place is no member of the type, so the old one reads as removed
+impact/rust/rust_method_moved_into_a_pub_inline_module_impl_is_not_removed  # same: a pub inline module
+impact/rust/rust_method_moved_into_an_inline_module_impl_of_a_super_path_is_not_removed  # same: the impl names super::Foo
+impact/rust/rust_method_moved_into_an_inline_module_impl_of_a_crate_import_is_not_removed  # same: the inline module imports crate::Foo
 impact/other/csharp_record_method_has_a_caller  # gh#424 open
 impact/other/scala_same_file_caller_of_a_changed_method  # gh#604 open
 symbol/other/erlang_symbol_module_qualified_call_is_a_caller  # gh#616 open

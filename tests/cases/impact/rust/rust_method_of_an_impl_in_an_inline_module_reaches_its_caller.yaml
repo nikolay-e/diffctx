@@ -1,0 +1,95 @@
+name: rust_method_of_an_impl_in_an_inline_module_reaches_its_caller
+mode: impact
+source: synthetic
+tags: [rust, inline-module, impl, body-only, decoy]
+repo:
+  initial_files:
+    Cargo.toml: |
+      [package]
+      name = "fixture"
+      version = "0.1.0"
+      edition = "2021"
+    src/lib.rs: |
+      mod more;
+      pub mod use_it;
+      pub mod other_use;
+
+      pub struct Foo;
+
+      impl Foo {
+          pub fn a(&self) -> i32 {
+              1
+          }
+      }
+
+      mod inner {
+          use super::Foo;
+
+          impl Foo {
+              pub fn b(&self) -> i32 {
+                  2
+              }
+          }
+      }
+
+      pub mod other {
+          pub struct Foo;
+
+          impl Foo {
+              pub fn b(&self) -> i32 {
+                  9
+              }
+          }
+      }
+    src/more.rs: ""
+    src/use_it.rs: |
+      use crate::Foo;
+
+      pub fn go(f: &Foo) -> i32 {
+          f.b()
+      }
+    src/other_use.rs: |
+      use crate::other::Foo;
+
+      pub fn go_other(f: &Foo) -> i32 {
+          f.b()
+      }
+  changed_files:
+    src/lib.rs: |
+      mod more;
+      pub mod use_it;
+      pub mod other_use;
+
+      pub struct Foo;
+
+      impl Foo {
+          pub fn a(&self) -> i32 {
+              1
+          }
+      }
+
+      mod inner {
+          use super::Foo;
+
+          impl Foo {
+              pub fn b(&self) -> i32 {
+                  3
+              }
+          }
+      }
+
+      pub mod other {
+          pub struct Foo;
+
+          impl Foo {
+              pub fn b(&self) -> i32 {
+                  9
+              }
+          }
+      }
+  commit_message: Change b in the inline module's impl of Foo
+expect:
+  changed: ['src/lib.rs::b']
+  relations:
+  - {from: 'src/use_it.rs::go', to: 'src/lib.rs::Foo.b', kind: calls}
+  decoys: {'src/lib.rs::b': [src/other_use.rs]}

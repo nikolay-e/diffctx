@@ -1,0 +1,58 @@
+name: rust_method_moved_into_an_inline_module_impl_of_a_super_path_is_not_removed
+mode: impact
+source: synthetic
+tags: [rust, move, impl, inline-module, removed]
+repo:
+  initial_files:
+    Cargo.toml: |
+      [package]
+      name = "fixture"
+      version = "0.1.0"
+      edition = "2021"
+    src/lib.rs: |
+      mod more;
+      pub mod use_it;
+
+      pub struct Foo;
+
+      impl Foo {
+          pub fn a(&self) -> i32 {
+              1
+          }
+
+          pub fn b(&self) -> i32 {
+              2
+          }
+      }
+    src/more.rs: ""
+    src/use_it.rs: |
+      use crate::Foo;
+
+      pub fn go(f: &Foo) -> i32 {
+          f.b()
+      }
+  changed_files:
+    src/lib.rs: |
+      mod more;
+      pub mod use_it;
+
+      pub struct Foo;
+
+      impl Foo {
+          pub fn a(&self) -> i32 {
+              1
+          }
+      }
+
+      mod inner {
+          impl super::Foo {
+              pub fn b(&self) -> i32 {
+                  2
+              }
+          }
+      }
+  commit_message: Move b into an impl of super::Foo in an inline module
+expect:
+  relations:
+  - {from: 'src/use_it.rs::go', to: 'src/lib.rs::Foo.b', kind: calls}
+  removed: []

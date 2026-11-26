@@ -12,3 +12,8 @@
 # or the gap it stands for written beside it; it is listed here only while the engine
 # fails to name it.
 symbol/web/web_symbol_css_class_and_its_markup_uses  # gh#631 open: `name_unsearched` and `not_traced` on a CSS class's calls and reads, though a class is never called and its one reader is a literal token in markup
+impact/rust/rust_method_of_an_impl_in_an_inline_module_reaches_its_caller  # `unlanded` on a call the inline module's impl member answers: the type's member lookup skips the module's `use`
+impact/rust/rust_method_moved_into_an_inline_module_impl_is_not_removed  # `unlanded` on a call the inline module's impl member answers: the type's member lookup skips the module's `use`
+impact/rust/rust_method_moved_into_a_pub_inline_module_impl_is_not_removed  # `unlanded` on a call the inline module's impl member answers: the type's member lookup skips the module's `use`
+impact/rust/rust_method_moved_into_an_inline_module_impl_of_a_super_path_is_not_removed  # `unlanded` on a call the inline module's impl member answers: the type's member lookup skips the module's `use`
+impact/rust/rust_method_moved_into_an_inline_module_impl_of_a_crate_import_is_not_removed  # `unlanded` on a call the inline module's impl member answers: the type's member lookup skips the module's `use`
