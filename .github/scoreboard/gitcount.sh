@@ -14,13 +14,25 @@ cells=(
   "locate-ppr-narrow|--diff 384c4b86..3562b922 --scoring ppr --mode locate --budget 8000"
   "symbol|--symbol build_diff_context"
 )
+# 1.20.0 reads the ignore rules of the working tree, the head those of the range's end: on a fixture checked out at
+# another commit the two read different file sets, so each --diff cell runs on a tree checked out at its range end.
+tree_for() {
+  local end
+  [[ $1 =~ --diff\ [^\ ]*\.\.([^\ ]+) ]] || {
+    echo "$FIX"
+    return
+  }
+  end=${BASH_REMATCH[1]}
+  [ -d "$FIX-$end" ] || git -C "$FIX" worktree add -q --detach "$FIX-$end" "$end" >&2
+  echo "$FIX-$end"
+}
 count() {
-  local bin=$1 tag=$2 name=$3 args=$4
+  local bin=$1 tag=$2 name=$3 args=$4 tree=$5
   # shellcheck disable=SC2086
-  DIFFCTX_TOKEN_CACHE_DIR="$OUT/cache-$tag" "$bin" "$FIX" $args --timeout 86400 --format json --quiet >/dev/null 2>&1
+  DIFFCTX_TOKEN_CACHE_DIR="$OUT/cache-$tag" "$bin" "$tree" $args --timeout 86400 --format json --quiet >/dev/null 2>&1
   # shellcheck disable=SC2086
   DIFFCTX_TOKEN_CACHE_DIR="$OUT/cache-$tag" strace -f -qq -e trace=execve -e signal=none -o "$OUT/$name-$tag.st" \
-    "$bin" "$FIX" $args --timeout 86400 --format json --quiet >/dev/null 2>&1
+    "$bin" "$tree" $args --timeout 86400 --format json --quiet >/dev/null 2>&1
   grep -cE 'execve\("[^"]*/git", .*= 0$' "$OUT/$name-$tag.st"
 }
 echo "| cell | 1.20.0 git processes | head git processes |"
@@ -28,5 +40,6 @@ echo "|---|---:|---:|"
 for cell in "${cells[@]}"; do
   name=${cell%%|*}
   args=${cell#*|}
-  echo "| $name | $(count "$O" old "$name" "$args") | $(count "$N" new "$name" "$args") |"
+  tree=$(tree_for "$args")
+  echo "| $name | $(count "$O" old "$name" "$args" "$tree") | $(count "$N" new "$name" "$args" "$tree") |"
 done

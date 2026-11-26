@@ -19,13 +19,25 @@ cells=(
   "locate-ppr-narrow|--diff 384c4b86..3562b922 --scoring ppr --mode locate --budget 8000"
   "symbol|--symbol build_diff_context"
 )
+# 1.20.0 reads the ignore rules of the working tree, the head those of the range's end: on a fixture checked out at
+# another commit the two read different file sets, so each --diff cell runs on a tree checked out at its range end.
+tree_for() {
+  local end
+  [[ $1 =~ --diff\ [^\ ]*\.\.([^\ ]+) ]] || {
+    echo "$FIX"
+    return
+  }
+  end=${BASH_REMATCH[1]}
+  [ -d "$FIX-$end" ] || git -C "$FIX" worktree add -q --detach "$FIX-$end" "$end" >&2
+  echo "$FIX-$end"
+}
 one() {
-  local name=$1 bin=$2 tag=$3 args=$4
+  local name=$1 bin=$2 tag=$3 args=$4 tree=$5
   # shellcheck disable=SC2086
-  DIFFCTX_TOKEN_CACHE_DIR="$OUT/cache-$tag" RAYON_NUM_THREADS=1 "$bin" "$FIX" $args --format json --quiet >/dev/null
+  DIFFCTX_TOKEN_CACHE_DIR="$OUT/cache-$tag" RAYON_NUM_THREADS=1 "$bin" "$tree" $args --format json --quiet >/dev/null
   # shellcheck disable=SC2086
   DIFFCTX_TOKEN_CACHE_DIR="$OUT/cache-$tag" RAYON_NUM_THREADS=1 valgrind --tool=callgrind \
-    --callgrind-out-file="$OUT/$name-$tag.cg" "$bin" "$FIX" $args --timeout 86400 --format json --quiet \
+    --callgrind-out-file="$OUT/$name-$tag.cg" "$bin" "$tree" $args --timeout 86400 --format json --quiet \
     >/dev/null 2>"$OUT/$name-$tag.log"
 }
 # At most one run per CPU: oversubscribed runs wait on their git children for longer, and the waiting is counted
@@ -36,12 +48,13 @@ running=0
 for cell in "${cells[@]}"; do
   name=${cell%%|*}
   args=${cell#*|}
+  tree=$(tree_for "$args")
   for run in "base $B" "control $B" "step $A"; do
     if [ "$running" -ge "$slots" ]; then
       wait -n || failed=1
       running=$((running - 1))
     fi
-    one "$name" "${run#* }" "${run%% *}" "$args" &
+    one "$name" "${run#* }" "${run%% *}" "$args" "$tree" &
     running=$((running + 1))
   done
 done
