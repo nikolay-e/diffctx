@@ -278,8 +278,9 @@ impl Cell {
                         Some(base_file),
                     ) = (self.family, change, d.base.as_ref())
                     {
-                        if let Some((kind, lines, public)) =
-                            self.base_definition(base_file, from)?
+                        if let Some((kind, lines, public)) = self
+                            .base_definition(base_file, from)?
+                            .filter(|(kind, ..)| !self.moved_within_type(from, *kind))
                         {
                             let gone = Changed {
                                 name: from.local.name.as_str().to_string(),
@@ -350,11 +351,10 @@ impl Cell {
         Ok(())
     }
 
-    /// Whether a Rust member the head's `impl` no longer has is still a member of
-    /// its type: another `impl` of that type, in any module, has one of its name
-    /// and kind. An inherent member is matched by an inherent one and a trait
-    /// impl's by the impl of the same trait: a removed inherent method is a
-    /// removal whatever a trait impl of the type has under the same name.
+    /// Whether a Rust member that left its `impl` is still a member of its type:
+    /// an `impl` of that type, in any module, has one of its name and kind. An
+    /// inherent member is matched by an inherent one and a trait impl's by the
+    /// impl of the same trait.
     fn moved_within_type(&self, key: &DefKey, kind: DefKind) -> bool {
         let Resolver::Rust(head) = &self.head else {
             return false;
