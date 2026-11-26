@@ -12,7 +12,7 @@ name: diffctx CI
       - relay/arch
       - 'probe/**'
   # The full macOS set: a schedule runs only the default branch's file, so main
-  # has the cron and relay/arch a dispatch (full: true) fired by the lander.
+  # has the cron; a dispatch with full: true runs it on any other branch.
   schedule:
     - cron: '23 2 * * *'
   workflow_dispatch:
@@ -39,12 +39,18 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}
   cancel-in-progress: true
 
+# relay/arch is checked by the push to it, which runs the full set; the epoch
+# pull request from it into main would run the same commit again, so every job
+# skips that event (a fork's branch of the same name still runs). A pull_request
+# trigger cannot filter on the head branch: the run exists, every job skipped
+# and no runner taken; `test` is skipped through its need.
 jobs:
   # ============================================================================
   # Pre-commit checks (fast feedback)
   # ============================================================================
   pre-commit:
     name: Pre-commit hooks
+    if: ${{ github.event.pull_request.head.label != format('{0}:relay/arch', github.repository_owner) }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -93,6 +99,7 @@ jobs:
   # ============================================================================
   release-tags:
     name: Release tags are immutable
+    if: ${{ github.event.pull_request.head.label != format('{0}:relay/arch', github.repository_owner) }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -110,7 +117,7 @@ jobs:
           fi
 
       - name: Every release tag has a published release
-        if: github.event_name == 'pull_request'
+        if: github.event_name == 'pull_request' || github.ref == 'refs/heads/relay/arch'
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
@@ -152,15 +159,15 @@ jobs:
         with:
           toolchain: "1.100.0"
 
-      - name: Cache Cargo
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+      - name: Restore Cargo
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: cargo-class-test-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
-          restore-keys: cargo-class-test-${{ runner.os }}-
+          key: cargo-rust-${{ runner.os }}-release-${{ hashFiles('Cargo.lock') }}
+          restore-keys: cargo-rust-${{ runner.os }}-release-
 
       - name: Cache the base build
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
@@ -182,6 +189,7 @@ jobs:
   # ============================================================================
   cargo-audit:
     name: Rust dependency advisories
+    if: ${{ github.event.pull_request.head.label != format('{0}:relay/arch', github.repository_owner) }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -208,6 +216,7 @@ jobs:
   # ============================================================================
   cargo-deny:
     name: Rust licenses, sources and layer bans
+    if: ${{ github.event.pull_request.head.label != format('{0}:relay/arch', github.repository_owner) }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -249,6 +258,7 @@ jobs:
   # ============================================================================
   cargo-feature-sets:
     name: Rust builds without default features
+    if: ${{ github.event.pull_request.head.label != format('{0}:relay/arch', github.repository_owner) }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -260,15 +270,15 @@ jobs:
         with:
           toolchain: "1.100.0"
 
-      - name: Cache Cargo
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+      - name: Restore Cargo
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: cargo-features-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
-          restore-keys: cargo-features-${{ runner.os }}-
+          key: cargo-rust-${{ runner.os }}-debug-${{ hashFiles('Cargo.lock') }}
+          restore-keys: cargo-rust-${{ runner.os }}-debug-
 
       - name: Check lang-core only
         working-directory: crates/diffctx-native
@@ -287,7 +297,9 @@ jobs:
   # ============================================================================
   cargo-publish-dry-run:
     name: Crate packages for crates.io
-    if: ${{ !(github.base_ref == 'relay/arch') }}
+    if: >-
+      github.event.pull_request.head.label != format('{0}:relay/arch', github.repository_owner) &&
+      !(github.base_ref == 'relay/arch')
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -299,15 +311,15 @@ jobs:
         with:
           toolchain: "1.100.0"
 
-      - name: Cache Cargo
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+      - name: Restore Cargo
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: cargo-publish-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
-          restore-keys: cargo-publish-${{ runner.os }}-
+          key: cargo-rust-${{ runner.os }}-debug-${{ hashFiles('Cargo.lock') }}
+          restore-keys: cargo-rust-${{ runner.os }}-debug-
 
       # --workspace: diffctx asks the registry for diffctx-base, which is not
       # there until the release publishes it; cargo verifies the two together.
@@ -334,7 +346,8 @@ jobs:
       (github.event_name != 'pull_request' ||
       (github.event.pull_request.head.repo.full_name == github.repository &&
       github.actor != 'dependabot[bot]')) &&
-      !(github.base_ref == 'relay/arch')
+      !(github.base_ref == 'relay/arch') &&
+      github.event.pull_request.head.label != format('{0}:relay/arch', github.repository_owner)
     permissions:
       contents: read
     steps:
@@ -387,6 +400,7 @@ jobs:
   # ============================================================================
   lint-type-check:
     name: Lint & Type Check
+    if: ${{ github.event.pull_request.head.label != format('{0}:relay/arch', github.repository_owner) }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -438,10 +452,11 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - {part: corpus, label: "", cache: release}
-          - {part: "rest:1/3", label: " (ubuntu-latest, 1/3)", cache: debug}
+          - {part: corpus, label: "", cache: release, save: true}
+          - {part: "rest:1/3", label: " (ubuntu-latest, 1/3)", cache: debug, save: true}
           - {part: "rest:2/3", label: " (ubuntu-latest, 2/3)", cache: debug}
           - {part: "rest:3/3", label: " (ubuntu-latest, 3/3)", cache: debug}
+    if: ${{ github.event.pull_request.head.label != format('{0}:relay/arch', github.repository_owner) }}
     runs-on: ubuntu-latest
     # tests/git_faults.rs stalls never end on their own (#510): a run its
     # deadline does not end hangs, and this is where it fails.
@@ -457,8 +472,22 @@ jobs:
           toolchain: "1.100.0"
           components: rustfmt, clippy
 
+      # One saver per (OS, profile): the cell marked `save` writes the entry and
+      # every other job restores it, so the repository's 10 GB of caches are not
+      # filled by cells saving the same key or by a key per job.
       - name: Cache Cargo
+        if: matrix.save
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: cargo-rust-${{ runner.os }}-${{ matrix.cache }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: cargo-rust-${{ runner.os }}-${{ matrix.cache }}-
+      - name: Restore Cargo
+        if: ${{ !matrix.save }}
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
           path: |
             ~/.cargo/registry
@@ -497,16 +526,18 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - {os: windows-latest, part: "rest:1/4", label: "1/4", cache: debug}
+          - {os: windows-latest, part: "rest:1/4", label: "1/4", cache: debug, save: true}
           - {os: windows-latest, part: "rest:2/4", label: "2/4", cache: debug}
           - {os: windows-latest, part: "rest:3/4", label: "3/4", cache: debug}
           - {os: windows-latest, part: "rest:4/4", label: "4/4", cache: debug}
-          - {os: windows-latest, part: "corpus:2/2", label: "YAML corpus", cache: release}
+          - {os: windows-latest, part: "corpus:2/2", label: "YAML corpus", cache: release, save: true}
           - {os: windows-latest, part: "corpus:1/2", class_shard: "1/4", label: "class corpus 1/4", cache: release}
           - {os: windows-latest, part: "corpus:1/2", class_shard: "2/4", label: "class corpus 2/4", cache: release}
           - {os: windows-latest, part: "corpus:1/2", class_shard: "3/4", label: "class corpus 3/4", cache: release}
           - {os: windows-latest, part: "corpus:1/2", class_shard: "4/4", label: "class corpus 4/4", cache: release}
-    if: ${{ !(github.event_name == 'pull_request' && github.base_ref != 'main') }}
+    if: >-
+      github.event.pull_request.head.label != format('{0}:relay/arch', github.repository_owner) &&
+      !(github.event_name == 'pull_request' && github.base_ref != 'main')
     runs-on: ${{ matrix.os }}
     # The hang guard of #510, no longer the margin of a whole run.
     timeout-minutes: 90
@@ -521,7 +552,18 @@ jobs:
           toolchain: "1.100.0"
 
       - name: Cache Cargo
+        if: matrix.save
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: cargo-rust-${{ runner.os }}-${{ matrix.cache }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: cargo-rust-${{ runner.os }}-${{ matrix.cache }}-
+      - name: Restore Cargo
+        if: ${{ !matrix.save }}
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
           path: |
             ~/.cargo/registry
@@ -538,10 +580,10 @@ jobs:
         run: scripts/cargo-test-suites.sh "$PART"
 
   # macOS has five runner slots for the whole account, and GitHub Pro does not
-  # raise them. A push (the head check of relay/arch, main, a probe) runs the
-  # suites whose subject is the operating system and builds the Intel-Mac
-  # binary; a PR into main, the nightly and a dispatch with full add the two
-  # corpora. The suites that test only logic (impact, metamorphic, the
+  # raise them. A push (main, a probe) runs the suites whose subject is the
+  # operating system and builds the Intel-Mac binary; the head check of
+  # relay/arch, a PR into main, the nightly and a dispatch with full add the
+  # two corpora. The suites that test only logic (impact, metamorphic, the
   # resolvers) run on Linux and Windows. Four macOS Python versions run on the
   # same occasions as the corpora.
   rust-diffctx-test-macos:
@@ -550,13 +592,16 @@ jobs:
       fail-fast: false
       matrix:
         include: >-
-          ${{ fromJSON((github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && !inputs.full))
-            && '[{"part":"platform","label":"platform","cache":"platform-intel"}]'
-            || '[{"part":"platform","label":"platform","cache":"platform-intel"},
-                 {"part":"corpus:2/2","label":"YAML corpus","cache":"release"},
+          ${{ fromJSON((github.event_name == 'push' && github.ref != 'refs/heads/relay/arch'
+            || github.event_name == 'workflow_dispatch' && !inputs.full)
+            && '[{"part":"platform","label":"platform","cache":"platform-intel","save":true}]'
+            || '[{"part":"platform","label":"platform","cache":"platform-intel","save":true},
+                 {"part":"corpus:2/2","label":"YAML corpus","cache":"release","save":true},
                  {"part":"corpus:1/2","class_shard":"1/2","label":"class corpus 1/2","cache":"release"},
                  {"part":"corpus:1/2","class_shard":"2/2","label":"class corpus 2/2","cache":"release"}]') }}
-    if: ${{ !(github.event_name == 'pull_request' && github.base_ref != 'main') }}
+    if: >-
+      github.event.pull_request.head.label != format('{0}:relay/arch', github.repository_owner) &&
+      !(github.event_name == 'pull_request' && github.base_ref != 'main')
     runs-on: macos-latest
     timeout-minutes: 60
     permissions:
@@ -570,7 +615,18 @@ jobs:
           toolchain: "1.100.0"
 
       - name: Cache Cargo
+        if: matrix.save
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: cargo-rust-${{ runner.os }}-${{ matrix.cache }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: cargo-rust-${{ runner.os }}-${{ matrix.cache }}-
+      - name: Restore Cargo
+        if: ${{ !matrix.save }}
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
           path: |
             ~/.cargo/registry
@@ -612,13 +668,15 @@ jobs:
         # A stream check (a PR into relay/arch, or into any branch but main)
         # runs one Linux interpreter; exclude never drops an include-only
         # cell, so the ARM legs are an expression too. macOS has five slots:
-        # a push (or a dispatch without full) runs one interpreter there, a PR
-        # into main and the nightly run the four.
+        # a push (relay/arch excepted) or a dispatch without full runs one
+        # interpreter there; the head check of relay/arch, a PR into main and
+        # the nightly run the four.
         exclude: >-
           ${{ fromJSON((github.event_name == 'pull_request' && github.base_ref != 'main')
             && '[{"os":"macos-latest"},{"os":"windows-latest"},
                  {"python-version":"3.11"},{"python-version":"3.12"},{"python-version":"3.14"}]'
-            || (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && !inputs.full))
+            || (github.event_name == 'push' && github.ref != 'refs/heads/relay/arch'
+                || github.event_name == 'workflow_dispatch' && !inputs.full)
             && '[{"os":"macos-latest","python-version":"3.11"},
                  {"os":"macos-latest","python-version":"3.12"},
                  {"os":"macos-latest","python-version":"3.14"}]'
@@ -759,7 +817,9 @@ jobs:
   # ============================================================================
   docs-pwa:
     name: Landing page installs and opens offline
-    if: ${{ !(github.base_ref == 'relay/arch') }}
+    if: >-
+      github.event.pull_request.head.label != format('{0}:relay/arch', github.repository_owner) &&
+      !(github.base_ref == 'relay/arch')
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -793,6 +853,7 @@ jobs:
   # ============================================================================
   complexity-checks:
     name: Complexity & Maintainability Analysis
+    if: ${{ github.event.pull_request.head.label != format('{0}:relay/arch', github.repository_owner) }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -833,6 +894,7 @@ jobs:
   # ============================================================================
   architecture-checks:
     name: Architecture & Import Contracts
+    if: ${{ github.event.pull_request.head.label != format('{0}:relay/arch', github.repository_owner) }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
