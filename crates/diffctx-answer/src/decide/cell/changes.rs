@@ -759,10 +759,10 @@ impl Cell {
         })
     }
 
-    /// A field declaration only one side has, with an equal one on the other
-    /// side in a class that derives from the other's: it moved between a base and its
-    /// subclass (merged into the subclass, lifted into a new base), and the
-    /// field is the same. Annotation-only fields have no body to pair them by.
+    /// A field declaration only the base side has, with an equal one at the head
+    /// in a base of its class: it was lifted into that base and is the same
+    /// field. Pushed down into a subclass it is gone for the base's other users.
+    /// Annotation-only fields have no body to pair them by.
     fn moved_declarations(&self, entries: &[&SemanticDef]) -> Result<HashSet<DefKey>> {
         if self.family != Family::Python {
             return Ok(HashSet::new());
@@ -797,8 +797,7 @@ impl Cell {
                     && to.declaration.body_hash == from.declaration.body_hash
                     && to.declaration.visibility == from.declaration.visibility
                     && to.declaration.decorators == from.declaration.decorators
-                    && (self.derives_from(&from.entry.key, &to.entry.key)
-                        || self.derives_from(&to.entry.key, &from.entry.key))
+                    && self.derives_from(&from.entry.key, &to.entry.key)
             }) {
                 moved.insert(from.entry.key.clone());
                 moved.insert(to.entry.key.clone());
