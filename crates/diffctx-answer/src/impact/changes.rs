@@ -9,8 +9,6 @@ use crate::decide::cells::Cells;
 
 use crate::run_provenance::state::ScoredState;
 
-use diffctx_base::languages::runtime_of;
-
 use diffctx_base::types::{Fragment, FragmentId};
 
 use diffctx_occurrence::tokens::Names;
@@ -78,11 +76,22 @@ pub(super) fn names_of(symbol: &str) -> Vec<String> {
     names
 }
 
+pub(super) fn runtime_tag(path: &str) -> &'static str {
+    match diffctx_base::languages::get_language_for_file(path).unwrap_or("") {
+        "java" | "kotlin" | "scala" | "groovy" | "clojure" => "jvm",
+        "javascript" | "typescript" | "tsx" | "jsx" | "html" | "svelte" | "vue" => "js",
+        "python" | "cython" => "python",
+        "csharp" | "c_sharp" | "fsharp" => "dotnet",
+        "swift" | "objectivec" | "c" | "cpp" => "native",
+        other => other,
+    }
+}
+
 /// No runtime crosses from one to the other: a Kotlin test cannot run a
 /// Swift function, and a Python name in a Kotlin file is not a call of it
 /// (#458, #487).
 pub(super) fn same_runtime(a: &str, b: &str) -> bool {
-    let (ra, rb) = (runtime_of(a), runtime_of(b));
+    let (ra, rb) = (runtime_tag(a), runtime_tag(b));
     ra.is_empty() || rb.is_empty() || ra == rb
 }
 

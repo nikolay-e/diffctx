@@ -2,6 +2,7 @@
 //! tests' reach, the fragments by file and by id, and what links a fragment to the one it uses; and
 //! what the phases have found so far.
 
+use std::borrow::Cow;
 use std::cell::{OnceCell, RefCell};
 use std::path::Path;
 use std::rc::Rc;
@@ -18,7 +19,7 @@ use diffctx_facts::facts::{EntryKind, Import, framework};
 use diffctx_graph::keytable::Counterpart;
 
 use super::super::callers::{Files, Receiver, mentions, references_module};
-use super::super::changes::{BaseTexts, commit_bounds, lines_of, rel, same_runtime};
+use super::super::changes::{BaseTexts, commit_bounds, lines_of, rel, runtime_tag};
 use super::super::dispatch::base_symbol;
 use super::super::entry::{is_jvm_path, jvm_entry_point, registering_decorator, scala_imports};
 use super::super::output::{Caller, ChangedSymbol, Contract};
@@ -41,6 +42,8 @@ pub(super) struct Impact<'a> {
     pub(super) base_texts: BaseTexts<'a>,
     changed_paths: FxHashSet<&'a str>,
     hunk_lines: FxHashMap<&'a str, Vec<(u32, u32)>>,
+    rel_of: FxHashMap<&'a str, String>,
+    runtime_of: FxHashMap<&'a str, &'static str>,
     scala_import_memo: RefCell<FxHashMap<String, Rc<Vec<Import>>>>,
     metric_readers: OnceCell<Vec<Counterpart>>,
 }
@@ -120,9 +123,17 @@ impl<'a> Impact<'a> {
         let mut definitions: FxHashMap<(&str, String), usize> = FxHashMap::default();
         let mut defined_in: FxHashSet<(String, &str)> = FxHashSet::default();
         let mut file_fragments: FxHashMap<&str, Vec<&Fragment>> = FxHashMap::default();
+        let mut rel_of: FxHashMap<&str, String> = FxHashMap::default();
+        let mut runtime_of: FxHashMap<&str, &'static str> = FxHashMap::default();
         let indexing = diffctx_base::profile::detail("impact.setup.files", "");
         for f in &state.all_fragments {
             file_fragments.entry(f.path()).or_default().push(f);
+            rel_of
+                .entry(f.path())
+                .or_insert_with(|| rel(state, f.path()));
+            runtime_of
+                .entry(f.path())
+                .or_insert_with(|| runtime_tag(f.path()));
             if let Some(name) = f
                 .symbol_name
                 .as_deref()
@@ -155,19 +166,40 @@ impl<'a> Impact<'a> {
             base_texts,
             changed_paths,
             hunk_lines,
+            rel_of,
+            runtime_of,
             scala_import_memo: RefCell::default(),
             metric_readers: OnceCell::new(),
         }
     }
 
-    pub(super) fn in_a_hunk(&self, id: &FragmentId) -> bool {
-        let (state, changed_paths, hunk_lines) =
-            (self.state, &self.changed_paths, &self.hunk_lines);
-        if state.hunk_texts.is_empty() {
-            return changed_paths.contains(id.path.as_ref());
+    fn rel_cow<'p>(&'p self, path: &'p str) -> Cow<'p, str> {
+        match self.rel_of.get(path) {
+            Some(shown) => Cow::Borrowed(shown.as_str()),
+            None => Cow::Owned(rel(self.state, path)),
         }
-        hunk_lines
-            .get(rel(state, id.path.as_ref()).as_str())
+    }
+
+    fn same_runtime_paths(&self, a: &str, b: &str) -> bool {
+        let ra = self
+            .runtime_of
+            .get(a)
+            .copied()
+            .unwrap_or_else(|| runtime_tag(a));
+        let rb = self
+            .runtime_of
+            .get(b)
+            .copied()
+            .unwrap_or_else(|| runtime_tag(b));
+        ra.is_empty() || rb.is_empty() || ra == rb
+    }
+
+    pub(super) fn in_a_hunk(&self, id: &FragmentId) -> bool {
+        if self.state.hunk_texts.is_empty() {
+            return self.changed_paths.contains(id.path.as_ref());
+        }
+        self.hunk_lines
+            .get(self.rel_cow(id.path.as_ref()).as_ref())
             .is_some_and(|ranges| {
                 ranges
                     .iter()
@@ -179,22 +211,20 @@ impl<'a> Impact<'a> {
         &self,
         core: &Fragment,
     ) -> Vec<&'a diffctx_base::changed_lines::HunkText> {
-        let state = self.state;
-        let path = rel(state, core.path());
-        state
+        let path = self.rel_cow(core.path());
+        self.state
             .hunk_texts
             .iter()
             .filter(|h| {
                 let (a, b) = h.new_range();
-                h.path == path && core.start_line() <= b && core.end_line() >= a
+                h.path == path.as_ref() && core.start_line() <= b && core.end_line() >= a
             })
             .collect()
     }
 
     pub(super) fn core_place(&self, core: &Fragment) -> String {
-        let state = self.state;
         place(
-            &rel(state, core.path()),
+            &self.rel_cow(core.path()),
             core.symbol_name.as_deref(),
             &lines_of(&core.id),
         )
@@ -204,7 +234,7 @@ impl<'a> Impact<'a> {
         self.state
             .run
             .source()
-            .may_reference(&rel(self.state, user), &rel(self.state, used))
+            .may_reference(&self.rel_cow(user), &self.rel_cow(used))
     }
 
     pub(super) fn one_project(&self, user: &Fragment, used: &Fragment) -> bool {
@@ -231,11 +261,12 @@ impl<'a> Impact<'a> {
     pub(super) fn registration(&self, f: &Fragment) -> Option<String> {
         let (state, cells, scala_import_memo) = (self.state, self.cells, &self.scala_import_memo);
         let file_of = |f: &Fragment| self.file_of(f);
-        let path = rel(state, f.path());
+        let path = self.rel_cow(f.path());
+        let path = path.as_ref();
         let stated_entry = f.symbol_name.as_deref().map(base_symbol).and_then(|name| {
             cells
-                .of(&path)?
-                .framework_entries_at(&path, name, (f.start_line(), f.end_line()))
+                .of(path)?
+                .framework_entries_at(path, name, (f.start_line(), f.end_line()))
                 .into_iter()
                 .find(|(kind, _)| *kind != EntryKind::Fixture)
         });
@@ -244,36 +275,36 @@ impl<'a> Impact<'a> {
         }
         if is_jvm_path(f.path()) {
             // Kotlin's and Java's annotations are the facts' own.
-            let stated = cells.of(&path).and_then(|cell| {
+            let stated = cells.of(path).and_then(|cell| {
                 cell.annotations_at(
-                    &path,
+                    path,
                     f.symbol_name.as_deref().map(base_symbol)?,
                     (f.start_line(), f.end_line()),
                 )
             });
-            let imports = if Path::new(&path)
+            let imports = if Path::new(path)
                 .extension()
                 .is_some_and(|ext| ext.eq_ignore_ascii_case("scala"))
             {
                 scala_import_memo
                     .borrow_mut()
-                    .entry(path.clone())
+                    .entry(path.to_string())
                     .or_insert_with(|| {
                         Rc::new(
                             cells
-                                .head_text(state, &path)
+                                .head_text(state, path)
                                 .map_or_else(Vec::new, |text| scala_imports(&text)),
                         )
                     })
                     .clone()
             } else {
-                Rc::new(cells.imports_at(&path))
+                Rc::new(cells.imports_at(path))
             };
             jvm_entry_point(f, imports.as_slice(), stated.as_deref()).or_else(|| {
                 let name = f.symbol_name.as_deref().map(base_symbol)?;
                 cells
-                    .of(&path)?
-                    .serialized_at(&path, name, (f.start_line(), f.end_line()))
+                    .of(path)?
+                    .serialized_at(path, name, (f.start_line(), f.end_line()))
                     .then(|| format!("{}serialized by Jackson", framework::ENTRY_PREFIX))
             })
         } else {
@@ -282,14 +313,15 @@ impl<'a> Impact<'a> {
     }
 
     pub(super) fn is_tool(&self, f: &Fragment) -> bool {
-        let (state, cells) = (self.state, self.cells);
-        let path = rel(state, f.path());
+        let cells = self.cells;
+        let path = self.rel_cow(f.path());
+        let path = path.as_ref();
         f.symbol_name
             .as_deref()
             .map(base_symbol)
             .is_some_and(|name| {
-                cells.of(&path).is_some_and(|cell| {
-                    cell.framework_entries_at(&path, name, (f.start_line(), f.end_line()))
+                cells.of(path).is_some_and(|cell| {
+                    cell.framework_entries_at(path, name, (f.start_line(), f.end_line()))
                         .into_iter()
                         .any(|(kind, _)| kind == EntryKind::Tool)
                 })
@@ -297,40 +329,44 @@ impl<'a> Impact<'a> {
     }
 
     pub(super) fn link(&self, user: &Fragment, used: &Fragment) -> bool {
-        let (state, cells, files) = (self.state, self.cells, &self.files);
-        let one_project = |user: &Fragment, used: &Fragment| self.one_project(user, used);
+        let (cells, files) = (self.cells, &self.files);
         let Some(name) = used.symbol_name.as_deref().map(base_symbol) else {
             return false;
         };
-        if !same_runtime(user.path(), used.path()) {
+        if !self.same_runtime_paths(user.path(), used.path()) {
             return false;
         }
-        let (user_rel, used_rel) = (rel(state, user.path()), rel(state, used.path()));
-        if let Some(cell) = cells.of(&user_rel).filter(|c| c.owns(&used_rel)) {
+        let (user_rel, used_rel) = (self.rel_cow(user.path()), self.rel_cow(used.path()));
+        if let Some(cell) = cells
+            .of(user_rel.as_ref())
+            .filter(|c| c.owns(used_rel.as_ref()))
+        {
             return cell.links(
-                &user_rel,
+                user_rel.as_ref(),
                 (user.start_line(), user.end_line()),
-                &used_rel,
+                used_rel.as_ref(),
                 name,
                 (used.start_line(), used.end_line()),
             );
         }
-        one_project(user, used)
+        self.one_project(user, used)
             && mentions(user, Some(name), &Receiver::Any)
             && references_module(user, files, Some(name), used.path())
     }
 
     pub(super) fn reaches_file(&self, test: &Fragment, caller: &Fragment) -> bool {
-        let (state, cells, files) = (self.state, self.cells, &self.files);
-        let one_project = |user: &Fragment, used: &Fragment| self.one_project(user, used);
-        if !same_runtime(test.path(), caller.path()) {
+        let (cells, files) = (self.cells, &self.files);
+        if !self.same_runtime_paths(test.path(), caller.path()) {
             return false;
         }
-        let (test_rel, caller_rel) = (rel(state, test.path()), rel(state, caller.path()));
-        if let Some(cell) = cells.of(&test_rel).filter(|c| c.owns(&caller_rel)) {
-            return cell.reaches(&test_rel, &caller_rel);
+        let (test_rel, caller_rel) = (self.rel_cow(test.path()), self.rel_cow(caller.path()));
+        if let Some(cell) = cells
+            .of(test_rel.as_ref())
+            .filter(|c| c.owns(caller_rel.as_ref()))
+        {
+            return cell.reaches(test_rel.as_ref(), caller_rel.as_ref());
         }
-        one_project(test, caller) && references_module(test, files, None, caller.path())
+        self.one_project(test, caller) && references_module(test, files, None, caller.path())
     }
 
     /// What the tests say of a caller: the ones that reach it, and why an absent
@@ -350,7 +386,7 @@ impl<'a> Impact<'a> {
                 && tests.file_tested(frag, &reaches_file),
             unread_test: tested
                 .is_empty()
-                .then(|| tests.unread_naming(frag, &rel(state, frag.path())))
+                .then(|| tests.unread_naming(frag, &self.rel_cow(frag.path())))
                 .flatten(),
             tests_open: tested.is_empty()
                 && core.map_or_else(

@@ -27,11 +27,11 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use diffctx_facts::facts::EntryKind;
 
 use super::cells::{cell_caller, lifted_caller};
-use super::changes::{rel, spelling_files};
+use super::changes::{rel, runtime_tag, spelling_files};
 use super::dispatch::base_symbol;
 use super::output::TestLink;
 use super::removed::read_or_note;
-use super::runs::{self, Run, spelled_as_command};
+use super::runs::{self, RunIndex, TestFilter, spelled_as_command};
 use super::rust;
 use super::{Cells, Fragment, FragmentId, FragmentKind, Link, MAX_TEST_HOPS, ScoredState};
 use diffctx_base::testfiles::{DeclaredTests, naming_links};
@@ -56,6 +56,9 @@ pub(super) struct TestsReach<'a> {
     /// The source files no cell reads whose name a test file's asks for.
     named: FxHashSet<String>,
     test_fragments: Vec<&'a Fragment>,
+    test_fragment_files: FxHashSet<&'a str>,
+    is_test_by_path: FxHashMap<&'a str, bool>,
+    runtime_by_path: FxHashMap<&'a str, &'static str>,
     /// Fragments outside test files that sit in a test scope the framework
     /// itself makes: a Rust `#[test]` in an inline `mod tests` (#528), Vitest's
     /// in-source block, a `unittest.TestCase`, a `TEST_CASE` (the scope that holds
@@ -69,12 +72,12 @@ pub(super) struct TestsReach<'a> {
     unread: Vec<String>,
     /// Entries a test runs: binaries (`CARGO_BIN_EXE_<name>`, `cargo_bin("<name>")`:
     /// #391, #678), console scripts, scripts spelled by their path.
-    runs: Vec<Run>,
+    runs: RunIndex,
     /// The `>>>` and fenced examples that call a function of their own file: a test
     /// of it that does not end the search for the tests that call it.
-    doctests: Vec<Run>,
+    doctests: RunIndex,
     /// The strings of a changed definition that a test asserts (the literal channel).
-    asserted: Vec<Run>,
+    asserted: RunIndex,
     /// The fragments that hold such a string or use one that does: what a test
     /// of the text can reach.
     text_reach: OnceCell<FxHashSet<FragmentId>>,
@@ -93,7 +96,7 @@ pub(super) struct TestsReach<'a> {
     /// Whether the search above the fragment is open, per fragment.
     above: RefCell<FxHashMap<FragmentId, bool>>,
     /// The files the runners' configurations declare tests, whatever their names.
-    declared: DeclaredTests,
+    declared: TestFilter,
     /// The changed files, by the path the answer prints: a test the change itself
     /// touches is named before the others.
     changed: FxHashSet<String>,
@@ -130,10 +133,20 @@ impl<'a> TestsReach<'a> {
                 .filter(|path| seen.insert(*path))
                 .collect()
         };
+        let is_test_by_path: FxHashMap<&str, bool> = listed
+            .iter()
+            .copied()
+            .map(|path| (path, diffctx_base::testfiles::is_test_path(Path::new(path))))
+            .collect();
+        let runtime_by_path: FxHashMap<&str, &'static str> = listed
+            .iter()
+            .copied()
+            .map(|path| (path, runtime_tag(path)))
+            .collect();
         let named: FxHashSet<String> = naming_links(&listed)
             .into_iter()
             .filter(|(test, source)| {
-                diffctx_base::testfiles::is_test_path(Path::new(test))
+                is_test_by_path.get(test).copied().unwrap_or(false)
                     && !read_by_a_cell(source)
                     && state.run.check()
             })
@@ -191,6 +204,7 @@ impl<'a> TestsReach<'a> {
                 tests_at.entry(spelled).or_default().push((1, u32::MAX));
             }
         }
+        let declared = TestFilter::new(declared);
         let inline_tests: FxHashSet<&FragmentId> = state
             .all_fragments
             .iter()
@@ -211,10 +225,12 @@ impl<'a> TestsReach<'a> {
             .all_fragments
             .iter()
             .filter(|f| {
-                diffctx_base::testfiles::is_test_path(Path::new(f.path()))
+                is_test_by_path.get(f.path()).copied().unwrap_or(false)
                     || inline_tests.contains(&f.id)
             })
             .collect();
+        let test_fragment_files: FxHashSet<&str> =
+            test_fragments.iter().map(|t| t.path()).collect();
         let unread: Vec<String> = state
             .run
             .limited_files()
@@ -229,8 +245,11 @@ impl<'a> TestsReach<'a> {
             .iter()
             .map(|(path, shown)| (shown.as_str(), *path))
             .collect();
-        let (runs, asserted) = runs::all(state, cells, diff_range, &spelled, &declared, later);
-        let doctests = runs::doctest_runs(state);
+        let (runs, asserted) =
+            runs::all(state, cells, diff_range, &spelled, declared.inner(), later);
+        let runs = RunIndex::new(runs);
+        let doctests = RunIndex::new(runs::doctest_runs(state));
+        let asserted = RunIndex::new(asserted);
         let repo_tests = test_fragments.is_empty()
             && named.is_empty()
             && runs.is_empty()
@@ -248,6 +267,9 @@ impl<'a> TestsReach<'a> {
             rel_of,
             named,
             test_fragments,
+            test_fragment_files,
+            is_test_by_path,
+            runtime_by_path,
             inline_tests,
             test_spans,
             unread,
@@ -303,8 +325,18 @@ impl<'a> TestsReach<'a> {
     }
 
     pub(super) fn is_test(&self, f: &Fragment) -> bool {
-        diffctx_base::testfiles::is_test_path(Path::new(f.path()))
+        self.is_test_by_path
+            .get(f.path())
+            .copied()
+            .unwrap_or_else(|| diffctx_base::testfiles::is_test_path(Path::new(f.path())))
             || self.inline_tests.contains(&f.id)
+    }
+
+    fn runtime_of(&self, path: &str) -> &'static str {
+        self.runtime_by_path
+            .get(path)
+            .copied()
+            .unwrap_or_else(|| runtime_tag(path))
     }
 
     /// The cell that reads the file of `f`, with the path the answer prints.
@@ -338,12 +370,18 @@ impl<'a> TestsReach<'a> {
             .collect();
         // A test that does not spell the name cannot link to it.
         if let Some(name) = name.filter(|s| s.len() >= 3) {
+            let caller_rt = self.runtime_of(caller.path());
             let spelled = memchr::memmem::Finder::new(name);
             found.extend(
                 self.test_fragments
                     .iter()
-                    .filter(|t| spelled.find(t.content.as_bytes()).is_some())
-                    .filter(|t| link(t, caller))
+                    .copied()
+                    .filter(|t| {
+                        let rt = self.runtime_of(t.path());
+                        (caller_rt.is_empty() || rt.is_empty() || rt == caller_rt)
+                            && spelled.find(t.content.as_bytes()).is_some()
+                            && link(t, caller)
+                    })
                     .map(|t| {
                         (
                             t.path().to_string(),
@@ -358,11 +396,10 @@ impl<'a> TestsReach<'a> {
     /// The tests of the runs that enter `caller`, as (file, function).
     fn entered_by<'r>(
         &'r self,
-        runs: &'r [Run],
+        runs: &'r RunIndex,
         caller: &'r Fragment,
     ) -> impl Iterator<Item = (String, Option<String>)> + 'r {
-        runs.iter()
-            .filter(|run| run.enters(caller))
+        runs.entering(caller)
             .flat_map(|run| &run.tests)
             .map(|(path, line)| {
                 let name = self
@@ -708,7 +745,7 @@ impl<'a> TestsReach<'a> {
                 let mut frontier: Vec<&'a Fragment> = state
                     .run
                     .bounded(&state.all_fragments)
-                    .filter(|held| self.asserted.iter().any(|run| run.enters(held)))
+                    .filter(|held| self.asserted.entering(held).next().is_some())
                     .collect();
                 for _ in 0..=MAX_TEST_HOPS {
                     frontier = state
@@ -757,10 +794,7 @@ impl<'a> TestsReach<'a> {
     pub(super) fn open_above(&self, f: &'a Fragment, link: &Link, own: bool) -> bool {
         self.tests_outside_scope
             || (own && self.stops(f, link))
-            || self
-                .asserted
-                .iter()
-                .any(|run| run.enters(f) && run.tests.is_empty())
+            || self.asserted.entering(f).any(|run| run.tests.is_empty())
             || self.reaches_open(f, link)
     }
 
@@ -809,10 +843,7 @@ impl<'a> TestsReach<'a> {
     ) -> bool {
         if let Some((cell, shown)) = self.cell_of(caller) {
             return cell.reached_from(shown).any(|user| self.is_test_file(user))
-                || self
-                    .test_fragments
-                    .iter()
-                    .any(|t| t.path() == caller.path());
+                || self.test_fragment_files.contains(caller.path());
         }
         self.named.contains(caller.path())
             || self.test_fragments.iter().any(|t| reaches_file(t, caller))
@@ -875,7 +906,7 @@ fn asks_for(f: &Fragment, name: &str) -> Option<u32> {
 /// Whether the tree the run reads holds any test file, linked or not.
 fn repo_holds_test_file(
     state: &ScoredState,
-    declared: &DeclaredTests,
+    declared: &TestFilter,
     wanted: impl Fn(&Path) -> bool,
 ) -> bool {
     match state.run.source().list() {
