@@ -241,6 +241,39 @@ fn a_holder_is_complete_only_when_what_it_holds_is_whole_and_unused() {
 }
 
 #[test]
+fn a_holder_is_not_complete_while_what_it_holds_has_a_user() {
+    let repo = Repo {
+        family: Family::TypeScript,
+        base: files(&[
+            (
+                "src/t.ts",
+                "export interface Retry {\n  attempt: number;\n}\n",
+            ),
+            (
+                "src/u.ts",
+                "import { Retry } from \"./t\";\n\nexport function next(r: Retry) {\n  return r.attempt + 1;\n}\n",
+            ),
+        ]),
+        change: files(&[(
+            "src/t.ts",
+            "export interface Retry {\n  attempt: string;\n}\n",
+        )]),
+        caller: None,
+        definition: "src/t.ts".to_string(),
+        symbol: "Retry".to_string(),
+    };
+    let (_, _, lines) = shadow_of(repo);
+    let holder: Vec<&Value> = of(&lines, "src/t.ts::Retry", "head")
+        .into_iter()
+        .filter(|l| l["held"].is_u64())
+        .collect();
+    assert_eq!(holder.len(), 1, "one holder line: {holder:?}");
+    assert_eq!(holder[0]["held"], 1);
+    // `r.attempt` reads the held field: a holder is whole only over what nothing uses.
+    assert_eq!(holder[0]["complete"], false, "{}", holder[0]);
+}
+
+#[test]
 fn a_removed_override_is_reached_through_the_member_it_overrode() {
     let repo = Repo {
         family: Family::Java,
