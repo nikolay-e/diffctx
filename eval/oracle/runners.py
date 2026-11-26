@@ -301,6 +301,24 @@ def gradle_java_home(tree: Path) -> Path | None:
     return jdk_home(GRADLE_RUNTIME)
 
 
+def jdk_mounts() -> list[str]:
+    """`-v` arguments that hand each machine JDK to the container: the directory, plus the trust store a distribution
+    package links it to (`lib/security/cacerts` -> `/etc/ssl/certs/...` on a hosted runner), which dangles in the
+    container without it and leaves the JDK with no trust anchor ("trustAnchors parameter must be non-empty"). The
+    store is one read-only file at the path the link names; nothing else of the host's `/etc` reaches the container."""
+    mounts: list[str] = []
+    for entry in os.environ.get(JDK_HOMES_VARIABLE, "").split(os.pathsep):
+        if not entry:
+            continue
+        mounts += ["-v", f"{entry}:{entry}:ro"]
+        store = Path(entry) / "lib" / "security" / "cacerts"
+        if store.is_symlink() and store.is_file():
+            target = Path(os.path.normpath(store.parent / os.readlink(store)))
+            if not target.resolve().is_relative_to(Path(entry).resolve()):
+                mounts += ["-v", f"{store.resolve()}:{target}:ro"]
+    return mounts
+
+
 def _plan_jvm(ctx: Context, build_tool: str) -> Plan:
     """scip-java indexes through the repository's build, which runs third-party code.
 
@@ -339,7 +357,7 @@ def _plan_jvm(ctx: Context, build_tool: str) -> Plan:
         "-v", f"{ctx.out.parent}:/out",
         "-v", f"{gradle}:/gradle-home",
         "-v", f"{maven}:/root/.m2",
-        *[arg for home in os.environ.get(JDK_HOMES_VARIABLE, "").split(os.pathsep) if home for arg in ("-v", f"{home}:{home}:ro")],
+        *jdk_mounts(),
         "-e", "GRADLE_USER_HOME=/gradle-home",
         *(["-e", f"JAVA_HOME={runtime}"] if runtime is not None else []),
         "-e", f"GRADLE_OPTS={GRADLE_OPTS}",

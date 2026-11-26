@@ -483,6 +483,36 @@ def test_an_old_gradle_gets_jdk_17_as_its_java_home_in_the_build_container_and_i
     assert in_place.env["JAVA_HOME"] == str(home)
 
 
+def test_a_jdk_whose_trust_store_is_a_link_out_of_its_directory_gets_that_file_mounted_read_only(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    linked = jdk_home(tmp_path, "17")
+    plain = jdk_home(tmp_path, "11")
+    store = tmp_path / "etc" / "java" / "cacerts"
+    store.parent.mkdir(parents=True)
+    store.write_bytes(b"trust")
+    (linked / "lib" / "security").mkdir(parents=True)
+    (linked / "lib" / "security" / "cacerts").symlink_to(store)
+    (plain / "lib" / "security").mkdir(parents=True)
+    (plain / "lib" / "security" / "cacerts").write_bytes(b"own")
+    monkeypatch.setenv(runners.JDK_HOMES_VARIABLE, os.pathsep.join(str(home) for home in (linked, plain)))
+
+    assert runners.jdk_mounts() == [
+        "-v", f"{linked}:{linked}:ro",
+        "-v", f"{store}:{store}:ro",
+        "-v", f"{plain}:{plain}:ro",
+    ]  # fmt: skip
+
+
+def test_a_dangling_trust_store_link_adds_no_mount(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    home = jdk_home(tmp_path, "17")
+    (home / "lib" / "security").mkdir(parents=True)
+    (home / "lib" / "security" / "cacerts").symlink_to(tmp_path / "absent")
+    monkeypatch.setenv(runners.JDK_HOMES_VARIABLE, str(home))
+
+    assert runners.jdk_mounts() == ["-v", f"{home}:{home}:ro"]
+
+
 def test_every_gradle_build_loads_the_init_script_that_skips_the_kotlin_metadata_check(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
