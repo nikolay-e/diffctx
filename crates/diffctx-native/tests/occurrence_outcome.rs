@@ -16,7 +16,7 @@ use diffctx_occurrence::tokens::occurrence::{
 use diffctx_resolve::resolve::{
     Binding, CResolver, CandidateReason, Definition, Evidence, EvidenceKind, GoResolver,
     JavaResolver, KotlinResolver, PhpResolver, PythonResolver, Relation, Resolution, RustResolver,
-    ShellResolver, TypeScriptResolver, UnresolvedReason,
+    ShellResolver, SqlResolver, TypeScriptResolver, UnresolvedReason,
 };
 use diffctx_snapshot::snapshot::{AnalysisContext, RangeSpec, RepoPath, RunBudget, Side, SideTag};
 use snapshot_fixture::Repo;
@@ -48,6 +48,7 @@ enum Lang {
     Php,
     C,
     Shell,
+    Sql,
 }
 
 /// What the language's resolver says of one side.
@@ -92,6 +93,10 @@ fn resolved(
         }
         Lang::Shell => {
             let it = ShellResolver::open(ctx, side, cache).expect("the side resolves");
+            (it.bindings().to_vec(), it.definitions().to_vec())
+        }
+        Lang::Sql => {
+            let it = SqlResolver::open(ctx, side, cache).expect("the side resolves");
             (it.bindings().to_vec(), it.definitions().to_vec())
         }
     }
