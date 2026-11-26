@@ -1,0 +1,23 @@
+name: py_a_template_that_fixes_most_of_a_name_names_it
+mode: impact
+source: synthetic
+tags: [python, textual-match, template]
+repo:
+  initial_files:
+    billing/render.py: |
+      def render_invoice_pdf(invoice):
+          return b"%PDF" + invoice.encode()
+    ops/jobs.sh: |
+      #!/usr/bin/env bash
+      fmt="$1"
+      python -m billing.cli "render_invoice_$fmt"
+  changed_files:
+    billing/render.py: |
+      def render_invoice_pdf(invoice):
+          return b"%PDF-1.7" + invoice.encode()
+  commit_message: "render: write the PDF version"
+expect:
+  # `render_invoice_` fixes two of the three words: the line can build this name.
+  exact: false
+  relations:
+  - {from: ops/jobs.sh, to: "billing/render.py::render_invoice_pdf", kind: calls, resolution: unresolved}
