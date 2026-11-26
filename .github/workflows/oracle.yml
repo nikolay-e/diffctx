@@ -170,16 +170,6 @@ jobs:
           if [ "$SCOPE" = fast ]; then export DIFFCTX_YAML_CASES_LIMIT=48; fi
           cargo test --release --test yaml_cases 2>&1 | tee "$REPORT_DIR/yaml_cases.log"
 
-      - name: Metamorphic suite
-        if: ${{ !cancelled() }}
-        run: |
-          mkdir -p "$REPORT_DIR"
-          if [ "$GITHUB_EVENT_NAME" = schedule ] || [ "$GITHUB_EVENT_NAME" = push ]; then
-            export DIFFCTX_METAMORPHIC_SEED="$GITHUB_RUN_ID" DIFFCTX_METAMORPHIC_CASES=1000
-            echo "metamorphic stream: seed=$DIFFCTX_METAMORPHIC_SEED cases=$DIFFCTX_METAMORPHIC_CASES"
-          fi
-          cargo test --release --test metamorphic 2>&1 | tee "$REPORT_DIR/metamorphic.log"
-
       - name: Fault sweep
         if: ${{ !cancelled() }}
         run: |
@@ -203,6 +193,73 @@ jobs:
           path: |
             oracle-out/*.json
             oracle-out/*.log
+          retention-days: 30
+          if-no-files-found: warn
+
+  metamorphic:
+    name: Metamorphic ${{ matrix.family }}
+    needs: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        # On the 1000-case stream each test of these families runs 20-40 minutes, so one job ran past three hours;
+        # `rest` skips exactly these, so a family added here leaves it on its own.
+        family:
+          - budget_growth
+          - homonym_decoys
+          - move_helper
+          - order_and_repeat
+          - reformat_interpolation
+          - reformat_layout
+          - rest
+    env:
+      REPORT_DIR: ${{ github.workspace }}/oracle-out
+      FAMILY: ${{ matrix.family }}
+      SLOW: budget_growth homonym_decoys move_helper order_and_repeat reformat_interpolation reformat_layout
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
+        with:
+          toolchain: "1.100.0"
+
+      - name: Cache the Cargo registry (never the target directory); only the build job saves it
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: cargo-rust-${{ runner.os }}-release-${{ hashFiles('Cargo.lock') }}
+          restore-keys: |
+            cargo-rust-${{ runner.os }}-release-
+            cargo-${{ runner.os }}-
+
+      - name: Metamorphic suite
+        run: |
+          mkdir -p "$REPORT_DIR"
+          if [ "$GITHUB_EVENT_NAME" = schedule ] || [ "$GITHUB_EVENT_NAME" = push ]; then
+            export DIFFCTX_METAMORPHIC_SEED="$GITHUB_RUN_ID" DIFFCTX_METAMORPHIC_CASES=1000
+            echo "metamorphic stream: seed=$DIFFCTX_METAMORPHIC_SEED cases=$DIFFCTX_METAMORPHIC_CASES"
+          fi
+          filter=("$FAMILY::")
+          if [ "$FAMILY" = rest ]; then
+            filter=()
+            for family in $SLOW; do filter+=(--skip "$family::"); done
+          fi
+          cargo test --release --test metamorphic -- "${filter[@]}" 2>&1 | tee "$REPORT_DIR/metamorphic.log"
+
+      - name: Upload the suite log
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        with:
+          name: oracle-metamorphic-${{ matrix.family }}
+          path: oracle-out/metamorphic.log
           retention-days: 30
           if-no-files-found: warn
 
@@ -331,7 +388,7 @@ jobs:
 
   report:
     name: Report and gate
-    needs: [plan, build, suites, measure]
+    needs: [plan, build, suites, metamorphic, measure]
     if: ${{ !cancelled() && needs.plan.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -373,7 +430,11 @@ jobs:
             suites="$ARTIFACTS/oracle-suites"
             if [ "$budget" = default ]; then
               [ -f "$suites/harness.json" ] && flags+=(--harness "$suites/harness.json")
-              [ -f "$suites/metamorphic.log" ] && flags+=(--metamorphic "$suites/metamorphic.log")
+              shards=("$ARTIFACTS"/oracle-metamorphic-*/metamorphic.log)
+              if [ -f "${shards[0]}" ]; then
+                cat "${shards[@]}" > "$OUT/metamorphic.log"
+                flags+=(--metamorphic "$OUT/metamorphic.log")
+              fi
               [ -f "$suites/faults.log" ] && flags+=(--faults "$suites/faults.log")
             fi
             uv run --frozen python run.py report "${flags[@]}" --gate || status=1
