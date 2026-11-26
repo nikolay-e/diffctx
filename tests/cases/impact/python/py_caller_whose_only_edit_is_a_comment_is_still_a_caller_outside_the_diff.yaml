@@ -1,0 +1,33 @@
+name: py_caller_whose_only_edit_is_a_comment_is_still_a_caller_outside_the_diff
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [python, comment-only, caller, layout]
+repo:
+  initial_files:
+    lib.py: |
+      def f(n):
+          return n
+    app.py: |
+      from lib import f
+
+
+      def main(n):
+          # first note
+          return f(n)
+  changed_files:
+    lib.py: |
+      def f(n):
+          return n + 1
+    app.py: |
+      from lib import f
+
+
+      def main(n):
+          # second note
+          return f(n)
+  commit_message: "lib: f adds one; app: reword a comment"
+expect:
+  exact: false
+  relations:
+    - {from: app.py::main, to: lib.py::f, kind: calls, resolution: resolved, site: 6}

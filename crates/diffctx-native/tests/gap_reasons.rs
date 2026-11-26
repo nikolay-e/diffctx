@@ -3,7 +3,7 @@
 //! Run on real git repositories through the binary.
 
 mod support;
-use support::{diffctx_unclocked, repo};
+use support::{commit_all, diffctx_unclocked, init_repo, repo, write};
 use tempfile::TempDir;
 
 const HANDLERS: &str = "def on_event(e):\n    return e\n";
@@ -391,4 +391,166 @@ fn a_token_set_cut_short_on_disk_is_read_again_and_the_outside_files_are_still_c
             &format!("token line {dropped} missing"),
         );
     }
+}
+
+const OTHER_FILE_CALLS_INNER: (&str, &str) = ("app.py", "def go(o):\n    return o.inner(1)\n");
+
+fn sites_of_unlanded(gaps: &[serde_json::Value]) -> Vec<String> {
+    gaps.iter()
+        .filter(|gap| gap["kind"] == "unlanded")
+        .flat_map(|gap| gap["sites"].as_array().into_iter().flatten())
+        .map(|site| format!("{}:{}", site["path"].as_str().unwrap_or(""), site["line"]))
+        .collect()
+}
+
+/// A function nested in another exists only while the outer one runs: the `o.inner(1)`
+/// of another file is a call of some other `inner`, and a top-level `inner` is where
+/// that same call is a use the binding model cannot place.
+#[test]
+fn a_nested_function_lists_only_the_uses_of_its_own_file_as_unlanded() {
+    let nested = repo(
+        &[
+            (
+                "lib.py",
+                "def make(prefix):\n    def inner(m):\n        return prefix + m\n\n    return inner\n",
+            ),
+            OTHER_FILE_CALLS_INNER,
+        ],
+        &[(
+            "lib.py",
+            "def make(prefix):\n    def inner(m):\n        return prefix + m.strip()\n\n    return inner\n",
+        )],
+    );
+    assert_eq!(
+        sites_of_unlanded(&gaps_of(nested.path(), "inner")),
+        ["lib.py:5"]
+    );
+    let top_level = repo(
+        &[
+            ("lib.py", "def inner(m):\n    return m\n"),
+            OTHER_FILE_CALLS_INNER,
+        ],
+        &[("lib.py", "def inner(m):\n    return m.strip()\n")],
+    );
+    assert_eq!(
+        sites_of_unlanded(&gaps_of(top_level.path(), "inner")),
+        ["app.py:2"]
+    );
+}
+
+/// A module a deleted sibling imported has no importer left to name: the deleted
+/// files are not the files that still depend on it.
+#[test]
+fn a_deleted_module_only_a_deleted_module_imported_has_no_importers() {
+    let tmp = TempDir::new().expect("tempdir");
+    let dir = tmp.path();
+    init_repo(dir);
+    write(dir, "pkg/__init__.py", "");
+    write(
+        dir,
+        "pkg/first.py",
+        "class First:\n    title = \"\"\n\n    def run(self):\n        return 1\n",
+    );
+    write(
+        dir,
+        "pkg/second.py",
+        "from pkg.first import First\n\n\nclass Second(First):\n    def go(self):\n        return self.run()\n",
+    );
+    write(dir, "other.py", "def keep():\n    return 1\n");
+    commit_all(dir, "initial");
+    std::fs::remove_dir_all(dir.join("pkg")).expect("delete the package");
+    commit_all(dir, "drop the package");
+    let doc: serde_json::Value =
+        serde_json::from_slice(&impact(dir, "json").stdout).expect("impact JSON");
+    let items = doc["deleted_modules"]["items"]
+        .as_array()
+        .unwrap_or_else(|| panic!("no deleted modules: {doc:#}"));
+    assert_eq!(items.len(), 2, "{doc:#}");
+    assert!(
+        items.iter().all(|module| module["importers"].is_null()),
+        "{doc:#}"
+    );
+    let text = String::from_utf8(impact(dir, "md").stdout).expect("utf8");
+    assert_eq!(text.matches("no importers").count(), 2, "{text}");
+    assert!(!text.contains("imported by"), "{text}");
+}
+
+const GADGET: &str = "class Gadget:\n    def run(self):\n        return 1\n\n    def stop(self):\n        return 0\n";
+const GADGET_WITHOUT_RUN: &str = "class Gadget:\n    def stop(self):\n        return 0\n";
+
+/// A removed method's callers are read in the base to know that `gadget.run()` was a call
+/// of `Gadget.run`. A base read that fails is a loss the row names twice: the file whose
+/// read failed, and the stop of the base the row's uses were accounted against. Each base
+/// read after the run's own is struck in turn; the cache is off so that every blob is read.
+#[test]
+fn a_removed_method_names_a_base_read_that_failed_on_its_own_row() {
+    let callers: Vec<(String, String)> = (1..=3)
+        .map(|k| {
+            (
+                format!("caller{k}.py"),
+                format!(
+                    "from gadget import Gadget\n\n\ndef drive{k}():\n    gadget = Gadget()\n    return gadget.run()\n"
+                ),
+            )
+        })
+        .collect();
+    let mut base: Vec<(&str, &str)> = vec![("gadget.py", GADGET)];
+    base.extend(
+        callers
+            .iter()
+            .map(|(path, text)| (path.as_str(), text.as_str())),
+    );
+    let tmp = repo(&base, &[("gadget.py", GADGET_WITHOUT_RUN)]);
+    let scratch = TempDir::new().expect("tempdir");
+    let no_cache = scratch.path().join("no-cache");
+    std::fs::write(&no_cache, "").expect("write");
+    let no_cache = no_cache.to_str().expect("utf-8 path");
+    let (mut stop_named, mut file_named) = (false, false);
+    for n in 0..200 {
+        let strike = format!("base:{n}");
+        let out = diffctx_unclocked()
+            .envs([
+                ("DIFFCTX_CACHE_DIR", no_cache),
+                ("DIFFCTX_TEST_READ_FAULT", strike.as_str()),
+            ])
+            .current_dir(tmp.path())
+            .args([
+                "--diff",
+                "HEAD~1..HEAD",
+                "--mode",
+                "impact",
+                "-q",
+                "-f",
+                "json",
+            ])
+            .output()
+            .expect("run diffctx");
+        if !String::from_utf8_lossy(&out.stderr).contains("failed on purpose") {
+            break;
+        }
+        let Ok(doc) = serde_json::from_slice::<serde_json::Value>(&out.stdout) else {
+            continue;
+        };
+        let gaps: Vec<&serde_json::Value> = doc["definitions"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter(|d| d["change"]["kind"] == "removed" && d["symbol"] == "run")
+            .flat_map(|d| d["gaps"].as_array().into_iter().flatten())
+            .collect();
+        stop_named |= gaps
+            .iter()
+            .any(|g| g["kind"] == "stopped" && g["reasons"] == serde_json::json!(["read_failed"]));
+        file_named |= gaps
+            .iter()
+            .any(|g| g["kind"] == "unaccounted" && g["reason"] == "read_failed");
+    }
+    assert!(
+        stop_named,
+        "no struck base read left a stop on the row of `run`"
+    );
+    assert!(
+        file_named,
+        "no struck base read left a lost file on the row of `run`"
+    );
 }

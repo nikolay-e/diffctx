@@ -241,6 +241,33 @@ fn a_holder_is_complete_only_when_what_it_holds_is_whole_and_unused() {
 }
 
 #[test]
+fn a_holder_with_nothing_open_and_whole_unused_members_is_complete() {
+    let repo = Repo {
+        family: Family::TypeScript,
+        base: files(&[(
+            "src/t.ts",
+            "export interface Retry {\n  attempt: number;\n}\n",
+        )]),
+        change: files(&[(
+            "src/t.ts",
+            "export interface Retry {\n  attempt: string;\n}\n",
+        )]),
+        caller: None,
+        definition: "src/t.ts".to_string(),
+        symbol: "Retry".to_string(),
+    };
+    let (_, _, lines) = shadow_of(repo);
+    let holder: Vec<&Value> = of(&lines, "src/t.ts::Retry", "head")
+        .into_iter()
+        .filter(|l| l["held"].is_u64())
+        .collect();
+    assert_eq!(holder.len(), 1, "one holder line: {lines:?}");
+    assert_eq!(holder[0]["held"], 1);
+    // Nothing names `Retry` or `attempt` outside their own file: no row is open.
+    assert_eq!(holder[0]["complete"], true, "{lines:?}");
+}
+
+#[test]
 fn a_holder_is_not_complete_while_what_it_holds_has_a_user() {
     let repo = Repo {
         family: Family::TypeScript,

@@ -1,0 +1,28 @@
+name: py_deleted_module_named_in_a_file_the_run_lost_stays_a_stale_reference
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [python, stale-reference, loss, decoy]
+repo:
+  initial_files:
+    alpha/app/config.py: |
+      debug = False
+    delta/web.py: |
+      import flask
+
+      app = flask.Flask(__name__)
+      app.config["TESTING"] = True
+    gamma/web.py: |
+      import flask
+
+      app = flask.Flask(__name__)
+      app.config["TESTING"] = True
+  deleted_files:
+    - alpha/app/config.py
+  commit_message: "drop alpha's config"
+query:
+  env: {DIFFCTX_TEST_LOSS: "read_failed:1"}
+expect:
+  exact: false
+  not_stale: [delta/web.py]
+  stale: [gamma/web.py]
