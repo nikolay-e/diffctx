@@ -704,7 +704,7 @@ fn landed(
     // Every move the line made, not its last: a reset, switch or stash after
     // the commit on the same line hid it (#508). A commit is the line's when
     // it grows from where the line started (or from where its rebase ended),
-    // or amends a commit the line started on or made: another session's
+    // or sits on, or amends, a commit the line started on or made: another session's
     // commit after a reset of the same checkout does neither (#406).
     let mut anchor = before.head.clone();
     let mut ours: Vec<String> = vec![before.head.clone()];
@@ -758,11 +758,8 @@ fn landed(
             continue;
         }
         let amend = action == "commit (amend)";
-        let grows = if amend {
-            ours.contains(&old)
-        } else {
-            anchor.is_empty() || ancestor_of(&repo, &anchor, &new)?
-        };
+        let grows = ours.contains(&old)
+            || (!amend && (anchor.is_empty() || ancestor_of(&repo, &anchor, &new)?));
         if !grows {
             continue;
         }
