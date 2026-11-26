@@ -87,3 +87,36 @@ def test_a_set_that_cannot_be_drawn_is_refused_before_a_file_is_written():
 
     with pytest.raises(SystemExit, match="kotlin"):
         seeds.draw(shrunk, PLAN, lambda url: "0" * 40, "2026-11-27")
+
+
+def test_a_replacement_in_the_recorded_draw_is_deterministic_and_disjoint_from_every_set_and_corpus_toml():
+    now = {number: {full_name(repo) for repo in loaded.repos} for number, loaded in SETS.items()}
+    corpus_owners = {owner(repo.url) for repo in CORPUS.repos}
+
+    def drawn(plan: dict) -> dict[int, set[str]]:
+        written = seeds.draw(POOLS, plan, lambda url: "0" * 40, "2026-11-27")
+        found = {number: tomllib.loads(written[seeds.SEEDS / f"seed-{number}.toml"])["repo"] for number in SETS}
+        return {
+            number: {"/".join(r["url"].removesuffix(".git").split("/")[3:5]) for r in repos} for number, repos in found.items()
+        }
+
+    for number in SETS:
+        victim = sorted(now[number])[0]
+        replaced = {
+            "set": [
+                {
+                    **entry,
+                    **({"replaced": [{"name": victim, "reason": "its indexer timed out"}]} if entry["number"] == number else {}),
+                }
+                for entry in PLAN["set"]
+            ]
+        }
+
+        again = drawn(replaced)
+
+        assert again == drawn(replaced)
+        assert victim not in set().union(*again.values())
+        assert {n: held for n, held in again.items() if n != number} == {n: held for n, held in now.items() if n != number}
+        (added,) = again[number] - now[number]
+        assert added not in set().union(*now.values()) and added.split("/")[0].lower() not in corpus_owners
+        assert again[number] - {added} == now[number] - {victim}

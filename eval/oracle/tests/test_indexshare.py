@@ -1,4 +1,7 @@
+import dataclasses
+import json
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -129,3 +132,79 @@ def test_a_failed_index_build_leaves_its_log_under_out_and_the_round_says_where(
     kept = logs / f"t-{head[:12]}-head.log"
     assert "What went wrong" in kept.read_text() and "padding-99" in kept.read_text()
     assert f"the index build's log is kept at {kept}" in capsys.readouterr().err
+
+
+def fast_failing_repository(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, script: str, **limits: int):
+    """Four commits of a Go module whose indexer is `script` (it appends a line to `runs` each time it starts)."""
+    repo_dir = tmp_path / "repo"
+    repo_dir.mkdir()
+    subprocess.run(["git", "init", "-q", "-b", "main"], cwd=repo_dir, env=gitrepo.git_env(), check=True)
+    for n in range(4):
+        commit(repo_dir, {"go.mod": "module t\n", "a.go": f"package a // {n}\n"}, f"c{n}")
+    head = gitrepo.git("rev-parse", "HEAD", cwd=repo_dir).strip()
+    cache = tmp_path / "cache"
+    runs = tmp_path / "runs"
+    for module in (indexing, indexshare):
+        monkeypatch.setattr(module, "CACHE", cache)
+    monkeypatch.setattr(gitrepo, "mirror", lambda url, dest, sha: repo_dir / ".git")
+    corpus = dataclasses.replace(load_corpus(), **limits)
+    monkeypatch.setattr(indexshare, "load_corpus", lambda: corpus)
+    plan = runners.Plan(["sh", "-c", f'echo run >> "{runs}"; {script}'], {"PATH": os.environ["PATH"]})
+    monkeypatch.setitem(runners.PLANNERS, "go", lambda ctx: plan)
+    return repo_dir, head, cache, runs, corpus
+
+
+def only_failure_log(cache: Path) -> str:
+    (log,) = cache.glob(f"index/t/*/*/{indexing.FAILURE_LOG}")
+    return log.read_text()
+
+
+def test_an_indexer_that_times_out_stops_its_repository_and_keeps_what_it_printed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+):
+    _, head, cache, runs, _ = fast_failing_repository(
+        tmp_path, monkeypatch, "echo compiling module; exec sleep 60", index_seconds=1
+    )
+
+    status = indexshare.main(["--adhoc", "t", "unused", "go", "--sha", head, "--no-setup", "--commits", "4"])
+
+    output = capsys.readouterr().out
+    assert status == 1
+    assert runs.read_text().count("run") == 1  # neither the head of that commit nor any other commit was tried
+    assert re.search(r"^[0-9a-f]{12}: timeout in [\d.]+s$", output, re.M)
+    assert "t\tnot indexed: timeout at commit 1 of the sample" in output
+    assert "compiling module" in only_failure_log(cache)
+    (meta,) = cache.glob("index/t/*/*/meta.json")
+    assert json.loads(meta.read_text())["reason"] == "timeout" and not json.loads(meta.read_text())["ok"]
+
+
+def test_a_snapshot_refused_with_429_after_every_wait_stops_its_repository(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+):
+    repo_dir, head, cache, runs, corpus = fast_failing_repository(
+        tmp_path, monkeypatch, "echo 'Received status code 429 from server' >&2; exit 1"
+    )
+    monkeypatch.setattr(indexing, "RATE_LIMIT_WAITS", (0, 0))
+
+    rows = indexshare.index_sample(corpus, Repo("t", "", "go", head, "MIT"), repo_dir / ".git", count=4)
+
+    output = capsys.readouterr().out
+    assert runs.read_text().count("run") == 3  # the first run and one after each wait, and nothing for another snapshot
+    assert [(row["causes"], row.get("stopped")) for row in rows] == [({"base": "rate-limited"}, "rate-limited")]
+    assert re.search(r"^[0-9a-f]{12}: rate-limited in [\d.]+s$", output, re.M)
+    assert "status code 429" in only_failure_log(cache)
+
+
+def test_an_indexer_that_exits_is_not_a_sign_that_the_next_snapshots_fail_too(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+):
+    repo_dir, head, _, runs, corpus = fast_failing_repository(tmp_path, monkeypatch, "echo broken >&2; exit 1")
+
+    rows = indexshare.index_sample(corpus, Repo("t", "", "go", head, "MIT"), repo_dir / ".git", count=3)
+
+    snapshots = {sha for row in rows if row["base"] for sha in (row["base"], row["commit"])}
+    assert len(rows) == 3 and not any("stopped" in row for row in rows)
+    assert runs.read_text().count("run") == len(snapshots) > 2
+    assert len(re.findall(r"^[0-9a-f]{12}: indexer exited 1: broken in [\d.]+s$", capsys.readouterr().out, re.M)) == len(
+        snapshots
+    )

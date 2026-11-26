@@ -71,12 +71,19 @@ def index_sample(
                 if not result.ok:
                     row["causes"][side] = cause(result)
                     keep_failure_log(result, repo, snapshot, side, logs)
+                    if result.repeats:
+                        row["stopped"] = result.reason
+                        break
         row["excluded"] = bool(row["causes"])
         rows.append(row)
+        if "stopped" in row:
+            break
     return rows
 
 
 def summary(repo: str, rows: list[dict]) -> str:
+    if rows and "stopped" in rows[-1]:
+        return f"{repo}\tnot indexed: {rows[-1]['stopped']} at commit {len(rows)} of the sample"
     excluded = [row for row in rows if row["excluded"]]
     causes = collections.Counter(c for row in excluded for c in set(row["causes"].values()))
     share = len(excluded) / len(rows) if rows else 1.0
@@ -118,6 +125,7 @@ def main(argv: list[str] | None = None) -> int:
     if options.setup:
         setup_tools(corpus, {repo.language for repo in repos})
     sink = options.out.open("w", encoding="utf-8") if options.out else None
+    stopped = 0
     for repo in repos:
         git_dir = gitrepo.mirror(repo.url, CACHE / "mirrors" / f"{repo.name}.git", repo.sha)
         rows = index_sample(
@@ -134,7 +142,8 @@ def main(argv: list[str] | None = None) -> int:
             sink.writelines(json.dumps(row) + "\n" for row in rows)
             sink.flush()
         print(summary(repo.name, rows), flush=True)
-    return 0
+        stopped += bool(rows) and "stopped" in rows[-1]
+    return 1 if stopped else 0
 
 
 if __name__ == "__main__":

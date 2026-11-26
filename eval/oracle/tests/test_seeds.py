@@ -376,3 +376,14 @@ def test_judge_reads_the_included_subprojects_of_a_jvm_build():
     )
 
     assert "com.android" in seeds.judge(api, "kotlin", entry("x/y"), 800)
+
+
+def test_a_replacement_needs_a_pool_name_and_a_reason():
+    plan = {"set": [{"number": 2, "seed": 1, "replaced": [{"name": "o1/python-1", "reason": " "}]}]}
+    with pytest.raises(SystemExit, match="replaced without"):
+        seeds.replaced_names(pools(), plan)
+    with pytest.raises(SystemExit, match="replaced without"):
+        seeds.replaced_names(
+            pools(), {"set": [{"number": 2, "seed": 1, "replaced": [{"name": "x/unknown", "reason": "timeout"}]}]}
+        )
+    assert seeds.replaced_names(pools(), {"set": [{"number": 2, "seed": 1}]}) == set()

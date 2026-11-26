@@ -14,6 +14,10 @@ needs sets nobody picked by hand. The rule, written before any set was drawn:
 3. Draw: a set seed is one draw of the operating system's CSPRNG, recorded with its date in `seeds/draw.toml`. Per
    language the feasible pool is ordered by `sha256("<seed>:<full_name>")` and the first k, as many repositories as
    corpus.toml has for that language, are the set; a later set draws from what the earlier ones left.
+   A drawn repository the indexers cannot index is replaced by the next feasible one of its language in the same order
+   that no set holds (the first draw of every set counts as held, so no other set moves): its name and the reason go to
+   `replaced` of its set in `seeds/draw.toml`, and no set draws it again. The reason is the indexer's own (a timeout, an
+   exit on most snapshots), never a 429 (that is retried later) and never anything read from rows.
 4. Pin each repository at `git ls-remote <url> HEAD` and write `seeds/seed-<n>.toml`.
 
   python seeds.py pool [--as-of YYYY-MM-DD]    read the pools and their feasibility; writes seeds/pool.json
@@ -280,14 +284,32 @@ def seed_file(
     return "\n".join(lines) + "\n"
 
 
+def names_of(chosen: dict[str, list[dict]]) -> set[str]:
+    return {e["full_name"] for group in chosen.values() for e in group}
+
+
+def replaced_names(as_of_pools: dict, plan: dict) -> set[str]:
+    """Every name some set replaced, each with a reason and each in the pool: none of them is drawn by any set."""
+    known = {e["full_name"] for entries in as_of_pools["languages"].values() for e in entries}
+    replaced = [item for entry in plan["set"] for item in entry.get("replaced", [])]
+    unfit = [item.get("name") for item in replaced if item.get("name") not in known or not str(item.get("reason", "")).strip()]
+    if unfit:
+        raise SystemExit(f"replaced without a pool name and a reason: {unfit}")
+    return {item["name"] for item in replaced}
+
+
 def draw(as_of_pools: dict, plan: dict, pins: Callable[[str], str], today: str) -> dict[Path, str]:
     corpus = load_corpus(ROOT / "corpus.toml")
     counts = {language: sum(r.language == language for r in corpus.repos) for language in LANGUAGES}
-    taken: set[str] = set()
-    written = {}
+    taken = replaced_names(as_of_pools, plan)
+    first_draw: list[set[str]] = []
     for entry in plan["set"]:
-        chosen = draw_set(as_of_pools, entry["seed"], counts, taken)
-        taken |= {e["full_name"] for group in chosen.values() for e in group}
+        first_draw.append(names_of(draw_set(as_of_pools, entry["seed"], counts, set().union(*first_draw))))
+    held = set().union(*first_draw)
+    written = {}
+    for entry, own in zip(plan["set"], first_draw, strict=True):
+        chosen = draw_set(as_of_pools, entry["seed"], counts, taken | (held - own))
+        taken |= names_of(chosen)
         pinned = {e["full_name"]: pins(e["url"]) for group in chosen.values() for e in group}
         text = seed_file(
             entry["number"], entry["seed"], entry["drawn"], entry["holdout"], as_of_pools["as_of"], chosen, today, pinned

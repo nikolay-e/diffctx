@@ -241,6 +241,7 @@ class RepoRun:
     budget: int | None = None
     replay: Path | None = None
     engine_args: tuple[str, ...] = ()
+    stopped: str = ""
 
 
 def prepare(run: RepoRun, base: str, sha: str, record: dict) -> Prepared | None:
@@ -252,6 +253,9 @@ def prepare(run: RepoRun, base: str, sha: str, record: dict) -> Prepared | None:
         indexed[side] = (tree, result)
         keep_failure_log(result, run.repo, commit, side, run.sink.out / "stderr")
         run.sink.write("indexes.jsonl", [{"repo": run.repo.name, "commit": commit, "side": side, **result.summary()}])
+        if result.repeats:
+            run.stopped = result.reason
+            break
     failed = [f"{side}: {indexed[side][1].reason}" for side in indexed if not indexed[side][1].ok]
     if failed:
         record["reason"] = "; ".join(failed)
@@ -403,6 +407,12 @@ def measure_repo(run: RepoRun, count: int) -> tuple[int, int]:
         measured += record["status"] == "measured"
         run.sink.write("commits.jsonl", [record])
         print(f"[{run.repo.name} {number}/{len(commits)}] {sha[:10]} {record['status']} {record.get('reason', '')}", flush=True)
+        if run.stopped:
+            print(
+                f"[{run.repo.name}] not indexed: {run.stopped}; the other {len(commits) - number} commits are not tried",
+                flush=True,
+            )
+            break
     return measured, len(commits)
 
 

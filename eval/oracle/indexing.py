@@ -31,6 +31,9 @@ REASON_CHARS = 400
 # waits (seconds) and runs the build again, which resumes from the artifacts it already has.
 RATE_LIMITED = "status code 429"
 RATE_LIMIT_WAITS = (30, 90, 270)
+TIMED_OUT = "timeout"
+RATE_LIMITED_REASON = "rate-limited"  # the waits ran out and the last run was refused again
+REPEATING_REASONS = (TIMED_OUT, RATE_LIMITED_REASON)  # the next snapshots of the repository fail the same way
 # The first line a failed build blames: Maven `[ERROR] ...`, Kotlin `e: ...`, javac `error: ...` or `File.java:3: error: ...`.
 ERROR_LINE = re.compile(r"\[ERROR\]\s+\S|e: |error: |\S+\.java:\d+: error: ")
 WHAT_WENT_WRONG = "* What went wrong:"  # Gradle's report: the next line names the failure
@@ -64,6 +67,10 @@ class IndexResult:
     version: str
     seconds: float = 0.0
     completeness: Completeness = field(default_factory=Completeness)
+
+    @property
+    def repeats(self) -> bool:
+        return self.reason in REPEATING_REASONS
 
     def summary(self) -> dict:
         data = asdict(self)
@@ -183,6 +190,7 @@ def index_snapshot(
     result.indexer, result.version = package, version
     result.path = out if out.exists() else None
     meta.write_text(json.dumps(result.summary(), indent=2), encoding="utf-8")
+    print(f"{sha[:12]}: {result.reason} in {result.seconds}s", flush=True)
     return result
 
 
@@ -221,6 +229,11 @@ def _run_until_served(
     return done, output
 
 
+def _keep_output(out: Path, output: str) -> None:
+    out.parent.mkdir(parents=True, exist_ok=True)
+    (out.parent / FAILURE_LOG).write_text(output[-FAILURE_LOG_CHARS:], encoding="utf-8")
+
+
 def _run_indexer(
     corpus: corpus_config.Corpus,
     repo: corpus_config.Repo,
@@ -242,14 +255,15 @@ def _run_indexer(
         return result
     try:
         done, output = _run_until_served(plan.command, tree, plan.env, corpus.index_seconds)
-    except subprocess.TimeoutExpired:
-        result.reason = "timeout"
+    except subprocess.TimeoutExpired as expired:
+        _keep_output(out, ((expired.stderr or b"") + (expired.stdout or b"")).decode(errors="replace"))
+        result.reason = TIMED_OUT
         return result
     if done.returncode != 0 or not out.exists():
-        out.parent.mkdir(parents=True, exist_ok=True)
-        (out.parent / FAILURE_LOG).write_text(output[-FAILURE_LOG_CHARS:], encoding="utf-8")
+        _keep_output(out, output)
         blamed = first_error(output) or output[-REASON_CHARS:].strip().replace("\n", " | ")
-        result.reason = f"indexer exited {done.returncode}: {blamed}"
+        refused = done.returncode != 0 and RATE_LIMITED in output  # the last run, after every wait, was refused again
+        result.reason = RATE_LIMITED_REASON if refused else f"indexer exited {done.returncode}: {blamed}"
         return result
     result.ok, result.reason = True, "ok"
     if repo.language in ("kotlin", "java"):

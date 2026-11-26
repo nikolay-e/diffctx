@@ -1,4 +1,5 @@
 import argparse
+import dataclasses
 import json
 import os
 import subprocess
@@ -263,3 +264,31 @@ def test_the_exported_trees_of_a_commit_are_dropped_with_its_partial_leftovers_a
     measure.drop_trees(repo_dir / ".git", "t", shas[1])
 
     assert sorted(path.name for path in trees.iterdir()) == [shas[2]]
+
+
+def test_a_repository_whose_indexer_times_out_is_not_measured_any_further(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+):
+    repo_dir = tmp_path / "repo"
+    repo_dir.mkdir()
+    subprocess.run(["git", "init", "-q", "-b", "main"], cwd=repo_dir, env=gitrepo.git_env(), check=True)
+    for n in range(4):
+        commit(repo_dir, {"go.mod": "module t\n", "a.go": f"package a // {n}\n"}, f"c{n}")
+    head = gitrepo.git("rev-parse", "HEAD", cwd=repo_dir).strip()
+    for module in (indexing, measure):
+        monkeypatch.setattr(module, "CACHE", tmp_path / "cache")
+    runs = tmp_path / "runs"
+    plan = runners.Plan(["sh", "-c", f'echo run >> "{runs}"; exec sleep 60'], {"PATH": os.environ["PATH"]})
+    monkeypatch.setitem(runners.PLANNERS, "go", lambda ctx: plan)
+    corpus = dataclasses.replace(load_corpus(), index_seconds=1)
+    run = measure.RepoRun(
+        corpus, Repo("t", "", "go", head, "MIT"), repo_dir / ".git", measure.Sink(tmp_path / "out"), Path("none"), False, False, 0
+    )
+
+    measured, tried = measure.measure_repo(run, 3)
+
+    rows = [json.loads(line) for line in (tmp_path / "out" / "commits.jsonl").read_text().splitlines()]
+    assert (measured, tried) == (0, 3) and runs.read_text().count("run") == 1
+    assert [(row["status"], row["reason"]) for row in rows] == [("excluded", "base: timeout")]
+    assert run.stopped == "timeout"
+    assert "[t] not indexed: timeout; the other 2 commits are not tried" in capsys.readouterr().out
