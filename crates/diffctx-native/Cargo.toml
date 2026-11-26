@@ -53,7 +53,6 @@ tracing.workspace = true
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 regex.workspace = true
 rustc-hash.workspace = true
-similar = "3"
 walkdir = "2"
 libc.workspace = true
 pyo3 = { version = "0.30", features = ["extension-module", "abi3-py311"], optional = true }
@@ -105,6 +104,8 @@ libtest-mimic = "0.8"
 # Only the diffctx-test example walks case files by pattern; it rode in
 # [dependencies] and shipped in the published crate for nothing.
 glob = "0.3"
+# The corpus harness diffs in-memory files the way git does.
+similar = "3"
 # The hook's command-line generator (#508), seeded and replayable.
 proptest = { version = "1.12", default-features = false, features = ["std"] }
 

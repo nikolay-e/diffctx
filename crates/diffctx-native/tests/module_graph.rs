@@ -81,10 +81,7 @@ const LAYERS: &[(&str, &[&str])] = &[
         "output",
         &["render", "decide", "tokens", "impact", "answer", "locate"],
     ),
-    (
-        "orchestration",
-        &["pipeline", "provenance", "in_memory_harness"],
-    ),
+    ("orchestration", &["pipeline", "provenance"]),
     (
         "surface",
         &[

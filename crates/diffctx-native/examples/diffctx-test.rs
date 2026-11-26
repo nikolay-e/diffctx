@@ -11,13 +11,15 @@ use rayon::prelude::*;
 use rustc_hash::FxHashMap;
 use serde::Serialize;
 
-use _diffctx::in_memory_harness::{MemoryRepo, build_diff_context_in_memory};
 use diffctx_config::config::limits::DEFAULT_PPR_ALPHA;
 use diffctx_config::mode::ScoringMode;
 
 #[path = "../tests/common/mod.rs"]
 mod common;
 use common::{TestCase, calculate_budget, evaluate_oracle, garbage_files};
+#[path = "../tests/support/memory.rs"]
+mod memory;
+use memory::{MemoryRepo, build_diff_context_in_memory};
 
 #[derive(Parser)]
 #[command(name = "diffctx-test", about = "Run YAML diff test cases in-memory")]

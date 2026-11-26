@@ -9,12 +9,12 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use _diffctx::in_memory_harness::final_state_edges;
-
 #[allow(dead_code)]
 mod common;
 mod key_cases;
+mod support;
 use key_cases::{Label, Tally, far_end};
+use support::memory::final_state_edges;
 
 #[test]
 fn per_category_edge_precision() {

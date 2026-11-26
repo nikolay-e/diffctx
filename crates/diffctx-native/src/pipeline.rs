@@ -1952,7 +1952,7 @@ fn settle_layout(
 /// The class of every changed file, keyed by its display path. Generated
 /// files are told by their header, which the first fragment of the file
 /// carries; the rest by the shape of their hunks and changed lines.
-pub(crate) fn classify_changes(
+pub fn classify_changes(
     root_dir: &Path,
     changed_files: &[PathBuf],
     hunks: &[diffctx_base::types::DiffHunk],
@@ -2118,7 +2118,7 @@ pub(crate) fn trim_commit_messages(messages: &[String], cap_tokens: u32) -> Vec<
 }
 
 /// Every changed file's evidence tier, keyed by the path its fragments carry.
-pub(crate) fn evidence_priority_of(
+pub fn evidence_priority_of(
     changed_files: &[PathBuf],
     change_classes: &[(
         String,
@@ -3069,7 +3069,7 @@ pub(crate) fn empty_output_from_state(state: &ScoredState) -> DiffContextOutput 
     output
 }
 
-pub(crate) fn create_discovery(
+pub fn create_discovery(
     config: &PipelineConfig,
     reverse_references: bool,
 ) -> Box<dyn DiscoveryStrategy> {

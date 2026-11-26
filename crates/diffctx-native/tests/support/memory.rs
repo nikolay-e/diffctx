@@ -1,3 +1,6 @@
+//! The corpus harness: an in-memory repository run through the engine's own
+//! pipeline phases, so a case scores the system that ships (#149, #232).
+
 use std::fmt::Write;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -12,20 +15,20 @@ use diffctx_config::config::tokenization::TOKENIZATION;
 use diffctx_config::mode::{PipelineConfig, ScoringMode};
 use diffctx_facts::parsers::fragment_file;
 
-pub struct MemoryRepo {
+pub(crate) struct MemoryRepo {
     pub name: String,
     pub initial_files: FxHashMap<String, String>,
     pub changed_files: FxHashMap<String, String>,
 }
 
-pub struct FragmentRow {
+pub(crate) struct FragmentRow {
     pub kind: &'static str,
     pub symbol: Option<String>,
     pub start_line: u32,
     pub end_line: u32,
 }
 
-pub fn fragment_rows(path: &str, content: &str) -> Vec<FragmentRow> {
+pub(crate) fn fragment_rows(path: &str, content: &str) -> Vec<FragmentRow> {
     let mut rows: Vec<FragmentRow> = fragment_file(Arc::from(path), content)
         .into_iter()
         .map(|f| FragmentRow {
@@ -49,7 +52,7 @@ pub fn fragment_rows(path: &str, content: &str) -> Vec<FragmentRow> {
 /// A cross-file edge of the graph the engine builds over a repository's
 /// final state, as the file pair it relates and the category that survived
 /// the merge.
-pub struct FileEdge {
+pub(crate) struct FileEdge {
     pub category: &'static str,
     pub src: String,
     pub dst: String,
@@ -129,7 +132,7 @@ impl Drop for TempTree {
 /// repository after the change — the whole final tree, not the discovery
 /// universe of one run, so a link is measured whether or not a given diff
 /// would have admitted its endpoint. Selection is untouched.
-pub fn final_state_edges(repo: &MemoryRepo) -> Vec<FileEdge> {
+pub(crate) fn final_state_edges(repo: &MemoryRepo) -> Vec<FileEdge> {
     let fragments = final_state_fragments(repo);
     let tree = TempTree::write(&merge_file_contents(
         &repo.initial_files,
@@ -161,7 +164,7 @@ pub fn final_state_edges(repo: &MemoryRepo) -> Vec<FileEdge> {
 
 /// A link of the typed key table: two files that name the same environment
 /// variable or image, with the key and how each file spells it.
-pub struct TypedKeyLink {
+pub(crate) struct TypedKeyLink {
     pub kind: &'static str,
     pub strength: &'static str,
     pub key: String,
@@ -174,7 +177,7 @@ pub struct TypedKeyLink {
 /// The typed key links that count for the change, before they become edges:
 /// what the `key_links` gate scores. A changed file's untouched key is not
 /// part of the change.
-pub fn typed_key_links(repo: &MemoryRepo) -> Vec<TypedKeyLink> {
+pub(crate) fn typed_key_links(repo: &MemoryRepo) -> Vec<TypedKeyLink> {
     let fragments = final_state_fragments(repo);
     let run = diffctx_snapshot::resource::RunContext::unbounded();
     run.set_changed_lines(diffctx_base::changed_lines::ChangedLines::from_diff(
@@ -197,7 +200,7 @@ pub fn typed_key_links(repo: &MemoryRepo) -> Vec<TypedKeyLink> {
     links
 }
 
-pub fn build_diff_context_in_memory(
+pub(crate) fn build_diff_context_in_memory(
     repo: &MemoryRepo,
     budget_tokens: Option<u32>,
     alpha: f64,
@@ -256,7 +259,7 @@ pub fn build_diff_context_in_memory(
         run: run.clone(),
     };
     let (discovered, _attribution) =
-        crate::pipeline::create_discovery(&config, false).discover_attributed(&discovery_ctx);
+        _diffctx::pipeline::create_discovery(&config, false).discover_attributed(&discovery_ctx);
     let discovered_paths: FxHashSet<String> = discovered
         .iter()
         .map(|p| p.to_string_lossy().to_string())
@@ -292,7 +295,7 @@ pub fn build_diff_context_in_memory(
 
     // The corpus harness has no timeout contract; before #210 it inherited
     // whatever ceiling the last in-process run left behind.
-    let crate::pipeline::ScoredFragments {
+    let _diffctx::pipeline::ScoredFragments {
         all_fragments,
         core_ids,
         core_excerpts,
@@ -300,7 +303,7 @@ pub fn build_diff_context_in_memory(
         needs,
         changed_lines,
         ..
-    } = crate::pipeline::score_from_fragments(
+    } = _diffctx::pipeline::score_from_fragments(
         all_fragments,
         &hunks,
         &diff_text,
@@ -315,7 +318,7 @@ pub fn build_diff_context_in_memory(
     let mut listed: Vec<String> = changed_paths.iter().cloned().collect();
     listed.sort();
     let selection_budget =
-        effective_budget.saturating_sub(crate::pipeline::envelope_token_cost(None, &listed));
+        effective_budget.saturating_sub(_diffctx::pipeline::envelope_token_cost(None, &listed));
 
     let dummy_root = Path::new(".");
     let mut changed_files: Vec<PathBuf> = changed_paths.iter().map(PathBuf::from).collect();
@@ -325,7 +328,7 @@ pub fn build_diff_context_in_memory(
         let text = all_files.get(runs[0].path.as_str()).map(String::as_str);
         diffctx_facts::change_class::settle_layout(runs, text, &|| run.check());
     }
-    let change_classes = crate::pipeline::classify_changes(
+    let change_classes = _diffctx::pipeline::classify_changes(
         dummy_root,
         &changed_files,
         &hunks,
@@ -338,11 +341,11 @@ pub fn build_diff_context_in_memory(
         &all_fragments,
     );
 
-    let crate::pipeline::PostpassOutcome {
+    let _diffctx::pipeline::PostpassOutcome {
         mut selected,
         stand_in_ids,
         ..
-    } = crate::pipeline::select_and_postpass(
+    } = _diffctx::pipeline::select_and_postpass(
         &scoring_result,
         &all_fragments,
         &core_ids,
@@ -351,7 +354,7 @@ pub fn build_diff_context_in_memory(
         config.objective,
         selection_budget,
         tau,
-        &crate::pipeline::evidence_priority_of(&changed_files, &change_classes),
+        &_diffctx::pipeline::evidence_priority_of(&changed_files, &change_classes),
         &changed_lines,
     );
 
@@ -432,7 +435,7 @@ fn compute_memory_hunks(
     hunks
 }
 
-fn diff_to_hunks(path: &Arc<str>, old: &str, new: &str) -> Vec<DiffHunk> {
+pub(crate) fn diff_to_hunks(path: &Arc<str>, old: &str, new: &str) -> Vec<DiffHunk> {
     let diff = TextDiff::from_lines(old, new);
     let mut hunks = Vec::new();
 
@@ -558,119 +561,4 @@ fn merge_file_contents(
         merged.insert(path.clone(), content.clone());
     }
     merged
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// The same deletion through both parsers: the harness's in-memory differ
-    /// and git's own `--unified=0` output through the production parser.
-    ///
-    /// The sibling test below compares against a hand-written `DiffHunk`, which
-    /// cannot notice `git.rs` drifting away from it — the harness would go on
-    /// scoring a system nobody ships and the literal would still be green
-    /// (#245). This one has no literal: git produces the bytes.
-    #[test]
-    fn both_pipelines_anchor_a_pure_deletion_identically() {
-        let tmp = tempfile::TempDir::new().expect("tempdir");
-        let old_file = tmp.path().join("old.py");
-        let new_file = tmp.path().join("new.py");
-        let old = "l1\nl2\nl3\nl4\nl5\nl6\nl7\n";
-        let new = "l1\nl2\nl3\nl4\nl6\nl7\n";
-        std::fs::write(&old_file, old).expect("write old");
-        std::fs::write(&new_file, new).expect("write new");
-
-        // `--no-index` needs no repository and emits exactly the header and
-        // hunk syntax `parse_diff` consumes in production.
-        let output = diffctx_snapshot::snapshot::git_command(tmp.path())
-            .args([
-                "diff",
-                "--no-index",
-                "--unified=0",
-                "-M",
-                "old.py",
-                "new.py",
-            ])
-            .output()
-            .expect("git diff --no-index");
-        let diff_text = String::from_utf8_lossy(&output.stdout);
-        let from_git =
-            diffctx_snapshot::diff_parse::parse_hunks_from_diff_output(&diff_text, tmp.path());
-        assert_eq!(from_git.len(), 1, "git reported {diff_text:?}");
-
-        let path: Arc<str> = Arc::from("f.py");
-        let from_harness = diff_to_hunks(&path, old, new);
-        assert_eq!(from_harness.len(), 1);
-
-        assert_eq!(
-            (
-                from_harness[0].new_start,
-                from_harness[0].new_len,
-                from_harness[0].old_start,
-                from_harness[0].old_len
-            ),
-            (
-                from_git[0].new_start,
-                from_git[0].new_len,
-                from_git[0].old_start,
-                from_git[0].old_len
-            ),
-            "the harness anchors a pure deletion where git does not"
-        );
-        assert_eq!(
-            from_harness[0].core_selection_range(),
-            from_git[0].core_selection_range(),
-            "same hunk, different core window"
-        );
-    }
-
-    /// The harness and production must anchor a pure deletion on the same
-    /// line. git's `--unified=0` reports the deletion of old line 5 as
-    /// `@@ -5 +4,0 @@` — new-side start is the line BEFORE the gap — and
-    /// `core_selection_range` anchors on that value; the in-memory path used
-    /// to start one line later, so the corpus scored a selection nobody ships.
-    #[test]
-    fn a_pure_deletion_anchors_where_git_anchors_it() {
-        let path: Arc<str> = Arc::from("f.py");
-        let old = "l1\nl2\nl3\nl4\nl5\nl6\nl7\n";
-        let new = "l1\nl2\nl3\nl4\nl6\nl7\n";
-        let hunks = diff_to_hunks(&path, old, new);
-        assert_eq!(hunks.len(), 1);
-        let from_git = DiffHunk {
-            path: path.clone(),
-            new_start: 4,
-            new_len: 0,
-            old_start: 5,
-            old_len: 1,
-        };
-        assert_eq!(
-            (
-                hunks[0].new_start,
-                hunks[0].new_len,
-                hunks[0].old_start,
-                hunks[0].old_len
-            ),
-            (
-                from_git.new_start,
-                from_git.new_len,
-                from_git.old_start,
-                from_git.old_len
-            )
-        );
-        assert_eq!(
-            hunks[0].core_selection_range(),
-            from_git.core_selection_range()
-        );
-
-        // A deletion at the very top: git says `@@ -1 +0,0 @@`, and both
-        // sides clamp the anchor to line 1.
-        let hunks = diff_to_hunks(&path, "a\nb\n", "b\n");
-        assert_eq!((hunks[0].new_start, hunks[0].new_len), (0, 0));
-        assert_eq!(hunks[0].core_selection_range(), (1, 1));
-
-        // A replacement keeps its start: no off-by-one the other way.
-        let hunks = diff_to_hunks(&path, "a\nb\nc\n", "a\nB\nc\n");
-        assert_eq!((hunks[0].new_start, hunks[0].new_len), (2, 1));
-    }
 }

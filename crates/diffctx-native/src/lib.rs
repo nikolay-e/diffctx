@@ -4,9 +4,6 @@
 //! lint stays meaningful. None of it is a stable library API — internals may
 //! change or disappear between releases without a semver signal.
 
-// Input: git plumbing and path handling.
-pub mod in_memory_harness;
-
 // Change set: what the diff touched, cut into fragments.
 
 // Graph: relationships between fragments.

@@ -3,9 +3,11 @@ use std::fmt::Write;
 use std::fs;
 use std::path::PathBuf;
 
-use _diffctx::in_memory_harness::fragment_rows;
 use serde::Deserialize;
 use walkdir::WalkDir;
+
+mod support;
+use support::memory::fragment_rows;
 
 #[derive(Deserialize, Default)]
 struct Case {

@@ -9,11 +9,11 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
-use _diffctx::in_memory_harness::{MemoryRepo, fragment_rows};
 use rustc_hash::FxHashMap;
 use walkdir::WalkDir;
 
 use crate::common::{Accept, Selector, TestCase, garbage_files, match_path, symbol_matches};
+use crate::support::memory::{MemoryRepo, fragment_rows};
 
 pub(crate) struct Case {
     pub name: String,

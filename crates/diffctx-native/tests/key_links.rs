@@ -15,12 +15,12 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use _diffctx::in_memory_harness::typed_key_links;
-
 #[allow(dead_code)]
 mod common;
 mod key_cases;
+mod support;
 use key_cases::{Label, Tally, far_end};
+use support::memory::typed_key_links;
 
 const MIN_PRECISION: f64 = 0.85;
 /// Below this many counted links a kind is reported, not gated.
