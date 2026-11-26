@@ -375,14 +375,11 @@ fn qualifier(c: char) -> bool {
 }
 
 fn literal_name(name: &str) -> bool {
-    (name.chars().count() >= MIN_LITERAL_NAME || short_constant(name))
+    let letters = name.chars().count();
+    // A constant in capitals (`RED`) is written in strings and configs as often as a longer name.
+    (letters >= MIN_LITERAL_NAME
+        || (letters == MIN_LITERAL_NAME - 1 && name.chars().all(|c| c.is_ascii_uppercase())))
         && name.chars().all(|c| word_char(c) || c == '-')
-}
-
-/// A constant spelled in capitals (`RED`) is written in strings and configs as
-/// often as a longer name, so its three letters leave it searched.
-fn short_constant(name: &str) -> bool {
-    name.chars().count() == MIN_LITERAL_NAME - 1 && name.chars().all(|c| c.is_ascii_uppercase())
 }
 
 /// What a search reads a name as.
@@ -488,9 +485,10 @@ fn reflects(text: &str, name: &str, language: &str) -> bool {
     })
 }
 
-/// The heads of `name` a program can complete: up to each `_`.
+/// The heads of `name` a program can complete: each `_` from half its words on.
 fn dynamic_heads(name: &str) -> impl Iterator<Item = &str> {
     name.match_indices('_')
+        .skip(name.matches('_').count() / 2)
         .map(|(at, _)| &name[..=at])
         .filter(move |head| head.len() >= MIN_LITERAL_NAME && head.len() < name.len())
 }
@@ -883,14 +881,14 @@ fn spells_literally(text: &str, name: &str, reading: Reading, held: &[(HeldAs, S
 /// The grep selecting the lines that can hold `names` as a literal, over the
 /// forms `spells_literally` reads back.
 fn literal_pattern(names: &[&str]) -> String {
-    let alt = |words: Vec<&str>| alternation(words.into_iter());
-    let all = alt(names.to_vec());
-    let query = alt(names
-        .iter()
-        .copied()
-        .filter(|n| n.chars().any(|c| c == '_' || c.is_ascii_digit()))
-        .collect());
-    let heads = alt(names.iter().flat_map(|n| dynamic_heads(n)).collect());
+    let all = alternation(names.iter().copied());
+    let query = alternation(
+        names
+            .iter()
+            .copied()
+            .filter(|n| n.contains(|c: char| c == '_' || c.is_ascii_digit())),
+    );
+    let heads = alternation(names.iter().flat_map(|n| dynamic_heads(n)));
     let verbs: String = SQL_VERBS
         .iter()
         .map(|v| {
