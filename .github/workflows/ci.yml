@@ -448,24 +448,12 @@ jobs:
       - name: Run Tests with Coverage
         shell: bash
         run: |
-          pytest -v --cov=src/diffctx --cov-report=xml \
+          pytest -v --cov=src/diffctx \
             --cov-report=term-missing --cov-branch --junitxml=test-results.xml
 
       - name: Coverage report with threshold
         run: |
           coverage report --fail-under=40
-
-      - name: Upload coverage reports to Codecov
-        # Every OS uploads: platform-only branches (Windows paths, POSIX modes)
-        # are covered nowhere else, and Codecov merges the reports.
-        if: matrix.python-version == '3.12'
-        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5  # v7.1.1
-        with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          files: ./coverage.xml
-          flags: integration
-          fail_ci_if_error: false
-          verbose: true
 
   # ============================================================================
   # The landing page is a PWA; tests/test_publishing_manifests.py checks the
