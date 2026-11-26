@@ -1,0 +1,28 @@
+name: py_reversed_main_guard_is_not_a_caller_of_its_entry
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [python, main-guard, entry-point, decoy]
+repo:
+  initial_files:
+    tools/run.py: |
+      def run():
+          return 1
+
+
+      if "__main__" == __name__:
+          run()
+  changed_files:
+    tools/run.py: |
+      def run():
+          return 2
+
+
+      if "__main__" == __name__:
+          run()
+  commit_message: "run: return 2"
+expect:
+  callers:
+    run: []
+  decoys:
+    run: [tools/run.py]
