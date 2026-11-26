@@ -1,0 +1,33 @@
+name: java_method_moved_to_another_type_is_removed_from_the_first
+mode: impact
+source: synthetic
+tags: [java, move, removed]
+repo:
+  initial_files:
+    Foo.java: |
+      public class Foo {
+          public int a() { return 1; }
+
+          public int total() { return 2; }
+      }
+    Bar.java: |
+      public class Bar {
+      }
+    Use.java: |
+      public class Use {
+          public int go(Foo f) { return f.total(); }
+      }
+  changed_files:
+    Foo.java: |
+      public class Foo {
+          public int a() { return 1; }
+      }
+    Bar.java: |
+      public class Bar {
+          public int total() { return 2; }
+      }
+  commit_message: Move total to Bar
+expect:
+  removed: ['Foo.java::Foo.total']
+  relations:
+  - {from: 'Use.java::Use.go', to: 'Foo.java::Foo.total', kind: calls, resolution: resolved}

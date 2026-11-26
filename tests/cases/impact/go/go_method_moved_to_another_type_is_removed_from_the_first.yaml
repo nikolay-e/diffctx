@@ -1,0 +1,54 @@
+name: go_method_moved_to_another_type_is_removed_from_the_first
+mode: impact
+source: synthetic
+tags: [go, move, removed]
+repo:
+  initial_files:
+    go.mod: |
+      module p
+
+      go 1.21
+    main.go: |
+      package p
+
+      func Go(t T) int {
+      	return t.B()
+      }
+    a.go: |
+      package p
+
+      type T struct{}
+
+      type U struct{}
+
+      func (t T) A() int {
+      	return 1
+      }
+
+      func (t T) B() int {
+      	return 2
+      }
+    b.go: |
+      package p
+  changed_files:
+    a.go: |
+      package p
+
+      type T struct{}
+
+      type U struct{}
+
+      func (t T) A() int {
+      	return 1
+      }
+    b.go: |
+      package p
+
+      func (u U) B() int {
+      	return 2
+      }
+  commit_message: Move B to another type
+expect:
+  removed: ['a.go::T.B']
+  relations:
+  - {from: 'main.go::Go', to: 'a.go::T.B', kind: calls, resolution: resolved}

@@ -1,0 +1,49 @@
+name: swift_method_moved_to_another_type_is_removed_from_the_first
+mode: impact
+source: synthetic
+tags: [swift, move, removed]
+repo:
+  initial_files:
+    Package.swift: |
+      // swift-tools-version:5.9
+      import PackageDescription
+
+      let package = Package(
+          name: "p",
+          targets: [.target(name: "p")]
+      )
+    Sources/p/Use.swift: |
+      func go(_ f: Foo) -> Int {
+          return f.b()
+      }
+    Sources/p/Foo.swift: |
+      struct Foo {
+          func a() -> Int {
+              return 1
+          }
+
+          func b() -> Int {
+              return 2
+          }
+      }
+    Sources/p/Bar.swift: |
+      struct Bar {
+      }
+  changed_files:
+    Sources/p/Foo.swift: |
+      struct Foo {
+          func a() -> Int {
+              return 1
+          }
+      }
+    Sources/p/Bar.swift: |
+      struct Bar {
+          func b() -> Int {
+              return 2
+          }
+      }
+  commit_message: Move b to Bar
+expect:
+  removed: ['Sources/p/Foo.swift::Foo.b']
+  relations:
+  - {from: 'Sources/p/Use.swift::go', to: 'Sources/p/Foo.swift::Foo.b', kind: calls, resolution: resolved}
