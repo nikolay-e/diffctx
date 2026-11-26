@@ -640,18 +640,6 @@ fn resolve_change_set(
         Some(s) => (None, s.head.clone()),
         None => (head_rev.clone(), head_rev),
     };
-    // A message git could not read is the run's error, or its deadline when
-    // that is what cut the read: never a change with no title.
-    let commit_message = match head_rev.as_deref() {
-        Some(h) => unless_cut_short(Some(run), snapshot::commit_message(root_dir, h))?,
-        None => String::new(),
-    };
-    let commit_message = commit_message
-        .lines()
-        .map(str::trim)
-        .find(|l| !l.is_empty())
-        .map(str::to_string);
-
     // `A..B` names both ends; a bare `X` diffs X against the working tree,
     // whose commits are `X..HEAD`. Every commit of the range travels whole
     // (subject and body); `commit_message` stays the head's subject.
@@ -661,26 +649,37 @@ fn resolve_change_set(
         (None, None, None) => diff_range.map(|rev| (rev.to_string(), "HEAD".to_string())),
         _ => None,
     };
-    let (commit_count, commit_messages) = match subject_range {
-        Some((base, head)) => (
-            unless_cut_short(Some(run), snapshot::commit_count(root_dir, &base, &head))?,
-            unless_cut_short(
-                Some(run),
-                snapshot::commit_messages(
-                    root_dir,
-                    &base,
-                    &head,
-                    MAX_COMMIT_MESSAGES,
-                    MAX_COMMIT_MESSAGE_CHARS,
-                ),
-            )?,
-        ),
-        None => (0, Vec::new()),
+    let log = match subject_range {
+        Some((base, head)) => unless_cut_short(
+            Some(run),
+            snapshot::commit_log(
+                root_dir,
+                &base,
+                &head,
+                MAX_COMMIT_MESSAGES,
+                MAX_COMMIT_MESSAGE_CHARS,
+            ),
+        )?,
+        None => snapshot::CommitLog::default(),
     };
+    // A message git could not read is the run's error, or its deadline when
+    // that is what cut the read: never a change with no title.
+    let commit_message = match (head_rev.as_deref(), log.head) {
+        (Some(_), Some(message)) => message,
+        (Some(head), None) => {
+            unless_cut_short(Some(run), snapshot::commit_message(root_dir, head))?
+        }
+        (None, _) => String::new(),
+    };
+    let commit_message = commit_message
+        .lines()
+        .map(str::trim)
+        .find(|l| !l.is_empty())
+        .map(str::to_string);
 
     let pre_phase_ms = t_entry.elapsed().as_secs_f64() * 1000.0;
     Ok(ChangeSet::Ready(Box::new(ChangeSetData {
-        commit_count,
+        commit_count: log.count,
         hunks,
         diff_text,
         changed_files,
@@ -692,7 +691,7 @@ fn resolve_change_set(
         ignored_display,
         policy_excluded,
         commit_message,
-        commit_messages,
+        commit_messages: log.messages,
         // A bare revision (a resolved time window included) diffs against
         // the working tree: the commits after it are the range's own.
         history_rev: base_rev.clone().or_else(|| match (staged, diff_range) {

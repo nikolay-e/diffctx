@@ -50,27 +50,57 @@ fn commit_range(root: &Path, base: &str, head: &str) -> Result<Option<String>> {
     Ok(Some(format!("{base}..{head}")))
 }
 
+/// What one log of `base..head` answers; `head` is `None` when the range holds
+/// no commit.
+#[derive(Debug, Default)]
+pub struct CommitLog {
+    pub count: usize,
+    pub messages: Vec<String>,
+    pub head: Option<String>,
+}
+
 /// Every commit message in `base..head`, subject and body, newest first, at
-/// most `limit` commits, each body cut at `max_chars`. A range used to be
-/// titled by the last commit's subject alone; the body is where a person says
-/// why, and on a GitOps branch the last commit is the image updater's. `X..X`
-/// holds no commit: a working-tree diff asks it of `HEAD..HEAD`.
-pub fn commit_messages(
+/// most `limit` commits, each body cut at `max_chars`; the range's count, which
+/// a reader told "20 commits" must learn is more when it was; and the message
+/// of `head`. A range used to be titled by the last commit's subject alone; the
+/// body is where a person says why, and on a GitOps branch the last commit is
+/// the image updater's. `X..X` holds no commit: a working-tree diff asks it of
+/// `HEAD..HEAD`.
+pub fn commit_log(
     root: &Path,
     base: &str,
     head: &str,
     limit: usize,
     max_chars: usize,
-) -> Result<Vec<String>> {
+) -> Result<CommitLog> {
     let Some(range) = commit_range(root, base, head)? else {
-        return Ok(Vec::new());
+        return Ok(CommitLog::default());
     };
+    // `%x1e` (record separator) and NUL cannot occur in a message; the walk
+    // starts at `head`, so its commit is the first shown.
     let max = format!("--max-count={limit}");
-    // `%B` is the raw message; `%x1e` (record separator) cannot occur in one.
-    let out = run_git(root, &["log", "--format=%B%x1e", &max, &range, "--"])?;
-    Ok(out
+    let out = run_git(
+        root,
+        &["log", "--format=%s%x00%b%x00%B%x1e", &max, &range, "--"],
+    )?;
+    let commits: Vec<[&str; 3]> = out
         .split('\x1e')
-        .map(str::trim)
+        .filter_map(|record| {
+            let mut fields = record.splitn(3, '\0');
+            Some([fields.next()?, fields.next()?, fields.next()?])
+        })
+        .collect();
+    let count = if commits.len() < limit {
+        commits.len()
+    } else {
+        let out = run_git(root, &["rev-list", "--count", &range, "--"])?;
+        out.trim().parse().map_err(|_| {
+            SnapshotError::Git(format!("git rev-list --count answered '{}'", out.trim()))
+        })?
+    };
+    let messages = commits
+        .iter()
+        .map(|[_, _, message]| message.trim())
         .filter(|m| !m.is_empty())
         .map(|m| {
             if m.chars().count() <= max_chars {
@@ -80,21 +110,14 @@ pub fn commit_messages(
                 format!("{}…", cut.trim_end())
             }
         })
-        .collect())
-}
-
-/// Commits in `base..head`: the list above stops at `limit`, and a reader told
-/// "20 commits" must learn when the range held more.
-pub fn commit_count(root: &Path, base: &str, head: &str) -> Result<usize> {
-    let Some(range) = commit_range(root, base, head)? else {
-        return Ok(0);
-    };
-    let out = run_git(root, &["rev-list", "--count", &range, "--"])?;
-    out.trim().parse().map_err(|_| {
-        SnapshotError::Git(format!(
-            "git rev-list --count answered '{}', not a number",
-            out.trim()
-        ))
+        .collect();
+    let head = commits
+        .first()
+        .map(|[subject, body, _]| format!("{subject}\n{body}").trim().to_string());
+    Ok(CommitLog {
+        count,
+        messages,
+        head,
     })
 }
 

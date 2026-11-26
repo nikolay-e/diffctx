@@ -280,45 +280,81 @@ fn empty_tree_id_is_an_error_when_git_cannot_name_the_format() {
 fn the_commit_lookups_tell_no_commits_from_a_failed_read() {
     let repo = two_commits();
     let root = repo.path();
-    let messages = diffctx_snapshot::snapshot::commit_messages(root, "HEAD~1", "HEAD", 10, 1000)
-        .expect("read");
-    assert_eq!(messages, ["second\n\nwhy it changed"]);
-    assert_eq!(
-        diffctx_snapshot::snapshot::commit_count(root, "HEAD~1", "HEAD").expect("read"),
-        1
-    );
+    let log =
+        diffctx_snapshot::snapshot::commit_log(root, "HEAD~1", "HEAD", 10, 1000).expect("read");
+    assert_eq!(log.messages, ["second\n\nwhy it changed"]);
+    assert_eq!(log.count, 1);
+    assert_eq!(log.head.as_deref(), Some("second\nwhy it changed"));
     assert_eq!(
         diffctx_snapshot::snapshot::commit_message(root, "HEAD").expect("read"),
         "second\nwhy it changed"
     );
     let empty = diffctx_snapshot::snapshot::empty_tree_id(root).expect("read");
-    assert_eq!(
-        diffctx_snapshot::snapshot::commit_count(root, &empty, "HEAD")
-            .expect("a tree holds no commits"),
-        0
-    );
-    assert!(
-        diffctx_snapshot::snapshot::commit_messages(root, &empty, "HEAD", 10, 1000)
-            .expect("a tree holds no commits")
-            .is_empty()
-    );
+    let none = diffctx_snapshot::snapshot::commit_log(root, &empty, "HEAD", 10, 1000)
+        .expect("a tree holds no commits");
+    assert_eq!((none.count, none.messages.len(), none.head), (0, 0, None));
     assert_eq!(
         diffctx_snapshot::snapshot::commit_message(root, &empty).expect("a tree has no message"),
         ""
     );
+    repo.write("a.py", "A = 3\n");
+    repo.commit("third");
+    let capped =
+        diffctx_snapshot::snapshot::commit_log(root, "HEAD~2", "HEAD", 1, 1000).expect("read");
+    assert_eq!(
+        (capped.count, capped.messages, capped.head.as_deref()),
+        (2, vec!["third".to_string()], Some("third"))
+    );
     break_git(&repo);
     assert!(fatal(
-        diffctx_snapshot::snapshot::commit_messages(root, "HEAD~1", "HEAD", 10, 1000)
+        diffctx_snapshot::snapshot::commit_log(root, "HEAD~1", "HEAD", 10, 1000)
             .expect_err("a failed log is an Err")
-    ));
-    assert!(fatal(
-        diffctx_snapshot::snapshot::commit_count(root, "HEAD~1", "HEAD")
-            .expect_err("a failed count is an Err")
     ));
     assert!(fatal(
         diffctx_snapshot::snapshot::commit_message(root, "HEAD")
             .expect_err("a failed log is an Err")
     ));
+}
+
+/// One log is what the count, the messages and the head's message were, each
+/// from its own command: over a merge, a subject wrapped on two lines, and a
+/// range longer than the limit.
+#[test]
+fn one_log_answers_what_the_count_the_messages_and_the_head_message_were() {
+    let repo = Repo::init();
+    repo.write("a.py", "A = 1\n");
+    let first = repo.commit("first");
+    repo.git(&["checkout", "-q", "-b", "side"]);
+    repo.write("b.py", "B = 1\n");
+    repo.commit("side one");
+    repo.git(&["checkout", "-q", "main"]);
+    repo.write("a.py", "A = 2\n");
+    repo.commit("wrapped subject\nsecond line\n\nthe body\nof it");
+    repo.git(&["merge", "-q", "--no-ff", "-m", "merge side", "side"]);
+    let (root, range) = (repo.path(), format!("{}..HEAD", first.as_str()));
+    let counted: usize = repo
+        .git(&["rev-list", "--count", &range, "--"])
+        .trim()
+        .parse()
+        .expect("a count");
+    for limit in [2, 10] {
+        let log = diffctx_snapshot::snapshot::commit_log(root, first.as_str(), "HEAD", limit, 1000)
+            .expect("read");
+        let max = format!("--max-count={limit}");
+        let raw = repo.git(&["log", "--format=%B%x1e", &max, &range, "--"]);
+        let messages: Vec<&str> = raw
+            .split('\x1e')
+            .map(str::trim)
+            .filter(|m| !m.is_empty())
+            .collect();
+        assert_eq!(log.messages, messages, "limit {limit}");
+        assert_eq!(log.count, counted, "limit {limit}");
+        assert_eq!(
+            log.head,
+            Some(diffctx_snapshot::snapshot::commit_message(root, "HEAD").expect("read")),
+            "limit {limit}"
+        );
+    }
 }
 
 /// A repository with no commit has none before a window (the empty tree);
