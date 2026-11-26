@@ -9,12 +9,17 @@
 // The per-language tests are the measurement and are ignored until the identity
 // holds on the whole corpus; the planted witness runs in every debug build.
 //
+// A case the binary wrote no account for is checked against nothing. Each is listed in
+// identity_without_account.txt with its verdict and reason, and the list is enforced in
+// both directions: an unlisted case without an account fails, and so does a listed one
+// that gains an account (a filtered run reads neither direction).
+//
 // Knobs:
 //   DIFFCTX_IDENTITY_FILTER  only the cases whose name contains the text
 //   DIFFCTX_IDENTITY_REPORT  append every case's lines, tagged with the case, here
 #![allow(dead_code)]
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
@@ -42,6 +47,21 @@ fn cases_root() -> PathBuf {
         .expect("repository root")
         .join("tests")
         .join("cases")
+}
+
+/// `identity_without_account.txt`: case → (verdict, reason).
+fn without_account() -> BTreeMap<&'static str, (&'static str, &'static str)> {
+    include_str!("identity_without_account.txt")
+        .lines()
+        .filter(|line| !line.starts_with('#') && !line.trim().is_empty())
+        .map(|line| {
+            let mut parts = line.splitn(3, ' ');
+            let case = parts.next().unwrap_or_default();
+            let verdict = parts.next().unwrap_or_default();
+            let reason = parts.next().unwrap_or_default();
+            (case, (verdict, reason))
+        })
+        .collect()
 }
 
 fn knob(name: &str) -> Option<String> {
@@ -114,8 +134,10 @@ fn identity(language: &str) {
         cfg!(debug_assertions),
         "the identity is checked by a debug binary only"
     );
-    let (mut checked, mut unchecked, mut failed) = (0, Vec::new(), Vec::new());
+    let (mut checked, mut unchecked, mut failed) = (Vec::new(), Vec::new(), Vec::new());
+    let mut loaded = BTreeSet::new();
     for (name, mut case) in load(language) {
+        loaded.insert(name.clone());
         let dir = TempDir::new().expect("tempdir");
         let sink = dir.path().join("identity.jsonl");
         let sink_text = sink.to_str().expect("a UTF-8 path").to_string();
@@ -129,7 +151,7 @@ fn identity(language: &str) {
             unchecked.push(name);
             continue;
         }
-        checked += 1;
+        checked.push(name.clone());
         for line in lines.iter().filter(|line| is(line, "violation")) {
             failed.push(format!(
                 "{name}\t{}\t{}\t{}\t{}\t{}",
@@ -142,7 +164,8 @@ fn identity(language: &str) {
         }
     }
     eprintln!(
-        "identity/{language}: {checked} case(s) checked, {} without an account, {} violation(s)",
+        "identity/{language}: {} case(s) checked, {} without an account, {} violation(s)",
+        checked.len(),
         unchecked.len(),
         failed.len()
     );
@@ -151,6 +174,29 @@ fn identity(language: &str) {
         "the accounting identity does not hold ({language}):\n\
          case\tkind\tdef\tname\tfile\tdetail\n{}",
         failed.join("\n")
+    );
+    if knob("DIFFCTX_IDENTITY_FILTER").is_some() {
+        return;
+    }
+    let listed = without_account();
+    let unlisted: Vec<&String> = unchecked
+        .iter()
+        .filter(|name| !listed.contains_key(name.as_str()))
+        .collect();
+    let gained: Vec<&String> = checked
+        .iter()
+        .filter(|name| listed.contains_key(name.as_str()))
+        .collect();
+    let gone: Vec<&&str> = listed
+        .keys()
+        .filter(|name| name.split('/').nth(1) == Some(language) && !loaded.contains(**name))
+        .collect();
+    assert!(
+        unlisted.is_empty() && gained.is_empty() && gone.is_empty(),
+        "identity_without_account.txt does not match the corpus ({language}):\n\
+         without an account and not listed (add with a verdict and reason): {unlisted:#?}\n\
+         listed and now with an account (remove): {gained:#?}\n\
+         listed and not in the corpus (remove): {gone:#?}"
     );
 }
 
@@ -195,6 +241,38 @@ fn every_corpus_language_is_measured() {
     ];
     for language in oracle::LANGUAGES {
         assert!(measured.contains(language), "{language} is not measured");
+    }
+}
+
+#[test]
+fn the_without_account_list_is_well_formed() {
+    let text = include_str!("identity_without_account.txt");
+    let rows = text
+        .lines()
+        .filter(|line| !line.starts_with('#') && !line.trim().is_empty())
+        .count();
+    let listed = without_account();
+    assert_eq!(listed.len(), rows, "a case is listed twice");
+    for (case, (verdict, reason)) in &listed {
+        assert!(
+            ["proven", "blocker"].contains(verdict),
+            "{case}: the verdict is proven or blocker, not {verdict:?}"
+        );
+        assert!(!reason.trim().is_empty(), "{case}: no reason");
+        let mut path = case.splitn(3, '/');
+        let (mode, language, rest) = (path.next(), path.next(), path.next());
+        let (Some(mode), Some(language), Some(rest)) = (mode, language, rest) else {
+            panic!("{case}: not <mode>/<language>/<case>");
+        };
+        assert!(
+            ["impact", "symbol"].contains(&mode) && oracle::LANGUAGES.contains(&language),
+            "{case}: no such mode or language"
+        );
+        let base = cases_root().join(mode).join(language).join(rest);
+        assert!(
+            base.with_extension("yaml").is_file() || base.with_extension("yml").is_file(),
+            "{case}: no such case file"
+        );
     }
 }
 
