@@ -27,6 +27,7 @@ from changed import ChangedDefinition, changed_definitions
 from compare import CONSTRUCTORS, compare, make_resolver, missing_definition, parse_answer, silent_loss, unlisted_named
 from corpus import Corpus, Repo, load_corpus
 from delta import Delta, classify
+from enclosure import uncovered
 from folding import mark_folding
 from indexing import CACHE, index_snapshot, keep_failure_log
 from model import UNCAPPED_BUDGET, Definition, Relation, without_span
@@ -298,11 +299,11 @@ def measure_commit(run: RepoRun, sha: str, rng: random.Random) -> dict:
         answer = parse_answer(impact.data, resolver)
         changed_keys = {c.target.key for c in prepared.changed}
         filed = unlisted_named(impact.data, resolver)
-        missing = [
-            lost
+        scored = [
+            (item, _score_changed(run, prepared, item, changed_keys, answer, filed, {**context, "mode": "impact"}, counts))
             for item in prepared.changed
-            if (lost := _score_changed(run, prepared, item, changed_keys, answer, filed, {**context, "mode": "impact"}, counts))
         ]
+        missing = uncovered(scored, answer, filed, prepared)
         write_silent_loss(run.sink, {**context, "mode": "impact"}, missing, answer)
     candidates = symbol_candidates(prepared.changed)
     if candidates and run.symbols_left > 0:

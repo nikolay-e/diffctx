@@ -194,15 +194,6 @@ def unlisted_named(data: dict, resolve: Resolver) -> frozenset[str]:
     return frozenset(_ref_key(ref, resolve) for ref in (item.get("def", item) for item in refs) if ref.get("path"))
 
 
-def _in_also_changed(target: Definition, answer: Answer) -> bool:
-    """Another entry lists the definition among the changed ones that use it: the answer names it, whole."""
-    return any(
-        caller.relation == "also_changed" and caller.from_key == target.key
-        for entry in answer.targets.values()
-        for caller in entry.callers
-    )
-
-
 def missing_definition(target: Definition, answer: Answer, unlisted: frozenset[str] = frozenset()) -> dict | None:
     """A changed definition the answer says nothing of: no entry, no fold row naming it, no `unlisted` item naming it, no
     `also_changed` listing of it, no disclosure that its file went unanalysed or was deleted. None where the answer names it.
@@ -217,7 +208,7 @@ def missing_definition(target: Definition, answer: Answer, unlisted: frozenset[s
         or target.path in answer.unanalysed
         or target.path in answer.deleted
         or _in_fold_row(target, answer)
-        or _in_also_changed(target, answer)
+        or target.key in answer.also_changed_named
     ):
         return None
     named = [key for key in answer.targets if without_span(key).rpartition("::")[2].split(".")[-1] == target.name]

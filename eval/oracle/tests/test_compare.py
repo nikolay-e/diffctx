@@ -702,7 +702,7 @@ def test_a_definition_of_a_file_the_answer_reports_deleted_went_with_it_and_is_n
 
 def test_a_definition_listed_as_also_changed_beside_another_is_named_even_when_it_has_no_entry():
     """httpx ef06f7d076: `Receive` rides in the `also_changed` of `Message` and appears nowhere else."""
-    message = {"path": "tests/conftest.py", "symbol": "Message", "lines": "51-51", "also_changed": [{"path": "tests/conftest.py", "symbol": "Receive", "lines": "52-52"}]}  # fmt: skip
+    message = {"path": "tests/conftest.py", "symbol": "Message", "lines": "51-51", "also_changed": [{"path": "tests/conftest.py", "symbol": "Receive", "lines": "52-52"}, {"path": "tests/conftest.py", "lines": "53"}]}  # fmt: skip
     receive = Definition("tests/conftest.py", "variable", "Receive", (), 52, 52, 51, 0, "", "h", "s")
     send = Definition("tests/conftest.py", "variable", "Send", (), 53, 53, 52, 0, "", "h", "s")
     defs = {
@@ -715,7 +715,7 @@ def test_a_definition_listed_as_also_changed_beside_another_is_named_even_when_i
     answered = parse_answer({"schema": V2_DOCUMENT, "definitions": [message]}, make_resolver(lambda path: defs.get(path, [])))  # fmt: skip
 
     assert missing_definition(receive, answered) is None
-    assert missing_definition(send, answered) is not None  # the one it names nowhere is still lost
+    assert missing_definition(send, answered) is not None  # a bare site on its line is no name: it is still lost
 
 
 def test_a_removed_method_is_not_read_as_the_lone_head_method_of_its_name_that_sits_elsewhere():

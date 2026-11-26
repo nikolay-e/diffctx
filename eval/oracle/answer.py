@@ -60,7 +60,12 @@ class Answer:
     # answers do: every listed list may be one of the cut ones.
     truncated_unattributed: int = 0
     truncated: int = 0  # callers the cap dropped, wherever they were (the answer's top-level count)
+    # Definitions it lists by name among the changed ones that use another entry's definition (a bare site is no name).
+    also_changed_named: set[str] = field(default_factory=set)
     deleted: set[str] = field(default_factory=set)  # files it reports deleted: the definitions in them went with the file
+    # Per file, the lines of the definitions it names, and whether they are base-side (a removal) or head-side lines.
+    named_spans: dict[str, list[tuple[int, int, bool]]] = field(default_factory=dict)
+    renamed: dict[str, int] = field(default_factory=dict)  # per file, the entries that state `origin: renamed`
 
 
 def parse_answer(data: dict, resolve: Resolver) -> Answer:

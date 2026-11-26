@@ -20,7 +20,7 @@ class Resolve:
         return f"{path}::span:{lines}"
 
 
-V2_ONLY = ("named", "deleted")
+V2_ONLY = ("named", "deleted", "named_spans", "renamed", "also_changed_named")
 
 
 def normal(value):

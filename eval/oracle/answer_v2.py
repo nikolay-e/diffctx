@@ -46,6 +46,12 @@ def _row(row: dict, resolve: Resolver) -> AnswerCaller:
     )
 
 
+def _note_span(spans: dict[str, list[tuple[int, int, bool]]], ref: dict, removed: bool) -> None:
+    span = line_span(ref.get("lines"))
+    if span and ref.get("path"):
+        spans.setdefault(ref["path"], []).append((*span, removed))
+
+
 def parse_v2(data: dict, resolve: Resolver) -> Answer:
     targets: dict[str, TargetAnswer] = {}
     attributed = False
@@ -97,6 +103,21 @@ def parse_v2(data: dict, resolve: Resolver) -> Answer:
     coverage = data.get("coverage", {})
     stopped = [gap for gap in coverage.get("scope", {}).get("gaps", []) if gap["kind"] == "stopped"]
     shed_all = int(data.get("summary", {}).get("shed", 0) or 0)
+    spans: dict[str, list[tuple[int, int, bool]]] = {}
+    listed: set[str] = set()
+    renamed: dict[str, int] = {}
+    for definition in data.get("definitions", []):
+        removed = (definition.get("change") or {}).get("kind") == "removed"
+        _note_span(spans, definition, removed)
+        if (definition.get("change") or {}).get("origin") == "renamed":
+            renamed[definition["path"]] = renamed.get(definition["path"], 0) + 1
+        for ref in (*definition.get("also_changed", []), *definition.get("possibly_also_changed", [])):
+            _note_span(spans, ref, False)
+            if ref.get("symbol"):
+                listed.add(_ref_key(ref, resolve))
+    for listing in unlisted.values():
+        for item in (listing or {}).get("items", []):
+            _note_span(spans, item.get("def", item), False)
     deleted = {item["path"] for item in (data.get("deleted_modules") or {}).get("items", [])}
     deleted |= set(((data.get("inventory") or {}).get("deleted") or {}).get("items", []))
     return Answer(
@@ -108,4 +129,7 @@ def parse_v2(data: dict, resolve: Resolver) -> Answer:
         truncated_unattributed=0 if attributed else shed_all,
         truncated=shed_all,
         deleted=deleted,
+        also_changed_named=listed,
+        named_spans=spans,
+        renamed=renamed,
     )
