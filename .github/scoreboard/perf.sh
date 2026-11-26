@@ -13,24 +13,8 @@ A=$2
 FIX=$3
 OUT=$4
 mkdir -p "$OUT"
-cells=(
-  "impact-narrow|--diff 384c4b86..3562b922 --mode impact"
-  "pack-ego-wide|--diff 0d75e73a..99ff4abc --scoring ego --mode pack --budget 8000"
-  "locate-ppr-narrow|--diff 384c4b86..3562b922 --scoring ppr --mode locate --budget 8000"
-  "symbol|--symbol build_diff_context"
-)
-# 1.20.0 reads the ignore rules of the working tree, the head those of the range's end: on a fixture checked out at
-# another commit the two read different file sets, so each --diff cell runs on a tree checked out at its range end.
-tree_for() {
-  local end
-  [[ $1 =~ --diff\ [^\ ]*\.\.([^\ ]+) ]] || {
-    echo "$FIX"
-    return
-  }
-  end=${BASH_REMATCH[1]}
-  [ -d "$FIX-$end" ] || git -C "$FIX" worktree add -q --detach "$FIX-$end" "$end" >&2
-  echo "$FIX-$end"
-}
+# shellcheck source=.github/scoreboard/cells.sh
+source "$(dirname "$0")/cells.sh"
 one() {
   local name=$1 bin=$2 tag=$3 args=$4 tree=$5
   # shellcheck disable=SC2086
