@@ -35,6 +35,7 @@ FILTERED_GRAMMARS = ("python", "typescript", "tsx", "javascript")
 CONSTRUCTORS = {"__init__", "constructor"}
 EXEMPT_TEXT = {"super", "this", "self", "cls"}
 MODULE_LEVEL_SUFFIXES = ("().", "#", ".")
+TEXT_NODES = {"string", "string_content", "string_fragment", "template_string", "comment"}
 
 
 def _implicit_protocol(target: Definition) -> bool:
@@ -108,9 +109,25 @@ class Filters:
         n = re.escape(text)
         if re.search(rf"(?:[(,]|\*\*?)\s*{n}\s*(?=[:=,)?])", caller.signature):
             return True
-        lines = self.snapshot.source(doc.path).decode("utf-8", "replace").split("\n")
-        before = "\n".join(lines[caller.start - 1 : occ.line])
-        return any(re.search(pattern, before) for pattern in _bound(text, grammar))
+        lines = self.snapshot.source(doc.path).split(b"\n")
+        tree = self.snapshot.parsed(doc.path)
+        patterns = [re.compile(pattern) for pattern in _bound(text, grammar)]
+        for row in range(caller.start - 1, occ.line):
+            line = lines[row].decode("utf-8", "replace")
+            for match in (m for pattern in patterns if (m := pattern.search(line))):
+                if tree is None or not self._in_text(tree, row, len(line[: match.end() - 1].encode())):
+                    return True
+        return False
+
+    @staticmethod
+    def _in_text(tree, row: int, column: int) -> bool:
+        """The point lies in a string or a comment: what reads like a binding there binds nothing."""
+        node = tree.root_node.descendant_for_point_range((row, column), (row, column))
+        while node is not None:
+            if node.type in TEXT_NODES:
+                return True
+            node = node.parent
+        return False
 
     def _outside_assigned_function(self, doc: Document, occ: Occurrence, caller: Definition | None, grammar: str) -> bool:
         if caller is None or grammar not in SCRIPT_GRAMMARS:
