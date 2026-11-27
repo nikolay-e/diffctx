@@ -1,0 +1,84 @@
+name: py_removed_field_defaults_are_told_from_other_calls_in_the_class_body
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [python, removed-field, construction, control, decoy, dataclass]
+repo:
+  initial_files:
+    svc/__init__.py: ""
+    svc/model.py: |
+      from dataclasses import dataclass, field
+
+
+      def make_size():
+          return 0
+
+
+      @dataclass
+      class Counted:
+          id: int
+          size: int = field(default=0)
+
+
+      @dataclass
+      class Sized:
+          id: int
+          size: int = field(repr=False)
+
+
+      @dataclass
+      class Made:
+          id: int
+          size: int = make_size()
+    svc/counted.py: |
+      from svc.model import Counted
+
+
+      def build():
+          return Counted(id=1)
+    svc/sized.py: |
+      from svc.model import Sized
+
+
+      def build():
+          return Sized(id=1)
+    svc/made.py: |
+      from svc.model import Made
+
+
+      def build():
+          return Made(id=1)
+  changed_files:
+    svc/model.py: |
+      from dataclasses import dataclass, field
+
+
+      def make_size():
+          return 0
+
+
+      @dataclass
+      class Counted:
+          id: int
+
+
+      @dataclass
+      class Sized:
+          id: int
+
+
+      @dataclass
+      class Made:
+          id: int
+  commit_message: "model: drop the size field of three classes"
+expect:
+  removed: [size]
+  # Only `field(default=0)` gives `size` a default a construction may leave out.
+  # `field(repr=False)` says nothing of one, and a call of another function
+  # (whatever its name) is not a default the dataclass knows: those two fields
+  # were required, so every construction of their class is a site.
+  relations:
+    - {from: "svc/sized.py::build", to: "svc/model.py::Sized", kind: instantiates, resolution: resolved, site: 5}
+    - {from: "svc/made.py::build", to: "svc/model.py::Made", kind: instantiates, resolution: resolved, site: 5}
+  decoys:
+    "svc/model.py::Counted": [svc/counted.py]

@@ -1,0 +1,67 @@
+name: py_removed_defaulted_field_construction_arguments_are_read_by_their_text
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [python, removed-field, construction, control, decoy, dataclass]
+repo:
+  initial_files:
+    svc/__init__.py: ""
+    svc/model.py: |
+      from dataclasses import dataclass
+
+
+      @dataclass
+      class Item:
+          id: int
+          size: int = 0
+          note_text: str = ""
+          default: str = ""
+    svc/underscored_keyword.py: |
+      from svc.model import Item
+
+
+      def build():
+          return Item(id=1, note_text="n")
+    svc/default_keyword.py: |
+      from svc.model import Item
+
+
+      def build():
+          return Item(id=1, default="d")
+    svc/spaced_call.py: |
+      from svc.model import Item
+
+
+      def build():
+          return Item (id=1)
+    svc/comparison_argument.py: |
+      from svc.model import Item
+
+
+      def build(count):
+          return Item(count == 1)
+  changed_files:
+    svc/model.py: |
+      from dataclasses import dataclass
+
+
+      @dataclass
+      class Item:
+          id: int
+          note_text: str = ""
+          default: str = ""
+  commit_message: "model: drop the size field"
+expect:
+  removed: [size]
+  # `size` has a default: a construction that gives other keywords leaves it out,
+  # whatever those keywords look like (an underscore, the name `default`) and
+  # wherever its parenthesis sits. A `==` is no keyword: that argument is
+  # positional, may fill the field, and stays a site.
+  relations:
+    - from: "svc/comparison_argument.py::build"
+      to: "svc/model.py::Item"
+      kind: instantiates
+      resolution: resolved
+      site: 5
+  decoys:
+    "svc/model.py::Item": [svc/underscored_keyword.py, svc/default_keyword.py, svc/spaced_call.py]
