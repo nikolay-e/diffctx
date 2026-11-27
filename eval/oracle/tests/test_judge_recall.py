@@ -143,3 +143,19 @@ def test_a_local_the_function_hands_on_is_the_functions_change_when_named_and_lo
 
     assert silent_candidates(prepared, [entry(path, outer, lines)]) == ([key], [])
     assert silent_candidates(prepared, []) == ([key], [key])
+
+
+def test_the_removal_an_entry_stands_for_is_the_one_whose_name_it_resembles(tmp_path: Path):
+    """S12, jsoup 7d46675b: `jetty` and `proxy` are renamed `Jetty` and `Proxy`; the answer names `Proxy` and is silent on
+    `Jetty`: the removal that goes unnamed is `jetty`, whichever sorts first."""
+    server = "class Hub {\n    private static final Server {first} = newServer();\n    private static final Server {second} = newServer();\n}\n"
+    base = server.replace("{first}", "jetty").replace("{second}", "proxy")
+    head = server.replace("{first}", "Jetty").replace("{second}", "Proxy")
+    prepared = a_range(tmp_path, {"Hub.java": base}, {"Hub.java": head}, "java")
+    removed = [c.base for c in prepared.changed if c.status == "removed"]
+
+    paired = {d.name: pairing(prepared.head, prepared.base, d, ["Hub.java::Hub.Proxy"], removed) for d in removed}
+
+    assert sorted(paired) == ["jetty", "proxy"]
+    assert paired["proxy"] == ("Hub.java::Hub.Proxy", "Hub.java::Hub.proxy")
+    assert paired["jetty"] is None
