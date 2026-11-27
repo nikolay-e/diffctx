@@ -1,0 +1,25 @@
+name: ts_default_export_that_changes_its_form_beside_an_added_file_is_still_one_export
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [typescript, default-export, contracts, rule-i]
+repo:
+  initial_files:
+    src/rate.ts: |
+      export default (x: number, y: number): number => x * y;
+  changed_files:
+    src/rate.ts: |
+      export default function mono(x: number, y: number): number {
+        return x * y;
+      }
+    src/a_added.ts: |
+      export function fresh(): number {
+        return 1;
+      }
+  commit_message: "rate: a named default; a new module"
+# `mono` is the reshaped default export, not the new function of another file:
+# no export of rate.ts is removed, however many definitions the range adds.
+expect:
+  exact: false
+  removed: []
+  not_contracts: [src/rate.ts]
