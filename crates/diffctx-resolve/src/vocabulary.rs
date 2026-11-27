@@ -18,10 +18,6 @@ enum Tier {
 /// The README's Tier table: a row per language as the README names it, with
 /// the language names `languages.rs` gives its files, or the extension of a
 /// language it does not name (`.astro`). Tier 3 has no rows.
-#[allow(
-    dead_code,
-    reason = "tests/test_tiers_readme.py reads the README's table off this one"
-)]
 const TIERS: &[(Tier, &str, &[&str])] = &[
     (Tier::One, "Python", &["python"]),
     (
@@ -120,10 +116,49 @@ const PRECISE: &[(&str, RelationKind)] = &[];
 
 /// Whether the cell is `Precise`: a caller row states its `kind` for exactly
 /// these cells.
-pub fn is_precise(language: &str, relation: &str) -> bool {
+fn is_precise(language: &str, relation: &str) -> bool {
     PRECISE
         .iter()
         .any(|(l, k)| *l == language && k.name() == relation)
+}
+
+/// How far an absence stated about a file is backed, weakest first: the least
+/// over the files an answer speaks of is what the whole answer may claim.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Absence {
+    /// A language no tier names: no answer about it claims an absence.
+    Never,
+    /// A tiered language whose cell is not precise: a zero is the model's
+    /// finding among its candidates.
+    Modelled,
+    /// The cell is precise: a zero is a fact of the repository.
+    Stated,
+}
+
+/// What an absence of `relation` uses of a definition in `path` may be called.
+pub fn absence_strength(path: &str, relation: RelationKind) -> Absence {
+    absence_by(is_precise, path, relation)
+}
+
+fn absence_by(precise: impl Fn(&str, &str) -> bool, path: &str, relation: RelationKind) -> Absence {
+    if !tiered(path) {
+        Absence::Never
+    } else if precise(cell_language(path), relation.name()) {
+        Absence::Stated
+    } else {
+        Absence::Modelled
+    }
+}
+
+fn tiered(path: &str) -> bool {
+    let language = diffctx_base::languages::get_language_for_file(path).or_else(|| {
+        path.to_ascii_lowercase()
+            .ends_with(".astro")
+            .then_some("astro")
+    });
+    TIERS
+        .iter()
+        .any(|(_, _, names)| names.iter().any(|name| Some(*name) == language))
 }
 
 /// The cell language a file's definitions belong to: the corpus directories.
@@ -241,6 +276,25 @@ mod tests {
                 "{path}: no cell is precise yet"
             );
         }
+    }
+
+    #[test]
+    fn an_absence_is_stated_only_where_the_tier_and_the_cell_both_say_so() {
+        let python_calls =
+            |language: &str, relation: &str| language == "python" && relation == "calls";
+        let strength = |path, kind| absence_by(python_calls, path, kind);
+        assert_eq!(strength("a.py", RelationKind::Calls), Absence::Stated);
+        assert_eq!(strength("a.py", RelationKind::Reads), Absence::Modelled);
+        assert_eq!(strength("a.go", RelationKind::Calls), Absence::Modelled);
+        assert_eq!(strength("a.astro", RelationKind::Calls), Absence::Modelled);
+        for untiered in ["a.rb", "a.cs", "a.scala", "notes.md", "a.json"] {
+            assert_eq!(
+                strength(untiered, RelationKind::Calls),
+                Absence::Never,
+                "{untiered}"
+            );
+        }
+        assert!(Absence::Never < Absence::Modelled && Absence::Modelled < Absence::Stated);
     }
 
     #[test]

@@ -18,7 +18,8 @@ use super::symbol::{
 };
 use crate::answer::render::{self as rendered, gap_sentence, label, place};
 use crate::answer::v2::{
-    Class, DefRef, Definition, Fold, Gap, GuardState, LocalOf, RangeKind, Row, Spelled, Standing,
+    Bound, Class, DefRef, Definition, Fold, Gap, GuardState, LocalOf, RangeKind, Row, Spelled,
+    Standing,
 };
 use crate::answer::{Answer, Page, RenderCtx};
 
@@ -80,7 +81,12 @@ fn write_answer(out: &mut String, a: &Answer) {
         if doc.unlisted.layout_only.items.is_empty() || doc.summary.traced > 0 {
             let _ = writeln!(
                 out,
-                "No resolved static callers outside the diff in the analysed scope."
+                "No resolved static callers outside the diff in the analysed scope{}.",
+                if a.tally.bound == Some(Bound::Model) {
+                    " (heuristic model)"
+                } else {
+                    ""
+                }
             );
         }
         // What the claim stands on is shown: the definitions only the range's own
@@ -596,7 +602,15 @@ fn write_definition(out: &mut String, a: &Answer, d: &Definition, scope: bool) {
         // the repository only when the run's scope was whole too.
         match (d.complete(), scope) {
             (true, true) => {
-                let _ = writeln!(out, "  - nothing references it");
+                let _ = writeln!(
+                    out,
+                    "  - {}",
+                    if a.tally.bound == Some(Bound::Model) {
+                        "no reference found among the candidates (heuristic model)"
+                    } else {
+                        "nothing references it"
+                    }
+                );
             }
             (true, false) => {
                 let _ = writeln!(out, "  - no reference found in the analysed scope");

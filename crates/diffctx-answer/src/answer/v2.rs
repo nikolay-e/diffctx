@@ -9,6 +9,8 @@
 //! doors yet: [`ImpactV2::from_v1`] builds it from the v1 answer, field by field,
 //! until the builders produce it natively.
 
+pub mod unlisted;
+
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -21,6 +23,7 @@ use crate::impact::{self};
 use diffctx_snapshot::resource::LimitReason;
 
 use super::Tally;
+use unlisted::{Entered, Unlisted, Unreached, split_role};
 
 pub const IMPACT_SCHEMA_V2: &str = "diffctx.impact.v2";
 
@@ -970,64 +973,6 @@ pub struct Tests {
     pub definitions_without_link: Count,
 }
 
-#[derive(Serialize, JsonSchema, Clone, Debug)]
-pub struct Entered {
-    pub def: DefRef,
-    pub role: String,
-}
-
-/// A definition listed apart from the entries, with the role that gives it an
-/// implicit caller when it has one (a runner, a registry): the role is why a missing
-/// test link is a finding there.
-#[derive(Serialize, JsonSchema, Clone, Debug)]
-pub struct Unreached {
-    #[serde(flatten)]
-    pub def: DefRef,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub role: Option<String>,
-}
-
-/// v1 wrote a definition and its role in one string: `path::symbol (lines) — role`.
-fn split_role(text: &str) -> (&str, Option<String>) {
-    match text.split_once(" \u{2014} ") {
-        Some((def, role)) => (def, Some(role.to_string())),
-        None => (text, None),
-    }
-}
-
-impl Unreached {
-    fn parse(text: &str) -> Self {
-        let (def, role) = split_role(text);
-        Self {
-            def: DefRef::parse(def),
-            role,
-        }
-    }
-}
-
-/// Changed definitions the answer does not list as entries, each for a reason.
-#[derive(Serialize, JsonSchema, Clone, Debug, Default)]
-pub struct Unlisted {
-    /// Complete searches found no caller: the absence claim.
-    #[serde(default, skip_serializing_if = "Listing::is_empty")]
-    pub no_caller: Listing<Unreached>,
-    #[serde(default, skip_serializing_if = "Listing::is_empty")]
-    pub called_in_diff: Listing<Unreached>,
-    #[serde(default, skip_serializing_if = "Listing::is_empty")]
-    pub entered_by: Listing<Entered>,
-    #[serde(default, skip_serializing_if = "Listing::is_empty")]
-    pub layout_only: Listing<DefRef>,
-}
-
-impl Unlisted {
-    pub fn is_empty(&self) -> bool {
-        self.no_caller.is_empty()
-            && self.called_in_diff.is_empty()
-            && self.entered_by.is_empty()
-            && self.layout_only.is_empty()
-    }
-}
-
 /// What the run did not cover as a whole.
 #[derive(Serialize, JsonSchema, Clone, Debug)]
 pub struct RunCoverage {
@@ -1112,6 +1057,20 @@ pub struct Summary {
     /// Changed definitions whose callers were traced; none with comments or
     /// formatting only is "callers not traced", not "no callers".
     pub traced: usize,
+    /// What the answer's absence claims rest on, when it makes any: a zero count
+    /// or an empty `unlisted.no_caller` is a fact of the repository under
+    /// `precise` and the heuristic model's finding under `model`. `exact` and
+    /// `complete` keep saying the static count is closed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bound: Option<Bound>,
+}
+
+/// What an absence claim is bounded by.
+#[derive(Serialize, JsonSchema, Clone, Copy, Debug, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum Bound {
+    Precise,
+    Model,
 }
 
 /// The cap the answer was fitted to.
@@ -1351,6 +1310,7 @@ impl ImpactV2 {
                 untested_callers: 0,
                 files: 0,
                 traced: v1.traced_definitions,
+                bound: None,
             },
             fit: Fit {
                 asked: None,

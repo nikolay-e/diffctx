@@ -6,7 +6,8 @@
 
 use std::fmt::Write as _;
 
-use super::v2::{DefRef, Gap, GuardState, How, ImpactV2, Listing, Range, Standing, Unreached};
+use super::v2::unlisted::Unreached;
+use super::v2::{Bound, DefRef, Gap, GuardState, How, ImpactV2, Listing, Range, Standing};
 use super::{Answer, Page};
 use crate::decide::gap::{Site, Via};
 use crate::impact::dispatch::base_symbol;
@@ -268,6 +269,9 @@ fn callers_phrase(a: &Answer, scope: &str) -> String {
             (false, 0) => format!("no caller found{scope} in the analysed scope"),
             // A count without its witness is the least there are: said as that.
             (false, n) => format!("at least {n} caller(s){scope}{folded_note}"),
+            (true, 0) if tally.bound == Some(Bound::Model) => {
+                format!("0 caller(s){scope}{folded_note} (heuristic model)")
+            }
             (true, n) => format!("{n} caller(s){scope}{folded_note}"),
         };
         if open > 0 {
@@ -551,7 +555,12 @@ fn untested(out: &mut String, a: &Answer) {
     };
     // Without a complete scope, no caller found is all the run can say.
     let uncalled = if doc.coverage.scope.complete {
-        format!("Changed, nothing calls them{link}:")
+        match a.tally.bound {
+            Some(Bound::Model) => format!(
+                "Changed, no static caller found among the candidates (heuristic model){link}:"
+            ),
+            _ => format!("Changed, nothing calls them{link}:"),
+        }
     } else {
         let why: Vec<String> = doc
             .coverage

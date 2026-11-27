@@ -15,9 +15,11 @@ pub mod envelope;
 pub mod render;
 pub mod v2;
 
+use diffctx_resolve::resolve::Relation;
+use diffctx_resolve::vocabulary::{self, Absence};
 use rustc_hash::FxHashSet;
 
-use v2::{Class, Count, Definition, ImpactV2, Row, ShedRows, Standing};
+use v2::{Bound, Class, Count, Definition, ImpactV2, Row, ShedRows, Standing};
 
 /// What the text of an answer varies by, apart from the answer.
 #[derive(Clone, Debug, Default)]
@@ -219,6 +221,8 @@ pub struct Tally {
     pub analysed_in_part: usize,
     pub not_followed: usize,
     pub outside_definitions: usize,
+    /// What the answer's absence claims rest on; none when it makes none.
+    pub(crate) bound: Option<Bound>,
 }
 
 impl Tally {
@@ -301,6 +305,7 @@ impl Tally {
             analysed_in_part,
             not_followed,
             outside_definitions,
+            bound: bound_of(doc),
         }
     }
 
@@ -315,8 +320,35 @@ impl Tally {
             untested_callers: self.untested_callers,
             files: self.changed_files,
             traced,
+            bound: self.bound,
         }
     }
+}
+
+/// The weakest backing of the files an absence is stated about: the definitions
+/// with no caller and a whole search, listed or apart. A claim the answer makes
+/// of several languages is only as strong as the weakest, and a language no
+/// tier names is never stronger than the model.
+fn bound_of(doc: &ImpactV2) -> Option<Bound> {
+    let listed = (doc.definitions.iter())
+        .filter(|d| d.rows.is_empty() && d.complete())
+        .map(|d| d.path.as_str());
+    let shed = (doc.omitted.iter().flat_map(|o| &o.definitions.items))
+        .filter(|d| !d.incomplete)
+        .map(|d| d.def.path.as_str());
+    let apart = (doc.unlisted.no_caller.items.iter()).map(|u| u.def.path.as_str());
+    let weakest = listed
+        .chain(shed)
+        .chain(apart)
+        .flat_map(|path| {
+            Relation::ALL.map(|r| vocabulary::absence_strength(path, vocabulary::kind_of_use(r)))
+        })
+        .min()?;
+    Some(if weakest == Absence::Stated {
+        Bound::Precise
+    } else {
+        Bound::Model
+    })
 }
 
 /// One list read a page at a time: the first `cap` of its items, and what is left

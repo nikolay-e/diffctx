@@ -16,7 +16,7 @@ This file covers `diffctx.impact.v2`, `diffctx.locate.v2` and the pack artifact
 2. Every list is `{total, items}`; what a list omits is `total − len(items)`,
    never a field.
 3. Every count of uses is `{n, exact}`; `exact` holds only under a complete
-   search.
+   search. What a zero then rests on is `summary.bound`.
 4. Every unknown is a structured `gaps` entry; no JSON field carries a sentence.
 5. Every row carries one `guard` for its test fact and one `standing` for how
    sure it is.
@@ -50,7 +50,7 @@ fields, one v2 field. Dropped = derived or internal, with the reason.
 | `empty` | `empty` | kept |
 | `truncated` | `summary.shed` | the sum of every definition's `shed` |
 | `budget_needed` | `fit.least` | `fit` also carries `cap` and `needs`, and is present only when something was shed |
-| (not in v1) | `summary{definitions, callers{n, exact}, possible, folded, shed, untested_callers, files}`, `provenance.engine` | the totals the Markdown header prints, and the engine that answered |
+| (not in v1) | `summary{definitions, callers{n, exact}, possible, folded, shed, untested_callers, files, bound}`, `provenance.engine` | the totals the Markdown header prints, and the engine that answered; `bound` (`precise` or `model`, absent when the answer claims no absence) is what an absence claim rests on |
 
 ### A changed definition (`changed[]` → `definitions[]`)
 
@@ -107,7 +107,11 @@ and `reason` says why (`read_failed`, `changed`, `too_large`, `not_read`,
 `no_group`). `unread_directories` names the first ten untracked directories a
 working-tree read did not enter (over its entry budget), `total` counts them: a
 use of the name inside is unknown. A search with no gap is `complete: true`; a
-count over an incomplete one is `{n, exact: false}`: at least `n`.
+count over an incomplete one is `{n, exact: false}`: at least `n`. `complete`,
+`exact` and an empty `unlisted.no_caller` say the static count is closed;
+`summary.bound` says by what: `precise` when every cell the answer speaks of is
+precise, `model` otherwise (no cell is precise yet). A language no tier names
+never reaches a zero.
 
 ## What locate and pack share with impact
 
@@ -198,6 +202,12 @@ Markdown is not versioned; this is where its changes are promised.
   under the word matches only.
 - A count of calls that only fields or parameters with defaults changed says "at
   least N" when its search was not complete.
+- An absence in a modelled language says what it rests on: "0 caller(s) outside
+  the diff (heuristic model)", "Changed, no static caller found among the
+  candidates (heuristic model)", "no reference found among the candidates
+  (heuristic model)", and the empty answer's line ends "(heuristic model)". The
+  wording "nothing calls them" and "nothing references it" stays for a precise
+  cell.
 - `--symbol` on a name no file defines: the files read as text are named by the
   header's "not analysed" block, not inside the first sentence.
 
