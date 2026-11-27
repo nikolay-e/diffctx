@@ -4,6 +4,7 @@
 
 mod keywords;
 mod locals;
+mod mentions;
 mod reexports;
 mod routes;
 mod shell;
