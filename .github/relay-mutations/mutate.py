@@ -21,6 +21,7 @@ import os
 import pathlib
 import subprocess
 import sys
+import tomllib
 from dataclasses import dataclass
 
 
@@ -37,6 +38,16 @@ class Mutant:
     gate_cmd: list[str]
     expected_red: str
     static_guard: str
+    extra_gates: tuple[tuple[str, ...], ...] = ()
+
+    @property
+    def gates(self) -> list[list[str]]:
+        return [self.gate_cmd, *(list(gate) for gate in self.extra_gates)]
+
+
+def yaml_case_gate(case: str) -> list[str]:
+    """The yaml_cases harness takes one filter, so each case the mutant must break is its own run."""
+    return ["cargo", "test", "--release", "--locked", "-p", "diffctx", "--test", "yaml_cases", "--", "--exact", case]
 
 
 MUTANTS: tuple[Mutant, ...] = (
@@ -172,7 +183,7 @@ MUTANTS: tuple[Mutant, ...] = (
         line_hint=438,
         description="Class 1 (occurrence not lost): Account::verdict drops OccurrenceOutcome::Candidate hedges",
         target="                    if entry.counts_for(self.relation) {",
-        replacement="                    if self.files == usize::MAX && entry.counts_for(self.relation) {",
+        replacement="                    if self.entries.len() == usize::MAX && entry.counts_for(self.relation) {",
         gate_cmd=[
             "cargo",
             "test",
@@ -220,7 +231,7 @@ MUTANTS: tuple[Mutant, ...] = (
         line_hint=428,
         description="Class 3 (value leak): Account::verdict ignores ValueRead on Relation::Calls",
         target="                    if self.relation == Relation::Calls && self.admits_calls {",
-        replacement="                    if self.files == usize::MAX && self.relation == Relation::Calls && self.admits_calls {",
+        replacement="                    if self.entries.len() == usize::MAX && self.relation == Relation::Calls && self.admits_calls {",
         gate_cmd=[
             "cargo",
             "test",
@@ -348,20 +359,11 @@ MUTANTS: tuple[Mutant, ...] = (
         description="Coverage::close seals a proven account Complete whatever gaps the search found (the guard that keeps a gap from becoming Complete)",
         target="            Some(_) if gaps.is_empty() => Self::Complete(Complete(())),",
         replacement="            Some(_) => Self::Complete(Complete(())),",
-        gate_cmd=[
-            "cargo",
-            "test",
-            "--release",
-            "--locked",
-            "-p",
-            "diffctx",
-            "--test",
-            "yaml_cases",
-            "--",
-            "rs_cfg_if_in_a_sibling_module_hedges_the_calls_of_a_changed_function",
-            "tf_module_sourced_from_the_repository_own_remote_is_an_external_source",
-            "shell_changed_library_function_names_the_scripts_that_source_it",
-        ],
+        gate_cmd=yaml_case_gate("impact/rust/rs_cfg_if_in_a_sibling_module_hedges_the_calls_of_a_changed_function"),
+        extra_gates=(
+            tuple(yaml_case_gate("impact/terraform/tf_module_sourced_from_the_repository_own_remote_is_an_external_source")),
+            tuple(yaml_case_gate("impact/shell/shell_changed_library_function_names_the_scripts_that_source_it")),
+        ),
         expected_red=(
             "yaml_cases impact/rust/rs_cfg_if_in_a_sibling_module_hedges_the_calls_of_a_changed_function (calls: macros), "
             "impact/terraform/tf_module_sourced_from_the_repository_own_remote_is_an_external_source (external_source) and "
@@ -450,21 +452,84 @@ MUTANTS: tuple[Mutant, ...] = (
 BY_ID: dict[str, Mutant] = {m.id: m for m in MUTANTS}
 
 
-def verify_repo(repo: pathlib.Path) -> list[dict[str, object]]:
+# Options of `cargo test` that take a value, and of the libtest harness: what is left is a filter.
+CARGO_VALUED = {"-p", "--package", "--test", "--bin", "--example", "--bench", "--features", "--target"}
+HARNESS_VALUED = {"--skip", "--test-threads", "--format", "--color", "--logfile", "--report-time"}
+
+
+def custom_harness_tests(repo: pathlib.Path) -> set[str]:
+    names: set[str] = set()
+    for manifest in repo.glob("crates/*/Cargo.toml"):
+        for target in tomllib.loads(manifest.read_text(encoding="utf-8")).get("test", []):
+            if target.get("harness") is False:
+                names.add(target["name"])
+    return names
+
+
+def filters(args: list[str], valued: set[str]) -> list[str]:
+    found: list[str] = []
+    skip = False
+    for arg in args:
+        if skip:
+            skip = False
+        elif arg in valued:
+            skip = True
+        elif not arg.startswith("-"):
+            found.append(arg)
+    return found
+
+
+def gate_problems(gate: list[str], custom: set[str]) -> list[str]:
+    """A gate `cargo test` cannot parse: more than one filter for cargo, or for a harness that takes one."""
+    if gate[:2] != ["cargo", "test"]:
+        return [f"not a cargo test command: {' '.join(gate)}"]
+    split = gate.index("--") if "--" in gate else len(gate)
+    cargo_filters = filters(gate[2:split], CARGO_VALUED)
+    harness_filters = filters(gate[split + 1 :], HARNESS_VALUED)
+    problems = [f"cargo test takes one filter, got {cargo_filters}"] if len(cargo_filters) > 1 else []
+    targets = {gate[i + 1] for i, arg in enumerate(gate[:split]) if arg == "--test"}
+    if targets & custom and len(harness_filters) > 1:
+        problems.append(f"the harness of {sorted(targets & custom)} takes one filter, got {harness_filters}")
+    return problems
+
+
+def compiles(repo: pathlib.Path, mutant: Mutant) -> list[str]:
+    apply_mutant(repo, mutant)
+    try:
+        proc = subprocess.run(
+            ["cargo", "check", "--locked", "-p", mutant.crate],
+            cwd=str(repo),
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+        )
+    finally:
+        restore_mutant(repo, mutant)
+    return [] if proc.returncode == 0 else [f"the mutant does not compile:\n{proc.stdout}"]
+
+
+def verify_repo(repo: pathlib.Path, compile_too: bool, only: str | None, allow_cargo: bool) -> list[dict[str, object]]:
+    if compile_too and os.environ.get("GITHUB_ACTIONS") != "true" and not allow_cargo:
+        raise RuntimeError("Refusing to run cargo outside GitHub Actions (GITHUB_ACTIONS!=true).")
+    custom = custom_harness_tests(repo)
     results: list[dict[str, object]] = []
-    for m in MUTANTS:
+    for m in (m for m in MUTANTS if only in (None, m.id)):
         fp = repo / m.rel_path
         if not fp.is_file():
             results.append({"id": m.id, "ok": False, "reason": f"missing {m.rel_path}"})
             continue
         lines = fp.read_text(encoding="utf-8").splitlines()
         matches = [idx + 1 for idx, line in enumerate(lines) if line == m.target]
+        problems = [problem for gate in m.gates for problem in gate_problems(gate, custom)]
+        if compile_too and len(matches) == 1:
+            problems += compiles(repo, m)
         results.append(
             {
                 "id": m.id,
-                "ok": len(matches) == 1,
+                "ok": len(matches) == 1 and not problems,
                 "file": m.rel_path,
                 "matches": matches,
+                "problems": problems,
             }
         )
     return results
@@ -491,6 +556,31 @@ def restore_mutant(repo: pathlib.Path, mutant: Mutant) -> None:
     )
 
 
+def run_gate(repo: pathlib.Path, mutant: Mutant, gate: list[str]) -> int:
+    proc = subprocess.run(
+        gate,
+        cwd=str(repo),
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+    )
+    output = proc.stdout or ""
+    print(output, flush=True)
+    if proc.returncode == 0:
+        print(f"::error::{mutant.id} SURVIVED its gate: {' '.join(gate)}", file=sys.stderr)
+        return 1
+    # Guard against bogus failures (e.g. mutant failed to compile rather than failing a test).
+    if "test result: FAILED." not in output:
+        print(
+            f"::error::{mutant.id} exited {proc.returncode} WITHOUT running to 'test result: FAILED.' "
+            "(compile error or harness crash does not count as behavioral test catch!)",
+            file=sys.stderr,
+        )
+        return 2
+    print(f"[mutate] CAUGHT {mutant.id} (rc={proc.returncode}, test result: FAILED.): {' '.join(gate)}", flush=True)
+    return 0
+
+
 def run_ci_mutant(repo: pathlib.Path, mutant: Mutant, allow_cargo: bool) -> int:
     if os.environ.get("GITHUB_ACTIONS") != "true" and not allow_cargo:
         raise RuntimeError(
@@ -500,28 +590,8 @@ def run_ci_mutant(repo: pathlib.Path, mutant: Mutant, allow_cargo: bool) -> int:
     line_no = apply_mutant(repo, mutant)
     print(f"[mutate] applied {mutant.id} at {mutant.rel_path}:{line_no}", flush=True)
     try:
-        proc = subprocess.run(
-            mutant.gate_cmd,
-            cwd=str(repo),
-            text=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-        )
-        output = proc.stdout or ""
-        print(output, flush=True)
-        if proc.returncode == 0:
-            print(f"::error::{mutant.id} SURVIVED its gate: {' '.join(mutant.gate_cmd)}", file=sys.stderr)
-            return 1
-        # Guard against bogus failures (e.g. mutant failed to compile rather than failing a test).
-        if "test result: FAILED." not in output:
-            print(
-                f"::error::{mutant.id} exited {proc.returncode} WITHOUT running to 'test result: FAILED.' "
-                "(compile error or harness crash does not count as behavioral test catch!)",
-                file=sys.stderr,
-            )
-            return 2
-        print(f"[mutate] CAUGHT {mutant.id} (rc={proc.returncode}, test result: FAILED.)", flush=True)
-        return 0
+        # Every gate must go red: each names a test the mutant has to break.
+        return max(run_gate(repo, mutant, gate) for gate in mutant.gates)
     finally:
         restore_mutant(repo, mutant)
 
@@ -531,11 +601,17 @@ def main() -> int:
     parser.add_argument("--repo", type=pathlib.Path, default=pathlib.Path("."))
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--list", action="store_true", help="List all required mutations")
-    group.add_argument("--verify", action="store_true", help="Verify every anchor exists uniquely in --repo")
+    group.add_argument(
+        "--verify",
+        action="store_true",
+        help="Verify every anchor exists uniquely in --repo and every gate command parses (--compile: and the mutant compiles)",
+    )
     group.add_argument("--matrix-json", action="store_true", help="Emit GitHub Actions matrix JSON")
     group.add_argument("--apply", metavar="ID", choices=tuple(BY_ID), help="Apply one mutant in-place")
     group.add_argument("--restore", metavar="ID", choices=tuple(BY_ID), help="Restore mutated file via git checkout")
     group.add_argument("--run-ci", metavar="ID", choices=tuple(BY_ID), help="Apply, run gate on CI, assert caught, restore")
+    parser.add_argument("--compile", action="store_true", help="With --verify: cargo check the mutated crate of each mutant")
+    parser.add_argument("--only", metavar="ID", choices=tuple(BY_ID), help="With --verify: one mutant")
     parser.add_argument("--allow-cargo-in-ci", action="store_true", help="Explicit CI override when GITHUB_ACTIONS is unset")
     args = parser.parse_args()
 
@@ -551,7 +627,7 @@ def main() -> int:
                 "group": m.group,
                 "crate": m.crate,
                 "file": m.rel_path,
-                "gate": " ".join(m.gate_cmd),
+                "gate": " && ".join(" ".join(gate) for gate in m.gates),
             }
             for m in MUTANTS
         ]
@@ -559,11 +635,13 @@ def main() -> int:
         return 0
 
     if args.verify:
-        checks = verify_repo(args.repo)
+        checks = verify_repo(args.repo, args.compile, args.only, args.allow_cargo_in_ci)
         bad = [c for c in checks if not c["ok"]]
         for c in checks:
             status = "OK" if c["ok"] else "FAIL"
             print(f"[{status}] {c['id']:24s} -> {c.get('file', '')}:{c.get('matches', c.get('reason'))}")
+            for problem in c.get("problems", []):
+                print(f"       {problem}")
         return 1 if bad else 0
 
     if args.apply:

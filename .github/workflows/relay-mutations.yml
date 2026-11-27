@@ -55,6 +55,8 @@ jobs:
             --test occurrence_debug \
             --test yaml_cases -- --list >/dev/null
           cargo test --release --locked -p diffctx-occurrence --lib --no-run
+      - name: Every mutant compiles and every gate parses
+        run: python3 .github/relay-mutations/mutate.py --verify --compile
 
   mutant:
     needs: warm
