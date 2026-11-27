@@ -2213,6 +2213,9 @@ fn a_language_without_a_model_never_claims_an_absence() {
         "No resolved static callers",
         "0 caller(s)",
         "no caller found",
+        "no static caller found among",
+        "no reference found among",
+        "(heuristic model)",
     ];
     for (path, symbol, base, change) in unmodelled {
         let tmp = repo(&[(path, base)], &[(path, change)]);
