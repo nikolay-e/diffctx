@@ -13,7 +13,7 @@ use diffctx_facts::facts::{
 };
 use diffctx_occurrence::tokens::occurrence::{
     Alias, AliasBound, AliasScope, Basis, Case, MAX_ALIAS_HOPS, MAX_ALIAS_NAMES, Outcome, Reason,
-    ValuePlace, close_aliases, scan, value_use,
+    ValuePlace, callee_of, close_aliases, scan, value_use,
 };
 use diffctx_resolve::resolve::Relation;
 use diffctx_snapshot::snapshot::{RepoPath, RunBudget};
@@ -270,4 +270,82 @@ fn the_closure_takes_each_step_in_name_order_and_ends_on_a_cycle() {
     let (aliases, bound) = closure_of(source);
     assert_eq!(named(&aliases), vec![("a", 1), ("b", 1), ("c", 2)]);
     assert_eq!(bound, None, "a name met again is no new name");
+}
+
+/// The call `callee_of` names for the one `X` of `text`.
+fn callee_at_x(text: &str) -> Option<Name> {
+    let start = text.find('X').expect("a marker") as u32;
+    callee_of(text.as_bytes(), &(start..start + 1))
+}
+
+#[test]
+fn the_callee_of_an_argument_is_the_nearest_unclosed_call_past_the_groups_closed_between() {
+    for text in [
+        "run(a(b), X)",
+        "run(a[0], X)",
+        "run({ k: 1 }, X)",
+        "run(a(b(c)), d[e], X)",
+    ] {
+        assert_eq!(callee_at_x(text), Some(Name::from("run")), "{text}");
+    }
+    assert_eq!(callee_at_x("run(a(X))"), Some(Name::from("a")));
+    assert_eq!(callee_at_x("return (X)"), None, "a statement's own group");
+}
+
+#[test]
+fn the_callee_is_found_where_the_call_opens_far_into_the_text() {
+    let text = format!("{}\nrun(1, X)", "#".repeat(2100));
+    assert_eq!(callee_at_x(&text), Some(Name::from("run")));
+}
+
+#[test]
+fn a_function_read_before_a_bare_range_dot_is_a_hedged_read_not_a_receiver_of_a_member() {
+    let source = "fn f() {}\nfn main() {\n    let r = f..10;\n}\n";
+    let file = read(&RustExtractor, source);
+    assert_eq!(
+        uses(&file, source, "f", DefKind::Function),
+        vec![(3, unplaced())]
+    );
+}
+
+#[test]
+fn an_enum_member_initialized_with_a_function_is_no_assignment_of_a_name() {
+    let source = "export function f() {}\nexport enum E { A = f }\n";
+    let file = read(&TypeScript, source);
+    assert_eq!(
+        uses(&file, source, "f", DefKind::Function),
+        vec![(2, unplaced())]
+    );
+}
+
+#[test]
+fn a_constant_of_a_namespace_aliases_the_function_in_the_scope_of_that_namespace() {
+    let source = "export function f() {}\nexport namespace N { export const g = f; }\n";
+    let file = read(&TypeScript, source);
+    assert_eq!(
+        uses(&file, source, "f", DefKind::Function),
+        vec![(2, alias("g", inside(&file, "N"), Basis::Assignment))]
+    );
+}
+
+#[test]
+fn a_shorthand_of_an_object_pattern_in_a_function_names_the_member_in_that_function() {
+    let source = "export class S {\n  static f() {}\n}\nexport function run() {\n  const { f } = S;\n  return f();\n}\n";
+    let file = read(&TypeScript, source);
+    let found = scan(&file, source.as_bytes(), &["f"], Case::of(file.language()));
+    let pattern = found
+        .code
+        .iter()
+        .find(|at| at.line == 5)
+        .expect("the shorthand");
+    assert_eq!(
+        value_use(
+            &file,
+            source.as_bytes(),
+            &pattern.bytes,
+            DefKind::Method,
+            None
+        ),
+        alias("f", inside(&file, "run"), Basis::Assignment)
+    );
 }
