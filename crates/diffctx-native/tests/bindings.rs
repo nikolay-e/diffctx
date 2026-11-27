@@ -590,7 +590,9 @@ fn a_function_nothing_references_is_reported_within_its_scope() {
     );
     let text = markdown(tmp.path());
     assert!(
-        text.contains("No resolved static callers outside the diff in the analysed scope."),
+        text.contains(
+            "No resolved static callers outside the diff in the analysed scope (heuristic model)."
+        ),
         "{text}"
     );
 }

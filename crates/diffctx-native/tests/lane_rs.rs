@@ -235,7 +235,10 @@ fn a_definition_called_only_inside_the_diff_reads_so() {
         "{md}"
     );
     assert_eq!(
-        listed_under(&md, "Changed, nothing calls them"),
+        listed_under(
+            &md,
+            "Changed, no static caller found among the candidates (heuristic model)"
+        ),
         [
             "src/resource.rs::lonely",
             "src/scan.rs::scan",

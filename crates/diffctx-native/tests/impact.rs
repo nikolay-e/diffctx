@@ -1282,7 +1282,9 @@ fn a_definition_called_only_inside_the_diff_is_not_one_nothing_calls() {
         .split_once("Changed, called only from inside the diff, no static test link:")
         .unwrap_or_else(|| panic!("{md}"));
     let (_, nothing) = before
-        .split_once("Changed, nothing calls them, no static test link:")
+        .split_once(
+            "Changed, no static caller found among the candidates (heuristic model), no static test link:",
+        )
         .unwrap_or_else(|| panic!("{md}"));
     assert!(nothing.contains("  - app/rates.py::quote ("), "{md}");
     assert!(!nothing.contains("_scale"), "{md}");
@@ -7280,7 +7282,10 @@ fn a_removed_private_typescript_constant_is_listed_alone() {
     assert_eq!(factor["rows"], serde_json::json!([]), "{doc:#}");
     let md = impact_markdown(tmp.path(), "HEAD~1..HEAD");
     assert!(md.contains("src/util.ts::factor (removed; was "), "{md}");
-    assert!(md.contains("nothing references it"), "{md}");
+    assert!(
+        md.contains("no reference found among the candidates (heuristic model)"),
+        "{md}"
+    );
 }
 
 /// A contract row is about the export's place in the surface: a declaration
