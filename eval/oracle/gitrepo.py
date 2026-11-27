@@ -46,6 +46,13 @@ def mirror(url: str, dest: Path, sha: str) -> Path:
     return dest
 
 
+def skip_links_out_of_tree(member: tarfile.TarInfo, dest: str) -> tarfile.TarInfo | None:
+    try:
+        return tarfile.data_filter(member, dest)
+    except (tarfile.AbsoluteLinkError, tarfile.LinkOutsideDestinationError):
+        return None
+
+
 def export_tree(git_dir: Path, sha: str, dest: Path) -> Path:
     """The files of `sha` without a checkout: no hooks, no filters, no symlink out of `dest`."""
     if dest.exists():
@@ -59,7 +66,7 @@ def export_tree(git_dir: Path, sha: str, dest: Path) -> Path:
     ) as proc:
         assert proc.stdout is not None
         with tarfile.open(fileobj=proc.stdout, mode="r|") as tar:
-            tar.extractall(partial, filter="data")
+            tar.extractall(partial, filter=skip_links_out_of_tree)
         if proc.wait() != 0:
             raise RuntimeError(f"git archive {sha} failed")
     partial.rename(dest)

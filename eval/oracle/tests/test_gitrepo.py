@@ -95,3 +95,29 @@ def test_checkout_moves_a_clone_between_commits(tmp_path: Path):
     assert (work / "m.py").read_text() == "a = 2\nb = 3\n"
     gitrepo.checkout(work, git_dir, first)
     assert (work / "m.py").read_text() == "a = 1\n"
+
+
+def test_export_tree_skips_a_symlink_out_of_the_tree_and_keeps_the_rest(tmp_path: Path):
+    repo = tmp_path / "repo"
+    _first, _ = make_repo(repo)
+    (repo / "abs").symlink_to("/etc/hostname")
+    (repo / "escape").symlink_to("../../outside")
+    (repo / "alias").symlink_to("m.py")
+    env = {**gitrepo.git_env(), "GIT_AUTHOR_DATE": "2026-01-02T00:00:00Z", "GIT_COMMITTER_DATE": "2026-01-02T00:00:00Z"}
+    subprocess.run(["git", "add", "-A"], cwd=repo, env=env, check=True)
+    subprocess.run(
+        ["git", "-c", "user.name=t", "-c", "user.email=t@example.invalid", "commit", "-q", "-m", "links"],
+        cwd=repo,
+        env=env,
+        check=True,
+    )
+    sha = subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=repo, env=env, capture_output=True, text=True, check=True
+    ).stdout.strip()
+
+    tree = gitrepo.export_tree(repo / ".git", sha, tmp_path / "tree")
+
+    assert (tree / "m.py").read_text() == "a = 2\nb = 3\n"
+    assert not (tree / "abs").is_symlink() and not (tree / "abs").exists()
+    assert not (tree / "escape").is_symlink()
+    assert (tree / "alias").is_symlink() and (tree / "alias").readlink() == Path("m.py")
