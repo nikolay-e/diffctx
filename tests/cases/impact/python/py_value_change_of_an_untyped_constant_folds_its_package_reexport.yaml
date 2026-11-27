@@ -1,0 +1,22 @@
+name: py_value_change_of_an_untyped_constant_folds_its_package_reexport
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [python, reexport, fold, constant]
+repo:
+  initial_files:
+    pkg/__init__.py: |
+      from .config import LIMIT as LIMIT
+    pkg/config.py: |
+      LIMIT = 3
+  changed_files:
+    pkg/config.py: |
+      LIMIT = 4
+  commit_message: "config: raise the limit"
+expect:
+  exact: false
+  changed: [pkg/config.py::LIMIT]
+  # Only the value moved: a package that names the constant by an import is not
+  # affected by what it holds, so its re-export is folded, not listed as a user.
+  decoys:
+    "pkg/config.py::LIMIT": [pkg/__init__.py]
