@@ -51,7 +51,7 @@ impl Driven {
 }
 
 pub(crate) fn hook_bin() -> PathBuf {
-    std::env::var_os("DIFFCTX_HOOK_BIN").map_or_else(
+    std::env::var_os("DIFFCTX_TEST_HOOK_BIN").map_or_else(
         || PathBuf::from(env!("CARGO_BIN_EXE_diffctx")),
         PathBuf::from,
     )

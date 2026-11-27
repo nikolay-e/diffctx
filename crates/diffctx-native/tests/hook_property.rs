@@ -25,7 +25,7 @@
 //!
 //! `DIFFCTX_HOOK_PROPERTY_CASES` (default 6 lines per family and bash),
 //! `DIFFCTX_HOOK_PROPERTY_SEED` (a number; `random` for the nightly run),
-//! `DIFFCTX_HOOK_BIN` (a binary other than the one cargo built).
+//! `DIFFCTX_TEST_HOOK_BIN` (a binary other than the one cargo built).
 
 #![cfg(unix)]
 
