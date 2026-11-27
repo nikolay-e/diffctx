@@ -74,25 +74,35 @@ def still_named(relations: list[Relation], head: Snapshot, changed: list[Changed
     return kept
 
 
-def paired_head_definition(head: Snapshot, target: Definition, answered: list[str]) -> Definition | None:
-    """The head definition the answer lists, of the target's kind, whose body is the target's once the name is set aside."""
+def paired_head_definition(
+    head: Snapshot, base: Snapshot, target: Definition, answered: list[str], removed: list[Definition] | None = None
+) -> Definition | None:
+    """The head definition the answer lists, new in the range, of the target's kind, whose body is the target's once the
+    name is set aside. One entry accounts for one removal: of the removals with that shape, the first by key takes the
+    first such entry by key, the second the second."""
+    found: dict[str, Definition] = {}
     for key in answered:
         path = key.partition("::")[0]
+        had = {d.key for d in base.definitions(path)}
         for candidate in head.definitions(path):
-            if candidate.key == key and candidate.key != target.key and candidate.kind == target.kind:
-                if candidate.shape_hash == target.shape_hash:
-                    return candidate
-    return None
+            if candidate.key == key and candidate.key != target.key and candidate.key not in had:
+                if candidate.kind == target.kind and candidate.shape_hash == target.shape_hash:
+                    found[key] = candidate
+    rivals = {d.key for d in removed or () if d.kind == target.kind and d.shape_hash == target.shape_hash} | {target.key}
+    place = sorted(rivals).index(target.key)
+    return None if place >= len(found) else found[sorted(found)[place]]
 
 
-def pairing(head: Snapshot, base: Snapshot, target: Definition, answered: list[str]) -> tuple[str, str] | None:
+def pairing(
+    head: Snapshot, base: Snapshot, target: Definition, answered: list[str], removed: list[Definition] | None = None
+) -> tuple[str, str] | None:
     """(the key of the head entry that answers for `target`, the key it is scored under): a constructor follows its class."""
     owner = target
     if target.name in CONSTRUCTORS and target.container:
         owner = next(
             (d for d in base.definitions(target.path) if d.kind == "class" and d.qualname == ".".join(target.container)), target
         )
-    found = paired_head_definition(head, owner, answered)
+    found = paired_head_definition(head, base, owner, answered, removed)
     return None if found is None else (found.key, owner.key)
 
 

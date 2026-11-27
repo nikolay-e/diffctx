@@ -339,7 +339,8 @@ def _score_changed(
     changed = _hunk_lines(prepared.changes, item.snapshot)
     relations = mark_in_diff(relations_to(snapshot, target), changed_keys, changed, item.status == "added")
     if item.status == "removed":
-        paired = pairing(prepared.head, prepared.base, target, list(answer.targets))
+        removals = [c.base for c in prepared.changed if c.status == "removed" and c.base is not None]
+        paired = pairing(prepared.head, prepared.base, target, list(answer.targets), removals)
         if paired is not None:
             answer = renamed_answer(answer, paired[1], paired[0])
         names = {target.name, *({without_span(paired[0]).rpartition("::")[2].split(".")[-1]} if paired else set())}
