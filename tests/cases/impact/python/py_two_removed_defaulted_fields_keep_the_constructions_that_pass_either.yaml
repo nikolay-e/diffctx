@@ -1,0 +1,54 @@
+name: py_two_removed_defaulted_fields_keep_the_constructions_that_pass_either
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [python, removed-field, construction, control, decoy, dataclass]
+repo:
+  initial_files:
+    svc/__init__.py: ""
+    svc/model.py: |
+      from dataclasses import dataclass
+
+
+      @dataclass
+      class Item:
+          id: int
+          size: int = 0
+          note: str = ""
+    svc/by_size.py: |
+      from svc.model import Item
+
+
+      def build():
+          return Item(id=1, size=2)
+    svc/by_note.py: |
+      from svc.model import Item
+
+
+      def build():
+          return Item(id=1, note="n")
+    svc/by_neither.py: |
+      from svc.model import Item
+
+
+      def build():
+          return Item(id=1)
+  changed_files:
+    svc/model.py: |
+      from dataclasses import dataclass
+
+
+      @dataclass
+      class Item:
+          id: int
+  commit_message: "model: drop the size and note fields"
+expect:
+  removed: [size, note]
+  # Each field has a default, so a construction that passes neither is as it was.
+  # One that passes `size` or `note` passes a field the class lost, whichever of
+  # the two the answer reads first: both removals are one change of `Item`.
+  relations:
+    - {from: "svc/by_size.py::build", to: "svc/model.py::Item", kind: instantiates, resolution: resolved, site: 5}
+    - {from: "svc/by_note.py::build", to: "svc/model.py::Item", kind: instantiates, resolution: resolved, site: 5}
+  decoys:
+    "svc/model.py::Item": [svc/by_neither.py]
