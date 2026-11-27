@@ -145,18 +145,15 @@ impl Cell {
         let mut view = View::over(Rc::clone(index), files, self.head.bindings());
         // A base that could not be read leaves no removed definition to account:
         // `base_gap` says so in every relation.
-        let base = if changed.stale.is_empty() {
-            None
-        } else {
-            match self.base() {
+        let mut base = None;
+        if !changed.stale.is_empty() {
+            base = match self.base() {
                 Ok(base) => Some(base),
                 Err(gap) => {
                     tracing::debug!("a removed definition is not accounted, {gap}");
                     None
                 }
-            }
-        };
-        if !changed.stale.is_empty() {
+            };
             view = view.removed_sites(
                 base.map(Resolver::bindings),
                 &changed.stale,

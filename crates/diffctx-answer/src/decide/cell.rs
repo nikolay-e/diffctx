@@ -677,16 +677,14 @@ impl Cell {
     /// What the run lost that stays what it is while the cell answers.
     fn fixed_losses(&self) -> Option<&Losses> {
         self.fixed
-            .get_or_init(|| {
-                let Ok(listing) = self.cache.listing(&self.ctx.head) else {
-                    return None;
-                };
-                Some(Losses::of(
+            .get_or_init(|| match self.cache.listing(&self.ctx.head) {
+                Ok(listing) => Some(Losses::of(
                     self.losses
                         .iter()
                         .chain(self.ctx.workspace.losses())
                         .chain(listing.losses().iter()),
-                ))
+                )),
+                Err(_) => None,
             })
             .as_ref()
     }
