@@ -789,7 +789,7 @@ jobs:
       - name: Run Tests with Coverage
         shell: bash
         run: |
-          pytest -v --cov=src/diffctx --cov-report=xml \
+          pytest -v --cov=src/diffctx \
             --cov-report=term-missing --cov-branch --junitxml=test-results.xml
 
       - name: Coverage report with threshold
