@@ -1,0 +1,54 @@
+name: config_kustomize_resource_from_a_remote_base_names_the_external_source_gap
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [config, kubernetes, kustomize, gap]
+repo:
+  initial_files:
+    base/kustomization.yaml: |
+      resources:
+        - cm.yaml
+        - dep.yaml
+    overlay/kustomization.yaml: |
+      resources:
+        - git::https://example.invalid/infra.git//base?ref=v1
+    base/cm.yaml: |
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: app
+      data:
+        mode: a
+    base/dep.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: web
+      spec:
+        template:
+          spec:
+            containers:
+              - name: web
+                image: web
+                envFrom:
+                  - configMapRef:
+                      name: app
+  changed_files:
+    base/cm.yaml: |
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: app
+      data:
+        mode: b
+  commit_message: change
+expect:
+  exact: false
+  changed: ['base/cm.yaml::ConfigMap/app']
+  relations:
+  - {from: 'base/dep.yaml::Deployment.apps/web', to: 'base/cm.yaml::ConfigMap/app', kind: reads, resolution: resolved}
+  # A kustomization names a base in a repository the snapshot does not hold: what
+  # reads the configmap through it is out of reach, so its readers are not all found.
+  # A configmap's readers are never all traced, so not_traced stands beside it.
+  partial:
+    base/cm.yaml::ConfigMap/app: {reads: [external_source, not_traced]}
