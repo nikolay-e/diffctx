@@ -402,7 +402,9 @@ impl Cell {
     fn injected_loss(&self) -> Option<Loss> {
         let (kind, at) = diffctx_snapshot::resource::test_loss()?;
         let group = self.family.group();
-        let listing = self.cache.listing(&self.ctx.head).ok()?;
+        let Ok(listing) = self.cache.listing(&self.ctx.head) else {
+            return None;
+        };
         let path = listing
             .entries
             .iter()
@@ -676,7 +678,9 @@ impl Cell {
     fn fixed_losses(&self) -> Option<&Losses> {
         self.fixed
             .get_or_init(|| {
-                let listing = self.cache.listing(&self.ctx.head).ok()?;
+                let Ok(listing) = self.cache.listing(&self.ctx.head) else {
+                    return None;
+                };
                 Some(Losses::of(
                     self.losses
                         .iter()
