@@ -1,0 +1,44 @@
+name: py_removed_defaulted_field_of_a_dataclass_extending_a_class_of_the_repository_reaches_every_construction
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [python, removed-field, construction, control, dataclass, inheritance]
+repo:
+  initial_files:
+    svc/__init__.py: ""
+    svc/base.py: |
+      class Base:
+          pass
+    svc/model.py: |
+      from dataclasses import dataclass
+
+      from svc.base import Base
+
+
+      @dataclass
+      class Item(Base):
+          id: int
+          size: int = 0
+    svc/by_name.py: |
+      from svc.model import Item
+
+
+      def build():
+          return Item(id=1)
+  changed_files:
+    svc/model.py: |
+      from dataclasses import dataclass
+
+      from svc.base import Base
+
+
+      @dataclass
+      class Item(Base):
+          id: int
+  commit_message: "model: drop the size field"
+expect:
+  removed: [size]
+  # The base is a class of the repository and may rename or add fields: the text
+  # of the construction cannot say it leaves `size` out, so every construction stays.
+  relations:
+    - {from: "svc/by_name.py::build", to: "svc/model.py::Item", kind: instantiates, resolution: resolved, site: 5}
