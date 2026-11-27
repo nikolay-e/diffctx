@@ -1,0 +1,399 @@
+# Mutation testing of the two places a false `Complete` or a lost hedge can be made: the occurrence
+# accounting (`diffctx-occurrence`) and the answer's decisions (`diffctx-answer`, `src/decide`).
+# Started by hand: a full run is hundreds of runner-hours. A mutant that survives and could say "complete"
+# where the analysis cannot see, or drop a hedge, is a missing test.
+#
+# The tests live in the `diffctx` package (crates/diffctx-native), not in the mutated crates, so every
+# mutant runs the crate's own tests plus the native suites that read it. The run is four stages:
+#   fast      every mutant, the suites that take seconds (scripts/mutants-args.sh), 30 jobs;
+#   survive   the mutants no fast suite killed, and any the fast jobs never reached, cut into jobs of
+#             `per_job` mutants (scripts/mutants_select.py);
+#   heavy     the case corpora (class_completeness, impact, yaml_cases) on the survivors, each job running
+#             exactly its share: a case run is ten minutes per mutant, so 1100 survivors are 200 runner-hours;
+#   verdict   every survivor has a heavy verdict or is listed as unjudged, and an unjudged one fails the run:
+#             a table of missed mutants that is a sample reads like the answer.
+# A mutant outside the run's scope is left out by `scripts/mutants-args.sh` and nowhere else, never by a
+# timeout. `reuse` takes the fast verdicts (and the heavy ones) of an earlier run, so a run that left
+# survivors unjudged is finished by one more run over exactly those.
+name: mutants
+
+'on':
+  # A workflow file is dispatchable only from the default branch; until it lands there, a push to
+  # this branch starts the full run.
+  push:
+    branches: [ci/mutants, 'ci/mutants-*']
+  workflow_dispatch:
+    inputs:
+      shards:
+        description: 'Fast shards per package, empty for 15 (the matrix is two packages times this many)'
+        default: ''
+      pick:
+        description: 'Only these fast jobs, as package:shard pairs (occurrence:0,answer:3); empty runs all'
+        default: ''
+      heavy:
+        description: 'Run the case suites on the survivors of the fast ones'
+        type: boolean
+        default: true
+      per_job:
+        description: 'Survivors per heavy job, empty for 27 (raised until they fit 40 jobs, run 20 at a time)'
+        default: ''
+      reuse:
+        description: 'Run id whose fast and heavy verdicts count as done (skips the fast stage); empty starts fresh'
+        default: ''
+
+concurrency:
+  group: mutants-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: never
+  # The shipped release profile is fat LTO in one codegen unit: minutes per rebuild, and a mutant
+  # rebuilds the crate and everything above it. Same optimisation level, no LTO, no debug info.
+  CARGO_PROFILE_RELEASE_LTO: 'off'
+  CARGO_PROFILE_RELEASE_CODEGEN_UNITS: '16'
+  CARGO_PROFILE_RELEASE_DEBUG: '0'
+  CARGO_PROFILE_RELEASE_SPLIT_DEBUGINFO: 'off'
+  CARGO_PROFILE_RELEASE_STRIP: 'none'
+  CARGO_INCREMENTAL: '0'
+  CARGO_MUTANTS_VERSION: 27.1.0
+  CARGO_MUTANTS_SHA256: dfe6dc37d0342c891d2829b5a695aa57c2d0edecef7e7d0399a30cc6e206411e  # pragma: allowlist secret
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      matrix: ${{ steps.m.outputs.matrix }}
+      heavy: ${{ steps.m.outputs.heavy }}
+      per_job: ${{ steps.m.outputs.per_job }}
+    steps:
+      - id: m
+        env:
+          SHARDS: ${{ inputs.shards }}
+          PICK: ${{ inputs.pick }}
+          PER_JOB: ${{ inputs.per_job }}
+          HEAVY: ${{ github.event_name == 'push' || inputs.heavy }}
+          # A push takes the inputs from trailers of its head commit: `Mutants-pick: occurrence:11,answer:3`,
+          # `Mutants-shards: 100`, `Mutants-per-job: 3`.
+          MESSAGE: ${{ github.event.head_commit.message }}
+        run: |
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import json, os
+
+          def setting(name, trailer, default):
+              from_message = next((l.split(":", 1)[1] for l in os.environ.get("MESSAGE", "").splitlines()
+                                   if l.startswith(trailer + ":")), "")
+              return (os.environ[name] or from_message).strip() or default
+
+          shards = int(setting("SHARDS", "Mutants-shards", "15"))
+          pick = {p for p in setting("PICK", "Mutants-pick", "").replace(" ", "").split(",") if p}
+          jobs = [
+              {"pkg": pkg, "shard": k, "of": shards}
+              for pkg in ("occurrence", "answer")
+              for k in range(shards)
+              if not pick or f"{pkg}:{k}" in pick
+          ]
+          assert jobs, "nothing picked"
+          print("matrix=" + json.dumps({"include": jobs}))
+          print("heavy=" + os.environ["HEAVY"])
+          print("per_job=" + setting("PER_JOB", "Mutants-per-job", "27"))
+          PY
+
+  # The case suites on the unmutated tree, once: a mutant is "caught" by a red suite, so a tree whose own
+  # heavy suites are red would catch all of them. The seconds per suite size the heavy jobs.
+  baseline:
+    needs: plan
+    if: needs.plan.outputs.heavy == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
+        with:
+          toolchain: "1.100.0"
+
+      # Restore only: ci.yml is the one job that saves this cache.
+      - name: Restore the Cargo cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: cargo-rust-${{ runner.os }}-release-${{ hashFiles('Cargo.lock') }}
+          restore-keys: cargo-rust-${{ runner.os }}-release-
+
+      - name: Heavy and fast suites, unmutated
+        run: |
+          pkgs=(--package diffctx-occurrence --package diffctx-answer --package diffctx)
+          suites=$(scripts/mutants-args.sh suites fast; scripts/mutants-args.sh suites heavy)
+          build=(--lib)
+          for s in $suites; do build+=(--test "$s"); done
+          cargo test --release --locked "${pkgs[@]}" --no-run "${build[@]}"
+          cargo test --release --locked "${pkgs[@]}" --lib
+          { echo "## unmutated suites"; echo "| suite | seconds |"; echo "|---|---|"; } | tee -a "$GITHUB_STEP_SUMMARY"
+          for s in $suites; do
+            start=$SECONDS
+            cargo test --release --locked "${pkgs[@]}" --test "$s"
+            echo "| $s | $((SECONDS - start)) |" | tee -a "$GITHUB_STEP_SUMMARY"
+          done
+
+  fast:
+    needs: plan
+    if: inputs.reuse == ''
+    name: fast ${{ matrix.pkg }} ${{ matrix.shard }}/${{ matrix.of }}
+    runs-on: ubuntu-latest
+    # The fast jobs of 2026-11-25 hit a 150 minute cap with 100 mutants unrun: the step is cut at four and
+    # a half hours, and whatever it leaves unrun goes on to the heavy stage as a survivor.
+    timeout-minutes: 300
+    strategy:
+      fail-fast: false
+      # The 40 concurrent slots are the whole account's: one run leaves half to every other repository.
+      max-parallel: 20
+      matrix: ${{ fromJson(needs.plan.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
+        with:
+          toolchain: "1.100.0"
+
+      - name: Restore the Cargo cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: cargo-rust-${{ runner.os }}-release-${{ hashFiles('Cargo.lock') }}
+          restore-keys: cargo-rust-${{ runner.os }}-release-
+
+      - name: Install cargo-mutants and cap the mutants' memory
+        run: scripts/mutants-setup.sh
+
+      - name: Fast suites on every mutant
+        env:
+          PACKAGE: ${{ matrix.pkg }}
+          SHARD: ${{ matrix.shard }}/${{ matrix.of }}
+        run: |
+          set -u
+          echo $$ | sudo tee /sys/fs/cgroup/mutants/cgroup.procs > /dev/null
+          mapfile -t args < <(scripts/mutants-args.sh mutants fast "$PACKAGE")
+          mapfile -t tests < <(scripts/mutants-args.sh tests fast "$PACKAGE")
+          mkdir -p fast
+          printf '%s\n' "${args[@]}" > fast/args.txt
+          # cargo-mutants' own baseline tests only the mutated package, which has none of the native
+          # suites: run the same set unmutated here, so every mutant is judged against a passing tree.
+          cargo test --release --locked "${tests[@]}"
+          cargo mutants --list "${args[@]}" --shard "$SHARD" > shard-list.txt
+          echo "mutants in shard $SHARD: $(wc -l < shard-list.txt)"
+          rc=0
+          timeout -s INT 270m cargo mutants "${args[@]}" --shard "$SHARD" --baseline=skip --timeout 240 || rc=$?
+          echo "fast exit=$rc"
+          echo "$rc" > fast/fast.rc
+          cp shard-list.txt fast/
+          cp mutants.out/outcomes.json fast/ || true
+          # 0 all caught, 2 survivors, 3 timeouts; 124 is the cut above, whose unrun mutants the
+          # survive stage sends on. Anything else is a broken run, not a result.
+          case "$rc" in 0|2|3|124|130) ;; *) exit "$rc" ;; esac
+
+      - name: Counts
+        if: always()
+        run: |
+          {
+            echo "## fast ${{ matrix.pkg }} ${{ matrix.shard }}/${{ matrix.of }}"
+            python3 -I scripts/mutants_select.py counts fast
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        if: always()
+        with:
+          name: fast-${{ matrix.pkg }}-${{ matrix.shard }}
+          path: fast
+          if-no-files-found: ignore
+          retention-days: 30
+
+  survive:
+    needs: [plan, fast, baseline]
+    if: >-
+      ${{ !cancelled() && needs.plan.outputs.heavy == 'true' && needs.baseline.result == 'success'
+      && (needs.fast.result == 'success' || needs.fast.result == 'skipped') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      matrix: ${{ steps.s.outputs.matrix }}
+      jobs: ${{ steps.s.outputs.jobs }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333  # v8.0.2
+        with:
+          pattern: fast-*
+          path: fast
+          run-id: ${{ inputs.reuse || github.run_id }}
+          github-token: ${{ github.token }}
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333  # v8.0.2
+        if: inputs.reuse != ''
+        continue-on-error: true
+        with:
+          pattern: heavy-*
+          path: earlier
+          run-id: ${{ inputs.reuse }}
+          github-token: ${{ github.token }}
+
+      - id: s
+        env:
+          PER_JOB: ${{ needs.plan.outputs.per_job }}
+        run: |
+          python3 -I scripts/mutants_select.py survive --fast fast --done earlier --out select \
+            --per-job "$PER_JOB" --max-jobs 40 | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        with:
+          name: select
+          path: select
+          retention-days: 30
+
+  heavy:
+    needs: [survive]
+    if: ${{ !cancelled() && needs.survive.result == 'success' && needs.survive.outputs.jobs != '0' }}
+    name: heavy ${{ matrix.pkg }} ${{ matrix.shard }}/${{ matrix.of }}
+    runs-on: ubuntu-latest
+    # One job judges `count` survivors at about eleven minutes each (measured on 2026-11-25: a build of
+    # ninety seconds and a run of the three suites of ten). The step is cut before the job cap, and what it
+    # leaves is reported as unjudged by the verdict stage.
+    timeout-minutes: 355
+    strategy:
+      fail-fast: false
+      # The 40 concurrent slots are the whole account's: one run leaves half to every other repository.
+      max-parallel: 20
+      matrix: ${{ fromJson(needs.survive.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
+        with:
+          toolchain: "1.100.0"
+
+      - name: Restore the Cargo cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: cargo-rust-${{ runner.os }}-release-${{ hashFiles('Cargo.lock') }}
+          restore-keys: cargo-rust-${{ runner.os }}-release-
+
+      - name: Install cargo-mutants and cap the mutants' memory
+        run: scripts/mutants-setup.sh
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333  # v8.0.2
+        with:
+          name: select
+          path: select
+
+      - name: Case suites on this job's survivors
+        env:
+          PACKAGE: ${{ matrix.pkg }}
+        run: |
+          set -u
+          echo $$ | sudo tee /sys/fs/cgroup/mutants/cgroup.procs > /dev/null
+          mapfile -t args < <(scripts/mutants-args.sh mutants heavy "$PACKAGE")
+          mkdir -p heavy
+          printf '%s\n' "${args[@]}" > heavy/args.txt
+          # cargo-mutants takes no list of mutants (--examine-re skips the struct-field ones, which then
+          # run in every job); --iterate skips what an earlier run caught, so this job's share is run by
+          # saying that every other mutant was.
+          cargo mutants --list "${args[@]}" > full-list.txt
+          python3 -I scripts/mutants_select.py slice --pkg "$PACKAGE" --index ${{ matrix.shard }} \
+            --of ${{ matrix.of }} --list full-list.txt --todo "select/todo-$PACKAGE.txt" --out heavy-in
+          rc=0
+          timeout -s INT 335m cargo mutants "${args[@]}" --iterate --output heavy-in --baseline=skip \
+            --timeout 1500 || rc=$?
+          echo "heavy exit=$rc"
+          echo "$rc" > heavy/heavy.rc
+          cp heavy-in/slice.txt heavy/
+          cp heavy-in/mutants.out/outcomes.json heavy/ || true
+          # The suite that was running when a mutant was caught: the last test binary its log started.
+          for f in heavy-in/mutants.out/log/*.log; do
+            [ -e "$f" ] || continue
+            printf '%s\t%s\n' "$(basename "$f")" "$(grep -a -o 'deps/[A-Za-z_0-9]*-[0-9a-f]\{16\}' "$f" | tail -1)"
+          done > heavy/last-suite.tsv
+          case "$rc" in 0|2|3|124|130) ;; *) exit "$rc" ;; esac
+
+      - name: Counts
+        if: always()
+        run: |
+          {
+            echo "## heavy ${{ matrix.pkg }} ${{ matrix.shard }}/${{ matrix.of }} (${{ matrix.count }} to judge)"
+            python3 -I scripts/mutants_select.py counts heavy
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        if: always()
+        with:
+          name: heavy-${{ matrix.pkg }}-${{ matrix.shard }}
+          path: heavy
+          if-no-files-found: ignore
+          retention-days: 30
+
+  verdict:
+    needs: [plan, survive, heavy]
+    if: ${{ !cancelled() && needs.survive.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333  # v8.0.2
+        with:
+          name: select
+          path: select
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333  # v8.0.2
+        continue-on-error: true
+        with:
+          pattern: heavy-*
+          path: heavy
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333  # v8.0.2
+        if: inputs.reuse != ''
+        continue-on-error: true
+        with:
+          pattern: heavy-*
+          path: earlier
+          run-id: ${{ inputs.reuse }}
+          github-token: ${{ github.token }}
+
+      - name: Survivors without a heavy verdict
+        run: |
+          mkdir -p verdict
+          python3 -I scripts/mutants_select.py verdict --survivors select --heavy heavy earlier --out verdict \
+            | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        if: always()
+        with:
+          name: verdict
+          path: verdict
+          if-no-files-found: ignore
+          retention-days: 90
