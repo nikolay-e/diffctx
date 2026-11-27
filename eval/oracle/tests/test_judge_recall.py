@@ -4,7 +4,7 @@ control the rule exists for stays forgiven. Each case is cut from a loss a real 
 from pathlib import Path
 
 import pytest
-from test_enclosure import a_range, silent_candidates
+from test_enclosure import a_range, entry, silent_candidates
 from test_filters import at, occurrence, snapshot, target
 
 from scipindex import ROLE_DEFINITION
@@ -113,3 +113,33 @@ def test_a_local_binding_of_the_name_still_shadows_the_call_and_a_comment_does_n
 
     assert reached(tmp_path / "local", local, 2) == []
     assert reached(tmp_path / "comment", comment, 2) == ["use.py::go"]
+
+
+ESCAPING_LOCALS = {
+    "python": (
+        "m.py",
+        "def option(name):\n    def decorator(f):\n        return f(name)\n\n    return decorator\n",
+        "m.py::option.decorator",
+        "option",
+        "1-5",
+    ),
+    "typescript": (
+        "m.ts",
+        "export function create() {\n  const got = () => 1\n  got.extend = function extend(x) {\n    return x\n  }\n  return got\n}\n",
+        "m.ts::create.extend",
+        "create",
+        "1-7",
+    ),
+}
+
+
+@pytest.mark.parametrize("language", ESCAPING_LOCALS)
+def test_a_local_the_function_hands_on_is_the_functions_change_when_named_and_lost_when_it_is_not(tmp_path: Path, language):
+    """S7, a judgement the oracle keeps: the product holds no definition for a local, so naming the function states the
+    change (click 0b7a9acc63, got 1e157c43c4); a function the answer leaves out takes its local with it."""
+    path, source, key, outer, lines = ESCAPING_LOCALS[language]
+    edited = source.replace("f(name)", "f(name.upper())").replace("return x\n", "return x + 1\n")
+    prepared = a_range(tmp_path, {path: source}, {path: edited}, language)
+
+    assert silent_candidates(prepared, [entry(path, outer, lines)]) == ([key], [])
+    assert silent_candidates(prepared, []) == ([key], [key])
