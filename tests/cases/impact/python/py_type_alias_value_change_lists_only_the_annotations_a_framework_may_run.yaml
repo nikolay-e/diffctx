@@ -1,0 +1,61 @@
+name: py_type_alias_value_change_lists_only_the_annotations_a_framework_may_run
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [python, type-alias, annotation, fold, runtime-annotation]
+repo:
+  initial_files:
+    aliases.py: |
+      from typing import Callable, TypeAlias
+
+      Handler: TypeAlias = Callable[[int], int]
+    plain.py: |
+      from aliases import Handler
+
+
+      def run(h: Handler) -> int:
+          return h(1)
+    module_var.py: |
+      from aliases import Handler
+
+      REGISTRY: list[Handler] = []
+    decorated.py: |
+      from functools import lru_cache
+
+      from aliases import Handler
+
+
+      @lru_cache
+      def run(h: Handler) -> int:
+          return h(1)
+    boxed.py: |
+      from aliases import Handler
+
+
+      class Box:
+          h: Handler
+    validated.py: |
+      from pydantic import BaseModel
+
+      from aliases import Handler
+
+
+      def run(h: Handler) -> int:
+          return h(1)
+  changed_files:
+    aliases.py: |
+      from typing import Callable, TypeAlias
+
+      Handler: TypeAlias = Callable[[int], str]
+  commit_message: "aliases: a handler returns a string"
+expect:
+  exact: false
+  changed: [aliases.py::Handler]
+  # The alias keeps its declared name: where it only annotates a function or a
+  # variable, nothing runs it and the row is folded. A class body's annotation,
+  # a decorated function's and any in a file that imports a library that reads
+  # annotations (pydantic here) are executed: their rows are listed.
+  callers:
+    "aliases.py::Handler": [decorated.py, boxed.py, validated.py]
+  decoys:
+    "aliases.py::Handler": [plain.py, module_var.py]
