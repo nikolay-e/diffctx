@@ -48,7 +48,7 @@ def test_a_saved_tree_file_is_reported_by_the_next_bare_diff(tmp_path):
     assert saved.returncode == 0, saved.stderr
     assert (repo.path / "tree.md").is_file()
     result = run_diffctx_subprocess([".", "--diff", "-f", "json", "-q"], cwd=repo.path)
-    assert "tree.md" in json.loads(result.stdout)["changed_files"]
+    assert "tree.md" in json.loads(result.stdout)["inventory"]["changed"]["items"]
 
 
 def test_diff_context_excludes_diffctx_ignore_pattern(tmp_path):
@@ -97,7 +97,7 @@ def test_diff_context_keeps_paths_reincluded_by_a_negation(tmp_path):
 
     for full in (False, True):
         ctx = diffctx.build_diff_context(root_dir=repo.path, diff_range="HEAD~1", full=full)
-        assert ".github/workflows/ci.yml" in ctx["changed_files"], full
+        assert ".github/workflows/ci.yml" in ctx["inventory"]["changed"]["items"], full
         assert "KEPT_WORKFLOW_CHANGE" in diffctx.to_yaml(ctx), full
 
 
@@ -130,7 +130,7 @@ def test_diff_context_excludes_nested_gitignore_pattern(tmp_path):
         # under ignored_changes — and appears nowhere else.
         fragment_paths = {f.get("path") for f in result.get("fragments", [])}
         assert "sub/drop.tmp" not in fragment_paths, full
-        assert "sub/drop.tmp" not in (result.get("changed_files") or []), full
+        assert "sub/drop.tmp" not in (result.get("inventory", {}).get("changed", {}).get("items") or []), full
         if not full:
-            assert result.get("ignored_changes") == ["sub/drop.tmp"], full
+            assert result.get("inventory", {}).get("ignored", {}).get("items") == ["sub/drop.tmp"], full
         assert "app.py" in rendered, full

@@ -1,0 +1,102 @@
+# Corpus cases the identity measurement (identity_corpus.rs, run with --ignored) finds
+# without an account: the engine wrote no account line for any definition of the case,
+# so no text match of any name was checked. One line per case:
+#   <case> <proven|blocker> <reason>
+# proven   there is no definition for an account to hold (a file kind the engine does
+#          not read by design, a change that declares nothing, a run cut by its deadline),
+#          or the answer is text-only and claims nothing.
+# blocker  the answer reports a definition or a completeness for a name and no account
+#          backs it: what the account should have named is in the reason.
+# Enforced in both directions like known_below_threshold.txt: a case without an account
+# that is not listed fails, and a listed case that gains an account fails until its line
+# is removed.
+impact/other/clojure_changed_defn_is_named_where_a_sibling_calls_it proven Clojure (.clj) has no family in Family::ALL: no definition is read, so no account can hold one
+impact/other/csharp_changed_method_nothing_calls_is_not_modelled proven C# (.cs) has no family in Family::ALL: no definition is read, so no account can hold one
+impact/other/csharp_record_method_has_a_caller proven C# (.cs) has no family in Family::ALL: no definition is read, so no account can hold one
+impact/other/csharp_two_definitions_of_a_name_list_a_word_match_once proven C# (.cs) has no family in Family::ALL: no definition is read, so no account can hold one
+impact/other/dart_changed_function_is_named_where_a_sibling_calls_it proven Dart (.dart) has no family in Family::ALL: no definition is read, so no account can hold one
+impact/other/dart_changed_method_nothing_calls_is_not_modelled proven Dart (.dart) has no family in Family::ALL: no definition is read, so no account can hold one
+impact/other/elixir_changed_function_is_named_where_a_sibling_calls_it proven Elixir (.ex) has no family in Family::ALL: no definition is read, so no account can hold one
+impact/other/elixir_changed_function_nothing_calls_is_not_modelled proven Elixir (.ex) has no family in Family::ALL: no definition is read, so no account can hold one
+impact/other/gh744_wiki_link_to_a_deleted_note_is_stale proven only a Markdown note is deleted: Markdown is no Language, nothing to account
+impact/other/julia_changed_function_is_named_where_a_sibling_calls_it proven Julia (.jl) has no family in Family::ALL: no definition is read, so no account can hold one
+impact/other/lua_changed_function_is_named_where_a_sibling_calls_it proven Lua (.lua) has no family in Family::ALL: no definition is read, so no account can hold one
+impact/other/lua_changed_function_nothing_calls_is_not_modelled proven Lua (.lua) has no family in Family::ALL: no definition is read, so no account can hold one
+impact/other/objc_changed_method_is_named_where_a_sibling_calls_it proven Objective-C (.m) has no family in Family::ALL: no definition is read, so no account can hold one
+impact/other/ocaml_changed_let_is_named_where_a_sibling_calls_it proven OCaml (.ml) has no family in Family::ALL: no definition is read, so no account can hold one
+impact/other/ruby_changed_method_nothing_calls_is_not_modelled proven Ruby (.rb) has no family in Family::ALL: no definition is read, so no account can hold one
+impact/other/ruby_method_named_in_a_rakefile_and_an_extensionless_script proven Ruby (.rb) has no family in Family::ALL: no definition is read, so no account can hold one
+impact/other/scala_changed_method_nothing_calls_is_not_modelled proven Scala (.scala) has no family in Family::ALL: no definition is read, so no account can hold one
+impact/other/scala_same_file_caller_of_a_changed_method proven Scala (.scala) has no family in Family::ALL: no definition is read, so no account can hold one
+impact/other/unmodelled_range_is_not_reported_as_zero_callers proven C# (.cs) has no family in Family::ALL: no definition is read, so no account can hold one
+symbol/other/csharp_symbol_makes_no_absence_claim proven C# (.cs) has no family in Family::ALL: no definition is read, so no account can hold one
+symbol/other/erlang_symbol_module_qualified_call_is_a_caller proven Erlang (.erl) has no family in Family::ALL: no definition is read, so no account can hold one
+symbol/other/erlang_symbol_type_alias_is_a_definition proven Erlang (.erl) has no family in Family::ALL: no definition is read, so no account can hold one
+symbol/other/ruby_symbol_makes_no_absence_claim proven Ruby (.rb) has no family in Family::ALL: no definition is read, so no account can hold one
+impact/config/config_bare_basename_built_into_a_path_is_no_reference_to_the_changed_file proven Info.plist is no Language: no definition
+impact/config/config_bare_filename_resolves_to_the_file_beside_it proven the deleted NOTES.md files is no Language: no definition
+impact/config/config_basename_in_prose_data_and_foreign_paths_is_no_reference proven README.md is no Language: no definition
+impact/config/config_changed_image_tag_is_searched_whole_not_as_version_fragments proven a.yaml is one image key: facts/lang/config.rs states a definition only for an apiVersion/kind/name object, a rule or a values key, none is here; the renamed key is searched as text and named, never owned
+impact/config/config_compose_extends_names_the_file_it_pulls_a_service_from proven base.yaml is a compose file: facts/lang/config.rs states a definition only for an apiVersion/kind/name object, a rule or a values key, none is here; the renamed key is searched as text and named, never owned
+impact/config/config_gitignore_whitelist_entry_is_no_path_reference proven GUIDE.md is no Language: no definition
+impact/config/config_glob_now_selects_an_added_path proven the added __init__.py holds only a docstring: no definition
+impact/config/config_ini_key_is_read_and_set_by_code proven alembic.ini is no Language: no definition
+impact/config/config_kustomize_entry_of_a_renamed_manifest_is_stale proven every file is a byte-for-byte rename (R100): cell/changes.rs drops the pure moves, so no definition is changed and none accounted; stale readers are the file-level channel's
+impact/config/config_lock_bump_names_the_moved_package_and_its_importers proven uv.lock is no Language: no definition
+impact/config/config_nginx_include_glob_names_the_snippet_of_its_own_app proven cache.conf is no Language: no definition
+impact/config/config_prose_values_of_a_data_json_are_not_searched_as_contract_literals proven the added big.json is no Language: no definition
+impact/config/config_pure_rename_is_no_changed_contract proven every file is a byte-for-byte rename (R100): cell/changes.rs drops the pure moves, so no definition is changed and none accounted; stale readers are the file-level channel's
+impact/config/config_renamed_ansible_role_is_still_named_by_the_playbook_that_lists_it proven every file is a byte-for-byte rename (R100): cell/changes.rs drops the pure moves, so no definition is changed and none accounted; stale readers are the file-level channel's
+impact/config/config_renamed_compose_service_with_a_generic_name_is_named_where_a_script_spells_it proven docker-compose.yml is a compose file: facts/lang/config.rs states a definition only for an apiVersion/kind/name object, a rule or a values key, none is here; the renamed key is searched as text and named, never owned
+impact/config/config_renamed_directory_is_still_named_by_the_paths_that_spell_it proven every file is a byte-for-byte rename (R100): cell/changes.rs drops the pure moves, so no definition is changed and none accounted; stale readers are the file-level channel's
+impact/config/config_renamed_gitlab_job_is_named_by_the_needs_of_another_file proven .gitlab-ci.yml is a CI file: facts/lang/config.rs states a definition only for an apiVersion/kind/name object, a rule or a values key, none is here; the renamed key is searched as text and named, never owned
+impact/config/config_renamed_ini_section_is_named_by_the_command_that_selects_its_suffix proven tox.ini and supervisord.conf is no Language: no definition
+impact/config/config_renamed_ini_section_of_a_tool_is_no_name_a_ci_key_could_spell proven setup.cfg is no Language: no definition
+impact/config/config_renamed_nested_compose_key_is_no_service_name_a_script_could_spell proven docker-compose.yml is a compose file: facts/lang/config.rs states a definition only for an apiVersion/kind/name object, a rule or a values key, none is here; the renamed key is searched as text and named, never owned
+impact/config/config_renamed_package_export_is_named_by_the_importer_of_its_subpath proven package.json is no Language: no definition
+impact/config/config_renamed_workflow_is_named_by_the_workflow_that_runs_after_it proven the workflow file is a CI file: facts/lang/config.rs states a definition only for an apiVersion/kind/name object, a rule or a values key, none is here; the renamed key is searched as text and named, never owned
+impact/config/config_shared_gradle_block_says_its_reach_is_not_analysed proven build.gradle.kts is Kotlin script: the changed lines sit in a top-level block that declares nothing
+impact/config/config_yaml_key_with_a_files_basename_is_no_path_reference proven tests/alerts.yaml has no groups[].rules[] and no object: facts/lang/config.rs states a definition only for an apiVersion/kind/name object, a rule or a values key, none is here; the renamed key is searched as text and named, never owned
+impact/config/fj262_a_compact_json_list_names_the_script_spelling_its_old_word proven plugins.json is no Language: no definition
+impact/config/fj262_a_compact_json_value_followed_by_a_key_names_its_reader proven rollout.json is no Language: no definition
+impact/config/fj262_a_quoted_value_after_a_key_colon_names_the_script_spelling_its_old_word proven alerts.yaml is a query key, no rule: facts/lang/config.rs states a definition only for an apiVersion/kind/name object, a rule or a values key, none is here; the renamed key is searched as text and named, never owned
+impact/config/fj262_a_single_quoted_assignment_value_names_the_reader_of_its_new_word proven worker.env is no Language: no definition
+impact/config/gh412_nix_directory_import_names_its_default_nix proven default.nix is no Language: no definition
+impact/config/gh431_deleted_file_routed_page_leaves_its_links_stale proven the deleted .astro pages have empty frontmatter and markup only: no definition to account
+impact/config/gh620_lock_bump_is_not_an_exact_zero_callers proven uv.lock is no Language: no definition
+impact/config/gh638_new_manifest_its_kustomization_does_not_list_is_flagged proven the added c.yaml has kind and name but no apiVersion: facts/config/object.rs reads no object from it
+impact/config/gh638_unfollowed_config_change_is_not_an_exact_zero_callers proven values.cfg is no Language: no definition
+impact/config/gh639_crt_certificate_bundle_is_withheld_like_pem proven k8s/bundle/kustomization.yaml has no apiVersion/kind/name (no object) and roots.crt is no Language
+impact/config/gh691_changed_keys_searched_as_text_line_is_capped proven the added ev/*.json files is no Language: no definition
+impact/config/gh701_answer_over_the_budget_says_so proven the added ev/*.json files is no Language: no definition
+impact/config/gh743_new_record_is_read_by_the_readers_of_its_siblings_keys proven 002-beta.yaml is a bare data record: facts/lang/config.rs states a definition only for an apiVersion/kind/name object, a rule or a values key, none is here; the renamed key is searched as text and named, never owned
+impact/config/k7_renamed_directory_is_named_with_its_slash_a_glob_or_a_paths_filter proven every file is a byte-for-byte rename (R100): cell/changes.rs drops the pure moves, so no definition is changed and none accounted; stale readers are the file-level channel's
+impact/config/k7_renamed_operation_id_is_named_where_a_client_calls_it proven openapi.yaml has no kind/apiVersion object: facts/lang/config.rs states a definition only for an apiVersion/kind/name object, a rule or a values key, none is here; the renamed key is searched as text and named, never owned
+impact/config/k7_renamed_short_key_is_named_where_a_script_still_spells_it proven docker-compose.yml and config.yml are plain keys: facts/lang/config.rs states a definition only for an apiVersion/kind/name object, a rule or a values key, none is here; the renamed key is searched as text and named, never owned
+symbol/config/config_symbol_name_only_in_yaml_and_shell proven no definition has the name: the symbol answer is text-only (symbol_named) and claims nothing
+impact/sql/sql_migration_drop_column_names_its_users proven the added migration is ALTER TABLE only: the SQL reader defines routines and views, not tables or columns
+impact/sql/sql_migration_rename_column_names_its_users proven the added migration is ALTER TABLE only: the SQL reader defines routines and views, not tables or columns
+impact/sql/sql_migration_rename_table_names_its_users proven the added migration is ALTER TABLE only: the SQL reader defines routines and views, not tables or columns
+impact/rust/k7_cargo_feature_cfg_attribute_names_the_renamed_feature proven only core/Cargo.toml changes: TOML is no Language
+impact/web/web_astro_collection_entry_is_read_by_its_page proven only a Markdown content entry changes: Markdown is no Language
+impact/web/web_astro_component_import_is_a_consumer proven Index.astro changes in markup only (<ul> to <ol>): its frontmatter declares no definition that changed
+impact/web/web_deleted_static_file_is_still_referenced_by_markup proven only portrait.jpg is deleted: a binary asset has no definition
+impact/web/web_removed_css_rule_is_still_used_by_markup proven global.css is no Language: a CSS rule is no definition
+symbol/web/web_symbol_css_class_and_its_markup_uses proven a CSS class is no definition: the symbol answer is text-only
+impact/typescript/ts_block_scoped_const_is_no_definition_called_from_a_sibling_block proven the changed const sits in a bare block of a script: a block-scoped local, no definition
+impact/typescript/ts_function_local_const_has_no_callers_in_other_files_or_languages proven the changed const is a local of a test callback: no definition changed
+impact/typescript/ts_loop_variable_in_a_top_level_block_is_not_a_changed_definition proven the changed lines are a loop and its variable in a top-level block: no definition changed
+impact/typescript/ts_method_assigned_onto_an_augmented_external_type_is_disclosed proven the change is inside `express.request.audit = function`, a member assignment the facts do not state as a definition; the answer discloses it
+symbol/typescript/gh661_arrow_const_inside_a_component_is_a_definition blocker a `--symbol` that names only locals is answered by impact/symbol.rs local_blocks: the local's uses are read from the scope chain and its coverage set by local_coverage, outside occurrence accounting; it should name each text match of the local's name in its enclosing body as a use, a declaration or a not-ours
+symbol/typescript/ts_declarations_nested_in_a_factory_closure_call_each_other blocker a `--symbol` that names only locals is answered by impact/symbol.rs local_blocks: the local's uses are read from the scope chain and its coverage set by local_coverage, outside occurrence accounting; it should name each text match of the local's name in its enclosing body as a use, a declaration or a not-ours
+impact/python/gh648_mass_rename_and_delete_answers_partially_at_the_deadline proven DIFFCTX_TEST_DEADLINE_EXPIRED: the run stops before any account; the answer is partial and says so
+impact/python/gh719_partial_review_of_a_large_change_lists_what_it_reached proven DIFFCTX_TEST_DEADLINE_AFTER_POLLS=3: the run stops at the changed-file and candidate polls, before build_impact reads its first definition (its loop polls first); the answer is partial and says so
+impact/python/py_module_body_loop_local_is_not_a_changed_definition proven the changed lines are a loop and its variable in a module body: no definition changed
+impact/python/py_partial_run_does_not_claim_zero_callers proven DIFFCTX_TEST_DEADLINE_EXPIRED: the run stops before any account; the answer is partial and says so
+impact/python/py_top_level_code_in_a_test_file_is_disclosed_never_silently_lost proven only top-level statements of a test file change: no definition, and the answer discloses them
+symbol/python/py_local_function_read_where_no_use_is_stated_stays_open blocker a `--symbol` that names only locals is answered by impact/symbol.rs local_blocks: the local's uses are read from the scope chain and its coverage set by local_coverage, outside occurrence accounting; it should name each text match of the local's name in its enclosing body as a use, a declaration or a not-ours
+symbol/python/py_local_function_symbol_lists_its_uses_in_the_enclosing_function blocker a `--symbol` that names only locals is answered by impact/symbol.rs local_blocks: the local's uses are read from the scope chain and its coverage set by local_coverage, outside occurrence accounting; it should name each text match of the local's name in its enclosing body as a use, a declaration or a not-ours
+symbol/python/py_local_function_that_never_leaves_its_body_is_complete blocker a `--symbol` that names only locals is answered by impact/symbol.rs local_blocks: the local's uses are read from the scope chain and its coverage set by local_coverage, outside occurrence accounting; it should name each text match of the local's name in its enclosing body as a use, a declaration or a not-ours
+symbol/python/py_locals_lookup_of_a_nested_function_is_not_a_complete_local blocker a `--symbol` that names only locals is answered by impact/symbol.rs local_blocks: the local's uses are read from the scope chain and its coverage set by local_coverage, outside occurrence accounting; it should name each text match of the local's name in its enclosing body as a use, a declaration or a not-ours
+symbol/python/py_module_imported_inside_a_function_names_that_function blocker a `--symbol` that names a module is answered by symbol_module_output: the module is reported as a definition with its resolved importers and `Coverages::unowned`, never as an account; it should count each text match of the module name in the group's files (import, use, mention) and hold the rest as candidates
+symbol/python/py_module_name_is_a_definition_and_its_importers_are_resolved blocker a `--symbol` that names a module is answered by symbol_module_output: the module is reported as a definition with its resolved importers and `Coverages::unowned`, never as an account; it should count each text match of the module name in the group's files (import, use, mention) and hold the rest as candidates

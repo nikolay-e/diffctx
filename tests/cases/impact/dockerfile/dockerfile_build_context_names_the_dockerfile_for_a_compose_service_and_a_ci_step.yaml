@@ -1,0 +1,66 @@
+name: dockerfile_build_context_names_the_dockerfile_for_a_compose_service_and_a_ci_step
+mode: impact
+source: fj#742
+issue_state: open
+# A build names its Dockerfile by its context. `build: ./svc` and
+# `docker build -t worker ./svc` read svc/Dockerfile though neither spells its
+# path; the other service's context is another Dockerfile.
+tags: [dockerfile, compose, ci, build-context, decoy]
+repo:
+  initial_files:
+    svc/Dockerfile: |
+      FROM python:3.12-slim AS base
+      WORKDIR /srv
+      COPY requirements.lock /srv/requirements.lock
+      RUN pip install --no-cache-dir -r requirements.lock
+      COPY app /srv/app
+      CMD ["python", "-m", "app.main"]
+    svc/requirements.lock: |
+      httpx==0.27.0
+      pydantic==2.6.0
+    svc/app/__init__.py: ""
+    svc/app/main.py: |
+      print("worker")
+    other/Dockerfile: |
+      FROM redis:7
+    docker-compose.yml: |
+      services:
+        worker:
+          build: ./svc
+          ports:
+            - "8080:8080"
+        cache:
+          build: ./other
+    .github/workflows/build.yml: |
+      name: build
+      on: [push]
+      jobs:
+        image:
+          runs-on: ubuntu-latest
+          steps:
+            - uses: actions/checkout@v4
+            - run: docker build -t worker ./svc
+            - run: docker build -t cache ./other
+  changed_files:
+    svc/Dockerfile: |
+      FROM python:3.13-slim AS base
+      WORKDIR /srv
+      COPY requirements.lock /srv/requirements.lock
+      RUN pip install --no-cache-dir -r requirements.lock
+      COPY app /srv/app
+      CMD ["python", "-m", "app.main"]
+    svc/requirements.lock: |
+      httpx==0.28.1
+      pydantic==2.6.0
+  commit_message: "svc: move to python 3.13"
+expect:
+  exact: true
+  named_by:
+    - docker-compose.yml
+    - .github/workflows/build.yml
+  mention_class:
+    docker-compose.yml: config
+  relations:
+    - {from: docker-compose.yml, to: svc/Dockerfile, kind: references_path, site: 3}
+    - {from: .github/workflows/build.yml, to: svc/Dockerfile, kind: references_path, site: 8}
+    - {from: .github/workflows/build.yml, to: svc/Dockerfile, kind: references_path, resolution: candidate, site: 8}

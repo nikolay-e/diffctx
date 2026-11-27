@@ -5,7 +5,7 @@ research paper (`paper/v2/src/main.tex`) on
 which parameters are calibrated, which are fixed from domain priors, and
 which are sensitivity-checked. It exists so reviewers can verify that
 "calibrated against benchmark" claims are scoped to a small, defensible
-subset rather than every scalar in `crates/diffctx-native/src/config/`.
+subset rather than every scalar in `crates/diffctx-config/src/config/`.
 
 ## Principle
 
@@ -51,7 +51,7 @@ the deployed defaults now carry $\tau = 0.05$, $\beta_{core} = 0.4$:
 #### Per-category weights — uncalibrated unit priors
 
 The per-`EdgeCategory` multipliers $w_\tau$, defined in
-`crates/diffctx-native/src/config/category_weights.rs`. There are
+`crates/diffctx-config/src/config/category_weights.rs`. There are
 exactly ten categories — `Semantic`, `Structural`, `Sibling`, `Config`,
 `KeyMatch` (was `ConfigGeneric`), `Document`, `Similarity`, `History`, `TestEdge`,
 `Generic` — and one scalar multiplier per category. Every fine-grained

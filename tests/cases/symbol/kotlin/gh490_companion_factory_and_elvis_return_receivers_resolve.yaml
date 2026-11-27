@@ -1,0 +1,51 @@
+name: gh490_companion_factory_and_elvis_return_receivers_resolve
+mode: symbol
+source: gh#490
+issue_state: open
+tags:
+- kotlin
+- symbol
+- receiver
+repo:
+  initial_files:
+    settings.gradle.kts: |
+      rootProject.name = "vault"
+    src/main/kotlin/app/Purge.kt: |
+      package app
+
+      fun purge(path: String): Boolean {
+          return Vault.of("/srv").discard(path)
+      }
+
+      fun purgeNullable(maybe: Vault?, path: String): Boolean {
+          val v = maybe ?: return false
+          return v.discard(path)
+      }
+    src/main/kotlin/app/Vault.kt: |
+      package app
+
+      class Vault(private val root: String) {
+          fun discard(path: String): Boolean = path.startsWith(root)
+
+          companion object {
+              fun of(root: String): Vault = Vault(root)
+          }
+      }
+  commit_message: init
+query:
+  symbol: discard
+expect:
+  definitions:
+  - src/main/kotlin/app/Vault.kt::discard
+  relations:
+  - from: src/main/kotlin/app/Purge.kt::purge
+    to: src/main/kotlin/app/Vault.kt::discard
+    kind: calls
+    resolution: resolved
+    site: 4
+  - from: src/main/kotlin/app/Purge.kt::purgeNullable
+    to: src/main/kotlin/app/Vault.kt::discard
+    kind: calls
+    resolution: resolved
+    site: 9
+  exact: true

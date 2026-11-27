@@ -1,0 +1,47 @@
+name: rs_two_methods_of_one_name_in_one_file_are_two_callers
+mode: impact
+source: synthetic
+issue_state: open
+tags: [rust, same-name]
+repo:
+  initial_files:
+    Cargo.toml: |
+      [package]
+      name = "app"
+      version = "0.1.0"
+      edition = "2021"
+    src/lib.rs: |
+      pub mod help;
+      pub mod make;
+    src/help.rs: |
+      pub fn helper() -> i32 {
+          1
+      }
+    src/make.rs: |
+      use crate::help::helper;
+
+      pub struct A(pub i32);
+      pub struct B(pub i32);
+
+      impl A {
+          pub fn new() -> Self {
+              A(helper())
+          }
+      }
+
+      impl B {
+          pub fn new() -> Self {
+              B(helper())
+          }
+      }
+  changed_files:
+    src/help.rs: |
+      pub fn helper() -> i32 {
+          2
+      }
+  commit_message: change the helper
+expect:
+  changed: ['src/help.rs::helper']
+  relations:
+  - {from: 'src/make.rs::A.new', to: 'src/help.rs::helper', kind: calls}
+  - {from: 'src/make.rs::B.new', to: 'src/help.rs::helper', kind: calls}

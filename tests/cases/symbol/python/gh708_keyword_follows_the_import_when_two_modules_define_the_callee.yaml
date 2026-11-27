@@ -1,0 +1,37 @@
+name: gh708_keyword_follows_the_import_when_two_modules_define_the_callee
+mode: symbol
+source: gh#708
+issue_state: closed
+tags: [python, keyword-argument, parameter, decoy]
+repo:
+  initial_files:
+    alpha/__init__.py: ""
+    alpha/tools.py: |
+      def build(user, zone=None):
+          return (user, zone)
+    beta/__init__.py: ""
+    beta/tools.py: |
+      def build(user, zone=None):
+          return (user, zone, "beta")
+    app/__init__.py: ""
+    app/use.py: |
+      from alpha.tools import build
+
+
+      def go(user, here):
+          return build(user, zone=here)
+    app/other.py: |
+      from beta.tools import build
+
+
+      def go_other(user):
+          return build(user)
+query:
+  symbol: zone
+expect:
+  exact: false
+  definitions: [alpha/tools.py::build]
+  relations:
+    - {from: app/use.py::go, to: alpha/tools.py::build, kind: calls, resolution: resolved, site: 5}
+  decoys:
+    "alpha/tools.py::build": [beta/tools.py, app/other.py]

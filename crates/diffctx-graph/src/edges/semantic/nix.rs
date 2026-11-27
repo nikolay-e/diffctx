@@ -1,0 +1,86 @@
+use std::path::{Path, PathBuf};
+
+use once_cell::sync::Lazy;
+use regex::Regex;
+use rustc_hash::{FxHashMap, FxHashSet};
+
+use diffctx_base::types::Fragment;
+use diffctx_config::config::weights::EDGE_WEIGHTS;
+
+use super::super::EdgeDict;
+use super::super::base::{self, EdgeBuilder};
+
+fn is_nix_file(path: &Path) -> bool {
+    base::has_ext(path, &[".nix"])
+}
+
+static IMPORT_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"import\s+([\./][\w./-]+)").unwrap());
+static CALL_PACKAGE_RE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"callPackage\s+([\./][\w./-]+)").unwrap());
+static FILE_REF_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r#"\./[\w./-]+"#).unwrap());
+
+fn extract_refs(content: &str) -> FxHashSet<String> {
+    let mut refs = FxHashSet::default();
+    refs.extend(base::captures1(&IMPORT_RE, content));
+    refs.extend(
+        CALL_PACKAGE_RE
+            .captures_iter(content)
+            .map(|c| c[1].to_string()),
+    );
+    for m in FILE_REF_RE.find_iter(content) {
+        refs.insert(m.as_str().to_string());
+    }
+    refs
+}
+
+/// A Nix path names the file, or a directory whose `default.nix` it means.
+const NIX_SUFFIXES: &[&str] = &["", "/default.nix"];
+
+pub(crate) struct NixEdgeBuilder;
+
+impl EdgeBuilder for NixEdgeBuilder {
+    fn build(&self, fragments: &[Fragment], repo_root: Option<&Path>) -> EdgeDict {
+        let Some(frags) = base::frags_where(fragments, |f| is_nix_file(Path::new(f.path()))) else {
+            return FxHashMap::default();
+        };
+
+        let import_w = EDGE_WEIGHTS["nix_import"].forward;
+        let reverse_factor = EDGE_WEIGHTS["nix_import"].reverse_factor;
+
+        let idx = base::FragmentIndex::new(fragments, repo_root);
+        let mut edges: EdgeDict = FxHashMap::default();
+
+        for f in &frags {
+            for r in extract_refs(&f.content) {
+                base::link_module_path(
+                    &f.id,
+                    &r,
+                    NIX_SUFFIXES,
+                    &idx,
+                    &mut edges,
+                    import_w,
+                    reverse_factor,
+                );
+            }
+        }
+        edges
+    }
+
+    fn discover_related_files(
+        &self,
+        changed: &[PathBuf],
+        candidates: &[PathBuf],
+        repo_root: Option<&Path>,
+        file_cache: Option<&FxHashMap<PathBuf, String>>,
+    ) -> Vec<PathBuf> {
+        base::discover_by_module_paths(
+            changed,
+            candidates,
+            repo_root,
+            file_cache,
+            is_nix_file,
+            extract_refs,
+            NIX_SUFFIXES,
+        )
+    }
+}

@@ -1,0 +1,33 @@
+name: withheld_file_with_unrelated_python_dash_c_is_not_withheld
+mode: symbol
+source: fj#269
+issue_state: open
+tags: [python, ignore, disclosure, carried-code]
+repo:
+  initial_files:
+    .diffctx/ignore: |
+      fixtures/
+    src/a.py: |
+      def compute_total(x):
+          return x
+    src/b.py: |
+      from src.a import compute_total
+
+
+      def use():
+          return compute_total(1)
+    fixtures/job.yaml: |
+      run: python -c "unrelated()"
+  commit_message: "init"
+query:
+  symbol: compute_total
+# `fixtures/job.yaml` is withheld by `.diffctx/ignore` and carries `python -c`,
+# but it never spells `compute_total`: the lookup's scope is complete and
+# reports no withheld file.
+expect:
+  definitions: [src/a.py::compute_total]
+  callers:
+    compute_total: [src/b.py::use]
+  coverage:
+    src/a.py::compute_total:
+      calls: complete

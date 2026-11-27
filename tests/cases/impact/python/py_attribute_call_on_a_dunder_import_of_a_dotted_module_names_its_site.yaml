@@ -1,0 +1,27 @@
+name: py_attribute_call_on_a_dunder_import_of_a_dotted_module_names_its_site
+mode: impact
+source: synthetic
+issue_state: open
+tags: [python, dunder-import, dynamic-name, coverage]
+repo:
+  initial_files:
+    main.py: |
+      package = __import__("shop.cart")
+      package.cart.total()
+    shop/__init__.py: ""
+    shop/cart.py: |
+      def total():
+          pass
+  changed_files:
+    shop/cart.py: |
+      def total():
+          return 1
+  commit_message: "cart: total returns one"
+expect:
+  changed: [shop/cart.py::total]
+  discloses: true
+  never_empty: true
+  no_negative_claims: true
+  partial:
+    shop/cart.py::total:
+      calls: unlanded

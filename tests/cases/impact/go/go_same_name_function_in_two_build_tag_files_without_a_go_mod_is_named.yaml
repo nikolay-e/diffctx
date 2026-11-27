@@ -1,0 +1,48 @@
+name: go_same_name_function_in_two_build_tag_files_without_a_go_mod_is_named
+mode: impact
+source: synthetic
+tags: [go, silent-loss, build-tag, move]
+repo:
+  initial_files:
+    proxy.go: |
+      package p
+
+      type Target struct{ URL string }
+
+      func proxyHTTP(t *Target) string {
+      	return t.URL
+      }
+
+      func Run(t *Target) string {
+      	return proxyHTTP(t)
+      }
+  changed_files:
+    proxy.go: |
+      package p
+
+      type Target struct{ URL string }
+
+      func Run(t *Target) string {
+      	return proxyHTTP(t, nil)
+      }
+    proxy_1_11.go: |
+      // +build go1.11
+
+      package p
+
+      func proxyHTTP(t *Target, c *int) string {
+      	return t.URL
+      }
+    proxy_1_11_n.go: |
+      // +build !go1.11
+
+      package p
+
+      func proxyHTTP(t *Target, c *int) string {
+      	return t.URL + "!"
+      }
+  commit_message: "split proxyHTTP by build tag"
+# The control of the case with a go.mod: each file is a module of its own, and both variants are named.
+expect:
+  exact: false
+  changed: [proxy.go::Run, proxy_1_11.go::proxyHTTP, proxy_1_11_n.go::proxyHTTP]

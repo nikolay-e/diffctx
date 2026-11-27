@@ -1,0 +1,39 @@
+name: fj262_a_quoted_value_in_a_flow_list_names_the_script_spelling_its_old_word
+mode: impact
+source: fj#262
+issue_state: closed
+tags: [config, yaml, textual, quoted]
+repo:
+  initial_files:
+    deploy/worker.yaml: |
+      apiVersion: batch/v1
+      kind: Job
+      metadata:
+        name: nightly-export
+      spec:
+        template:
+          spec:
+            containers:
+              - name: worker
+                image: registry.example/worker:1.4
+                args: ["--queue reportjobs"]
+    scripts/drain.sh: |
+      #!/bin/sh
+      exec worker --queue reportjobs --drain
+  changed_files:
+    deploy/worker.yaml: |
+      apiVersion: batch/v1
+      kind: Job
+      metadata:
+        name: nightly-export
+      spec:
+        template:
+          spec:
+            containers:
+              - name: worker
+                image: registry.example/worker:1.4
+                args: ["--queue exportjobs"]
+expect:
+  exact: false
+  relations:
+    - {from: scripts/drain.sh, to: deploy/worker.yaml, kind: references_path, resolution: candidate, site: 2}

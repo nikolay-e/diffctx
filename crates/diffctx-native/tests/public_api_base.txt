@@ -1,0 +1,223 @@
+# Every pub item of diffctx-base, as tests/public_api.rs reads it from the crate's src/.
+# A new item is red; so is a line the code no longer has: delete it. The count is capped by
+# public_items.diffctx-base in budget.toml, which only goes down.
+canon mod
+canon::KeyCache struct derive(Default)
+canon::KeyCache::key fn (&mut self, segment: &str) -> &str
+canon::canon_key fn (name: &str) -> String
+canon::canon_tokens fn (name: &str) -> Vec<String>
+canon::for_each_name_key fn (text: &str, cache: &mut KeyCache, mut sink: impl FnMut(&str))
+canon::for_each_word_key fn (text: &str, cache: &mut KeyCache, mut sink: impl FnMut(&str))
+changed_lines mod
+changed_lines::ChangedLines struct derive(Debug, Default)
+changed_lines::ChangedLines::base_side fn ( &self, rel: &str, new_text: &str, ) -> Option<(String, Vec<(usize, usize, usize)>)>
+changed_lines::ChangedLines::first_removal_anchor fn (&self, rel: &str) -> Option<usize>
+changed_lines::ChangedLines::from_diff fn (diff_text: &str) -> Self
+changed_lines::ChangedLines::is_changed_file fn (&self, rel: &str) -> bool
+changed_lines::ChangedLines::removed_text fn (&self, rel: &str) -> Option<&str>
+changed_lines::ChangedLines::touches fn (&self, rel: &str, from: usize, to: usize) -> bool
+changed_lines::HunkText struct derive(Clone, Debug, Default)
+changed_lines::HunkText.added field Vec<String>
+changed_lines::HunkText.layout field bool
+changed_lines::HunkText.new_len field u32
+changed_lines::HunkText.new_start field u32
+changed_lines::HunkText.old_len field u32
+changed_lines::HunkText.old_start field u32
+changed_lines::HunkText.path field String
+changed_lines::HunkText.removed field Vec<String>
+changed_lines::HunkText::new_range fn (&self) -> (u32, u32)
+changed_lines::hunk_texts fn (diff_text: &str) -> Vec<HunkText>
+changed_lines::reverted fn (new: &str, runs: &[HunkText]) -> Option<String>
+container mod
+container::innermost fn <'a>(mut frags: Vec<&'a Fragment>) -> Vec<&'a Fragment>
+container::named_container_of fn <'a>(core: &'a Fragment, all: &'a [Fragment]) -> Option<&'a Fragment>
+container::within fn (id: &FragmentId, outer: &Fragment) -> bool
+excerpt mod
+excerpt::generate_core_excerpts fn ( all_fragments: &[Fragment], core_ids: &FxHashSet<FragmentId>, hunks: &[DiffHunk], ) -> FxHashMap<FragmentId, Fragment>
+excerpt::is_downshift_worthwhile fn (parent: &Fragment, excerpt: &Fragment) -> bool
+fit mod
+fit::Shed trait
+fit::Shed::settle fn (&mut self) -> bool
+fit::Shed::shed_one fn (&mut self) -> bool
+fit::shed_to_fit fn <T: Shed>(body: &mut T, cap: u32, measure: &dyn Fn(&T) -> u32) -> usize
+interval mod
+interval::IntervalIndex struct
+interval::IntervalIndex::add fn (&mut self, frag: &Fragment)
+interval::IntervalIndex::add_id fn (&mut self, frag_id: &FragmentId)
+interval::IntervalIndex::contains fn (&self, frag_id: &FragmentId) -> bool
+interval::IntervalIndex::is_superset_of fn (&self, frag: &Fragment) -> bool
+interval::IntervalIndex::new fn () -> Self
+interval::IntervalIndex::overlaps fn (&self, frag: &Fragment) -> bool
+interval::IntervalIndex::remove_id fn (&mut self, frag_id: &FragmentId)
+languages mod
+languages::EXTENSION_TO_LANGUAGE static Lazy<FxHashMap<&'static str, &'static str>>
+languages::FILENAME_TO_LANGUAGE static Lazy<FxHashMap<&'static str, &'static str>>
+languages::file_ext fn (path: &Path) -> String
+languages::get_language_for_file fn (path: &str) -> Option<&'static str>
+languages::runtime_of fn (path: &str) -> String
+languages::sniff_language fn (path: &str, content: &str) -> Option<&'static str>
+paths mod
+paths::contains_lexically fn (relative: &Path) -> bool
+paths::display_rel fn (root: &Path, path: &Path) -> Option<String>
+paths::display_rel_or_abs fn (root: &Path, path: &Path) -> String
+paths::index_key_of fn (path: &str, repo_root: Option<&Path>) -> String
+paths::is_lockfile_path fn (path: &Path) -> bool
+paths::join_native fn (base: &Path, rel: &str) -> String
+paths::normalize_lexical fn (path: &str) -> Option<String>
+paths::repo_join fn (base: &Path, rel: &str) -> PathBuf
+paths::to_posix_display fn (s: Cow<'_, str>) -> String
+peak_rss mod
+peak_rss::peak_rss_bytes fn () -> u64
+profile mod
+profile::Detail impl Drop for Detail
+profile::Detail struct
+profile::Phase impl Drop for Phase
+profile::Phase struct
+profile::Run impl Drop for Run
+profile::Run struct
+profile::TAG_ENV const &str
+profile::carry fn <T>(work: impl FnOnce() -> T) -> impl FnOnce() -> T
+profile::count fn (name: &'static str, n: u64)
+profile::detail fn (name: &'static str, label: &'static str) -> Detail
+profile::flush fn ()
+profile::phase fn (name: &'static str) -> Phase
+profile::record fn (name: &'static str, ms: f64)
+profile::run fn (mode: &'static str) -> Run
+profile::run_cli fn () -> Run
+profile::tagged fn <T>(tag: &str, f: impl FnOnce() -> T) -> T
+sanitize mod
+sanitize::Redactions struct derive(Clone, Debug, Default, Eq, JsonSchema, PartialEq, Serialize)
+sanitize::Redactions.categories field Vec<&'static str>
+sanitize::Redactions.count field usize
+sanitize::Redactions::is_empty fn (&self) -> bool
+sanitize::Redactions::merge fn (&mut self, other: Redactions)
+sanitize::sanitize fn (text: &str) -> (String, Redactions)
+sanitize::sanitize_in_place fn (text: &mut String) -> Redactions
+testfiles mod
+testfiles::Bound struct
+testfiles::Bound.local field String
+testfiles::Bound.module field String
+testfiles::Bound.name field Option<String>
+testfiles::DeclaredTests struct derive(Default)
+testfiles::DeclaredTests::is_loaded fn (&self, path: &str) -> bool
+testfiles::DeclaredTests::is_test fn (&self, path: &str) -> bool
+testfiles::DeclaredTests::read fn (paths: &[&str], read: impl Fn(&str) -> Option<String>) -> Self
+testfiles::DeclaredTests::runs fn (&self, path: &str) -> bool
+testfiles::JVM_TEST_SUFFIXES const &[&str]
+testfiles::JVM_TEST_SUFFIX_EXTENSIONS const &[&str]
+testfiles::RUST_TEST_ATTRIBUTES const &[&str]
+testfiles::RUST_TEST_MACROS const &[&str]
+testfiles::doctest_calls fn (text: &str) -> Vec<(usize, Vec<&str>)>
+testfiles::glob_regex fn (glob: &str) -> Option<regex::Regex>
+testfiles::imported_doctest_calls fn (text: &str, namespace: Vec<Bound>) -> Vec<(usize, String, String)>
+testfiles::in_source_markers fn (path: &Path) -> &'static [&'static str]
+testfiles::in_source_test_scopes fn (path: &Path, text: &str) -> Vec<(u32, u32)>
+testfiles::is_test_file fn (path: &Path) -> bool
+testfiles::is_test_path fn (path: &Path) -> bool
+testfiles::naming_links fn <'a>(paths: &[&'a str]) -> Vec<(&'a str, &'a str)>
+testfiles::rust_doc_example_calls fn (text: &str) -> Vec<(usize, Vec<&str>)>
+testfiles::target_name_of_test fn (test_name: &str) -> Option<String>
+tokenizer mod
+tokenizer::ACCOUNTING static AccountingCounter
+tokenizer::AccountingCounter impl TokenCounter for AccountingCounter
+tokenizer::AccountingCounter struct
+tokenizer::TokenCounter trait
+tokenizer::TokenCounter::count fn (&self, text: &str) -> u32
+tokenizer::TokenCounter::id fn (&self) -> TokenizerId
+tokenizer::TokenizerError enum derive(Debug, thiserror::Error)
+tokenizer::TokenizerError::EncoderInit variant EncoderInit(String)
+tokenizer::TokenizerId enum derive(Clone, Copy, Debug, Eq, JsonSchema, PartialEq, Serialize)
+tokenizer::TokenizerId::O200kBase variant O200kBase
+tokenizer::count_tokens fn (text: &str) -> u32
+tokenizer::safety_factor fn () -> f64
+tokenizer::try_count_tokens fn (text: &str) -> Result<u32, TokenizerError>
+tokenizer::warm fn ()
+types mod
+types::DiffHunk struct derive(Clone, Debug)
+types::DiffHunk.new_len field u32
+types::DiffHunk.new_start field u32
+types::DiffHunk.old_len field u32
+types::DiffHunk.old_start field u32
+types::DiffHunk.path field Arc<str>
+types::DiffHunk::core_selection_range fn (&self) -> (u32, u32)
+types::DiffHunk::end_line fn (&self) -> u32
+types::DiffHunk::is_deletion fn (&self) -> bool
+types::EdgeCategory enum derive(Clone, Copy, Debug, Eq, Hash, PartialEq)
+types::EdgeCategory::Config variant Config
+types::EdgeCategory::Document variant Document
+types::EdgeCategory::Generic variant Generic
+types::EdgeCategory::History variant History
+types::EdgeCategory::KeyMatch variant KeyMatch
+types::EdgeCategory::Semantic variant Semantic
+types::EdgeCategory::Sibling variant Sibling
+types::EdgeCategory::Similarity variant Similarity
+types::EdgeCategory::Structural variant Structural
+types::EdgeCategory::TestEdge variant TestEdge
+types::EdgeCategory::acts_as_reference fn (self) -> bool
+types::EdgeCategory::as_str fn (self) -> &'static str
+types::EdgeCategory::from_str fn (s: &str) -> Self
+types::EdgeCategory::is_suppression_exempt fn (self) -> bool
+types::EdgeCategory::try_from_str fn (s: &str) -> Option<Self>
+types::Fragment struct derive(Clone)
+types::Fragment.content field Arc<str>
+types::Fragment.id field FragmentId
+types::Fragment.identifiers field FxHashSet<String>
+types::Fragment.kind field FragmentKind
+types::Fragment.symbol_name field Option<String>
+types::Fragment.token_count field u32
+types::Fragment::end_line fn (&self) -> u32
+types::Fragment::line_count fn (&self) -> u32
+types::Fragment::path fn (&self) -> &str
+types::Fragment::start_line fn (&self) -> u32
+types::FragmentId impl Eq for FragmentId
+types::FragmentId impl Hash for FragmentId
+types::FragmentId impl Ord for FragmentId
+types::FragmentId impl PartialEq for FragmentId
+types::FragmentId impl PartialOrd for FragmentId
+types::FragmentId impl fmt::Debug for FragmentId
+types::FragmentId impl fmt::Display for FragmentId
+types::FragmentId struct derive(Clone)
+types::FragmentId.end_line field u32
+types::FragmentId.path field Arc<str>
+types::FragmentId.start_line field u32
+types::FragmentId::new fn (path: Arc<str>, start_line: u32, end_line: u32) -> Self
+types::FragmentKind enum derive(Clone, Copy, Debug, Eq, Hash, PartialEq)
+types::FragmentKind impl fmt::Display for FragmentKind
+types::FragmentKind::Chunk variant Chunk
+types::FragmentKind::Class variant Class
+types::FragmentKind::ClassSignature variant ClassSignature
+types::FragmentKind::Declaration variant Declaration
+types::FragmentKind::Definition variant Definition
+types::FragmentKind::Enum variant Enum
+types::FragmentKind::EnumSignature variant EnumSignature
+types::FragmentKind::Excerpt variant Excerpt
+types::FragmentKind::Function variant Function
+types::FragmentKind::FunctionSignature variant FunctionSignature
+types::FragmentKind::Impl variant Impl
+types::FragmentKind::Interface variant Interface
+types::FragmentKind::InterfaceSignature variant InterfaceSignature
+types::FragmentKind::MethodSignature variant MethodSignature
+types::FragmentKind::Module variant Module
+types::FragmentKind::Property variant Property
+types::FragmentKind::Record variant Record
+types::FragmentKind::Section variant Section
+types::FragmentKind::Struct variant Struct
+types::FragmentKind::StructSignature variant StructSignature
+types::FragmentKind::Type variant Type
+types::FragmentKind::Variable variant Variable
+types::FragmentKind::as_str fn (&self) -> &'static str
+types::FragmentKind::from_str fn (s: &str) -> Self
+types::FragmentKind::is_container fn (&self) -> bool
+types::FragmentKind::is_definition_kind fn (&self) -> bool
+types::FragmentKind::is_semantic fn (&self) -> bool
+types::FragmentKind::is_signature fn (&self) -> bool
+types::FragmentKind::is_stub fn (&self) -> bool
+types::carries_change fn ( frag: &Fragment, core_ids: &rustc_hash::FxHashSet<FragmentId>, stand_in_ids: &rustc_hash::FxHashSet<FragmentId>, ) -> bool
+types::extract_identifier_counts fn (text: &str, min_length: usize) -> (FxHashMap<String, u32>, u32)
+types::extract_identifier_list fn (text: &str, min_length: usize) -> Vec<String>
+types::extract_identifiers fn (text: &str, min_length: usize) -> FxHashSet<String>
+types::unquote_c_style fn (quoted: &str) -> String
+yaml mod
+yaml::YamlError struct derive(Debug, thiserror::Error)
+yaml::from_str fn <T: DeserializeOwned>(text: &str) -> Result<T, YamlError>
+yaml::to_value fn (text: &str) -> Result<Value, YamlError>

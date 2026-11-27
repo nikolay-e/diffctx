@@ -1,0 +1,35 @@
+name: py_unresolved_call_on_the_line_of_a_resolved_one_stays_a_candidate
+mode: impact
+source: synthetic
+issue_state: open
+tags: [python, candidate, same-line, coverage]
+repo:
+  initial_files:
+    shapes/__init__.py: ""
+    shapes/box.py: |
+      class Box:
+          def area(self):
+              return 1
+    shapes/total.py: |
+      from shapes.box import Box
+
+
+      def total(other):
+          mine = Box()
+          return mine.area() + other.area()
+  changed_files:
+    shapes/box.py: |
+      class Box:
+          def area(self):
+              return 2
+  commit_message: "box: area is two"
+# `other.area()` is a candidate use of the same definition on the resolved call's line: the
+# answer counts it as unlanded and lists the line once, the resolver reports it as a
+# candidate too, so the relation list is not exact.
+expect:
+  exact: false
+  relations:
+    - {from: "shapes/total.py::total", to: "shapes/box.py::Box.area", kind: calls, resolution: resolved, site: 6}
+  partial:
+    shapes/box.py::Box.area:
+      calls: unlanded

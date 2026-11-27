@@ -1,0 +1,33 @@
+name: py_monkeypatched_builtin_subclass_method_called_through_the_annotation_is_a_gap
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [python, builtin, gap]
+repo:
+  initial_files:
+    pkg/__init__.py: |2+
+
+    pkg/bag.py: |
+      class Bag(list):
+          def append(self, x):
+              super().append(x)
+    pkg/use.py: |
+      def fill(xs: list):
+          xs.append(1)
+    pkg/run.py: |
+      from pkg.bag import Bag
+      from pkg.use import fill
+
+
+      def run():
+          fill(Bag())
+  changed_files:
+    pkg/bag.py: |
+      class Bag(list):
+          def append(self, x):
+              super().append(x + 0)
+  commit_message: change
+expect:
+  changed: ['pkg/bag.py::append']
+  partial:
+    pkg/bag.py::append: {calls: unlanded}

@@ -1,0 +1,35 @@
+# .github/workflows/crate-names.yml
+name: diffctx crate names
+
+permissions: {}
+
+# Publishing a crate name cannot be undone, and the architecture reserves ten
+# of them. A name a stranger takes first would surface at release time, after
+# the leaf crates went up; this finds it while the plan can still change.
+'on':
+  pull_request:
+    paths:
+      - 'Cargo.toml'
+      - 'crates/*/Cargo.toml'
+      - 'scripts/release/crates_io.py'
+      - '.github/workflows/crate-names.yml'
+  schedule:
+    - cron: '17 5 * * 1'
+  workflow_dispatch:
+
+jobs:
+  names:
+    name: Every crate name is free or ours
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca  # stable
+        with:
+          toolchain: '1.100.0'
+
+      - name: Ask crates.io who holds each name
+        run: python3 scripts/release/crates_io.py names

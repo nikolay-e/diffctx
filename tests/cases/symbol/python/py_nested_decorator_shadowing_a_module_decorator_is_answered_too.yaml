@@ -1,0 +1,36 @@
+name: py_nested_decorator_shadowing_a_module_decorator_is_answered_too
+mode: symbol
+source: synthetic
+issue_state: open
+tags: [python, symbol, nested-function, local-of-definition, decorator, shadowing]
+# `dec` inside `func` shadows the module-level `dec` and decorates `inner` there: that
+# use is the local's, and the answer says so. The module-level `dec` keeps its hedge
+# (the name is spelt at that site): the use is the local's, listed in its own block.
+repo:
+  initial_files:
+    main.py: |
+      def dec(f):
+          return f
+
+
+      def func():
+          def dec(f):
+              return f
+
+          @dec
+          def inner():
+              pass
+
+
+      func()
+  commit_message: init
+query:
+  symbol: dec
+expect:
+  definitions: [main.py::dec]
+  relations:
+    - {from: main.py::func, to: main.py::dec, kind: calls, resolution: resolved, site: 9}
+  partial:
+    main.py::dec:
+      calls: unlanded
+      reads: unlanded

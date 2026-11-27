@@ -1,0 +1,25 @@
+name: sql_function_named_in_a_query_string_of_application_code
+mode: impact
+source: synthetic
+tags: [sql, literal-name, query-string]
+repo:
+  initial_files:
+    db/functions/tax.sql: |
+      CREATE OR REPLACE FUNCTION calc_vat(amount numeric) RETURNS numeric AS $$
+        SELECT amount * 0.19;
+      $$ LANGUAGE sql;
+    app/repo.py: |
+      def totals(cur):
+          cur.execute("SELECT calc_vat(net_cents) FROM orders")
+  changed_files:
+    db/functions/tax.sql: |
+      CREATE OR REPLACE FUNCTION calc_vat(amount numeric) RETURNS numeric AS $$
+        SELECT amount * 0.20;
+      $$ LANGUAGE sql;
+  commit_message: "tax: vat is twenty percent"
+expect:
+  exact: false
+  discloses: true
+  no_negative_claims: true
+  relations:
+    - {from: app/repo.py, to: db/functions/tax.sql::calc_vat, kind: calls, resolution: unresolved}

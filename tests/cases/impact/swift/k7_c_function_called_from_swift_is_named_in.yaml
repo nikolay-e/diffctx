@@ -1,0 +1,44 @@
+name: k7_c_function_called_from_swift_is_named_in
+mode: impact
+source: synthetic
+tags: [swift, c, bridging, word-scan, false-absence]
+repo:
+  initial_files:
+    Package.swift: |
+      // swift-tools-version:5.9
+      import PackageDescription
+      let package = Package(name: "Mix", targets: [
+        .target(name: "CMath"),
+        .target(name: "App", dependencies: ["CMath"]),
+      ])
+    Sources/CMath/include/cmath_add.h: |
+      int cm_add_cents(int a, int b);
+      int cm_scale(int a);
+    Sources/CMath/add.c: |
+      int cm_add_cents(int a, int b) { return a + b; }
+      int cm_scale(int a) { return a * 2; }
+    Sources/App/main.swift: |
+      import CMath
+      let total = cm_add_cents(1, 2)
+      let scaled = cm_scale(total)
+    Shared/pricing.h: |
+      int px_round_cents(int c);
+    Shared/pricing.c: |
+      int px_round_cents(int c) { return (c / 5) * 5; }
+    App/Checkout.swift: |
+      func checkoutTotal(_ c: Int32) -> Int32 { return px_round_cents(c) }
+  changed_files:
+    Sources/CMath/add.c: |
+      int cm_add_cents(int a, int b) { return a + b + 1; }
+      int cm_scale(int a) { return a * 3; }
+    Shared/pricing.c: |
+      int px_round_cents(int c) { return (c / 5) * 5 + 1; }
+  commit_message: "c: cents helpers move by one"
+expect:
+  exact: false
+  discloses: true
+  no_negative_claims: true
+  relations:
+    - {from: Sources/App/main.swift, to: Sources/CMath/add.c::cm_add_cents, kind: calls, resolution: unresolved}
+    - {from: Sources/App/main.swift, to: Sources/CMath/add.c::cm_scale, kind: calls, resolution: unresolved}
+    - {from: App/Checkout.swift, to: Shared/pricing.c::px_round_cents, kind: calls, resolution: unresolved}

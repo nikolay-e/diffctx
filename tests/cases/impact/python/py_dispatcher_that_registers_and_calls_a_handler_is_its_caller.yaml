@@ -1,0 +1,40 @@
+name: py_dispatcher_that_registers_and_calls_a_handler_is_its_caller
+mode: impact
+source: synthetic
+issue_state: open
+tags:
+- python
+- registry
+repo:
+  initial_files:
+    bot.py: |
+      def ping():
+          return "pong"
+
+
+      def dispatch(name):
+          handlers = {"ping": ping}
+          if name == "ping!":
+              return ping().upper()
+          return handlers[name]()
+  changed_files:
+    bot.py: |
+      def ping():
+          return "pong!"
+
+
+      def dispatch(name):
+          handlers = {"ping": ping}
+          if name == "ping!":
+              return ping().upper()
+          return handlers[name]()
+  commit_message: A louder pong
+expect:
+  changed:
+  - bot.py::ping
+  relations:
+  - {from: "bot.py::dispatch", to: "bot.py::ping", kind: reads, resolution: resolved, site: 6}
+  - {from: "bot.py::dispatch", to: "bot.py::ping", kind: calls, resolution: resolved, site: 8}
+  partial:
+    bot.py::ping:
+      calls: unlanded

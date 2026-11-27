@@ -1,0 +1,73 @@
+name: rust_macro_body_expanded_in_one_type_is_no_call_of_its_namesake
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [rust, macro, macro-body, other-file, decoy]
+repo:
+  initial_files:
+    Cargo.toml: |
+      [package]
+      name = "demo"
+      version = "0.1.0"
+      edition = "2021"
+    src/lib.rs: |
+      mod shared;
+      pub mod engine;
+      pub mod cache;
+    src/shared.rs: |
+      macro_rules! common_methods {
+          () => {
+              pub fn describe(&self, name: &str) -> String {
+                  self.lookup(name)
+              }
+          };
+      }
+      pub(crate) use common_methods;
+    src/engine.rs: |
+      use crate::shared::common_methods;
+
+      pub struct Engine;
+
+      impl Engine {
+          common_methods!();
+
+          fn lookup(&self, name: &str) -> String {
+              name.to_uppercase()
+          }
+      }
+    src/cache.rs: |
+      pub struct Cache;
+
+      impl Cache {
+          pub fn get(&self, name: &str) -> String {
+              self.lookup(name)
+          }
+
+          fn lookup(&self, name: &str) -> String {
+              name.to_string()
+          }
+      }
+  changed_files:
+    src/cache.rs: |
+      pub struct Cache;
+
+      impl Cache {
+          pub fn get(&self, name: &str) -> String {
+              self.lookup(name)
+          }
+
+          fn lookup(&self, name: &str) -> String {
+              name.trim().to_string()
+          }
+      }
+  commit_message: "cache: lookup trims"
+expect:
+  changed: [src/cache.rs::lookup]
+  # The macro is expanded in `impl Engine` only, so its `self.lookup(..)` is a
+  # call of `Engine::lookup`; `Cache::lookup` is called by `Cache::get` alone.
+  relations:
+    - {from: "src/cache.rs::get", to: "src/cache.rs::lookup", kind: calls, resolution: resolved, site: 5}
+  decoys:
+    "src/cache.rs::lookup": [src/shared.rs]
+  coverage:
+    "src/cache.rs::lookup": {calls: complete}

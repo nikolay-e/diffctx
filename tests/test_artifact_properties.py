@@ -96,5 +96,5 @@ def test_same_input_same_artifact_within_budget_and_fully_inventoried(spec):
     doc = json.loads(rendered)
     assert [f["path"] for f in doc["fragments"]] == [f["path"] for f in fitted["fragments"]]
     assert doc["changes"] == fitted["changes"], "the fit keeps the inventory and marks what it dropped"
-    assert doc["schema"] == "diffctx.context.v1"
+    assert doc["schema"] == "diffctx.context.v2"
     assert json.loads(tree_to_string(first, "json")) == doc, "tree_to_string is the same fit"

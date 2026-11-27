@@ -1,0 +1,63 @@
+name: k6_c_dlsym_in_a_file_the_commit_also_edits
+mode: impact
+source: synthetic
+tags: [c, literal-name, dlsym, changed-file]
+repo:
+  initial_files:
+    src/plugin.c: |
+      int by_dl(void)
+      {
+          return 1;
+      }
+    src/dl.c: |
+      #include <dlfcn.h>
+
+      typedef int (*fn)(void);
+
+      int load(void)
+      {
+          fn f = (fn)dlsym(RTLD_DEFAULT, "by_dl");
+          return f ? f() : 0;
+      }
+
+      int other(void)
+      {
+          return 1;
+      }
+    src/dl.h: |
+      int other(void);
+    src/main.c: |
+      #include "dl.h"
+
+      int run(void)
+      {
+          return other();
+      }
+  changed_files:
+    src/plugin.c: |
+      int by_dl(void)
+      {
+          return 2;
+      }
+    src/dl.c: |
+      #include <dlfcn.h>
+
+      typedef int (*fn)(void);
+
+      int load(void)
+      {
+          fn f = (fn)dlsym(RTLD_DEFAULT, "by_dl");
+          return f ? f() : 0;
+      }
+
+      int other(void)
+      {
+          return 2;
+      }
+  commit_message: "plugin: by_dl returns two; other returns two"
+expect:
+  exact: false
+  discloses: true
+  no_negative_claims: true
+  relations:
+    - {from: src/dl.c, to: src/plugin.c::by_dl, kind: calls, resolution: unresolved}

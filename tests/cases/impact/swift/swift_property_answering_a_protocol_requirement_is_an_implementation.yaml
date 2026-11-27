@@ -1,0 +1,28 @@
+name: swift_property_answering_a_protocol_requirement_is_an_implementation
+mode: impact
+source: synthetic
+tags: [swift, protocol, implementation]
+repo:
+  initial_files:
+    Sources/Demo/Shape.swift: |
+      protocol Shape {
+          var area: Double { get }
+      }
+    Sources/Demo/Square.swift: |
+      struct Square: Shape {
+          var area: Double { return 1.0 }
+      }
+  changed_files:
+    Sources/Demo/Shape.swift: |
+      protocol Shape {
+          var area: Float { get }
+      }
+  commit_message: "shape: area is a Float"
+expect:
+  exact: false
+  relations:
+    - from: Sources/Demo/Square.swift::Square
+      to: Sources/Demo/Shape.swift::Shape.area
+      kind: overrides
+      resolution: resolved
+      site: 2

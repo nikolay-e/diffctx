@@ -1,0 +1,24 @@
+name: ts_default_export_that_changes_its_form_beside_a_removed_function_removes_only_that_function
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [typescript, default-export, removed-definition, contracts]
+repo:
+  initial_files:
+    src/rate.ts: |
+      export default (x: number, y: number): number => x * y;
+
+      export function legacy(z: number): number {
+        return z;
+      }
+  changed_files:
+    src/rate.ts: |
+      export default function mono(x: number, y: number): number {
+        return x * y;
+      }
+  commit_message: "rate: a named default, drop legacy"
+# The default export only changed its form: it is one export, paired with `mono`.
+# `legacy` is a different definition that the range removed, and stays one.
+expect:
+  exact: false
+  removed: [legacy]

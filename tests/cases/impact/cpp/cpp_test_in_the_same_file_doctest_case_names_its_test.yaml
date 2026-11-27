@@ -1,0 +1,52 @@
+name: cpp_test_in_the_same_file_doctest_case_names_its_test
+mode: impact
+source: synthetic
+issue_state: open
+tags:
+- cpp
+- tests-reach
+- test-in-the-same-file
+- doctest
+repo:
+  initial_files:
+    src/price.cpp: |
+      #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
+      #include "doctest.h"
+
+      int total(int a, int b) {
+        return a + b;
+      }
+
+      int tax(int amount) {
+        return amount * 2;
+      }
+
+      TEST_CASE("total adds") {
+        CHECK(total(1, 2) == 3);
+      }
+  changed_files:
+    src/price.cpp: |
+      #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
+      #include "doctest.h"
+
+      int total(int a, int b) {
+        return a + b + 0;
+      }
+
+      int tax(int amount) {
+        return amount * 3;
+      }
+
+      TEST_CASE("total adds") {
+        CHECK(total(1, 2) == 3);
+      }
+  commit_message: Touch both functions
+expect:
+  changed:
+  - src/price.cpp::total
+  - src/price.cpp::tax
+  exact: false
+  tested_by:
+    src/price.cpp: src/price.cpp
+  not_untested:
+  - total

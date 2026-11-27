@@ -1,0 +1,46 @@
+name: kt_gradle_shared_source_dir_across_projects_is_a_caller
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [kotlin, manifests, gradle, absence-claim]
+repo:
+  initial_files:
+    libs/core/build.gradle.kts: |
+      plugins { kotlin("jvm") version "2.0.0" }
+    libs/core/src/main/kotlin/com/acme/core/Money.kt: |
+      package com.acme.core
+
+      fun total(x: Int): Int {
+          return x
+      }
+    apps/web/src/main/kotlin/com/acme/web/View.kt: |
+      package com.acme.web
+
+      import com.acme.core.total
+
+      fun show(x: Int): Int {
+          return total(x)
+      }
+    settings.gradle.kts: |
+      include(":libs:core", ":apps:web")
+    apps/web/build.gradle.kts: |
+      plugins { kotlin("jvm") version "2.0.0" }
+      sourceSets { main { kotlin.srcDir("../../libs/core/src/main/kotlin") } }
+  changed_files:
+    libs/core/src/main/kotlin/com/acme/core/Money.kt: |
+      package com.acme.core
+
+      fun total(x: Int): Int {
+          return x + 0
+      }
+  commit_message: change
+expect:
+  changed: ['libs/core/src/main/kotlin/com/acme/core/Money.kt::total']
+  relations:
+  - from: apps/web/src/main/kotlin/com/acme/web/View.kt::show
+    to: libs/core/src/main/kotlin/com/acme/core/Money.kt::total
+    kind: calls
+    resolution: resolved
+  exact: false
+  never_empty: true
+  no_negative_claims: true

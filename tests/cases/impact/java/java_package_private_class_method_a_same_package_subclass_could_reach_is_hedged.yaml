@@ -1,0 +1,51 @@
+name: java_package_private_class_method_a_same_package_subclass_could_reach_is_hedged
+mode: impact
+source: synthetic
+issue_state: open
+tags: [java, dispatch, library, open-world, package-private]
+repo:
+  initial_files:
+    pom.xml: |
+      <project><modelVersion>4.0.0</modelVersion><groupId>a</groupId><artifactId>a</artifactId><version>1</version></project>
+    src/main/java/lib4/collude/Demo.java: |
+      package lib4.collude;
+
+      public class Demo {
+          public static void interfaceCallSite(PotentialInterface pi) {
+              pi.method();
+          }
+      }
+    src/main/java/lib4/collude/PotentialInterface.java: |
+      package lib4.collude;
+
+      interface PotentialInterface {
+          void method();
+      }
+    src/main/java/lib4/collude/PotentialSuperclass.java: |
+      package lib4.collude;
+
+      class PotentialSuperclass {
+          public void method() {
+          }
+      }
+  changed_files:
+    src/main/java/lib4/collude/PotentialSuperclass.java: |
+      package lib4.collude;
+
+      class PotentialSuperclass {
+          public void method() {
+              System.out.println("changed");
+          }
+      }
+  commit_message: change
+expect:
+  changed: [src/main/java/lib4/collude/PotentialSuperclass.java::PotentialSuperclass.method]
+  unknowns:
+    method: overridable
+  callers:
+    src/main/java/lib4/collude/PotentialSuperclass.java::PotentialSuperclass.method: []
+  partial:
+    src/main/java/lib4/collude/PotentialSuperclass.java::PotentialSuperclass.method:
+      calls: not_traced
+      reads: not_traced
+  discloses: true

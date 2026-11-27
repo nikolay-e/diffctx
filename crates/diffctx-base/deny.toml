@@ -1,0 +1,9 @@
+# The base has no grammar and no Python bindings, directly or through anything it pulls in.
+# ci.yml runs `cargo deny check bans` from this directory, which scopes the graph to this crate;
+# the advisories, licenses and sources run once for the workspace from the root deny.toml.
+[bans]
+deny = [
+    { crate = "pyo3", reason = "the base carries no Python bindings" },
+    { crate = "tree-sitter", reason = "the base carries no grammar" },
+    { crate = "tree-sitter-language", reason = "the base carries no grammar" },
+]

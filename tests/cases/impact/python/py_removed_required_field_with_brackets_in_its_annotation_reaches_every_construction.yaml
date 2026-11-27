@@ -1,0 +1,45 @@
+name: py_removed_required_field_with_brackets_in_its_annotation_reaches_every_construction
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [python, removed-field, construction, dataclass]
+repo:
+  initial_files:
+    svc/__init__.py: ""
+    svc/model.py: |
+      from dataclasses import dataclass
+      from typing import Annotated
+
+      from pydantic import Field
+
+
+      @dataclass
+      class Item:
+          id: int
+          size: Annotated[int, Field(ge=0)]
+          note: str = ""
+    svc/others.py: |
+      from svc.model import Item
+
+
+      def build():
+          return Item(id=1, note="n")
+  changed_files:
+    svc/model.py: |
+      from dataclasses import dataclass
+      from typing import Annotated
+
+      from pydantic import Field
+
+
+      @dataclass
+      class Item:
+          id: int
+          note: str = ""
+  commit_message: "model: drop the required size field"
+expect:
+  removed: [size]
+  # `size` is required: the `=` of `ge=0` sits inside its annotation's brackets and is no
+  # default, so every construction of `Item` is a site.
+  relations:
+    - {from: "svc/others.py::build", to: "svc/model.py::Item", kind: instantiates, resolution: resolved, site: 5}

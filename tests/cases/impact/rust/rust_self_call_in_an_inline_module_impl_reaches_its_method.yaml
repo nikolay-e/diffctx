@@ -1,0 +1,58 @@
+name: rust_self_call_in_an_inline_module_impl_reaches_its_method
+mode: impact
+source: synthetic
+tags: [rust, inline-module, impl, self-receiver, body-only]
+repo:
+  initial_files:
+    Cargo.toml: |
+      [package]
+      name = "fixture"
+      version = "0.1.0"
+      edition = "2021"
+    src/lib.rs: |
+      pub struct Foo;
+
+      mod inner {
+          use super::Foo;
+
+          impl Foo {
+              pub fn b(&self) -> i32 {
+                  self.c()
+              }
+
+              pub fn d(&self) -> i32 {
+                  Self::c(self)
+              }
+
+              pub fn c(&self) -> i32 {
+                  1
+              }
+          }
+      }
+  changed_files:
+    src/lib.rs: |
+      pub struct Foo;
+
+      mod inner {
+          use super::Foo;
+
+          impl Foo {
+              pub fn b(&self) -> i32 {
+                  self.c()
+              }
+
+              pub fn d(&self) -> i32 {
+                  Self::c(self)
+              }
+
+              pub fn c(&self) -> i32 {
+                  2
+              }
+          }
+      }
+  commit_message: Change c in the inline module's impl of Foo
+expect:
+  changed: ['src/lib.rs::c']
+  relations:
+  - {from: 'src/lib.rs::Foo.b', to: 'src/lib.rs::Foo.c', kind: calls}
+  - {from: 'src/lib.rs::Foo.d', to: 'src/lib.rs::Foo.c', kind: calls}

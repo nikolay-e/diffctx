@@ -1,0 +1,38 @@
+name: rs_cfg_if_in_a_sibling_module_hedges_the_calls_of_a_changed_function
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [rust, macros, cfg-if, coverage]
+repo:
+  initial_files:
+    Cargo.toml: |
+      [package]
+      name = "p"
+      version = "0.1.0"
+      edition = "2021"
+    src/lib.rs: |
+      pub mod a;
+      pub mod b;
+    src/a.rs: |
+      pub fn compute() -> i32 {
+          1
+      }
+    src/b.rs: |
+      cfg_if::cfg_if! {
+          if #[cfg(unix)] {
+              pub fn g() {}
+          } else {
+              pub fn g() {}
+          }
+      }
+  changed_files:
+    src/a.rs: |
+      pub fn compute() -> i32 {
+          2
+      }
+  commit_message: "a: compute returns 2"
+expect:
+  # `cfg_if!` declares items the cell does not expand: a use of `compute` may hide in one.
+  coverage:
+    src/a.rs::compute:
+      calls: partial

@@ -1,0 +1,1842 @@
+name: py_symbol_in_a_large_tree_finds_the_callers_or_says_the_search_was_capped
+mode: symbol
+source: gh#419
+issue_state: closed
+tags: [python, cap, decoy, large-tree]
+repo:
+  initial_files:
+    pkga/__init__.py: |
+    pkgb/__init__.py: |
+    pkga/scopes.py: |
+      def caller_of(x):
+          return x
+
+
+      def local_user():
+          return caller_of(1)
+    pkgb/scopes.py: |
+      def caller_of(x):
+          return x + 1
+
+
+      def other_user():
+          return caller_of(2)
+    pkga/consumer.py: |
+      from pkga.scopes import caller_of
+
+
+      def use():
+          return caller_of(3)
+    bulk/__init__.py: |
+    bulk/mod_000.py: |
+      # unrelated to caller_of
+
+
+      def f_0(x):
+          return x + 0
+    bulk/mod_001.py: |
+      # unrelated to caller_of
+
+
+      def f_1(x):
+          return x + 1
+    bulk/mod_002.py: |
+      # unrelated to caller_of
+
+
+      def f_2(x):
+          return x + 2
+    bulk/mod_003.py: |
+      # unrelated to caller_of
+
+
+      def f_3(x):
+          return x + 3
+    bulk/mod_004.py: |
+      # unrelated to caller_of
+
+
+      def f_4(x):
+          return x + 4
+    bulk/mod_005.py: |
+      # unrelated to caller_of
+
+
+      def f_5(x):
+          return x + 5
+    bulk/mod_006.py: |
+      # unrelated to caller_of
+
+
+      def f_6(x):
+          return x + 6
+    bulk/mod_007.py: |
+      # unrelated to caller_of
+
+
+      def f_7(x):
+          return x + 7
+    bulk/mod_008.py: |
+      # unrelated to caller_of
+
+
+      def f_8(x):
+          return x + 8
+    bulk/mod_009.py: |
+      # unrelated to caller_of
+
+
+      def f_9(x):
+          return x + 9
+    bulk/mod_010.py: |
+      # unrelated to caller_of
+
+
+      def f_10(x):
+          return x + 10
+    bulk/mod_011.py: |
+      # unrelated to caller_of
+
+
+      def f_11(x):
+          return x + 11
+    bulk/mod_012.py: |
+      # unrelated to caller_of
+
+
+      def f_12(x):
+          return x + 12
+    bulk/mod_013.py: |
+      # unrelated to caller_of
+
+
+      def f_13(x):
+          return x + 13
+    bulk/mod_014.py: |
+      # unrelated to caller_of
+
+
+      def f_14(x):
+          return x + 14
+    bulk/mod_015.py: |
+      # unrelated to caller_of
+
+
+      def f_15(x):
+          return x + 15
+    bulk/mod_016.py: |
+      # unrelated to caller_of
+
+
+      def f_16(x):
+          return x + 16
+    bulk/mod_017.py: |
+      # unrelated to caller_of
+
+
+      def f_17(x):
+          return x + 17
+    bulk/mod_018.py: |
+      # unrelated to caller_of
+
+
+      def f_18(x):
+          return x + 18
+    bulk/mod_019.py: |
+      # unrelated to caller_of
+
+
+      def f_19(x):
+          return x + 19
+    bulk/mod_020.py: |
+      # unrelated to caller_of
+
+
+      def f_20(x):
+          return x + 20
+    bulk/mod_021.py: |
+      # unrelated to caller_of
+
+
+      def f_21(x):
+          return x + 21
+    bulk/mod_022.py: |
+      # unrelated to caller_of
+
+
+      def f_22(x):
+          return x + 22
+    bulk/mod_023.py: |
+      # unrelated to caller_of
+
+
+      def f_23(x):
+          return x + 23
+    bulk/mod_024.py: |
+      # unrelated to caller_of
+
+
+      def f_24(x):
+          return x + 24
+    bulk/mod_025.py: |
+      # unrelated to caller_of
+
+
+      def f_25(x):
+          return x + 25
+    bulk/mod_026.py: |
+      # unrelated to caller_of
+
+
+      def f_26(x):
+          return x + 26
+    bulk/mod_027.py: |
+      # unrelated to caller_of
+
+
+      def f_27(x):
+          return x + 27
+    bulk/mod_028.py: |
+      # unrelated to caller_of
+
+
+      def f_28(x):
+          return x + 28
+    bulk/mod_029.py: |
+      # unrelated to caller_of
+
+
+      def f_29(x):
+          return x + 29
+    bulk/mod_030.py: |
+      # unrelated to caller_of
+
+
+      def f_30(x):
+          return x + 30
+    bulk/mod_031.py: |
+      # unrelated to caller_of
+
+
+      def f_31(x):
+          return x + 31
+    bulk/mod_032.py: |
+      # unrelated to caller_of
+
+
+      def f_32(x):
+          return x + 32
+    bulk/mod_033.py: |
+      # unrelated to caller_of
+
+
+      def f_33(x):
+          return x + 33
+    bulk/mod_034.py: |
+      # unrelated to caller_of
+
+
+      def f_34(x):
+          return x + 34
+    bulk/mod_035.py: |
+      # unrelated to caller_of
+
+
+      def f_35(x):
+          return x + 35
+    bulk/mod_036.py: |
+      # unrelated to caller_of
+
+
+      def f_36(x):
+          return x + 36
+    bulk/mod_037.py: |
+      # unrelated to caller_of
+
+
+      def f_37(x):
+          return x + 37
+    bulk/mod_038.py: |
+      # unrelated to caller_of
+
+
+      def f_38(x):
+          return x + 38
+    bulk/mod_039.py: |
+      # unrelated to caller_of
+
+
+      def f_39(x):
+          return x + 39
+    bulk/mod_040.py: |
+      # unrelated to caller_of
+
+
+      def f_40(x):
+          return x + 40
+    bulk/mod_041.py: |
+      # unrelated to caller_of
+
+
+      def f_41(x):
+          return x + 41
+    bulk/mod_042.py: |
+      # unrelated to caller_of
+
+
+      def f_42(x):
+          return x + 42
+    bulk/mod_043.py: |
+      # unrelated to caller_of
+
+
+      def f_43(x):
+          return x + 43
+    bulk/mod_044.py: |
+      # unrelated to caller_of
+
+
+      def f_44(x):
+          return x + 44
+    bulk/mod_045.py: |
+      # unrelated to caller_of
+
+
+      def f_45(x):
+          return x + 45
+    bulk/mod_046.py: |
+      # unrelated to caller_of
+
+
+      def f_46(x):
+          return x + 46
+    bulk/mod_047.py: |
+      # unrelated to caller_of
+
+
+      def f_47(x):
+          return x + 47
+    bulk/mod_048.py: |
+      # unrelated to caller_of
+
+
+      def f_48(x):
+          return x + 48
+    bulk/mod_049.py: |
+      # unrelated to caller_of
+
+
+      def f_49(x):
+          return x + 49
+    bulk/mod_050.py: |
+      # unrelated to caller_of
+
+
+      def f_50(x):
+          return x + 50
+    bulk/mod_051.py: |
+      # unrelated to caller_of
+
+
+      def f_51(x):
+          return x + 51
+    bulk/mod_052.py: |
+      # unrelated to caller_of
+
+
+      def f_52(x):
+          return x + 52
+    bulk/mod_053.py: |
+      # unrelated to caller_of
+
+
+      def f_53(x):
+          return x + 53
+    bulk/mod_054.py: |
+      # unrelated to caller_of
+
+
+      def f_54(x):
+          return x + 54
+    bulk/mod_055.py: |
+      # unrelated to caller_of
+
+
+      def f_55(x):
+          return x + 55
+    bulk/mod_056.py: |
+      # unrelated to caller_of
+
+
+      def f_56(x):
+          return x + 56
+    bulk/mod_057.py: |
+      # unrelated to caller_of
+
+
+      def f_57(x):
+          return x + 57
+    bulk/mod_058.py: |
+      # unrelated to caller_of
+
+
+      def f_58(x):
+          return x + 58
+    bulk/mod_059.py: |
+      # unrelated to caller_of
+
+
+      def f_59(x):
+          return x + 59
+    bulk/mod_060.py: |
+      # unrelated to caller_of
+
+
+      def f_60(x):
+          return x + 60
+    bulk/mod_061.py: |
+      # unrelated to caller_of
+
+
+      def f_61(x):
+          return x + 61
+    bulk/mod_062.py: |
+      # unrelated to caller_of
+
+
+      def f_62(x):
+          return x + 62
+    bulk/mod_063.py: |
+      # unrelated to caller_of
+
+
+      def f_63(x):
+          return x + 63
+    bulk/mod_064.py: |
+      # unrelated to caller_of
+
+
+      def f_64(x):
+          return x + 64
+    bulk/mod_065.py: |
+      # unrelated to caller_of
+
+
+      def f_65(x):
+          return x + 65
+    bulk/mod_066.py: |
+      # unrelated to caller_of
+
+
+      def f_66(x):
+          return x + 66
+    bulk/mod_067.py: |
+      # unrelated to caller_of
+
+
+      def f_67(x):
+          return x + 67
+    bulk/mod_068.py: |
+      # unrelated to caller_of
+
+
+      def f_68(x):
+          return x + 68
+    bulk/mod_069.py: |
+      # unrelated to caller_of
+
+
+      def f_69(x):
+          return x + 69
+    bulk/mod_070.py: |
+      # unrelated to caller_of
+
+
+      def f_70(x):
+          return x + 70
+    bulk/mod_071.py: |
+      # unrelated to caller_of
+
+
+      def f_71(x):
+          return x + 71
+    bulk/mod_072.py: |
+      # unrelated to caller_of
+
+
+      def f_72(x):
+          return x + 72
+    bulk/mod_073.py: |
+      # unrelated to caller_of
+
+
+      def f_73(x):
+          return x + 73
+    bulk/mod_074.py: |
+      # unrelated to caller_of
+
+
+      def f_74(x):
+          return x + 74
+    bulk/mod_075.py: |
+      # unrelated to caller_of
+
+
+      def f_75(x):
+          return x + 75
+    bulk/mod_076.py: |
+      # unrelated to caller_of
+
+
+      def f_76(x):
+          return x + 76
+    bulk/mod_077.py: |
+      # unrelated to caller_of
+
+
+      def f_77(x):
+          return x + 77
+    bulk/mod_078.py: |
+      # unrelated to caller_of
+
+
+      def f_78(x):
+          return x + 78
+    bulk/mod_079.py: |
+      # unrelated to caller_of
+
+
+      def f_79(x):
+          return x + 79
+    bulk/mod_080.py: |
+      # unrelated to caller_of
+
+
+      def f_80(x):
+          return x + 80
+    bulk/mod_081.py: |
+      # unrelated to caller_of
+
+
+      def f_81(x):
+          return x + 81
+    bulk/mod_082.py: |
+      # unrelated to caller_of
+
+
+      def f_82(x):
+          return x + 82
+    bulk/mod_083.py: |
+      # unrelated to caller_of
+
+
+      def f_83(x):
+          return x + 83
+    bulk/mod_084.py: |
+      # unrelated to caller_of
+
+
+      def f_84(x):
+          return x + 84
+    bulk/mod_085.py: |
+      # unrelated to caller_of
+
+
+      def f_85(x):
+          return x + 85
+    bulk/mod_086.py: |
+      # unrelated to caller_of
+
+
+      def f_86(x):
+          return x + 86
+    bulk/mod_087.py: |
+      # unrelated to caller_of
+
+
+      def f_87(x):
+          return x + 87
+    bulk/mod_088.py: |
+      # unrelated to caller_of
+
+
+      def f_88(x):
+          return x + 88
+    bulk/mod_089.py: |
+      # unrelated to caller_of
+
+
+      def f_89(x):
+          return x + 89
+    bulk/mod_090.py: |
+      # unrelated to caller_of
+
+
+      def f_90(x):
+          return x + 90
+    bulk/mod_091.py: |
+      # unrelated to caller_of
+
+
+      def f_91(x):
+          return x + 91
+    bulk/mod_092.py: |
+      # unrelated to caller_of
+
+
+      def f_92(x):
+          return x + 92
+    bulk/mod_093.py: |
+      # unrelated to caller_of
+
+
+      def f_93(x):
+          return x + 93
+    bulk/mod_094.py: |
+      # unrelated to caller_of
+
+
+      def f_94(x):
+          return x + 94
+    bulk/mod_095.py: |
+      # unrelated to caller_of
+
+
+      def f_95(x):
+          return x + 95
+    bulk/mod_096.py: |
+      # unrelated to caller_of
+
+
+      def f_96(x):
+          return x + 96
+    bulk/mod_097.py: |
+      # unrelated to caller_of
+
+
+      def f_97(x):
+          return x + 97
+    bulk/mod_098.py: |
+      # unrelated to caller_of
+
+
+      def f_98(x):
+          return x + 98
+    bulk/mod_099.py: |
+      # unrelated to caller_of
+
+
+      def f_99(x):
+          return x + 99
+    bulk/mod_100.py: |
+      # unrelated to caller_of
+
+
+      def f_100(x):
+          return x + 100
+    bulk/mod_101.py: |
+      # unrelated to caller_of
+
+
+      def f_101(x):
+          return x + 101
+    bulk/mod_102.py: |
+      # unrelated to caller_of
+
+
+      def f_102(x):
+          return x + 102
+    bulk/mod_103.py: |
+      # unrelated to caller_of
+
+
+      def f_103(x):
+          return x + 103
+    bulk/mod_104.py: |
+      # unrelated to caller_of
+
+
+      def f_104(x):
+          return x + 104
+    bulk/mod_105.py: |
+      # unrelated to caller_of
+
+
+      def f_105(x):
+          return x + 105
+    bulk/mod_106.py: |
+      # unrelated to caller_of
+
+
+      def f_106(x):
+          return x + 106
+    bulk/mod_107.py: |
+      # unrelated to caller_of
+
+
+      def f_107(x):
+          return x + 107
+    bulk/mod_108.py: |
+      # unrelated to caller_of
+
+
+      def f_108(x):
+          return x + 108
+    bulk/mod_109.py: |
+      # unrelated to caller_of
+
+
+      def f_109(x):
+          return x + 109
+    bulk/mod_110.py: |
+      # unrelated to caller_of
+
+
+      def f_110(x):
+          return x + 110
+    bulk/mod_111.py: |
+      # unrelated to caller_of
+
+
+      def f_111(x):
+          return x + 111
+    bulk/mod_112.py: |
+      # unrelated to caller_of
+
+
+      def f_112(x):
+          return x + 112
+    bulk/mod_113.py: |
+      # unrelated to caller_of
+
+
+      def f_113(x):
+          return x + 113
+    bulk/mod_114.py: |
+      # unrelated to caller_of
+
+
+      def f_114(x):
+          return x + 114
+    bulk/mod_115.py: |
+      # unrelated to caller_of
+
+
+      def f_115(x):
+          return x + 115
+    bulk/mod_116.py: |
+      # unrelated to caller_of
+
+
+      def f_116(x):
+          return x + 116
+    bulk/mod_117.py: |
+      # unrelated to caller_of
+
+
+      def f_117(x):
+          return x + 117
+    bulk/mod_118.py: |
+      # unrelated to caller_of
+
+
+      def f_118(x):
+          return x + 118
+    bulk/mod_119.py: |
+      # unrelated to caller_of
+
+
+      def f_119(x):
+          return x + 119
+    bulk/mod_120.py: |
+      # unrelated to caller_of
+
+
+      def f_120(x):
+          return x + 120
+    bulk/mod_121.py: |
+      # unrelated to caller_of
+
+
+      def f_121(x):
+          return x + 121
+    bulk/mod_122.py: |
+      # unrelated to caller_of
+
+
+      def f_122(x):
+          return x + 122
+    bulk/mod_123.py: |
+      # unrelated to caller_of
+
+
+      def f_123(x):
+          return x + 123
+    bulk/mod_124.py: |
+      # unrelated to caller_of
+
+
+      def f_124(x):
+          return x + 124
+    bulk/mod_125.py: |
+      # unrelated to caller_of
+
+
+      def f_125(x):
+          return x + 125
+    bulk/mod_126.py: |
+      # unrelated to caller_of
+
+
+      def f_126(x):
+          return x + 126
+    bulk/mod_127.py: |
+      # unrelated to caller_of
+
+
+      def f_127(x):
+          return x + 127
+    bulk/mod_128.py: |
+      # unrelated to caller_of
+
+
+      def f_128(x):
+          return x + 128
+    bulk/mod_129.py: |
+      # unrelated to caller_of
+
+
+      def f_129(x):
+          return x + 129
+    bulk/mod_130.py: |
+      # unrelated to caller_of
+
+
+      def f_130(x):
+          return x + 130
+    bulk/mod_131.py: |
+      # unrelated to caller_of
+
+
+      def f_131(x):
+          return x + 131
+    bulk/mod_132.py: |
+      # unrelated to caller_of
+
+
+      def f_132(x):
+          return x + 132
+    bulk/mod_133.py: |
+      # unrelated to caller_of
+
+
+      def f_133(x):
+          return x + 133
+    bulk/mod_134.py: |
+      # unrelated to caller_of
+
+
+      def f_134(x):
+          return x + 134
+    bulk/mod_135.py: |
+      # unrelated to caller_of
+
+
+      def f_135(x):
+          return x + 135
+    bulk/mod_136.py: |
+      # unrelated to caller_of
+
+
+      def f_136(x):
+          return x + 136
+    bulk/mod_137.py: |
+      # unrelated to caller_of
+
+
+      def f_137(x):
+          return x + 137
+    bulk/mod_138.py: |
+      # unrelated to caller_of
+
+
+      def f_138(x):
+          return x + 138
+    bulk/mod_139.py: |
+      # unrelated to caller_of
+
+
+      def f_139(x):
+          return x + 139
+    bulk/mod_140.py: |
+      # unrelated to caller_of
+
+
+      def f_140(x):
+          return x + 140
+    bulk/mod_141.py: |
+      # unrelated to caller_of
+
+
+      def f_141(x):
+          return x + 141
+    bulk/mod_142.py: |
+      # unrelated to caller_of
+
+
+      def f_142(x):
+          return x + 142
+    bulk/mod_143.py: |
+      # unrelated to caller_of
+
+
+      def f_143(x):
+          return x + 143
+    bulk/mod_144.py: |
+      # unrelated to caller_of
+
+
+      def f_144(x):
+          return x + 144
+    bulk/mod_145.py: |
+      # unrelated to caller_of
+
+
+      def f_145(x):
+          return x + 145
+    bulk/mod_146.py: |
+      # unrelated to caller_of
+
+
+      def f_146(x):
+          return x + 146
+    bulk/mod_147.py: |
+      # unrelated to caller_of
+
+
+      def f_147(x):
+          return x + 147
+    bulk/mod_148.py: |
+      # unrelated to caller_of
+
+
+      def f_148(x):
+          return x + 148
+    bulk/mod_149.py: |
+      # unrelated to caller_of
+
+
+      def f_149(x):
+          return x + 149
+    bulk/mod_150.py: |
+      # unrelated to caller_of
+
+
+      def f_150(x):
+          return x + 150
+    bulk/mod_151.py: |
+      # unrelated to caller_of
+
+
+      def f_151(x):
+          return x + 151
+    bulk/mod_152.py: |
+      # unrelated to caller_of
+
+
+      def f_152(x):
+          return x + 152
+    bulk/mod_153.py: |
+      # unrelated to caller_of
+
+
+      def f_153(x):
+          return x + 153
+    bulk/mod_154.py: |
+      # unrelated to caller_of
+
+
+      def f_154(x):
+          return x + 154
+    bulk/mod_155.py: |
+      # unrelated to caller_of
+
+
+      def f_155(x):
+          return x + 155
+    bulk/mod_156.py: |
+      # unrelated to caller_of
+
+
+      def f_156(x):
+          return x + 156
+    bulk/mod_157.py: |
+      # unrelated to caller_of
+
+
+      def f_157(x):
+          return x + 157
+    bulk/mod_158.py: |
+      # unrelated to caller_of
+
+
+      def f_158(x):
+          return x + 158
+    bulk/mod_159.py: |
+      # unrelated to caller_of
+
+
+      def f_159(x):
+          return x + 159
+    bulk/mod_160.py: |
+      # unrelated to caller_of
+
+
+      def f_160(x):
+          return x + 160
+    bulk/mod_161.py: |
+      # unrelated to caller_of
+
+
+      def f_161(x):
+          return x + 161
+    bulk/mod_162.py: |
+      # unrelated to caller_of
+
+
+      def f_162(x):
+          return x + 162
+    bulk/mod_163.py: |
+      # unrelated to caller_of
+
+
+      def f_163(x):
+          return x + 163
+    bulk/mod_164.py: |
+      # unrelated to caller_of
+
+
+      def f_164(x):
+          return x + 164
+    bulk/mod_165.py: |
+      # unrelated to caller_of
+
+
+      def f_165(x):
+          return x + 165
+    bulk/mod_166.py: |
+      # unrelated to caller_of
+
+
+      def f_166(x):
+          return x + 166
+    bulk/mod_167.py: |
+      # unrelated to caller_of
+
+
+      def f_167(x):
+          return x + 167
+    bulk/mod_168.py: |
+      # unrelated to caller_of
+
+
+      def f_168(x):
+          return x + 168
+    bulk/mod_169.py: |
+      # unrelated to caller_of
+
+
+      def f_169(x):
+          return x + 169
+    bulk/mod_170.py: |
+      # unrelated to caller_of
+
+
+      def f_170(x):
+          return x + 170
+    bulk/mod_171.py: |
+      # unrelated to caller_of
+
+
+      def f_171(x):
+          return x + 171
+    bulk/mod_172.py: |
+      # unrelated to caller_of
+
+
+      def f_172(x):
+          return x + 172
+    bulk/mod_173.py: |
+      # unrelated to caller_of
+
+
+      def f_173(x):
+          return x + 173
+    bulk/mod_174.py: |
+      # unrelated to caller_of
+
+
+      def f_174(x):
+          return x + 174
+    bulk/mod_175.py: |
+      # unrelated to caller_of
+
+
+      def f_175(x):
+          return x + 175
+    bulk/mod_176.py: |
+      # unrelated to caller_of
+
+
+      def f_176(x):
+          return x + 176
+    bulk/mod_177.py: |
+      # unrelated to caller_of
+
+
+      def f_177(x):
+          return x + 177
+    bulk/mod_178.py: |
+      # unrelated to caller_of
+
+
+      def f_178(x):
+          return x + 178
+    bulk/mod_179.py: |
+      # unrelated to caller_of
+
+
+      def f_179(x):
+          return x + 179
+    bulk/mod_180.py: |
+      # unrelated to caller_of
+
+
+      def f_180(x):
+          return x + 180
+    bulk/mod_181.py: |
+      # unrelated to caller_of
+
+
+      def f_181(x):
+          return x + 181
+    bulk/mod_182.py: |
+      # unrelated to caller_of
+
+
+      def f_182(x):
+          return x + 182
+    bulk/mod_183.py: |
+      # unrelated to caller_of
+
+
+      def f_183(x):
+          return x + 183
+    bulk/mod_184.py: |
+      # unrelated to caller_of
+
+
+      def f_184(x):
+          return x + 184
+    bulk/mod_185.py: |
+      # unrelated to caller_of
+
+
+      def f_185(x):
+          return x + 185
+    bulk/mod_186.py: |
+      # unrelated to caller_of
+
+
+      def f_186(x):
+          return x + 186
+    bulk/mod_187.py: |
+      # unrelated to caller_of
+
+
+      def f_187(x):
+          return x + 187
+    bulk/mod_188.py: |
+      # unrelated to caller_of
+
+
+      def f_188(x):
+          return x + 188
+    bulk/mod_189.py: |
+      # unrelated to caller_of
+
+
+      def f_189(x):
+          return x + 189
+    bulk/mod_190.py: |
+      # unrelated to caller_of
+
+
+      def f_190(x):
+          return x + 190
+    bulk/mod_191.py: |
+      # unrelated to caller_of
+
+
+      def f_191(x):
+          return x + 191
+    bulk/mod_192.py: |
+      # unrelated to caller_of
+
+
+      def f_192(x):
+          return x + 192
+    bulk/mod_193.py: |
+      # unrelated to caller_of
+
+
+      def f_193(x):
+          return x + 193
+    bulk/mod_194.py: |
+      # unrelated to caller_of
+
+
+      def f_194(x):
+          return x + 194
+    bulk/mod_195.py: |
+      # unrelated to caller_of
+
+
+      def f_195(x):
+          return x + 195
+    bulk/mod_196.py: |
+      # unrelated to caller_of
+
+
+      def f_196(x):
+          return x + 196
+    bulk/mod_197.py: |
+      # unrelated to caller_of
+
+
+      def f_197(x):
+          return x + 197
+    bulk/mod_198.py: |
+      # unrelated to caller_of
+
+
+      def f_198(x):
+          return x + 198
+    bulk/mod_199.py: |
+      # unrelated to caller_of
+
+
+      def f_199(x):
+          return x + 199
+    bulk/mod_200.py: |
+      # unrelated to caller_of
+
+
+      def f_200(x):
+          return x + 200
+    bulk/mod_201.py: |
+      # unrelated to caller_of
+
+
+      def f_201(x):
+          return x + 201
+    bulk/mod_202.py: |
+      # unrelated to caller_of
+
+
+      def f_202(x):
+          return x + 202
+    bulk/mod_203.py: |
+      # unrelated to caller_of
+
+
+      def f_203(x):
+          return x + 203
+    bulk/mod_204.py: |
+      # unrelated to caller_of
+
+
+      def f_204(x):
+          return x + 204
+    bulk/mod_205.py: |
+      # unrelated to caller_of
+
+
+      def f_205(x):
+          return x + 205
+    bulk/mod_206.py: |
+      # unrelated to caller_of
+
+
+      def f_206(x):
+          return x + 206
+    bulk/mod_207.py: |
+      # unrelated to caller_of
+
+
+      def f_207(x):
+          return x + 207
+    bulk/mod_208.py: |
+      # unrelated to caller_of
+
+
+      def f_208(x):
+          return x + 208
+    bulk/mod_209.py: |
+      # unrelated to caller_of
+
+
+      def f_209(x):
+          return x + 209
+    bulk/mod_210.py: |
+      # unrelated to caller_of
+
+
+      def f_210(x):
+          return x + 210
+    bulk/mod_211.py: |
+      # unrelated to caller_of
+
+
+      def f_211(x):
+          return x + 211
+    bulk/mod_212.py: |
+      # unrelated to caller_of
+
+
+      def f_212(x):
+          return x + 212
+    bulk/mod_213.py: |
+      # unrelated to caller_of
+
+
+      def f_213(x):
+          return x + 213
+    bulk/mod_214.py: |
+      # unrelated to caller_of
+
+
+      def f_214(x):
+          return x + 214
+    bulk/mod_215.py: |
+      # unrelated to caller_of
+
+
+      def f_215(x):
+          return x + 215
+    bulk/mod_216.py: |
+      # unrelated to caller_of
+
+
+      def f_216(x):
+          return x + 216
+    bulk/mod_217.py: |
+      # unrelated to caller_of
+
+
+      def f_217(x):
+          return x + 217
+    bulk/mod_218.py: |
+      # unrelated to caller_of
+
+
+      def f_218(x):
+          return x + 218
+    bulk/mod_219.py: |
+      # unrelated to caller_of
+
+
+      def f_219(x):
+          return x + 219
+    bulk/mod_220.py: |
+      # unrelated to caller_of
+
+
+      def f_220(x):
+          return x + 220
+    bulk/mod_221.py: |
+      # unrelated to caller_of
+
+
+      def f_221(x):
+          return x + 221
+    bulk/mod_222.py: |
+      # unrelated to caller_of
+
+
+      def f_222(x):
+          return x + 222
+    bulk/mod_223.py: |
+      # unrelated to caller_of
+
+
+      def f_223(x):
+          return x + 223
+    bulk/mod_224.py: |
+      # unrelated to caller_of
+
+
+      def f_224(x):
+          return x + 224
+    bulk/mod_225.py: |
+      # unrelated to caller_of
+
+
+      def f_225(x):
+          return x + 225
+    bulk/mod_226.py: |
+      # unrelated to caller_of
+
+
+      def f_226(x):
+          return x + 226
+    bulk/mod_227.py: |
+      # unrelated to caller_of
+
+
+      def f_227(x):
+          return x + 227
+    bulk/mod_228.py: |
+      # unrelated to caller_of
+
+
+      def f_228(x):
+          return x + 228
+    bulk/mod_229.py: |
+      # unrelated to caller_of
+
+
+      def f_229(x):
+          return x + 229
+    bulk/mod_230.py: |
+      # unrelated to caller_of
+
+
+      def f_230(x):
+          return x + 230
+    bulk/mod_231.py: |
+      # unrelated to caller_of
+
+
+      def f_231(x):
+          return x + 231
+    bulk/mod_232.py: |
+      # unrelated to caller_of
+
+
+      def f_232(x):
+          return x + 232
+    bulk/mod_233.py: |
+      # unrelated to caller_of
+
+
+      def f_233(x):
+          return x + 233
+    bulk/mod_234.py: |
+      # unrelated to caller_of
+
+
+      def f_234(x):
+          return x + 234
+    bulk/mod_235.py: |
+      # unrelated to caller_of
+
+
+      def f_235(x):
+          return x + 235
+    bulk/mod_236.py: |
+      # unrelated to caller_of
+
+
+      def f_236(x):
+          return x + 236
+    bulk/mod_237.py: |
+      # unrelated to caller_of
+
+
+      def f_237(x):
+          return x + 237
+    bulk/mod_238.py: |
+      # unrelated to caller_of
+
+
+      def f_238(x):
+          return x + 238
+    bulk/mod_239.py: |
+      # unrelated to caller_of
+
+
+      def f_239(x):
+          return x + 239
+    bulk/mod_240.py: |
+      # unrelated to caller_of
+
+
+      def f_240(x):
+          return x + 240
+    bulk/mod_241.py: |
+      # unrelated to caller_of
+
+
+      def f_241(x):
+          return x + 241
+    bulk/mod_242.py: |
+      # unrelated to caller_of
+
+
+      def f_242(x):
+          return x + 242
+    bulk/mod_243.py: |
+      # unrelated to caller_of
+
+
+      def f_243(x):
+          return x + 243
+    bulk/mod_244.py: |
+      # unrelated to caller_of
+
+
+      def f_244(x):
+          return x + 244
+    bulk/mod_245.py: |
+      # unrelated to caller_of
+
+
+      def f_245(x):
+          return x + 245
+    bulk/mod_246.py: |
+      # unrelated to caller_of
+
+
+      def f_246(x):
+          return x + 246
+    bulk/mod_247.py: |
+      # unrelated to caller_of
+
+
+      def f_247(x):
+          return x + 247
+    bulk/mod_248.py: |
+      # unrelated to caller_of
+
+
+      def f_248(x):
+          return x + 248
+    bulk/mod_249.py: |
+      # unrelated to caller_of
+
+
+      def f_249(x):
+          return x + 249
+    bulk/mod_250.py: |
+      # unrelated to caller_of
+
+
+      def f_250(x):
+          return x + 250
+    bulk/mod_251.py: |
+      # unrelated to caller_of
+
+
+      def f_251(x):
+          return x + 251
+    bulk/mod_252.py: |
+      # unrelated to caller_of
+
+
+      def f_252(x):
+          return x + 252
+    bulk/mod_253.py: |
+      # unrelated to caller_of
+
+
+      def f_253(x):
+          return x + 253
+    bulk/mod_254.py: |
+      # unrelated to caller_of
+
+
+      def f_254(x):
+          return x + 254
+    bulk/mod_255.py: |
+      # unrelated to caller_of
+
+
+      def f_255(x):
+          return x + 255
+    bulk/mod_256.py: |
+      # unrelated to caller_of
+
+
+      def f_256(x):
+          return x + 256
+    bulk/mod_257.py: |
+      # unrelated to caller_of
+
+
+      def f_257(x):
+          return x + 257
+    bulk/mod_258.py: |
+      # unrelated to caller_of
+
+
+      def f_258(x):
+          return x + 258
+    bulk/mod_259.py: |
+      # unrelated to caller_of
+
+
+      def f_259(x):
+          return x + 259
+    bulk/mod_260.py: |
+      # unrelated to caller_of
+
+
+      def f_260(x):
+          return x + 260
+    bulk/mod_261.py: |
+      # unrelated to caller_of
+
+
+      def f_261(x):
+          return x + 261
+    bulk/mod_262.py: |
+      # unrelated to caller_of
+
+
+      def f_262(x):
+          return x + 262
+    bulk/mod_263.py: |
+      # unrelated to caller_of
+
+
+      def f_263(x):
+          return x + 263
+    bulk/mod_264.py: |
+      # unrelated to caller_of
+
+
+      def f_264(x):
+          return x + 264
+    bulk/mod_265.py: |
+      # unrelated to caller_of
+
+
+      def f_265(x):
+          return x + 265
+    bulk/mod_266.py: |
+      # unrelated to caller_of
+
+
+      def f_266(x):
+          return x + 266
+    bulk/mod_267.py: |
+      # unrelated to caller_of
+
+
+      def f_267(x):
+          return x + 267
+    bulk/mod_268.py: |
+      # unrelated to caller_of
+
+
+      def f_268(x):
+          return x + 268
+    bulk/mod_269.py: |
+      # unrelated to caller_of
+
+
+      def f_269(x):
+          return x + 269
+    bulk/mod_270.py: |
+      # unrelated to caller_of
+
+
+      def f_270(x):
+          return x + 270
+    bulk/mod_271.py: |
+      # unrelated to caller_of
+
+
+      def f_271(x):
+          return x + 271
+    bulk/mod_272.py: |
+      # unrelated to caller_of
+
+
+      def f_272(x):
+          return x + 272
+    bulk/mod_273.py: |
+      # unrelated to caller_of
+
+
+      def f_273(x):
+          return x + 273
+    bulk/mod_274.py: |
+      # unrelated to caller_of
+
+
+      def f_274(x):
+          return x + 274
+    bulk/mod_275.py: |
+      # unrelated to caller_of
+
+
+      def f_275(x):
+          return x + 275
+    bulk/mod_276.py: |
+      # unrelated to caller_of
+
+
+      def f_276(x):
+          return x + 276
+    bulk/mod_277.py: |
+      # unrelated to caller_of
+
+
+      def f_277(x):
+          return x + 277
+    bulk/mod_278.py: |
+      # unrelated to caller_of
+
+
+      def f_278(x):
+          return x + 278
+    bulk/mod_279.py: |
+      # unrelated to caller_of
+
+
+      def f_279(x):
+          return x + 279
+    bulk/mod_280.py: |
+      # unrelated to caller_of
+
+
+      def f_280(x):
+          return x + 280
+    bulk/mod_281.py: |
+      # unrelated to caller_of
+
+
+      def f_281(x):
+          return x + 281
+    bulk/mod_282.py: |
+      # unrelated to caller_of
+
+
+      def f_282(x):
+          return x + 282
+    bulk/mod_283.py: |
+      # unrelated to caller_of
+
+
+      def f_283(x):
+          return x + 283
+    bulk/mod_284.py: |
+      # unrelated to caller_of
+
+
+      def f_284(x):
+          return x + 284
+    bulk/mod_285.py: |
+      # unrelated to caller_of
+
+
+      def f_285(x):
+          return x + 285
+    bulk/mod_286.py: |
+      # unrelated to caller_of
+
+
+      def f_286(x):
+          return x + 286
+    bulk/mod_287.py: |
+      # unrelated to caller_of
+
+
+      def f_287(x):
+          return x + 287
+    bulk/mod_288.py: |
+      # unrelated to caller_of
+
+
+      def f_288(x):
+          return x + 288
+    bulk/mod_289.py: |
+      # unrelated to caller_of
+
+
+      def f_289(x):
+          return x + 289
+    bulk/mod_290.py: |
+      # unrelated to caller_of
+
+
+      def f_290(x):
+          return x + 290
+    bulk/mod_291.py: |
+      # unrelated to caller_of
+
+
+      def f_291(x):
+          return x + 291
+    bulk/mod_292.py: |
+      # unrelated to caller_of
+
+
+      def f_292(x):
+          return x + 292
+    bulk/mod_293.py: |
+      # unrelated to caller_of
+
+
+      def f_293(x):
+          return x + 293
+    bulk/mod_294.py: |
+      # unrelated to caller_of
+
+
+      def f_294(x):
+          return x + 294
+    bulk/mod_295.py: |
+      # unrelated to caller_of
+
+
+      def f_295(x):
+          return x + 295
+    bulk/mod_296.py: |
+      # unrelated to caller_of
+
+
+      def f_296(x):
+          return x + 296
+    bulk/mod_297.py: |
+      # unrelated to caller_of
+
+
+      def f_297(x):
+          return x + 297
+    bulk/mod_298.py: |
+      # unrelated to caller_of
+
+
+      def f_298(x):
+          return x + 298
+    bulk/mod_299.py: |
+      # unrelated to caller_of
+
+
+      def f_299(x):
+          return x + 299
+query:
+  symbol: caller_of
+expect:
+  definitions: [pkga/scopes.py::caller_of, pkgb/scopes.py::caller_of]
+  relations:
+    - {from: "pkga/scopes.py::local_user", to: "pkga/scopes.py::caller_of", kind: calls, resolution: resolved, site: 6}
+    - {from: "pkga/consumer.py::use", to: "pkga/scopes.py::caller_of", kind: calls, resolution: resolved, site: 5}
+    - {from: "pkgb/scopes.py::other_user", to: "pkgb/scopes.py::caller_of", kind: calls, resolution: resolved, site: 6}
+  exact: false
+  decoys:
+    "pkga/scopes.py::caller_of": [pkgb/scopes.py]
+    "pkgb/scopes.py::caller_of": [pkga/consumer.py, pkga/scopes.py]

@@ -1,0 +1,24 @@
+name: sql_truncate_in_a_go_raw_string_names_the_table
+mode: impact
+source: synthetic
+tags: [sql, literal-name, relation-statement, false-absence]
+repo:
+  initial_files:
+    db/mv.sql: |
+      CREATE MATERIALIZED VIEW daily_sales AS SELECT 1 AS n;
+    app/jobs.go: |
+      package app
+
+      func Reset(db DB) {
+      	db.Exec(`TRUNCATE daily_sales`)
+      }
+  changed_files:
+    db/mv.sql: |
+      CREATE MATERIALIZED VIEW daily_sales AS SELECT 2 AS n;
+  commit_message: "db: daily_sales counts two"
+expect:
+  exact: false
+  discloses: true
+  no_negative_claims: true
+  relations:
+    - {from: app/jobs.go, to: db/mv.sql::daily_sales, kind: calls, resolution: unresolved}

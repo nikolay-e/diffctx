@@ -1,0 +1,36 @@
+name: py_typevars_added_beside_a_removed_one_are_counted_as_changed_code
+mode: impact
+source: synthetic
+tags: [python, silent-loss, module-assignment, typevar]
+repo:
+  initial_files:
+    types.py: |
+      import typing as t
+
+      ParamTypeValue = t.TypeVar("ParamTypeValue")
+
+
+      class ParamType(t.Generic[ParamTypeValue]):
+          def convert(self, value: t.Any) -> ParamTypeValue:
+              return value
+  changed_files:
+    types.py: |
+      import typing as t
+
+      _ValueT = t.TypeVar("_ValueT")
+      _ValueT_co = t.TypeVar("_ValueT_co", covariant=True)
+      _FloatValueT = t.TypeVar("_FloatValueT", bound=float)
+
+
+      class ParamType(t.Generic[_ValueT_co]):
+          def convert(self, value: t.Any) -> _ValueT_co:
+              return value
+
+
+      def clamp(x: _FloatValueT) -> _FloatValueT:
+          return x
+  commit_message: "types: three type variables for the one"
+expect:
+  exact: false
+  changed: [types.py::ParamTypeValue, types.py::clamp]
+  outside: ["types.py:3", "types.py:4", "types.py:5"]

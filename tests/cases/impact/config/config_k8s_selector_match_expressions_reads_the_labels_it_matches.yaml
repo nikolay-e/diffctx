@@ -1,0 +1,65 @@
+name: config_k8s_selector_match_expressions_reads_the_labels_it_matches
+mode: impact
+source: fj#154
+issue_state: open
+tags: [config, kubernetes, selector, match-expressions, candidate, decoy]
+repo:
+  initial_files:
+    k8s/web.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: web
+      spec:
+        template:
+          metadata:
+            labels:
+              app: web
+              tier: ui
+          spec:
+            containers: []
+    k8s/pdb-ui.yaml: |
+      apiVersion: policy/v1
+      kind: PodDisruptionBudget
+      metadata:
+        name: ui
+      spec:
+        selector:
+          matchExpressions:
+            - key: tier
+              operator: In
+              values: [ui]
+    k8s/pdb-data.yaml: |
+      apiVersion: policy/v1
+      kind: PodDisruptionBudget
+      metadata:
+        name: data
+      spec:
+        selector:
+          matchExpressions:
+            - key: tier
+              operator: In
+              values: [data]
+  changed_files:
+    k8s/web.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: web
+      spec:
+        template:
+          metadata:
+            labels:
+              app: web
+              tier: edge
+          spec:
+            containers: []
+  commit_message: "web: move the pods to the edge tier"
+expect:
+  exact: false
+  # the ui budget matched the pods at base and no longer does: its reader row is
+  # the answer; the data budget never selected them
+  relations:
+    - {from: k8s/pdb-ui.yaml, to: k8s/web.yaml, kind: reads, resolution: candidate}
+  decoys:
+    k8s/web.yaml: [k8s/pdb-data.yaml]

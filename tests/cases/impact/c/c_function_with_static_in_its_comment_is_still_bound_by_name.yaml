@@ -1,0 +1,29 @@
+name: c_function_with_static_in_its_comment_is_still_bound_by_name
+mode: impact
+source: synthetic
+tags: [c, ffi, ctypes, static, comment, false-absence]
+repo:
+  initial_files:
+    native/native.c: |
+      int /* not static: exported for the Python binding */ nt_between_cents(int a, int b) { return a + b; }
+      /* static is not what this is */ int nt_leading_cents(int a, int b) { return a + b; }
+    py/native.py: |
+      import ctypes
+
+      lib = ctypes.CDLL("libnative.so")
+
+
+      def add(a, b):
+          return lib.nt_between_cents(a, b) + lib.nt_leading_cents(a, b)
+  changed_files:
+    native/native.c: |
+      int /* not static: exported for the Python binding */ nt_between_cents(int a, int b) { return a + b + 1; }
+      /* static is not what this is */ int nt_leading_cents(int a, int b) { return a + b + 1; }
+  commit_message: "native: the commented functions add one"
+expect:
+  exact: false
+  discloses: true
+  no_negative_claims: true
+  relations:
+    - {from: py/native.py, to: native/native.c::nt_between_cents, kind: calls, resolution: unresolved}
+    - {from: py/native.py, to: native/native.c::nt_leading_cents, kind: calls, resolution: unresolved}

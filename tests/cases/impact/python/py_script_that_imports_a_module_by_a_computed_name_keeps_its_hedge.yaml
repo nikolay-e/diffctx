@@ -1,0 +1,29 @@
+name: py_script_that_imports_a_module_by_a_computed_name_keeps_its_hedge
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [python, script, hedge, untyped-receiver, dynamic-import, decoy]
+repo:
+  initial_files:
+    tools/device.py: |
+      class Device:
+          def call(self, method, path):
+              return {"method": method, "path": path}
+    tools/migrate.py: |
+      import importlib
+
+
+      def fixture(module, client, path):
+          importlib.import_module(module)
+          return client.call("GET", path)
+  changed_files:
+    tools/device.py: |
+      class Device:
+          def call(self, method, path):
+              return {"method": method, "path": path, "ok": True}
+  commit_message: "device: say it worked"
+expect:
+  changed: [tools/device.py::Device.call]
+  partial:
+    tools/device.py::Device.call:
+      calls: unlanded

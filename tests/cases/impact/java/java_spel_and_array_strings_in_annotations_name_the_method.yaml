@@ -1,0 +1,112 @@
+name: java_spel_and_array_strings_in_annotations_name_the_method
+mode: impact
+source: synthetic
+tags: [java, literal-name, spel, annotation]
+repo:
+  initial_files:
+    src/main/java/com/acme/lib/Authz.java: |
+      package com.acme.lib;
+
+      public class Authz {
+          public boolean canView(long id) {
+              return id > 0;
+          }
+
+          public boolean enabled() {
+              return true;
+          }
+
+          public boolean limited() {
+              return true;
+          }
+
+          public boolean provide() {
+              return true;
+          }
+
+          public boolean selected() {
+              return true;
+          }
+      }
+    src/main/java/com/acme/app/Ctl.java: |
+      package com.acme.app;
+
+      import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
+      import org.springframework.security.access.prepost.PreAuthorize;
+      import org.junit.jupiter.params.provider.MethodSource;
+
+      public class Ctl {
+          @PreAuthorize("hasRole('ADMIN') and @authz.canView(#id)")
+          public String view(long id) {
+              return "v";
+          }
+
+          @ConditionalOnExpression("@authz.enabled() > 0")
+          public String gated() {
+              return "g";
+          }
+
+          @ConditionalOnExpression("#{authz.limited() > 0}")
+          public String bounded() {
+              return "b";
+          }
+
+          @MethodSource({"first", "provide"})
+          public void many() {
+          }
+
+          @MethodSource({"selected"})
+          public void single() {
+          }
+      }
+  changed_files:
+    src/main/java/com/acme/lib/Authz.java: |
+      package com.acme.lib;
+
+      public class Authz {
+          public boolean canView(long id) {
+              return id > 1;
+          }
+
+          public boolean enabled() {
+              return false;
+          }
+
+          public boolean limited() {
+              return false;
+          }
+
+          public boolean provide() {
+              return false;
+          }
+
+          public boolean selected() {
+              return false;
+          }
+      }
+  commit_message: "authz: stricter checks"
+expect:
+  exact: false
+  discloses: true
+  no_negative_claims: true
+  relations:
+    - from: src/main/java/com/acme/app/Ctl.java
+      to: src/main/java/com/acme/lib/Authz.java::canView
+      kind: calls
+      resolution: unresolved
+    - from: src/main/java/com/acme/app/Ctl.java
+      to: src/main/java/com/acme/lib/Authz.java::enabled
+      kind: calls
+      resolution: unresolved
+    - from: src/main/java/com/acme/app/Ctl.java
+      to: src/main/java/com/acme/lib/Authz.java::limited
+      kind: calls
+      resolution: unresolved
+    - from: src/main/java/com/acme/app/Ctl.java
+      to: src/main/java/com/acme/lib/Authz.java::provide
+      kind: calls
+      resolution: unresolved
+    - from: src/main/java/com/acme/app/Ctl.java
+      to: src/main/java/com/acme/lib/Authz.java::selected
+      kind: calls
+      resolution: unresolved

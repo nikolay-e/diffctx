@@ -1,0 +1,21 @@
+name: sql_pg_dump_table_flag_in_a_shell_script_names_the_table
+mode: impact
+source: synthetic
+tags: [sql, literal-name, relation-statement, false-absence]
+repo:
+  initial_files:
+    db/mv.sql: |
+      CREATE MATERIALIZED VIEW daily_sales AS SELECT 1 AS n;
+    bin/backup.sh: |
+      #!/usr/bin/env bash
+      pg_dump -t daily_sales appdb > backup.sql
+  changed_files:
+    db/mv.sql: |
+      CREATE MATERIALIZED VIEW daily_sales AS SELECT 2 AS n;
+  commit_message: "db: daily_sales counts two"
+expect:
+  exact: false
+  discloses: true
+  no_negative_claims: true
+  relations:
+    - {from: bin/backup.sh, to: db/mv.sql::daily_sales, kind: calls, resolution: unresolved}

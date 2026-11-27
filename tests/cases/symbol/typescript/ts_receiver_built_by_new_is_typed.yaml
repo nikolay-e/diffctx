@@ -1,0 +1,39 @@
+name: ts_receiver_built_by_new_is_typed
+mode: symbol
+source: gh#611
+issue_state: open
+tags: [typescript, receiver-typing, new-expression]
+repo:
+  initial_files:
+    src/items.ts: |
+      export class ItemsService {
+        constructor(private base: string) {}
+
+        async byIds(ids: string[]): Promise<string[]> {
+          return ids.map((i) => this.base + i);
+        }
+      }
+    src/use.ts: |
+      import { ItemsService } from './items';
+
+      const items = new ItemsService('/x/');
+
+      export async function load(ids: string[]) {
+        return items.byIds(ids);
+      }
+
+      export async function loadFresh(ids: string[]) {
+        return new ItemsService('/y/').byIds(ids);
+      }
+
+      export async function loadTyped(svc: ItemsService, ids: string[]) {
+        return svc.byIds(ids);
+      }
+query:
+  symbol: byIds
+expect:
+  definitions: [src/items.ts::byIds]
+  relations:
+    - {from: "src/use.ts::load", to: "src/items.ts::byIds", kind: calls, resolution: resolved, site: 6}
+    - {from: "src/use.ts::loadFresh", to: "src/items.ts::byIds", kind: calls, resolution: resolved, site: 10}
+    - {from: "src/use.ts::loadTyped", to: "src/items.ts::byIds", kind: calls, resolution: resolved, site: 14}

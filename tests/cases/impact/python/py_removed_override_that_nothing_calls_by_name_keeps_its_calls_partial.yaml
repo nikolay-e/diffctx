@@ -1,0 +1,35 @@
+name: py_removed_override_that_nothing_calls_by_name_keeps_its_calls_partial
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [python, removed, override, inheritance, coverage]
+repo:
+  initial_files:
+    models.py: |
+      class A:
+          def m(self):
+              return 1
+
+
+      class B(A):
+          def m(self):
+              return 2
+  changed_files:
+    models.py: |
+      class A:
+          def m(self):
+              return 1
+
+
+      class B(A):
+          pass
+  commit_message: "models: B inherits m"
+expect:
+  exact: false
+  removed: [m]
+  # Nothing spells a call of `m`, but a call of `A.m` on a `B` reached the override
+  # and now lands on the inherited method: the calls of the removed override are
+  # not all found, so the answer cannot call them complete.
+  coverage:
+    models.py::B.m:
+      calls: partial

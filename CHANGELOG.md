@@ -46,6 +46,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Python 3.11 or newer is required; 3.10 is past end of life (see
+  MIGRATION.md).
+- Provenance is `diffctx.provenance.v2`: it drops `input.diff_range`, which
+  repeated `range.spec` (two more commit ids in every artifact); `base` and
+  `head` stay.
+
 - Untyped name matches (the config-to-code scan and the shared-identifier
   fallback) are one category, `key_match`, which replaces `config_generic`
   (still accepted wherever a category is typed). A name match between two
@@ -58,9 +64,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A Dockerfile's `ENV` and `ARG` no longer link it to every `.env` file, and
   two Kubernetes manifests no longer link because they run the same image;
   both relations come from the typed key links.
+- Every door delivers what the engine hands it. What an empty diff exits with
+  (4) and says, the early-stop disclosure, the token summary, the redaction
+  line and the share of the raw diff are decided once, so the Python CLI and
+  the native binary word them alike: a locate run that finds nothing now names
+  the hint the other modes do, and the native binary says when it redacted a
+  secret. The Python CLI's impact and locate output goes out through the same
+  writer as pack, so a closed pipe ends it with 141 there too. The native
+  binary takes `--with-raw-diff` (pack mode only), and bundles the same patch
+  the Python CLI does.
+- The MCP tool's `max_tokens` is a ceiling the reply is fitted to, not a check
+  made after it: an answer larger than it is cut to it instead of refused, and
+  only a ceiling below the least an answer can say still sends the notice.
+  `budget_tokens` defaults to none, so each mode's own default applies as at
+  the command line: 2 000 for impact, the auto budget for locate and pack (the
+  tool said 8 000 for all three). The raw diff counts against `max_tokens`.
 
 ### Fixed
 
+- Two methods of one name in one file (`A::new` and `B::new`, `A.run` and
+  `B.run`) that call a changed function are two callers, not one row named
+  `new` spanning both classes. In the text answer an implementer of a changed
+  trait method reads "implemented by", not "called from".
 - A table keeps the schema it is spelled behind: `stems.assets` and
   `library.assets` are two tables, so a migration of one no longer pulls in the
   other's model or queries. A name written without a schema is the one its own
@@ -111,6 +136,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - "Named by path": a sentence in a config's string (a JSON dump, a
   `description:`) is no consumer, and pages and templates rank behind scripts
   and configs so the cap drops them first (Refs #673).
+- The readers of a changed key past the cap were counted under "Named by
+  path", which then printed only `- and N more` while the key list showed no
+  count. Each list now counts its own rows, in the Markdown answer and in
+  `named.by_path` and `named.by_key` (Forgejo #218).
 - A component loaded with `const Card = lazy(() => import('./Card'))` had no
   callers: the dynamic import now binds the module's default export, so the
   component it renders is a reference to it (Forgejo #106).
@@ -124,9 +153,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   as the keys were, and the file that spells it is named with its line. A key
   of the typed key table (an environment variable, an image, a route, a table)
   names its readers through the table, which knows `{id}` and `<int:id>` are
-  one route (Forgejo #109). The value search is bounded: the smallest changes
-  are searched first, at most 16 terms from each config and 96 in all, and the
-  configs left out stay "not followed" with their count named.
+  one route (Forgejo #109). A value is read as its file quotes it: a quote
+  opens where a value starts (`["--queue jobs"]`, `FLAGS='--profile nightly'`),
+  and compact JSON splits at its commas and after a quoted key, so a word is
+  never searched with a quote or a neighbour attached (Forgejo #262). The
+  value search is bounded: the smallest changes are searched first, at most 16
+  terms from each config and 96 in all, and the configs left out stay "not
+  followed" with their count named.
 
 ## [1.20.0] - 2026-10-22
 

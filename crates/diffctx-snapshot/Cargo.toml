@@ -1,0 +1,39 @@
+[package]
+name = "diffctx-snapshot"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "The reader of a repository state for diffctx: git, the working tree, admission, the run's deadline and what it could not read"
+license-file.workspace = true
+repository.workspace = true
+homepage = "https://diffctx.com/"
+readme = "../../README.md"
+keywords = ["git", "diff", "llm", "context"]
+categories = ["development-tools"]
+
+[features]
+test-support = []
+
+[dependencies]
+aho-corasick.workspace = true
+diffctx-base.workspace = true
+diffctx-config.workspace = true
+dunce.workspace = true
+libc.workspace = true
+once_cell.workspace = true
+rayon.workspace = true
+regex.workspace = true
+rustc-hash.workspace = true
+schemars.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+toml.workspace = true
+tracing.workspace = true
+wait-timeout.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[lints]
+workspace = true

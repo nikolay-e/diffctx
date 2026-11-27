@@ -1,0 +1,121 @@
+name: ts_call_edge_does_not_depend_on_unrelated_code_later_in_the_function
+mode: symbol
+source: gh#476
+issue_state: open
+tags: [typescript, tsx, call-edge, nested-try]
+repo:
+  initial_files:
+    src/lib/book.ts: |
+      export async function downloadBook(id: number): Promise<{ total: number; failed: number; full: boolean }> {
+        return { total: id, failed: 0, full: false };
+      }
+
+      export class TooLargeError extends Error {
+        constructor(readonly needed: number) {
+          super('too large');
+        }
+      }
+    src/ui/Panel.tsx: |
+      import { useEffect, useState } from 'react';
+      import { TooLargeError, downloadBook } from '../lib/book';
+
+      const RESET_MS = 5000;
+      const MB = 1024 * 1024;
+
+      export function useHeld(id: number): number {
+        const [held] = useState(id);
+        return held;
+      }
+
+      function useBusy(id: number): boolean {
+        const [busy] = useState(id > 0);
+        return busy;
+      }
+
+      function report(total: number, failed: number, full: boolean): void {
+        if (full) {
+          console.warn('full', total);
+          return;
+        }
+        if (failed > 0) {
+          console.warn('failed', failed);
+          return;
+        }
+        console.info('done', total);
+      }
+
+      export function Panel({
+        id,
+        iconOnly = false,
+        className,
+      }: Readonly<{ id: number; iconOnly?: boolean; className?: string }>) {
+        const held = useHeld(id);
+        const downloading = useBusy(id);
+        const [starting, setStarting] = useState(false);
+        const [confirming, setConfirming] = useState(false);
+        const complete = held > 3;
+        useEffect(() => {
+          if (!confirming) return;
+          const timer = setTimeout(() => setConfirming(false), RESET_MS);
+          return () => clearTimeout(timer);
+        }, [confirming]);
+        const busy = starting || downloading;
+        const current = complete && !busy;
+        const start = async () => {
+          setStarting(true);
+          try {
+            try {
+              const result = await downloadBook(id);
+              report(result.total, result.failed, result.full);
+            } catch (error) {
+              if (error instanceof TooLargeError) {
+                console.error('too large', Math.ceil(error.needed / MB));
+                return;
+              }
+              throw error;
+            }
+          } catch (error) {
+            console.warn('failed', String(error));
+          } finally {
+            setStarting(false);
+          }
+        };
+        const handleClick = () => {
+          if (busy) return;
+          if (current) {
+            if (!confirming) {
+              setConfirming(true);
+              return;
+            }
+            setConfirming(false);
+            return;
+          }
+          void start();
+        };
+        let state: 'idle' | 'busy' | 'done' = 'idle';
+        if (busy) state = 'busy';
+        else if (current) state = 'done';
+        return (
+          <button
+            type="button"
+            onClick={handleClick}
+            disabled={busy}
+            data-state={state}
+            className={className}
+            aria-label={iconOnly ? 'Download' : undefined}
+          >
+            {state === 'busy' ? 'Downloading' : state === 'done' ? 'Downloaded' : 'Download'}
+            {confirming && <span>Tap again to remove</span>}
+          </button>
+        );
+      }
+query:
+  symbol: downloadBook
+expect:
+  definitions: [src/lib/book.ts::downloadBook]
+  relations:
+    - from: "src/ui/Panel.tsx::Panel"
+      to: "src/lib/book.ts::downloadBook"
+      kind: "calls"
+      resolution: "resolved"
+      site: 50

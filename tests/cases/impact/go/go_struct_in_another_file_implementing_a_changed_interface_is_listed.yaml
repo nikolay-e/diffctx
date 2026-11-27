@@ -1,0 +1,41 @@
+name: go_struct_in_another_file_implementing_a_changed_interface_is_listed
+mode: impact
+source: synthetic
+issue_state: open
+tags: [go, interface, implementation, cross-file]
+repo:
+  initial_files:
+    go.mod: |
+      module demo
+
+      go 1.21
+    store.go: |
+      package demo
+
+      type Store interface {
+          Get(string) string
+      }
+    disk.go: |
+      package demo
+
+      type disk struct{}
+
+      func (d *disk) Get(key string) string {
+          return key
+      }
+
+      func (d *disk) Put(key, value string) {}
+  changed_files:
+    store.go: |
+      package demo
+
+      type Store interface {
+          Get(string) string
+          Put(string, string)
+      }
+  commit_message: "store: Store requires Put"
+expect:
+  exact: false
+  relations:
+    # disk has Get and Put, so it implements the changed interface, from a file the range does not touch.
+    - {from: disk.go::disk.Put, to: store.go::Store.Put, kind: overrides, resolution: candidate, site: 9}

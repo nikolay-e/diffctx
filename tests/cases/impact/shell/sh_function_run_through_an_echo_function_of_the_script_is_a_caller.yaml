@@ -1,0 +1,31 @@
+name: sh_function_run_through_an_echo_function_of_the_script_is_a_caller
+mode: impact
+source: synthetic
+issue_state: open
+tags: [shell, builtin, wrapper, absence-claim]
+repo:
+  initial_files:
+    lib.sh: |
+      check() {
+        return 0
+      }
+    run.sh: |
+      #!/bin/sh
+      . ./lib.sh
+      echo() {
+        "$@"
+      }
+      echo check
+  changed_files:
+    lib.sh: |
+      check() {
+        return 1
+      }
+  commit_message: change
+expect:
+  changed: ['lib.sh::check']
+  relations:
+  - {from: run.sh, to: 'lib.sh::check', kind: calls, resolution: resolved}
+  exact: false
+  never_empty: true
+  no_negative_claims: true

@@ -1,0 +1,58 @@
+name: py_removed_middle_field_with_a_typed_reader_is_named_as_removed
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [python, removed-definition, removed-api, absence-claim, dataclass, contract]
+repo:
+  initial_files:
+    pkg/__init__.py: ""
+    pkg/model.py: |
+      from dataclasses import dataclass
+
+
+      @dataclass
+      class Item:
+          id: int
+          text: str
+          size: int
+          source: str
+    pkg/reader.py: |
+      from pkg.model import Item
+
+
+      def typed(item: Item) -> str:
+          return item.text + str(item.size)
+
+
+      def untyped(item):
+          return item.source + item.text
+    tests/test_reader.py: |
+      from pkg.model import Item
+      from pkg.reader import typed
+
+
+      def test_typed():
+          assert typed(Item(1, "a", 2, "s")) == "a2"
+  changed_files:
+    pkg/model.py: |
+      from dataclasses import dataclass
+
+
+      @dataclass
+      class Item:
+          id: int
+          size: int
+          source: str
+  commit_message: "model: drop the text field"
+expect:
+  removed: [pkg/model.py::text]
+  contracts: [pkg/model.py]
+  relations:
+    - {from: pkg/reader.py::typed, to: pkg/model.py::text, kind: reads, site: 5}
+    - {from: pkg/reader.py::untyped, to: pkg/model.py::text, kind: reads,
+       resolution: candidate, site: 9}
+    - {from: tests/test_reader.py::test_typed, to: pkg/reader.py::typed,
+       kind: tests_reach}
+  exact: false
+  never_empty: true
+  no_negative_claims: true

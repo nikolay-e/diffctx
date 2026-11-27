@@ -1,0 +1,25 @@
+name: gh708_parameter_is_the_definition_when_only_a_keyword_names_it
+mode: symbol
+source: gh#708
+issue_state: closed
+tags: [python, keyword-argument, parameter, dataflow]
+repo:
+  initial_files:
+    net/__init__.py: ""
+    net/fetch.py: |
+      def fetch(url, retries=3):
+          return [url] * retries
+    app/__init__.py: ""
+    app/sync.py: |
+      from net.fetch import fetch
+
+
+      def pull(settings):
+          return fetch("https://x", retries=settings.retries)
+query:
+  symbol: retries
+expect:
+  exact: false
+  definitions: [net/fetch.py::fetch]
+  relations:
+    - {from: app/sync.py::pull, to: net/fetch.py::fetch, kind: calls, resolution: resolved, site: 5}

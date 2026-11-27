@@ -1,0 +1,33 @@
+name: php_method_moved_to_another_type_is_removed_from_the_first
+mode: impact
+source: synthetic
+tags: [php, move, removed]
+repo:
+  initial_files:
+    Foo.php: |
+      <?php
+      class Foo {
+          public function a() { return 1; }
+
+          public function total() { return 2; }
+      }
+      class Bar {}
+    use.php: |
+      <?php
+      function go(Foo $f) { return $f->total(); }
+  changed_files:
+    Foo.php: |
+      <?php
+      class Foo {
+          public function a() { return 1; }
+      }
+      class Bar {
+          public function total() { return 2; }
+      }
+  commit_message: Move total to Bar
+expect:
+  removed: ['Foo.php::Foo.total']
+  relations:
+  - {from: 'use.php::go', to: 'Foo.php::Foo.total', kind: calls, resolution: resolved}
+  partial:
+    'Foo.php::Foo.total': {calls: unlanded}

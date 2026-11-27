@@ -1,0 +1,38 @@
+name: php_callable_string_on_its_own_line_names_the_function
+mode: impact
+source: synthetic
+tags: [php, literal-name, callable-string, array-value, wordpress]
+repo:
+  initial_files:
+    src/handlers.php: |
+      <?php
+
+      function acme_list_items(): array
+      {
+          return [];
+      }
+    src/routes.php: |
+      <?php
+
+      add_action('rest_api_init', function () {
+          register_rest_route('acme/v1', '/items', [
+              'methods' => 'GET',
+              'callback' =>
+                  'acme_list_items',
+          ]);
+      });
+  changed_files:
+    src/handlers.php: |
+      <?php
+
+      function acme_list_items(): array
+      {
+          return ['all'];
+      }
+  commit_message: "handlers: list every item"
+expect:
+  exact: false
+  discloses: true
+  no_negative_claims: true
+  relations:
+    - {from: src/routes.php, to: src/handlers.php::acme_list_items, kind: calls, resolution: unresolved}

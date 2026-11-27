@@ -1,0 +1,42 @@
+name: py_member_shared_with_third_party_types_is_not_resolved_by_name
+mode: impact
+source: gh#399
+issue_state: closed
+tags: [python, attribute-read, decoy]
+repo:
+  initial_files:
+    models/__init__.py: ""
+    models/table.py: |
+      class Table:
+          def __init__(self, rows):
+              self.rows = rows
+    reports/__init__.py: ""
+    reports/summary.py: |
+      import pandas as pd
+
+
+      def names(path):
+          df = pd.read_csv(path)
+          return list(df.columns)
+  changed_files:
+    models/table.py: |
+      class Table:
+          def __init__(self, rows):
+              self.rows = rows
+
+          @property
+          def columns(self):
+              return sorted(self.rows[0])
+  commit_message: "table: expose the column names"
+expect:
+  callers:
+    columns: []
+  # `df = pd.read_csv(path)` is a local the module builds from a call result, not a
+  # parameter an outside caller fills, and it holds what pandas hands back. No file
+  # imports models/table.py and the repository publishes no package, so no Table
+  # circulates beyond that file: `df.columns` is no read of the property, and the
+  # answer is complete. A parameter of an uncalled function reading a class another
+  # file imports stays an open gap, and a published module keeps its hedge
+  # (py_published_module_nothing_imports_keeps_its_hedge).
+  decoys:
+    columns: [reports/summary.py]

@@ -1,0 +1,37 @@
+name: java_spring_xml_init_method_names_the_method
+mode: impact
+source: synthetic
+tags: [java, literal-name, spring-xml]
+repo:
+  initial_files:
+    src/main/java/com/acme/Calc.java: |
+      package com.acme;
+
+      public class Calc {
+          public void init() {
+              System.out.println("ready");
+          }
+      }
+    src/main/resources/beans.xml: |
+      <beans>
+        <bean id="calc" class="com.acme.Calc" init-method="init"/>
+      </beans>
+  changed_files:
+    src/main/java/com/acme/Calc.java: |
+      package com.acme;
+
+      public class Calc {
+          public void init() {
+              System.out.println("ready now");
+          }
+      }
+  commit_message: "calc: init says ready now"
+expect:
+  exact: false
+  discloses: true
+  no_negative_claims: true
+  relations:
+    - from: src/main/resources/beans.xml
+      to: src/main/java/com/acme/Calc.java::init
+      kind: calls
+      resolution: unresolved

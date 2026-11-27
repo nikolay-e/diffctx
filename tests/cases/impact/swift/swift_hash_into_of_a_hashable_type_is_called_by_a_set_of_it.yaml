@@ -1,0 +1,37 @@
+name: swift_hash_into_of_a_hashable_type_is_called_by_a_set_of_it
+mode: impact
+source: synthetic
+tags: [swift, protocol, hashable, false-absence]
+repo:
+  initial_files:
+    Sources/Lib/Money.swift: |
+      public struct Money: Hashable {
+          public var cents: Int
+          public init(cents: Int) { self.cents = cents }
+          public func hash(into hasher: inout Hasher) {
+              hasher.combine(cents)
+          }
+      }
+    Sources/App/main.swift: |
+      import Lib
+
+      let price = Money(cents: 5)
+      var seen: Set<Money> = [price]
+      seen.insert(Money(cents: 7))
+  changed_files:
+    Sources/Lib/Money.swift: |
+      public struct Money: Hashable {
+          public var cents: Int
+          public init(cents: Int) { self.cents = cents }
+          public func hash(into hasher: inout Hasher) {
+              hasher.combine(cents / 100)
+          }
+      }
+  commit_message: "money: hash by whole units"
+expect:
+  changed: [Sources/Lib/Money.swift::hash]
+  discloses: true
+  no_negative_claims: true
+  partial:
+    Sources/Lib/Money.swift::hash:
+      calls: implicitly_constructed

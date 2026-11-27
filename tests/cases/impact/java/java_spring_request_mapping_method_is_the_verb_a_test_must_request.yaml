@@ -1,0 +1,64 @@
+name: java_spring_request_mapping_method_is_the_verb_a_test_must_request
+mode: impact
+source: gh#739
+issue_state: open
+tags:
+- java
+- spring
+- route
+- tests-reach
+repo:
+  initial_files:
+    src/main/java/demo/OrderController.java: |
+      package demo;
+
+      import org.springframework.web.bind.annotation.RequestMapping;
+      import org.springframework.web.bind.annotation.RequestMethod;
+      import org.springframework.web.bind.annotation.RestController;
+
+      @RestController
+      public class OrderController {
+          @RequestMapping(value = "/orders", method = RequestMethod.POST)
+          public String add() {
+              return "added";
+          }
+
+          @RequestMapping(value = "/orders", method = RequestMethod.GET)
+          public String list() {
+              return "listed";
+          }
+      }
+    src/test/java/demo/PlacingOrdersTest.java: |
+      package demo;
+
+      import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+
+      class PlacingOrdersTest {
+          void placesAnOrder(org.springframework.test.web.servlet.MockMvc mockMvc) throws Exception {
+              mockMvc.perform(post("/orders").content("{}"));
+          }
+      }
+  changed_files:
+    src/main/java/demo/OrderController.java: |
+      package demo;
+
+      import org.springframework.web.bind.annotation.RequestMapping;
+      import org.springframework.web.bind.annotation.RequestMethod;
+      import org.springframework.web.bind.annotation.RestController;
+
+      @RestController
+      public class OrderController {
+          @RequestMapping(value = "/orders", method = RequestMethod.POST)
+          public String add() {
+              return "added it";
+          }
+
+          @RequestMapping(value = "/orders", method = RequestMethod.GET)
+          public String list() {
+              return "listed them";
+          }
+      }
+  commit_message: Reword both answers
+expect:
+  entry_tested: [add]
+  entry_not_tested: [list]

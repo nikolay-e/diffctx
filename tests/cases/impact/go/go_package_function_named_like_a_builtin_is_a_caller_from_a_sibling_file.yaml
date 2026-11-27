@@ -1,0 +1,42 @@
+name: go_package_function_named_like_a_builtin_is_a_caller_from_a_sibling_file
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [go, builtin, shadowing]
+repo:
+  initial_files:
+    go.mod: |
+      module example.com/app
+
+      go 1.21
+    util/max.go: |
+      package util
+
+      func max(a, b int) int {
+          if a > b {
+              return a
+          }
+          return b
+      }
+    util/use.go: |
+      package util
+
+      func Top(a, b int) int {
+          return max(a, b)
+      }
+  changed_files:
+    util/max.go: |
+      package util
+
+      func max(a, b int) int {
+          if a >= b {
+              return a
+          }
+          return b
+      }
+  commit_message: change
+expect:
+  changed: ['util/max.go::max']
+  relations:
+  - {from: 'util/use.go::Top', to: 'util/max.go::max', kind: calls, resolution: resolved}
+  exact: false

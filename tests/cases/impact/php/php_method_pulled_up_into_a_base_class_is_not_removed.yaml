@@ -1,0 +1,29 @@
+name: php_method_pulled_up_into_a_base_class_is_not_removed
+mode: impact
+source: synthetic
+tags: [php, move, removed, inheritance]
+repo:
+  initial_files:
+    Foo.php: |
+      <?php
+      class Base {
+          public function a() { return 1; }
+      }
+      class Sub extends Base {
+          public function total() { return 2; }
+      }
+    use.php: |
+      <?php
+      function go(Sub $s) { return $s->total(); }
+  changed_files:
+    Foo.php: |
+      <?php
+      class Base {
+          public function a() { return 1; }
+          public function total() { return 2; }
+      }
+      class Sub extends Base {
+      }
+  commit_message: Pull total up into Base
+expect:
+  removed: []

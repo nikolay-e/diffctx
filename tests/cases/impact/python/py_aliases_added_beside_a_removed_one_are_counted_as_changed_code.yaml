@@ -1,0 +1,35 @@
+name: py_aliases_added_beside_a_removed_one_are_counted_as_changed_code
+mode: impact
+source: synthetic
+tags: [python, silent-loss, module-assignment, alias]
+repo:
+  initial_files:
+    conftest.py: |
+      import typing
+
+      _Scope = typing.Dict[str, typing.Any]
+
+
+      async def app(scope: _Scope, receive, send) -> None:
+          pass
+  changed_files:
+    conftest.py: |
+      import typing
+
+      Message = typing.Dict[str, typing.Any]
+      Receive = typing.Callable[[], typing.Awaitable[Message]]
+      Send = typing.Callable[
+          [typing.Dict[str, typing.Any]], typing.Coroutine[None, None, None]
+      ]
+      Scope = typing.Dict[str, typing.Any]
+
+
+      async def app(scope: Scope, receive: Receive, send: Send) -> None:
+          pass
+  commit_message: "conftest: name the ASGI aliases"
+# `Message` and `Scope` pair ambiguously with the removed `_Scope` and are named; `Receive` and `Send` are not,
+# and their lines are the ones the answer must still count.
+expect:
+  exact: false
+  changed: [conftest.py::app]
+  outside: ["conftest.py:4", "conftest.py:5"]

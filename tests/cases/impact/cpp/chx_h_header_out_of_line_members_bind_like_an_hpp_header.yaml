@@ -1,0 +1,75 @@
+name: chx_h_header_out_of_line_members_bind_like_an_hpp_header
+mode: impact
+source: synthetic
+issue_state: closed
+tags:
+- cpp
+- out-of-line
+- header-extension
+repo:
+  initial_files:
+    include/app/eng.h: |
+      #pragma once
+
+      namespace app {
+      class Engine {
+      public:
+          int viaPtr() const;
+          int viaRef() const;
+      };
+      }
+
+      struct cpoint { int x; int y; };
+      int cpoint_sum(const struct cpoint* p);
+    src/eng.cpp: |
+      #include "app/eng.h"
+
+      namespace app {
+      int Engine::viaPtr() const { return 1; }
+      int Engine::viaRef() const { return 1; }
+      }
+      int cpoint_sum(const struct cpoint* p) { return p->x + p->y + 1; }
+    src/use.cpp: |
+      #include "app/eng.h"
+
+      int a(const app::Engine* e) { return e->viaPtr(); }
+      int b(const app::Engine& e) { return e.viaRef(); }
+      int g() { struct cpoint p = {1, 2}; return cpoint_sum(&p); }
+  changed_files:
+    src/eng.cpp: |
+      #include "app/eng.h"
+
+      namespace app {
+      int Engine::viaPtr() const { return 2; }
+      int Engine::viaRef() const { return 2; }
+      }
+      int cpoint_sum(const struct cpoint* p) { return p->x + p->y + 2; }
+  commit_message: Change out of line members declared in a dot h header
+expect:
+  changed:
+  - src/eng.cpp::Engine.viaPtr
+  - src/eng.cpp::Engine.viaRef
+  - src/eng.cpp::cpoint_sum
+  relations:
+  - from: src/use.cpp::a
+    to: src/eng.cpp::Engine.viaPtr
+    kind: calls
+    resolution: resolved
+    site: 3
+  - from: src/use.cpp::b
+    to: src/eng.cpp::Engine.viaRef
+    kind: calls
+    resolution: resolved
+    site: 4
+  - from: src/use.cpp::g
+    to: src/eng.cpp::cpoint_sum
+    kind: calls
+    resolution: resolved
+    site: 5
+  coverage:
+    src/eng.cpp::Engine.viaPtr:
+      calls: complete
+    src/eng.cpp::Engine.viaRef:
+      calls: complete
+    src/eng.cpp::cpoint_sum:
+      calls: complete

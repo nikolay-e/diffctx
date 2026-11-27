@@ -7,7 +7,7 @@ use std::path::Path;
 use tempfile::TempDir;
 
 mod support;
-use support::{diffctx, git, write};
+use support::{NO_WALL_DEADLINE, diffctx, git, write};
 
 const CALLERS: usize = 12;
 
@@ -53,7 +53,7 @@ fn run(repo: &Path, args: &[&str], polls: Option<u64>) -> serde_json::Value {
     let mut cmd = diffctx();
     cmd.current_dir(repo)
         .args(args)
-        .args(["-q", "--timeout", "600"]);
+        .args(["-q", "--timeout", NO_WALL_DEADLINE]);
     if let Some(n) = polls {
         cmd.env("DIFFCTX_TEST_DEADLINE_AFTER_POLLS", n.to_string());
     }
@@ -67,7 +67,7 @@ fn run(repo: &Path, args: &[&str], polls: Option<u64>) -> serde_json::Value {
 }
 
 fn limits(doc: &serde_json::Value) -> Vec<String> {
-    doc["coverage"]["limit_reasons"]
+    doc["coverage"]["limits"]
         .as_array()
         .into_iter()
         .flatten()
@@ -164,14 +164,29 @@ fn a_locate_run_stopped_at_any_poll_names_the_deadline_or_answers_in_full() {
 /// The regions whose loops walk the repository: a whole module up to its
 /// tests, or one function of a larger one.
 const BOUNDED_REGIONS: &[(&str, Option<&str>)] = &[
-    ("src/candidate_files.rs", None),
-    ("src/discovery.rs", None),
-    ("src/token_corpus.rs", Some("build")),
+    ("../diffctx-snapshot/src/candidate_files.rs", None),
+    ("../diffctx-graph/src/discovery.rs", None),
+    ("../diffctx-graph/src/token_corpus.rs", Some("build")),
     ("src/pipeline.rs", Some("build_file_cache")),
-    ("src/impact.rs", Some("unanalysed_files")),
-    ("src/impact.rs", Some("missed_namers")),
-    ("src/impact.rs", Some("stale_references")),
-    ("src/impact.rs", Some("fit_with")),
+    (
+        "../diffctx-answer/src/impact/unanalysed.rs",
+        Some("unanalysed_files"),
+    ),
+    (
+        "../diffctx-occurrence/src/tokens/occurrence/debug.rs",
+        Some("embedded_uses"),
+    ),
+    (
+        "../diffctx-answer/src/impact/mentions.rs",
+        Some("stale_references"),
+    ),
+    ("../diffctx-answer/src/impact/deliver.rs", Some("fit_with")),
+    ("../diffctx-base/src/fit.rs", None),
+    // The snapshot layer lists and reads the repository for every run: its
+    // loops are over a listing already in memory, and each git call and
+    // object read beneath them carries the run's deadline and cancellation.
+    ("../diffctx-snapshot/src/snapshot/reader.rs", None),
+    ("../diffctx-snapshot/src/snapshot/changes.rs", None),
 ];
 
 /// Loops in those regions over something smaller than the repository, each
@@ -179,114 +194,194 @@ const BOUNDED_REGIONS: &[(&str, Option<&str>)] = &[
 /// cannot outlive the code it excuses.
 const NOT_OVER_THE_REPOSITORY: &[(&str, &str, &str)] = &[
     (
-        "src/candidate_files.rs",
-        "for walk_root in walk_roots",
-        "the scope's roots",
-    ),
-    (
-        "src/candidate_files.rs",
-        "files .into_par_iter()",
-        "a path check per file the bounded walk admitted; it reads nothing",
-    ),
-    (
-        "src/discovery.rs",
+        "../diffctx-graph/src/discovery.rs",
         "for f in rare_files",
         "rare_identifier_threshold files per identifier of the diff",
     ),
     (
-        "src/discovery.rs",
+        "../diffctx-graph/src/discovery.rs",
         "for ident in &ctx.expansion_concepts",
         "the diff's identifiers",
     ),
     (
-        "src/discovery.rs",
+        "../diffctx-graph/src/discovery.rs",
         "for (_ident, files) in &ident_to_files",
         "the diff's identifiers",
     ),
     (
-        "src/discovery.rs",
+        "../diffctx-graph/src/discovery.rs",
         "for f in files",
         "rare_identifier_threshold files",
     ),
     (
-        "src/discovery.rs",
+        "../diffctx-graph/src/discovery.rs",
         "for path in &ctx.changed_files",
         "the changed files",
     ),
     (
-        "src/discovery.rs",
+        "../diffctx-graph/src/discovery.rs",
         "for f in &ctx.changed_files",
         "the changed files",
     ),
     (
-        "src/discovery.rs",
+        "../diffctx-graph/src/discovery.rs",
         "for (stem, names) in &per_file",
         "the changed files",
     ),
     (
-        "src/discovery.rs",
+        "../diffctx-graph/src/discovery.rs",
         "for name in names",
         "the names a changed file defines",
     ),
     (
-        "src/discovery.rs",
+        "../diffctx-graph/src/discovery.rs",
         "for name in &named",
         "the changed files' names one document holds",
     ),
     (
-        "src/discovery.rs",
+        "../diffctx-graph/src/discovery.rs",
         "for prefix in TEST_PREFIXES",
         "a constant",
     ),
     (
-        "src/discovery.rs",
+        "../diffctx-graph/src/discovery.rs",
         "for suffix in TEST_SUFFIXES",
         "a constant",
     ),
     (
-        "src/discovery.rs",
-        "for suffix in crate::edges::structural::testing::JVM_TEST_SUFFIXES",
+        "../diffctx-graph/src/discovery.rs",
+        "for suffix in diffctx_base::testfiles::JVM_TEST_SUFFIXES",
         "a constant",
     ),
     (
-        "src/discovery.rs",
+        "../diffctx-graph/src/discovery.rs",
         "for t in query_set",
         "the diff's query terms",
     ),
     (
-        "src/discovery.rs",
+        "../diffctx-graph/src/discovery.rs",
         "for term in &query_set",
         "the diff's query terms",
     ),
     (
-        "src/discovery.rs",
+        "../diffctx-graph/src/discovery.rs",
         "for term in doc.term_counts.keys()",
         "one document's terms, inside the bounded document loop",
     ),
     (
-        "src/discovery.rs",
+        "../diffctx-graph/src/discovery.rs",
         ".strategies .par_iter()",
         "the strategies",
     ),
     (
-        "src/discovery.rs",
+        "../diffctx-graph/src/discovery.rs",
         "for (source, paths) in per_strategy",
         "the strategies",
     ),
     (
-        "src/impact.rs",
+        "../diffctx-answer/src/impact/mentions.rs",
         "for (target, _) in &targets",
         "the deleted and renamed paths",
     ),
     (
-        "src/impact.rs",
-        "while !fits(output)",
-        "the answer, a stride a turn; past the deadline it must still fit",
+        "../diffctx-base/src/fit.rs",
+        "for stride in (0..).map(|k| 1usize << k)",
+        "the answer's sheddable rows: a stride doubles per turn and ends when shed_one can take none; past the run's limits the rest goes at once",
     ),
     (
-        "src/impact.rs",
+        "../diffctx-base/src/fit.rs",
         "while hi - lo > 1",
         "halves one stride of the answer",
+    ),
+    (
+        "../diffctx-snapshot/src/snapshot/reader.rs",
+        "for path in paths",
+        "the paths a surface asked about, each answered from the table in memory",
+    ),
+    (
+        "../diffctx-snapshot/src/snapshot/reader.rs",
+        "for row in &table.rows",
+        "a git listing already in memory; every git call and object read under it is held to the run's deadline",
+    ),
+    (
+        "../diffctx-snapshot/src/snapshot/reader.rs",
+        "for (entry, oid) in listing.entries",
+        "a git listing already in memory; every git call and object read under it is held to the run's deadline",
+    ),
+    (
+        "../diffctx-snapshot/src/snapshot/reader.rs",
+        "for _ in 0..8",
+        "a git listing already in memory; every git call and object read under it is held to the run's deadline",
+    ),
+    (
+        "../diffctx-snapshot/src/snapshot/reader.rs",
+        "for record in &records",
+        "a git listing already in memory; every git call and object read under it is held to the run's deadline",
+    ),
+    (
+        "../diffctx-snapshot/src/snapshot/reader.rs",
+        "for row in &rows",
+        "a git listing already in memory; every git call and object read under it is held to the run's deadline",
+    ),
+    (
+        "../diffctx-snapshot/src/snapshot/reader.rs",
+        "for row in &mut *rows",
+        "a git listing already in memory; every git call and object read under it is held to the run's deadline",
+    ),
+    (
+        "../diffctx-snapshot/src/snapshot/reader.rs",
+        "for part in text.split('/')",
+        "a git listing already in memory; every git call and object read under it is held to the run's deadline",
+    ),
+    (
+        "../diffctx-snapshot/src/snapshot/reader.rs",
+        "for chunk in plain.chunks(5000)",
+        "a git listing already in memory; every git call and object read under it is held to the run's deadline",
+    ),
+    (
+        "../diffctx-snapshot/src/snapshot/reader.rs",
+        "for i in chunk",
+        "a git listing already in memory; every git call and object read under it is held to the run's deadline",
+    ),
+    (
+        "../diffctx-snapshot/src/snapshot/reader.rs",
+        "for (i, line) in chunk.iter().zip(lines)",
+        "a git listing already in memory; every git call and object read under it is held to the run's deadline",
+    ),
+    (
+        "../diffctx-snapshot/src/snapshot/reader.rs",
+        "for i in odd",
+        "a git listing already in memory; every git call and object read under it is held to the run's deadline",
+    ),
+    (
+        "../diffctx-snapshot/src/snapshot/reader.rs",
+        "for (i, name) in names.iter().enumerate()",
+        "a git listing already in memory; every git call and object read under it is held to the run's deadline",
+    ),
+    (
+        "../diffctx-snapshot/src/snapshot/reader.rs",
+        "for (i, oid) in regular",
+        "a git listing already in memory; every git call and object read under it is held to the run's deadline",
+    ),
+    (
+        "../diffctx-snapshot/src/snapshot/reader.rs",
+        "for (name, mark) in names",
+        "a git listing already in memory; every git call and object read under it is held to the run's deadline",
+    ),
+    (
+        "../diffctx-snapshot/src/snapshot/changes.rs",
+        "for entry in parse_raw",
+        "a git listing already in memory; every git call and object read under it is held to the run's deadline",
+    ),
+    (
+        "../diffctx-snapshot/src/snapshot/changes.rs",
+        "for row in &head.table()?.rows",
+        "a git listing already in memory; every git call and object read under it is held to the run's deadline",
+    ),
+    (
+        "../diffctx-snapshot/src/snapshot/changes.rs",
+        "while at < tokens.len()",
+        "a git listing already in memory; every git call and object read under it is held to the run's deadline",
     ),
 ];
 

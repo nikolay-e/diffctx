@@ -1,0 +1,43 @@
+name: fj265_nginx_url_path_is_no_name_of_a_python_function
+mode: impact
+source: fj#265
+issue_state: open
+tags:
+- python
+- config
+- nginx
+- hedge
+repo:
+  initial_files:
+    health/app.py: |
+      def _session(token):
+          return token
+
+
+      def handler(t):
+          return _session(t)
+    mind/web/nginx.conf: |
+      location /api/ {
+        auth_request /_session;
+      }
+      location = /_session { proxy_pass http://auth/session; }
+  changed_files:
+    health/app.py: |
+      def _session(token):
+          return token.strip()
+
+
+      def handler(t):
+          return _session(t)
+  commit_message: strip the token
+# An nginx `location` path is a URL: it reaches Python over HTTP, through a
+# route, never by the name of a function. The one caller resolved in the
+# Python file stays a complete answer, and no config line is a mention of it.
+expect:
+  relations:
+  - from: health/app.py::handler
+    to: health/app.py::_session
+    kind: calls
+    resolution: resolved
+    site: 6
+  coverage: {health/app.py::_session: {calls: complete}}

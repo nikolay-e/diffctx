@@ -1,0 +1,43 @@
+name: ts_node_bin_run_by_a_test_has_a_test_link
+mode: impact
+source: synthetic
+issue_state: open
+tags:
+- typescript
+- console-script
+- tests-reach
+repo:
+  initial_files:
+    package.json: |
+      {
+        "name": "mytool",
+        "version": "1.0.0",
+        "bin": { "mytool": "bin/mytool.js" }
+      }
+    bin/mytool.js: |
+      function run(args) {
+        return args.length;
+      }
+
+      run(process.argv.slice(2));
+    test/cli.test.js: |
+      const { execFileSync } = require("child_process");
+
+      test("the tool runs", () => {
+        execFileSync("mytool", ["--help"]);
+      });
+  changed_files:
+    bin/mytool.js: |
+      function run(args) {
+        return args.length + 1;
+      }
+
+      run(process.argv.slice(2));
+  commit_message: Change what the console script returns
+expect:
+  changed:
+  - bin/mytool.js::run
+  tested_by:
+    bin/mytool.js: test/cli.test.js
+  not_untested:
+  - run

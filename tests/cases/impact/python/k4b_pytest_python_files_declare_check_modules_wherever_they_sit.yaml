@@ -1,0 +1,73 @@
+name: k4b_pytest_python_files_declare_check_modules_wherever_they_sit
+mode: impact
+source: synthetic
+issue_state: open
+tags:
+- python
+- tests-reach
+- pytest-config
+- k4b
+repo:
+  initial_files:
+    pytest.ini: |
+      [pytest]
+      python_files = check_*.py
+      testpaths = checks
+    pkg/__init__.py: ""
+    pkg/core.py: |
+      def a(x):
+          return x + 1
+
+
+      def b(x):
+          return x + 1
+    pkg/ua.py: |
+      from pkg.core import a
+
+
+      def use_a():
+          return a(1)
+    pkg/ub.py: |
+      from pkg.core import b
+
+
+      def use_b():
+          return b(1)
+    checks/check_a.py: |
+      from pkg.ua import use_a
+
+
+      def test_use_a():
+          assert use_a() == 2
+    tools/check_b.py: |
+      from pkg.ub import use_b
+
+
+      def smoke_b():
+          assert use_b() == 2
+    tests/test_other.py: |
+      def test_nothing():
+          assert True
+  changed_files:
+    pkg/core.py: |
+      def a(x):
+          return x + 2
+
+
+      def b(x):
+          return x + 2
+  commit_message: change both
+expect:
+  changed:
+  - pkg/core.py::a
+  - pkg/core.py::b
+  exact: false
+  tested_by:
+    pkg/ua.py: checks/check_a.py
+  not_untested:
+  - a
+  # tools/check_b.py is a test module wherever it sits, but `smoke_b` is no
+  # test function (python_functions defaults to `test`): pytest collects
+  # nothing from it, so nothing tests `b`.
+  untested:
+  - b

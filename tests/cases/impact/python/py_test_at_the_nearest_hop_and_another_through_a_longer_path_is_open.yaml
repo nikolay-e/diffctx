@@ -1,0 +1,61 @@
+name: py_test_at_the_nearest_hop_and_another_through_a_longer_path_is_open
+mode: impact
+source: synthetic
+issue_state: closed
+tags:
+- python
+- tests-reach
+- early-stop
+repo:
+  initial_files:
+    pkg/__init__.py: ""
+    pkg/order.py: |
+      def full_period(n):
+          return list(range(n))
+
+
+      def indices(n, batch):
+          if n > batch:
+              return full_period(n)
+          return list(range(n))
+
+
+      def ordered_range(n):
+          return indices(n, 4)
+    tests/test_order.py: |
+      from pkg.order import indices, ordered_range
+
+
+      def test_indices_small():
+          assert indices(2, 4) == [0, 1]
+
+
+      def test_ordered_range_large():
+          assert len(ordered_range(9)) == 9
+  changed_files:
+    pkg/order.py: |
+      def full_period(n):
+          return sorted(range(n))
+
+
+      def indices(n, batch):
+          if n > batch:
+              return full_period(n)
+          return list(range(n))
+
+
+      def ordered_range(n):
+          return indices(n, 4)
+  commit_message: sort the period
+expect:
+  changed:
+  - pkg/order.py::full_period
+  exact: false
+  relations:
+  - {from: pkg/order.py::indices, to: pkg/order.py::full_period, kind: calls}
+  - {from: tests/test_order.py::test_indices_small, to: pkg/order.py::indices, kind: tests_reach}
+  # `test_indices_small` names the caller but never takes the branch that calls
+  # `full_period`; `test_ordered_range_large` does, one hop further up. The list is
+  # the nearest test and says so.
+  tests_open:
+  - pkg/order.py::indices

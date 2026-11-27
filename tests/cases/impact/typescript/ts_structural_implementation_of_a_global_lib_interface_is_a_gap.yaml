@@ -1,0 +1,44 @@
+name: ts_structural_implementation_of_a_global_lib_interface_is_a_gap
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [typescript, builtin, structural, gap]
+repo:
+  initial_files:
+    package.json: |
+      {"name":"app","version":"1.0.0"}
+    tsconfig.json: |
+      {"compilerOptions":{"strict":true}}
+    src/counter.ts: |
+      export class Counter {
+        private n = 0;
+        next(): IteratorResult<number> {
+          this.n += 1;
+          return { done: this.n > 3, value: this.n };
+        }
+      }
+    src/drain.ts: |
+      export function drain(it: Iterator<number>): number {
+        return it.next().value as number;
+      }
+    src/run.ts: |
+      import { Counter } from './counter';
+      import { drain } from './drain';
+
+      export function run(): number {
+        return drain(new Counter());
+      }
+  changed_files:
+    src/counter.ts: |
+      export class Counter {
+        private n = 0;
+        next(): IteratorResult<number> {
+          this.n += 2;
+          return { done: this.n > 3, value: this.n };
+        }
+      }
+  commit_message: change
+expect:
+  changed: ['src/counter.ts::next']
+  partial:
+    src/counter.ts::next: {calls: unlanded}

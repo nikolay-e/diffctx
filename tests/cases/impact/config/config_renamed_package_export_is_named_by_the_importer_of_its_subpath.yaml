@@ -1,0 +1,31 @@
+name: config_renamed_package_export_is_named_by_the_importer_of_its_subpath
+mode: impact
+source: synthetic
+tags: [config, key-search, package-json, false-absence]
+repo:
+  initial_files:
+    package.json: |
+      {
+        "name": "lib",
+        "exports": {
+          "./utils": "./dist/utils.js",
+          "./legacy": "./dist/old.js"
+        }
+      }
+    src/a.ts: |
+      import { x } from "lib/legacy";
+      export const y = x;
+  changed_files:
+    package.json: |
+      {
+        "name": "lib",
+        "exports": {
+          "./utils": "./dist/utils.js",
+          "./compat": "./dist/old.js"
+        }
+      }
+  commit_message: "package: rename the legacy subpath"
+expect:
+  exact: false
+  no_negative_claims: true
+  named_by: [src/a.ts]

@@ -1,0 +1,72 @@
+$ mvn -Dmaven.compiler.useIncrementalCompilation=false -Dmaven.compiler.compilerId=javac -Dmaven.compiler.executable=/tmp/scip-java5491837220899225372/bin/javac -Dmaven.compiler.fork=true --batch-mode clean verify -DskipTests
+[INFO] Scanning for projects...
+[INFO]
+[INFO] --------------------------< org.jsoup:jsoup >---------------------------
+[INFO] Building jsoup Java HTML Parser 1.16.2-SNAPSHOT
+[INFO]   from pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO]
+[INFO] --- clean:3.2.0:clean (default-clean) @ jsoup ---
+[INFO] Deleting /work/target
+[INFO]
+[INFO] --- resources:3.3.1:resources (default-resources) @ jsoup ---
+[INFO] Copying 3 resources from  to target/classes/META-INF
+[INFO]
+[INFO] --- compiler:3.11.0:compile (default-compile) @ jsoup ---
+[INFO] Compiling 75 source files with javac [forked debug target 1.8] to target/classes
+[WARNING] [options] bootstrap class path not set in conjunction with -source 8
+[WARNING] [options] source value 8 is obsolete and will be removed in a future release
+[WARNING] [options] target value 8 is obsolete and will be removed in a future release
+[WARNING] [options] To suppress warnings about obsolete options, use -Xlint:-options.
+[WARNING] /work/src/main/java/org/jsoup/examples/Wikipedia.java:[25,46] non-varargs call of varargs method with inexact argument type for last parameter;
+  cast to Object for a varargs call
+  cast to Object[] for a non-varargs call and to suppress this warning
+[INFO]
+[INFO] --- animal-sniffer:1.23:check (animal-sniffer) @ jsoup ---
+[INFO] Checking unresolved references to net.sf.androidscents.signature:android-api-level-10:2.3.3_r2
+[INFO]
+[INFO] --- bundle:5.1.9:manifest (bundle-manifest) @ jsoup ---
+[INFO] No MANIFEST.MF file found, generating manifest.
+[INFO] Writing manifest: /work/target/classes/META-INF/MANIFEST.MF
+[INFO]
+[INFO] --- resources:3.3.1:testResources (default-testResources) @ jsoup ---
+[INFO] Copying 69 resources from src/test/resources to target/test-classes
+[INFO]
+[INFO] --- compiler:3.11.0:testCompile (default-testCompile) @ jsoup ---
+[INFO] Compiling 62 source files with javac [forked debug target 1.8] to target/test-classes
+[INFO] -------------------------------------------------------------
+[WARNING] COMPILATION WARNING :
+[INFO] -------------------------------------------------------------
+[WARNING] [options] bootstrap class path not set in conjunction with -source 8
+[WARNING] [options] source value 8 is obsolete and will be removed in a future release
+[WARNING] [options] target value 8 is obsolete and will be removed in a future release
+[WARNING] [options] To suppress warnings about obsolete options, use -Xlint:-options.
+[INFO] 4 warnings
+[INFO] -------------------------------------------------------------
+[INFO] -------------------------------------------------------------
+[ERROR] COMPILATION ERROR :
+[INFO] -------------------------------------------------------------
+[ERROR] /work/src/test/java/org/jsoup/integration/SafelistExtensionTest.java:[36,26] error: isSafeAttribute(String,Element,Attribute) in OpenSafelist cannot override isSafeAttribute(String,Element,Attribute) in Safelist
+  attempting to assign weaker access privileges; was public
+[ERROR] /work/src/test/java/org/jsoup/integration/SafelistExtensionTest.java:[43,26] error: isSafeTag(String) in OpenSafelist cannot override isSafeTag(String) in Safelist
+  attempting to assign weaker access privileges; was public
+[INFO] 2 errors
+[INFO] -------------------------------------------------------------
+[INFO] ------------------------------------------------------------------------
+[INFO] BUILD FAILURE
+[INFO] ------------------------------------------------------------------------
+[INFO] Total time:  3.159 s
+[INFO] Finished at: 2026-11-12T22:05:02Z
+[INFO] ------------------------------------------------------------------------
+[ERROR] Failed to execute goal org.apache.maven.plugins:maven-compiler-plugin:3.11.0:testCompile (default-testCompile) on project jsoup: Compilation failure: Compilation failure:
+[ERROR] /work/src/test/java/org/jsoup/integration/SafelistExtensionTest.java:[36,26] error: isSafeAttribute(String,Element,Attribute) in OpenSafelist cannot override isSafeAttribute(String,Element,Attribute) in Safelist
+[ERROR]   attempting to assign weaker access privileges; was public
+[ERROR] /work/src/test/java/org/jsoup/integration/SafelistExtensionTest.java:[43,26] error: isSafeTag(String) in OpenSafelist cannot override isSafeTag(String) in Safelist
+[ERROR]   attempting to assign weaker access privileges; was public
+[ERROR] -> [Help 1]
+[ERROR]
+[ERROR] To see the full stack trace of the errors, re-run Maven with the -e switch.
+[ERROR] Re-run Maven using the -X switch to enable full debug logging.
+[ERROR]
+[ERROR] For more information about the errors and possible solutions, please read the following articles:
+[ERROR] [Help 1] http://cwiki.apache.org/confluence/display/MAVEN/MojoFailureException

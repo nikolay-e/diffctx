@@ -1,0 +1,27 @@
+[package]
+name = "diffctx-select"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "The budgeted selection of diffctx: the utility of a fragment, the greedy that fills a token budget and the repairs that follow it"
+license-file.workspace = true
+repository.workspace = true
+homepage = "https://diffctx.com/"
+readme = "../../README.md"
+keywords = ["git", "diff", "llm", "context"]
+categories = ["development-tools"]
+
+[dependencies]
+diffctx-base.workspace = true
+diffctx-config.workspace = true
+diffctx-graph.workspace = true
+diffctx-snapshot.workspace = true
+once_cell.workspace = true
+regex.workspace = true
+rustc-hash.workspace = true
+
+[dev-dependencies]
+diffctx-base = { workspace = true, features = ["test-support"] }
+
+[lints]
+workspace = true

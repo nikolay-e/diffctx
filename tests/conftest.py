@@ -30,7 +30,26 @@ PROFILE_TAG_ENV = "DIFFCTX_PROFILE_TAG"
 _owned_profile: Path | None = None
 
 
+REPO_LOCATING_ENV = (
+    "GIT_DIR",
+    "GIT_WORK_TREE",
+    "GIT_INDEX_FILE",
+    "GIT_COMMON_DIR",
+    "GIT_OBJECT_DIRECTORY",
+    "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+    "GIT_PREFIX",
+)
+
+
+def scrub_repo_locating_env() -> None:
+    # A git hook exports these. A test's `git add -A` in a temporary repository
+    # that inherited GIT_INDEX_FILE wrote its files into the enclosing repository's index.
+    for name in REPO_LOCATING_ENV:
+        os.environ.pop(name, None)
+
+
 def pytest_configure(config):
+    scrub_repo_locating_env()
     # Every engine run of the session, in-process or a child, appends where its
     # time went; the session ends with the summary. Set before xdist starts its
     # workers, so they inherit it. An empty DIFFCTX_PROFILE turns it off.

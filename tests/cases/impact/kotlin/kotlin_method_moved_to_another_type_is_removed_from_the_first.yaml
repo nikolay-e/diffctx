@@ -1,0 +1,32 @@
+name: kotlin_method_moved_to_another_type_is_removed_from_the_first
+mode: impact
+source: synthetic
+tags: [kotlin, move, removed]
+repo:
+  initial_files:
+    Foo.kt: |
+      class Foo {
+          fun a(): Int = 1
+
+          fun total(): Int = 2
+      }
+
+      class Bar
+    Use.kt: |
+      fun go(f: Foo): Int = f.total()
+  changed_files:
+    Foo.kt: |
+      class Foo {
+          fun a(): Int = 1
+      }
+
+      class Bar {
+          fun total(): Int = 2
+      }
+  commit_message: Move total to Bar
+expect:
+  removed: ['Foo.kt::Foo.total']
+  relations:
+  - {from: 'Use.kt::go', to: 'Foo.kt::Foo.total', kind: calls, resolution: resolved}
+  partial:
+    'Foo.kt::Foo.total': {calls: unlanded}

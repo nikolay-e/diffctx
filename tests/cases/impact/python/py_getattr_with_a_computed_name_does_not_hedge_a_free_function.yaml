@@ -1,0 +1,35 @@
+name: py_getattr_with_a_computed_name_does_not_hedge_a_free_function
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [python, getattr, dynamic-name, coverage, decoy]
+repo:
+  initial_files:
+    main.py: |
+      def total(items):
+          return sum(items)
+
+
+      def report(items):
+          return total(items)
+
+
+      def fetch(obj, field):
+          return getattr(obj, field)
+  changed_files:
+    main.py: |
+      def total(items):
+          return sum(items) + 1
+
+
+      def report(items):
+          return total(items)
+
+
+      def fetch(obj, field):
+          return getattr(obj, field)
+  commit_message: "main: total adds one"
+expect:
+  changed: [main.py::total]
+  relations:
+    - {from: "main.py::report", to: "main.py::total", kind: calls, resolution: resolved, site: 6}

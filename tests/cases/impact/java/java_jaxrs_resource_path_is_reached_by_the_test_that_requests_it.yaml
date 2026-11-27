@@ -1,0 +1,67 @@
+name: java_jaxrs_resource_path_is_reached_by_the_test_that_requests_it
+mode: impact
+source: gh#739
+issue_state: open
+tags:
+- java
+- jax-rs
+- route
+- tests-reach
+repo:
+  initial_files:
+    src/main/java/demo/Tools.java: |
+      package demo;
+
+      public class Tools {
+          public String search(String query) {
+              return "found:" + query;
+          }
+      }
+    src/main/java/demo/ToolResource.java: |
+      package demo;
+
+      import jakarta.ws.rs.GET;
+      import jakarta.ws.rs.Path;
+      import jakarta.ws.rs.PathParam;
+
+      @Path("/tools")
+      public class ToolResource {
+          private final Tools tools = new Tools();
+
+          @GET
+          @Path("/{name}/run")
+          public String run(@PathParam("name") String name) {
+              return tools.search(name);
+          }
+      }
+    src/test/java/demo/ApiOverHttpTest.java: |
+      package demo;
+
+      import static io.restassured.RestAssured.given;
+
+      class ApiOverHttpTest {
+          void runsASearch() {
+              given().when().get("/tools/search/run").then().statusCode(200);
+          }
+      }
+  changed_files:
+    src/main/java/demo/Tools.java: |
+      package demo;
+
+      public class Tools {
+          public String search(String query) {
+              return "hit:" + query;
+          }
+      }
+  commit_message: Change what search returns
+expect:
+  relations:
+    - from: "src/main/java/demo/ToolResource.java::run"
+      to: "src/main/java/demo/Tools.java::search"
+      kind: calls
+      resolution: resolved
+    - from: "src/test/java/demo/ApiOverHttpTest.java"
+      to: "src/main/java/demo/ToolResource.java::run"
+      kind: tests_reach
+      resolution: resolved
+  not_untested: [search]

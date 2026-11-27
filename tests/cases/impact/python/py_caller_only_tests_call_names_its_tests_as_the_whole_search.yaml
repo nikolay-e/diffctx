@@ -1,0 +1,46 @@
+name: py_caller_only_tests_call_names_its_tests_as_the_whole_search
+mode: impact
+source: synthetic
+issue_state: closed
+tags:
+- python
+- tests-reach
+- guard
+repo:
+  initial_files:
+    pkg/__init__.py: ""
+    pkg/pricing.py: |
+      def total(items):
+          return sum(items)
+    pkg/checkout.py: |
+      from pkg.pricing import total
+
+
+      def charge(items):
+          return total(items)
+    tests/test_checkout.py: |
+      from pkg.checkout import charge
+
+
+      def test_charge():
+          assert charge([1, 2]) == 3
+
+
+      def test_charge_empty():
+          assert charge([]) == 0
+  changed_files:
+    pkg/pricing.py: |
+      def total(items):
+          return sum(items) + 0
+  commit_message: add zero
+expect:
+  changed:
+  - pkg/pricing.py::total
+  exact: false
+  relations:
+  - {from: pkg/checkout.py::charge, to: pkg/pricing.py::total, kind: calls}
+  - {from: tests/test_checkout.py::test_charge, to: pkg/checkout.py::charge, kind: tests_reach}
+  - {from: tests/test_checkout.py::test_charge_empty, to: pkg/checkout.py::charge, kind: tests_reach}
+  # Only tests call `charge`: the walk reached every root, the list is whole.
+  tests_not_open:
+  - pkg/checkout.py::charge

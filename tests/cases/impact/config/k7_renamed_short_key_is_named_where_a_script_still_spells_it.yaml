@@ -1,0 +1,43 @@
+name: k7_renamed_short_key_is_named_where_a_script_still_spells_it
+mode: impact
+source: synthetic
+tags: [config, key-search, short-key, false-absence]
+repo:
+  initial_files:
+    docker-compose.yml: |
+      services:
+        pgdb:
+          image: postgres
+        web:
+          image: nginx
+        pgdb5:
+          image: postgres
+    config.yml: |
+      db:
+        host: pgdb
+    run.sh: |
+      #!/usr/bin/env bash
+      exec pgdb psql
+    Makefile: |
+      up:
+      	docker compose up -d web
+    ci.sh: |
+      #!/usr/bin/env bash
+      docker compose logs pgdb5
+  changed_files:
+    docker-compose.yml: |
+      services:
+        database:
+          image: postgres
+        frontend:
+          image: nginx
+        database5:
+          image: postgres
+    config.yml: |
+      db:
+        host: database
+  commit_message: "compose: services get descriptive names"
+expect:
+  exact: false
+  no_negative_claims: true
+  named_by: [run.sh, Makefile, ci.sh]

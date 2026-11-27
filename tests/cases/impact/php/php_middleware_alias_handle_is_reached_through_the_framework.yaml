@@ -1,0 +1,48 @@
+name: php_middleware_alias_handle_is_reached_through_the_framework
+mode: impact
+source: synthetic
+tags: [php, laravel, framework-registration]
+repo:
+  initial_files:
+    composer.json: |
+      {"autoload": {"psr-4": {"App\\": "app/"}}}
+    app/Http/Middleware/Authenticate.php: |
+      <?php
+
+      namespace App\Http\Middleware;
+
+      class Authenticate
+      {
+          public function handle($request, $next)
+          {
+              return 1;
+          }
+      }
+    app/Http/Kernel.php: |
+      <?php
+
+      namespace App\Http;
+
+      class Kernel
+      {
+          protected $routeMiddleware = [
+              'auth' => \App\Http\Middleware\Authenticate::class,
+          ];
+      }
+  changed_files:
+    app/Http/Middleware/Authenticate.php: |
+      <?php
+
+      namespace App\Http\Middleware;
+
+      class Authenticate
+      {
+          public function handle($request, $next)
+          {
+              return 2;
+          }
+      }
+  commit_message: "auth: handle returns two"
+expect:
+  exact: false
+  entry_not_tested: [handle]

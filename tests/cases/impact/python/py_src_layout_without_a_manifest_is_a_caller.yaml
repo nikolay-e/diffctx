@@ -1,0 +1,27 @@
+name: py_src_layout_without_a_manifest_is_a_caller
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [python, manifests, import-root]
+repo:
+  initial_files:
+    src/app/__init__.py: |2+
+
+    src/app/money.py: |
+      def total(x):
+          return x
+    tests/test_money.py: |
+      from app.money import total
+
+
+      def test_total():
+          assert total(1) == 1
+  changed_files:
+    src/app/money.py: |
+      def total(x):
+          return x + 0
+  commit_message: change
+expect:
+  changed: ['src/app/money.py::total']
+  relations:
+  - {from: 'tests/test_money.py::test_total', to: 'src/app/money.py::total', kind: calls, resolution: resolved}

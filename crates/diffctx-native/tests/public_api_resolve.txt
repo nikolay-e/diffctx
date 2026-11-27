@@ -1,0 +1,185 @@
+# Every pub item of diffctx-resolve, as tests/public_api.rs reads it from the crate's src/.
+# A new item is red; so is a line the code no longer has: delete it. The count is capped by
+# public_items.diffctx-resolve in budget.toml, which only goes down.
+resolve mod
+resolve use c::CResolver
+resolve use config::ConfigResolver
+resolve use dockerfile::DockerfileResolver
+resolve use go::GoResolver
+resolve use java::JavaResolver
+resolve use kotlin::KotlinResolver
+resolve use php::{DYNAMIC, PhpResolver}
+resolve use python::PythonResolver
+resolve use rust::RustResolver
+resolve use shell::ShellResolver
+resolve use solved::Solved
+resolve use sql::SqlResolver
+resolve use swift::SwiftResolver
+resolve use terraform::TerraformResolver
+resolve use typescript::TypeScriptResolver
+resolve::Binding struct derive(Clone, Debug, Eq, PartialEq)
+resolve::Binding.entry_guard field bool
+resolve::Binding.file field RepoPath
+resolve::Binding.from field Scope
+resolve::Binding.name field Name
+resolve::Binding.relation field Relation
+resolve::Binding.resolution field Resolution
+resolve::Binding.site field Span
+resolve::Binding::targets fn (&self) -> Vec<&DefKey>
+resolve::CandidateReason enum derive(Clone, Copy, Debug, Eq, Hash, PartialEq)
+resolve::CandidateReason::Adl variant Adl
+resolve::CandidateReason::AmbiguousModule variant AmbiguousModule
+resolve::CandidateReason::AnyNamespace variant AnyNamespace
+resolve::CandidateReason::AnyReceiver variant AnyReceiver
+resolve::CandidateReason::CaseFold variant CaseFold
+resolve::CandidateReason::Dispatch variant Dispatch
+resolve::CandidateReason::Global variant Global
+resolve::CandidateReason::ImportGlob variant ImportGlob
+resolve::CandidateReason::ImportUnresolved variant ImportUnresolved
+resolve::CandidateReason::LabelSelector variant LabelSelector
+resolve::CandidateReason::Macro variant Macro
+resolve::CandidateReason::NameSuffix variant NameSuffix
+resolve::CandidateReason::NoRelease variant NoRelease
+resolve::CandidateReason::Overloaded variant Overloaded
+resolve::CandidateReason::SearchPath variant SearchPath
+resolve::CandidateReason::UntypedReceiver variant UntypedReceiver
+resolve::Definition struct derive(Clone, Debug, Eq, PartialEq)
+resolve::Definition.file field RepoPath
+resolve::Definition.key field DefKey
+resolve::Definition.kind field DefKind
+resolve::Definition.name_span field Span
+resolve::Definition.span field Span
+resolve::Evidence struct derive(Clone, Debug, Eq, PartialEq)
+resolve::Evidence.kind field EvidenceKind
+resolve::Evidence.through field Vec<RepoPath>
+resolve::EvidenceKind enum derive(Clone, Copy, Debug, Eq, Hash, PartialEq)
+resolve::EvidenceKind::Aliased variant Aliased
+resolve::EvidenceKind::AmbiguousModule variant AmbiguousModule
+resolve::EvidenceKind::Constructed variant Constructed
+resolve::EvidenceKind::DynamicImport variant DynamicImport
+resolve::EvidenceKind::FactoryReturn variant FactoryReturn
+resolve::EvidenceKind::ImportedName variant ImportedName
+resolve::EvidenceKind::Inherited variant Inherited
+resolve::EvidenceKind::Listed variant Listed
+resolve::EvidenceKind::ModuleAttribute variant ModuleAttribute
+resolve::EvidenceKind::Overridden variant Overridden
+resolve::EvidenceKind::SameScope variant SameScope
+resolve::EvidenceKind::SelfReceiver variant SelfReceiver
+resolve::EvidenceKind::StarImport variant StarImport
+resolve::EvidenceKind::SuperCall variant SuperCall
+resolve::EvidenceKind::TypedReceiver variant TypedReceiver
+resolve::Relation enum derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)
+resolve::Relation::ALL const [Self; 9]
+resolve::Relation::Calls variant Calls
+resolve::Relation::Imports variant Imports
+resolve::Relation::Instantiates variant Instantiates
+resolve::Relation::Overrides variant Overrides
+resolve::Relation::PassesAsValue variant PassesAsValue
+resolve::Relation::Reads variant Reads
+resolve::Relation::Reexports variant Reexports
+resolve::Relation::TypeUses variant TypeUses
+resolve::Relation::Writes variant Writes
+resolve::Relation::name fn (self) -> &'static str
+resolve::Relation::uses fn (self) -> bool
+resolve::Resolution enum derive(Clone, Debug, Eq, PartialEq)
+resolve::Resolution::Candidate variant Candidate { targets: Vec<DefKey>, reason: CandidateReason, }
+resolve::Resolution::Module variant Module { file: RepoPath, evidence: Evidence, }
+resolve::Resolution::Resolved variant Resolved { target: DefKey, evidence: Evidence, }
+resolve::Resolution::Unresolved variant Unresolved { reason: UnresolvedReason, }
+resolve::USES const [Relation; 6]
+resolve::UnresolvedReason enum derive(Clone, Copy, Debug, Eq, Hash, PartialEq)
+resolve::UnresolvedReason::Builtin variant Builtin
+resolve::UnresolvedReason::External variant External
+resolve::UnresolvedReason::ExternalBase variant ExternalBase
+resolve::UnresolvedReason::Local variant Local
+resolve::UnresolvedReason::MissingModule variant MissingModule
+resolve::UnresolvedReason::NoBinding variant NoBinding
+resolve::UnresolvedReason::NoCandidates variant NoCandidates
+resolve::UnresolvedReason::NoMatch variant NoMatch
+resolve::UnresolvedReason::NoMember variant NoMember
+resolve::UnresolvedReason::Opaque variant Opaque
+resolve::UnresolvedReason::OutsideProject variant OutsideProject
+resolve::UnresolvedReason::TooManyCandidates variant TooManyCandidates
+resolve::UnresolvedReason::UntypedRead variant UntypedRead
+resolve::UnresolvedReason::is_ours fn (self) -> bool
+resolve::UnresolvedReason::is_unknown fn (self) -> bool
+vocabulary mod
+vocabulary::RelationKind enum derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)
+vocabulary::RelationKind::ALL const [Self; 13]
+vocabulary::RelationKind::Calls variant Calls
+vocabulary::RelationKind::Configures variant Configures
+vocabulary::RelationKind::Executes variant Executes
+vocabulary::RelationKind::Imports variant Imports
+vocabulary::RelationKind::Instantiates variant Instantiates
+vocabulary::RelationKind::Overrides variant Overrides
+vocabulary::RelationKind::PassesAsValue variant PassesAsValue
+vocabulary::RelationKind::Reads variant Reads
+vocabulary::RelationKind::Reexports variant Reexports
+vocabulary::RelationKind::ReferencesPath variant ReferencesPath
+vocabulary::RelationKind::TestsReach variant TestsReach
+vocabulary::RelationKind::TypeUse variant TypeUse
+vocabulary::RelationKind::Writes variant Writes
+vocabulary::RelationKind::name fn (self) -> &'static str
+vocabulary::RelationKind::parse fn (name: &str) -> Option<Self>
+vocabulary::family mod
+vocabulary::family::Family enum derive(Clone, Copy, Debug, Eq, Hash, PartialEq)
+vocabulary::family::Family::ALL const [Self; 14]
+vocabulary::family::Family::C variant C
+vocabulary::family::Family::Config variant Config
+vocabulary::family::Family::Dockerfile variant Dockerfile
+vocabulary::family::Family::Go variant Go
+vocabulary::family::Family::Java variant Java
+vocabulary::family::Family::Kotlin variant Kotlin
+vocabulary::family::Family::Php variant Php
+vocabulary::family::Family::Python variant Python
+vocabulary::family::Family::Rust variant Rust
+vocabulary::family::Family::Shell variant Shell
+vocabulary::family::Family::Sql variant Sql
+vocabulary::family::Family::Swift variant Swift
+vocabulary::family::Family::Terraform variant Terraform
+vocabulary::family::Family::TypeScript variant TypeScript
+vocabulary::family::Family::group fn (self) -> Group
+vocabulary::family::Family::has fn (self, language: Language) -> bool
+vocabulary::family::Family::has_path fn (self, path: &str) -> bool
+vocabulary::family::Family::name fn (self) -> &'static str
+vocabulary::family::Family::names_are_global fn (self) -> bool
+vocabulary::family::Group enum derive(Clone, Copy, Debug, Eq, Hash, PartialEq)
+vocabulary::family::Group::Family variant Family(Family)
+vocabulary::family::Group::Jvm variant Jvm
+vocabulary::family::Group::Language variant Language(&'static str)
+vocabulary::family::Group::Native variant Native
+vocabulary::family::Group::Web variant Web
+vocabulary::family::Group::has_path fn (self, name: &str) -> bool
+vocabulary::family::Group::of_name fn (name: &str) -> Option<Self>
+vocabulary::family::Group::of_path fn (path: &RepoPath) -> Option<Self>
+vocabulary::family::Resolver enum
+vocabulary::family::Resolver::C variant C(CResolver)
+vocabulary::family::Resolver::Config variant Config(ConfigResolver)
+vocabulary::family::Resolver::Dockerfile variant Dockerfile(DockerfileResolver)
+vocabulary::family::Resolver::Go variant Go(GoResolver)
+vocabulary::family::Resolver::Java variant Java(JavaResolver)
+vocabulary::family::Resolver::Kotlin variant Kotlin(KotlinResolver)
+vocabulary::family::Resolver::Php variant Php(PhpResolver)
+vocabulary::family::Resolver::Python variant Python(PythonResolver)
+vocabulary::family::Resolver::Rust variant Rust(RustResolver)
+vocabulary::family::Resolver::Shell variant Shell(ShellResolver)
+vocabulary::family::Resolver::Sql variant Sql(SqlResolver)
+vocabulary::family::Resolver::Swift variant Swift(SwiftResolver)
+vocabulary::family::Resolver::Terraform variant Terraform(TerraformResolver)
+vocabulary::family::Resolver::TypeScript variant TypeScript(TypeScriptResolver)
+vocabulary::family::Resolver::bindings fn (&self) -> &[Binding]
+vocabulary::family::Resolver::definitions fn (&self) -> &[Definition]
+vocabulary::family::Resolver::exports fn (&self, file: &str, workspace: &WorkspaceModel) -> bool
+vocabulary::family::Resolver::external_sources fn (&self) -> usize
+vocabulary::family::Resolver::losses fn (&self) -> &[Loss]
+vocabulary::family::Resolver::modules_named fn (&self, dotted: &str) -> Vec<RepoPath>
+vocabulary::family::Resolver::name_computers fn ( &self, builds: bool, subjects: &[&DefKey], may_reach: impl Fn(&str) -> bool, ) -> usize
+vocabulary::family::Resolver::open fn ( family: Family, ctx: &AnalysisContext, side: SideTag, cache: &FactsCache, ) -> Result<Self>
+vocabulary::family::Resolver::read_paths fn (&self) -> &[RepoPath]
+vocabulary::family::Resolver::references_to fn (&self, key: &DefKey) -> Vec<&Binding>
+vocabulary::family::Resolver::root_module fn (&self, file: &str) -> bool
+vocabulary::family::Resolver::serialized fn (&self, key: &DefKey) -> bool
+vocabulary::family::context_in fn ( root: &std::path::Path, limits: ( Option<std::time::Instant>, Arc<std::sync::atomic::AtomicBool>, ), range: Option<&str>, symbol: bool, ) -> Result<AnalysisContext>
+vocabulary::is_precise fn (language: &str, relation: &str) -> bool
+vocabulary::kind_of_use fn (relation: crate::resolve::Relation) -> RelationKind
+vocabulary::stated_kind_of fn (path: &str, kind: RelationKind) -> Option<&'static str>

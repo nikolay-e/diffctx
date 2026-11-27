@@ -16,6 +16,7 @@ if TYPE_CHECKING:
 from ._diffctx import BUILD_LABEL as _BUILD_LABEL
 
 if TYPE_CHECKING:
+    from ._native.pipeline import Delivery
     from .cli import ParsedArgs
 
 _T = TypeVar("_T")
@@ -25,7 +26,6 @@ logger = logging.getLogger(__name__)
 _EXIT_RUNTIME = 1
 _EXIT_USAGE = 2
 _EXIT_ENVIRONMENT = 3
-_EXIT_EMPTY_DIFF = 4
 _EXIT_TIMEOUT = 124
 _EXIT_INTERRUPTED = 130
 _EXIT_BROKEN_PIPE = 141
@@ -95,131 +95,21 @@ def _ensure_git_repo(root_dir: Path, prog: str) -> None:
         sys.exit(_EXIT_ENVIRONMENT)
 
 
-def _diff_result_is_empty(result: dict[str, Any]) -> bool:
-    if result.get("deleted_files") or result.get("renamed_files") or result.get("lockfile_changes"):
-        return False
-    # A run whose every hunk was withheld still produced the disclosure (#188);
-    # exiting 4 would replace that disclosure with a misleading "no context" hint.
-    if result.get("ignored_changes") or result.get("policy_excluded_count"):
-        return False
-    # A bundled patch is actionable output on its own; exiting 4 next to a
-    # complete diff fails any `set -e` CI step for a run that produced content.
-    if result.get("raw_diff"):
-        return False
-    count = result.get("fragment_count")
-    if isinstance(count, int):
-        return count == 0
-    fragments = result.get("fragments")
-    if isinstance(fragments, list):
-        return len(fragments) == 0
-    return False
-
-
-def _empty_diff_hint(args: ParsedArgs) -> str:
-    if args.budget == 0:
-        return "--budget 0 emits no fragments (changed files are listed as omitted); use --full for the changed code, or omit --budget for auto sizing"
-    if args.budget is not None and args.budget > 0:
-        return f"--budget {args.budget} may be too small to fit any fragment; raise it or omit for auto sizing"
-    if args.diff_range == "HEAD":
-        if _working_tree_is_dirty(args.root_dir):
-            return "the changes carry no text hunks (mode-only, submodule or binary); see changed_files, or use --full"
-        return "the working tree matches HEAD; try --diff HEAD~1 for the last commit"
-    if args.diff_range and args.diff_range.strip() in ("staged", "--cached"):
-        return "check the staged changes with: git diff --cached --stat"
-    if _is_duration_range(args):
-        return f"nothing changed in the last {args.diff_range}; widen the window (e.g. --diff 7d)"
-    # `A..B` is read from the fork point, which is git's `A...B`.
-    shown = args.diff_range
-    if shown and ".." in shown and "..." not in shown:
-        shown = shown.replace("..", "...", 1)
-    return f"check the range with: git diff --stat {shown}"
-
-
-def _working_tree_is_dirty(root_dir: Path) -> bool:
-    status = subprocess.run(
-        ["git", "status", "--porcelain", "--untracked-files=no"],
-        stdin=subprocess.DEVNULL,
-        cwd=str(root_dir),
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        check=False,
-    )
-    return status.returncode == 0 and bool(status.stdout.strip())
-
-
-def _is_duration_range(args: ParsedArgs) -> bool:
-    from ._native.pipeline import resolve_diff_range
-
-    if not args.diff_range:
-        return False
-    try:
-        return resolve_diff_range(args.root_dir, args.diff_range) != args.diff_range
-    except Exception:
-        return False
-
-
-def _report_redactions(result: dict[str, Any], prog: str) -> None:
-    from .tree import redaction_total
-
-    block = result.get("redactions")
-    count = block["count"] if isinstance(block, dict) else redaction_total(result)
-    if count:
-        print(f"{prog}: {count} credential-shaped string(s) redacted", file=sys.stderr)
-
-
-# A run the deadline or a cancellation stopped before it found anything is
-# partial, not a clean tree, and exits 0 as every partial artifact does (#408).
-def _disclose_early_stop(result: dict[str, Any], prog: str) -> bool:
-    coverage = result.get("coverage")
-    reasons = coverage.get("limit_reasons") if isinstance(coverage, dict) else None
-    stopped = [str(r) for r in reasons or [] if r in ("deadline", "cancelled")]
-    if stopped:
-        print(
-            f"{prog}: the run stopped early ({', '.join(stopped)}) before it found any context; "
-            "the output is partial, not a clean tree: raise --timeout or narrow the range",
-            file=sys.stderr,
-        )
-    return bool(stopped)
-
-
-def _warn_empty_diff_result(result: dict[str, Any], prog: str, args: ParsedArgs) -> bool:
-    is_empty = _diff_result_is_empty(result) and not _disclose_early_stop(result, prog)
-    if is_empty:
-        print(
-            f"{prog}: diff produced no semantic context "
-            f"(clean working tree, binary-only, or files over the size cap); {_empty_diff_hint(args)}",
-            file=sys.stderr,
-        )
-    return is_empty
-
-
-def _log_latency(result: dict[str, Any]) -> None:
+def _log_latency(latency: dict[str, Any] | None) -> None:
     # Telemetry rides beside the artifact, never inside it: the native binary
     # never renders it and `--budget` bounds the document alone.
-    latency = result.get("latency")
-    if isinstance(latency, dict) and latency:
+    if latency:
         logger.info("latency (ms): %s", ", ".join(f"{key}={value}" for key, value in latency.items()))
 
 
-def _report_raw_diff_share(result: dict[str, Any], prog: str, args: ParsedArgs) -> None:
-    if not args.with_raw_diff:
-        return
-    from .tokens import count_tokens
-
-    raw_diff = result.get("raw_diff")
-    if not isinstance(raw_diff, str) or not raw_diff:
-        print(
-            f"{prog}: --with-raw-diff produced no patch text "
-            "(the range only touches untracked, lock, ignored, or secret-like files)",
-            file=sys.stderr,
-        )
-        return
-    print(
-        f"  of which {count_tokens(raw_diff).count:,} tokens are the raw diff (not charged to --budget)",
-        file=sys.stderr,
-    )
+def _say(notes: list[tuple[str, str]], quiet: bool, prog: str) -> None:
+    # What to say, and what is empty, partial or redacted, is the engine's
+    # (`diffctx::delivery`); the door only names itself and honours `-q`.
+    for kind, text in notes:
+        if kind == "warning":
+            print(f"{prog}: {text}", file=sys.stderr)
+        elif not quiet:
+            print(f"{prog}: {text}" if kind == "detail" else text, file=sys.stderr)
 
 
 _WATCHDOG_GRACE_SECONDS = 30
@@ -277,32 +167,6 @@ def _diff_scope(args: ParsedArgs) -> list[str]:
     return [str(p.resolve()) for p in [*(args.extra_dirs or []), *(args.extra_files or [])]]
 
 
-def _build_diff_tree(args: ParsedArgs, prog: str) -> dict[str, Any]:
-    from ._native import build_diff_context
-
-    if not args.diff_range:
-        raise RuntimeError("diff_range is required in diff mode")
-    _ensure_git_repo(args.root_dir, prog)
-    result = _call_with_wall_clock_deadline(
-        lambda: build_diff_context(
-            root_dir=args.root_dir,
-            diff_range=args.diff_range or "HEAD",
-            budget_tokens=args.budget,
-            alpha=args.alpha,
-            tau=args.tau,
-            no_content=args.no_content,
-            full=args.full_diff,
-            scoring_mode=args.scoring,
-            timeout=args.timeout,
-            with_raw_diff=args.with_raw_diff,
-            paths=_diff_scope(args),
-        ),
-        args.timeout,
-        prog,
-    )
-    return result
-
-
 def _root_display_name(root_dir: Any) -> str:
     from .tree import printable
 
@@ -319,7 +183,7 @@ _LARGE_OUTPUT_WARN_BYTES_NO_EXPLICIT_PATH = 1 * 1024 * 1024
 
 
 def _warn_if_output_oversized(output_content: str, args: ParsedArgs) -> None:
-    if args.no_content or args.diff_range:
+    if args.no_content:
         return
     threshold = _LARGE_OUTPUT_WARN_BYTES_NO_EXPLICIT_PATH if args.no_explicit_paths else _LARGE_OUTPUT_WARN_BYTES
     size_bytes = len(output_content.encode("utf-8"))
@@ -525,10 +389,13 @@ def _run(argv: list[str] | None = None, *, prog: str = "diffctx", version: str =
     from .cli import parse_args
     from .logger import setup_logging
     from .tokens import print_token_summary
-    from .writer import tree_to_string
+    from .writer import tree_to_string, write_string_to_file
 
     args = parse_args(argv, prog=prog, version=version)
     setup_logging(args.verbosity)
+
+    def write_via_writer(content: str) -> None:
+        write_string_to_file(content, None, args.output_format)
 
     if _is_graph_mode(args):
         output_content = _handle_graph_mode(args)
@@ -537,120 +404,68 @@ def _run(argv: list[str] | None = None, *, prog: str = "diffctx", version: str =
         _emit(output_content, args, prog, write_stdout=sys.stdout.write)
         return
 
-    if args.diff_range and args.mode == "locate":
-        _run_locate_mode(args, prog)
+    if args.diff_range or (args.symbol and args.mode == "impact"):
+        delivery = _deliver_diff_mode(args, prog)
+        _log_latency(delivery.latency)
+        _say(delivery.notes, args.quiet, prog)
+        _emit(delivery.text, args, prog, write_stdout=write_via_writer)
+        if delivery.exit:
+            sys.exit(delivery.exit)
         return
 
-    if (args.diff_range or args.symbol) and args.mode == "impact":
-        _run_impact_mode(args, prog)
-        return
-
-    if args.diff_range:
-        from ._diffctx import fit_artifact
-
-        # The rendered document is what `--budget` bounds; the fit may drop
-        # fragments the engine's estimate admitted, and emptiness is judged
-        # on what is actually emitted.
-        directory_tree, output_content = fit_artifact(_build_diff_tree(args, prog), args.output_format)
-        is_empty_diff_result = _warn_empty_diff_result(directory_tree, prog, args)
-        _log_latency(directory_tree)
-    else:
-        directory_tree = _build_standard_tree(args)
-        output_content = tree_to_string(directory_tree, args.output_format)
-        is_empty_diff_result = False
+    directory_tree = _build_standard_tree(args)
+    output_content = tree_to_string(directory_tree, args.output_format)
     if not args.quiet:
         print_token_summary(output_content)
         _report_redactions(directory_tree, prog)
-        if args.diff_range:
-            _report_raw_diff_share(directory_tree, prog, args)
         _warn_if_output_oversized(output_content, args)
-
-    def _write_via_writer(content: str) -> None:
-        from .writer import write_string_to_file
-
-        write_string_to_file(content, None, args.output_format)
-
-    _emit(output_content, args, prog, write_stdout=_write_via_writer)
-
-    if is_empty_diff_result:
-        sys.exit(_EXIT_EMPTY_DIFF)
+    _emit(output_content, args, prog, write_stdout=write_via_writer)
 
 
-def _run_impact_mode(args: ParsedArgs, prog: str) -> None:
-    from ._native import build_impact
-    from .tokens import print_token_summary
+def _report_redactions(tree: dict[str, Any], prog: str) -> None:
+    from .tree import redaction_total
+
+    count = redaction_total(tree)
+    if count:
+        print(f"{prog}: {count} credential-shaped string(s) redacted", file=sys.stderr)
+
+
+def _deliver_diff_mode(args: ParsedArgs, prog: str) -> Delivery:
+    """Every diff mode is one engine call: this door parses, waits for the
+    deadline and prints; what the answer says and how the run ends is decided
+    in `diffctx::delivery`."""
+    from ._native import deliver
 
     _ensure_git_repo(args.root_dir, prog)
     try:
-        payload = _call_with_wall_clock_deadline(
-            lambda: build_impact(
+        return _call_with_wall_clock_deadline(
+            lambda: deliver(
                 root_dir=args.root_dir,
+                mode=args.mode,
                 diff_range=args.diff_range or "HEAD",
+                symbol=args.symbol,
+                paths=_diff_scope(args),
+                budget=args.budget,
+                format=args.output_format,
+                unfold=args.unfold,
                 alpha=args.alpha,
+                tau=args.tau,
                 scoring_mode=args.scoring,
                 timeout=args.timeout,
-                paths=_diff_scope(args),
-                markdown=args.output_format == "md",
-                symbol=args.symbol,
-                budget=args.budget,
+                no_content=args.no_content,
+                full=args.full_diff,
+                with_raw_diff=args.with_raw_diff,
+                overflow=args.overflow,
             ),
             args.timeout,
             prog,
         )
     except ValueError as exc:
+        if args.mode != "impact":
+            raise
         # The engine refuses a `--symbol` that cannot name a definition.
         print(f"{prog}: usage error: {exc}", file=sys.stderr)
         sys.exit(_EXIT_USAGE)
-    output_content = payload if payload.endswith("\n") else payload + "\n"
-    # An empty impact is the answer ("nothing outside the diff depends on
-    # this"), not the empty-diff failure the other modes exit 4 on.
-    if not args.quiet:
-        print_token_summary(output_content)
-    _emit(output_content, args, prog, write_stdout=sys.stdout.write)
-
-
-def _run_locate_mode(args: ParsedArgs, prog: str) -> None:
-    import json
-
-    from ._native import build_locate
-    from .tokens import print_token_summary
-
-    _ensure_git_repo(args.root_dir, prog)
-    payload = _call_with_wall_clock_deadline(
-        lambda: build_locate(
-            root_dir=args.root_dir,
-            diff_range=args.diff_range or "HEAD",
-            budget_tokens=args.budget,
-            alpha=args.alpha,
-            tau=args.tau,
-            scoring_mode=args.scoring,
-            timeout=args.timeout,
-            paths=_diff_scope(args),
-        ),
-        args.timeout,
-        prog,
-    )
-    output_content = payload if payload.endswith("\n") else payload + "\n"
-    doc = json.loads(payload)
-    is_empty = (
-        doc.get("item_count", 0) == 0
-        and not doc.get("deleted_files")
-        and not doc.get("renamed_files")
-        and not doc.get("lockfile_changes")
-        and not doc.get("ignored_changes")
-        and not doc.get("policy_excluded_count")
-        and not _disclose_early_stop(doc, prog)
-    )
-    if is_empty:
-        print(
-            f"{prog}: diff produced no semantic context (clean working tree, binary-only, or files over the size cap)",
-            file=sys.stderr,
-        )
-    if not args.quiet:
-        print_token_summary(output_content)
-    _emit(output_content, args, prog, write_stdout=sys.stdout.write)
-    if is_empty:
-        sys.exit(_EXIT_EMPTY_DIFF)
 
 
 def _emit(
@@ -684,9 +499,9 @@ def _format_runtime_error(exc: BaseException) -> str:
 def _format_git_error(exc: BaseException) -> str:
     msg = _format_runtime_error(exc)
     if "unknown revision" in msg and "shallow clone" not in msg:
-        match = re.search(r"ambiguous argument '([^']+)'", msg)
+        match = re.search(r"ambiguous argument '([^']+)'|unknown revision '([^']+)'", msg)
         if match:
-            return f"unknown git revision '{match.group(1)}'; check refs with: git log --oneline"
+            return f"unknown git revision '{match.group(1) or match.group(2)}'; check refs with: git log --oneline"
     return f"git error: {msg}" if not msg.startswith("git ") else msg
 
 

@@ -1,0 +1,22 @@
+[package]
+name = "diffctx-occurrence"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "The occurrence accounting of diffctx: every spelling of a definition's names in a repository's files with its one outcome, and the token index it reads"
+license-file.workspace = true
+repository.workspace = true
+homepage = "https://diffctx.com/"
+readme = "../../README.md"
+keywords = ["git", "diff", "llm", "context"]
+categories = ["development-tools"]
+
+[dependencies]
+diffctx-base.workspace = true
+diffctx-facts.workspace = true
+diffctx-resolve.workspace = true
+diffctx-snapshot.workspace = true
+serde_json.workspace = true
+
+[lints]
+workspace = true

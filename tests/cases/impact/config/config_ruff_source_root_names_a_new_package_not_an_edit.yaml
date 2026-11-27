@@ -1,0 +1,40 @@
+name: config_ruff_source_root_names_a_new_package_not_an_edit
+mode: impact
+source: gh#522
+issue_state: open
+tags:
+- config
+- toml
+- glob
+- configures
+- decoy
+repo:
+  initial_files:
+    pyproject.toml: |
+      [project]
+      name = "app"
+      version = "0"
+
+      [tool.ruff]
+      src = ["src"]
+    src/app/__init__.py: |
+      VALUE = 1
+  changed_files:
+    src/app/__init__.py: |
+      VALUE = 2
+    src/requests/__init__.py: |
+      """A first-party package that shadows the installed one."""
+  commit_message: Add a package under the source root
+expect:
+  # `requests` is a new first-party name under ruff's source root; the edit of
+  # a package the root already held moves nothing ruff classifies.
+  relations:
+  - from: pyproject.toml
+    to: src/requests/__init__.py
+    kind: configures
+    resolution: resolved
+    site: 6
+  exact: true
+  decoys:
+    src/app/__init__.py:
+    - pyproject.toml

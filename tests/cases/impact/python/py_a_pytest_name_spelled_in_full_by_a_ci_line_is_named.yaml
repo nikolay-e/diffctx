@@ -1,0 +1,38 @@
+name: py_a_pytest_name_spelled_in_full_by_a_ci_line_is_named
+mode: impact
+source: synthetic
+tags: [python, textual-match, template]
+repo:
+  initial_files:
+    shop/price.py: |
+      def total(items):
+          return sum(items)
+    tests/test_price.py: |
+      from shop.price import total
+
+
+      def test_an_empty_basket_totals_zero_and_never_raises_an_error():
+          assert total([]) == 0
+    .github/workflows/ci.yml: |
+      on: push
+      jobs:
+        price:
+          runs-on: ubuntu-latest
+          steps:
+            - run: pytest -k test_an_empty_basket_totals_zero_and_never_raises_an_error
+  changed_files:
+    tests/test_price.py: |
+      from shop.price import total
+
+
+      def test_an_empty_basket_totals_zero_and_never_raises_an_error():
+          assert total([]) == 0
+          assert total([0]) == 0
+  commit_message: "price: pin a basket of zero"
+expect:
+  exact: false
+  relations:
+  - from: .github/workflows/ci.yml
+    to: tests/test_price.py::test_an_empty_basket_totals_zero_and_never_raises_an_error
+    kind: calls
+    resolution: unresolved

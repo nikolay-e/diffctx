@@ -1,0 +1,2115 @@
+use std::cell::RefCell;
+use std::sync::Arc;
+
+use once_cell::sync::Lazy;
+use rustc_hash::{FxHashMap, FxHashSet};
+use std::time::{Duration, Instant};
+use tree_sitter::{Language, Node, ParseOptions, Parser, Tree};
+
+use diffctx_base::types::{Fragment, FragmentId, FragmentKind, extract_identifiers};
+use diffctx_config::config::parsers::PARSERS;
+use diffctx_config::config::tokenization::TOKENIZATION;
+
+use super::{FragmentationStrategy, create_code_gap_fragments, create_snippet};
+
+mod lang_config;
+mod node_kind;
+use lang_config::{LANG_CONFIGS, LangConfig, find_lang_config, find_lang_config_for};
+use node_kind::node_type_to_kind;
+
+const BODY_FIELD_NAMES: &[&str] = &["body", "block", "consequence"];
+const BODY_NODE_TYPES: &[&str] = &[
+    "block",
+    "statement_block",
+    "compound_statement",
+    "function_body",
+];
+
+const CONTAINER_KINDS: &[&str] = &["class", "interface", "struct", "impl"];
+const FUNCTION_CHILD_TYPES: &[&str] = &["arrow_function", "function", "generator_function"];
+
+static LANGUAGE_CACHE: Lazy<FxHashMap<&'static str, Language>> = Lazy::new(|| {
+    #[allow(unused_mut)]
+    let mut m: FxHashMap<&'static str, Language> = FxHashMap::default();
+
+    #[cfg(feature = "tree-sitter-python")]
+    m.insert("python", Language::new(tree_sitter_python::LANGUAGE));
+
+    #[cfg(feature = "tree-sitter-javascript")]
+    {
+        let js = Language::new(tree_sitter_javascript::LANGUAGE);
+        m.insert("javascript", js.clone());
+        m.insert("jsx", js);
+    }
+
+    #[cfg(feature = "tree-sitter-typescript")]
+    {
+        m.insert(
+            "typescript",
+            Language::new(tree_sitter_typescript::LANGUAGE_TYPESCRIPT),
+        );
+        m.insert("tsx", Language::new(tree_sitter_typescript::LANGUAGE_TSX));
+    }
+
+    #[cfg(feature = "tree-sitter-go")]
+    m.insert("go", Language::new(tree_sitter_go::LANGUAGE));
+
+    #[cfg(feature = "tree-sitter-rust")]
+    m.insert("rust", Language::new(tree_sitter_rust::LANGUAGE));
+
+    #[cfg(feature = "tree-sitter-java")]
+    m.insert("java", Language::new(tree_sitter_java::LANGUAGE));
+
+    #[cfg(feature = "tree-sitter-c")]
+    m.insert("c", Language::new(tree_sitter_c::LANGUAGE));
+
+    #[cfg(feature = "tree-sitter-cpp")]
+    m.insert("cpp", Language::new(tree_sitter_cpp::LANGUAGE));
+
+    #[cfg(feature = "tree-sitter-ruby")]
+    m.insert("ruby", Language::new(tree_sitter_ruby::LANGUAGE));
+
+    #[cfg(feature = "tree-sitter-c-sharp")]
+    m.insert("c_sharp", Language::new(tree_sitter_c_sharp::LANGUAGE));
+
+    #[cfg(feature = "tree-sitter-php")]
+    m.insert("php", Language::new(tree_sitter_php::LANGUAGE_PHP));
+
+    #[cfg(feature = "tree-sitter-scala")]
+    m.insert("scala", Language::new(tree_sitter_scala::LANGUAGE));
+
+    #[cfg(feature = "tree-sitter-swift")]
+    m.insert("swift", Language::new(tree_sitter_swift::LANGUAGE));
+
+    #[cfg(feature = "brokk-tree-sitter-kotlin")]
+    m.insert("kotlin", Language::new(brokk_tree_sitter_kotlin::LANGUAGE));
+
+    #[cfg(feature = "tree-sitter-html")]
+    m.insert("html", Language::new(tree_sitter_html::LANGUAGE));
+
+    #[cfg(feature = "tree-sitter-bash")]
+    m.insert("bash", Language::new(tree_sitter_bash::LANGUAGE));
+
+    #[cfg(feature = "tree-sitter-css")]
+    m.insert("css", Language::new(tree_sitter_css::LANGUAGE));
+
+    #[cfg(feature = "tree-sitter-haskell")]
+    m.insert("haskell", Language::new(tree_sitter_haskell::LANGUAGE));
+
+    #[cfg(feature = "tree-sitter-elixir")]
+    m.insert("elixir", Language::new(tree_sitter_elixir::LANGUAGE));
+
+    #[cfg(feature = "tree-sitter-lua")]
+    m.insert("lua", Language::new(tree_sitter_lua::LANGUAGE));
+
+    #[cfg(feature = "tree-sitter-r")]
+    m.insert("r", Language::new(tree_sitter_r::LANGUAGE));
+
+    #[cfg(feature = "tree-sitter-ocaml")]
+    m.insert("ocaml", Language::new(tree_sitter_ocaml::LANGUAGE_OCAML));
+
+    #[cfg(feature = "tree-sitter-erlang")]
+    m.insert("erlang", Language::new(tree_sitter_erlang::LANGUAGE));
+
+    #[cfg(feature = "tree-sitter-julia")]
+    m.insert("julia", Language::new(tree_sitter_julia::LANGUAGE));
+
+    #[cfg(feature = "tree-sitter-zig")]
+    m.insert("zig", Language::new(tree_sitter_zig::LANGUAGE));
+
+    #[cfg(feature = "tree-sitter-clojure")]
+    m.insert("clojure", Language::new(tree_sitter_clojure::LANGUAGE));
+
+    #[cfg(feature = "tree-sitter-nix")]
+    m.insert("nix", Language::new(tree_sitter_nix::LANGUAGE));
+
+    #[cfg(feature = "tree-sitter-groovy")]
+    m.insert("groovy", Language::new(tree_sitter_groovy::LANGUAGE));
+
+    #[cfg(feature = "tree-sitter-objc")]
+    m.insert("objc", Language::new(tree_sitter_objc::LANGUAGE));
+
+    #[cfg(feature = "tree-sitter-cmake")]
+    m.insert("cmake", Language::new(tree_sitter_cmake::LANGUAGE));
+
+    #[cfg(feature = "tree-sitter-make")]
+    m.insert("make", Language::new(tree_sitter_make::LANGUAGE));
+
+    #[cfg(feature = "tree-sitter-hcl")]
+    m.insert("hcl", Language::new(tree_sitter_hcl::LANGUAGE));
+
+    #[cfg(feature = "tree-sitter-graphql")]
+    m.insert("graphql", Language::new(tree_sitter_graphql::LANGUAGE));
+
+    #[cfg(feature = "tree-sitter-dart")]
+    m.insert("dart", Language::new(tree_sitter_dart::LANGUAGE));
+
+    #[cfg(feature = "tree-sitter-prisma-io")]
+    m.insert("prisma", Language::new(tree_sitter_prisma_io::LANGUAGE));
+
+    #[cfg(feature = "tree-sitter-svelte-ng")]
+    m.insert("svelte", Language::new(tree_sitter_svelte_ng::LANGUAGE));
+
+    #[cfg(feature = "tree-sitter-json")]
+    m.insert("json", Language::new(tree_sitter_json::LANGUAGE));
+
+    #[cfg(feature = "tree-sitter-yaml")]
+    m.insert("yaml", Language::new(tree_sitter_yaml::LANGUAGE));
+
+    m
+});
+
+fn get_tree_sitter_language(ts_name: &str) -> Option<Language> {
+    LANGUAGE_CACHE.get(ts_name).cloned()
+}
+
+/// A grammar compiled into this build parses the file: structure is to be
+/// expected, so its absence is a blind spot. A language without one is read
+/// as text by design (#330).
+pub fn has_grammar(path: &str) -> bool {
+    find_lang_config(path).is_some_and(|c| LANGUAGE_CACHE.contains_key(c.ts_name))
+}
+
+/// `content` as a reference search reads it: every comment and string
+/// literal blanked to spaces, the expressions inside an interpolation
+/// (`f"{f(x)}"`, `` `${f(x)}` ``, `"#{f(x)}"`) kept, lines and columns
+/// unchanged. Read off the file's grammar: a hand lexer took `//` for a
+/// comment in Python, a lifetime for a quote, and blanked every
+/// interpolated call (#460, #475). A snippet's common indentation is
+/// removed for the parse and put back. `None` without a grammar or when
+/// the parse timed out. Each text is parsed once: a caller is checked
+/// against every changed definition.
+pub fn code_only(path: &str, content: &str) -> Option<Arc<str>> {
+    let config = find_lang_config(path)?;
+    let key = {
+        use std::hash::{Hash, Hasher};
+        let mut h = rustc_hash::FxHasher::default();
+        (config.ts_name, content).hash(&mut h);
+        h.finish()
+    };
+    if let Some(known) = MASKS.lock().ok().and_then(|m| m.get(&key).cloned()) {
+        return Some(known);
+    }
+    let indent = content
+        .lines()
+        .filter(|l| !l.trim().is_empty())
+        .map(|l| l.len() - l.trim_start_matches([' ', '\t']).len())
+        .min()
+        .unwrap_or(0);
+    let mut dedented = String::with_capacity(content.len());
+    let mut kept: Vec<&str> = Vec::new();
+    for line in content.split_inclusive('\n') {
+        let cut = indent.min(line.len() - line.trim_start_matches([' ', '\t']).len());
+        kept.push(&line[..cut]);
+        dedented.push_str(&line[cut..]);
+    }
+    let tree = parse_tree(config.ts_name, &dedented)?;
+    let original = dedented.as_bytes();
+    let mut out = original.to_vec();
+    blank_non_code(tree.root_node(), original, &mut out);
+    let masked = String::from_utf8(out).ok()?;
+    let mut result = String::with_capacity(content.len());
+    for (line, prefix) in masked.split_inclusive('\n').zip(kept) {
+        result.push_str(prefix);
+        result.push_str(line);
+    }
+    let result: Arc<str> = result.into();
+    if let Ok(mut map) = MASKS.lock() {
+        if map.len() >= OUTCOME_LIMIT {
+            map.clear();
+        }
+        map.insert(key, result.clone());
+    }
+    Some(result)
+}
+
+static MASKS: Lazy<std::sync::Mutex<FxHashMap<u64, Arc<str>>>> =
+    Lazy::new(|| std::sync::Mutex::new(FxHashMap::default()));
+
+/// A named declaration the grammar sees: a function, method, class,
+/// interface or a member signature, with the container it sits in.
+#[derive(Debug, Clone)]
+pub struct Declaration {
+    pub name: String,
+    pub start_line: u32,
+    pub end_line: u32,
+    /// The statement's first line, wrappers included (`export`, a
+    /// decorator): what visibility is read off.
+    pub head: String,
+    /// The declaring class, interface or trait, when there is one.
+    pub container: Option<usize>,
+}
+
+/// Every named declaration in `content` that code outside its function can
+/// reach: a function's own locals are left out. `None` without a grammar.
+/// The removed definitions of a change are compared on these, base against
+/// head, rather than read off removed lines by regex (#515).
+pub fn declarations(path: &str, content: &str) -> Option<Vec<Declaration>> {
+    let config = find_lang_config(path)?;
+    let tree = parse_tree(config.ts_name, content)?;
+    let mut out = Vec::new();
+    collect_declarations(tree.root_node(), content, None, &mut out);
+    Some(out)
+}
+
+fn declares(kind: &str) -> bool {
+    const DECLARING: [&str; 13] = [
+        "function",
+        "method",
+        "class",
+        "interface",
+        "struct",
+        "enum",
+        "trait",
+        "type_alias",
+        "type_item",
+        "type_spec",
+        "module",
+        "mod_item",
+        "signature",
+    ];
+    const NOT: [&str; 8] = [
+        "call",
+        "invocation",
+        "expression",
+        "reference",
+        "access",
+        "argument",
+        "parameter",
+        "type_annotation",
+    ];
+    DECLARING.iter().any(|k| kind.contains(k)) && !NOT.iter().any(|k| kind.contains(k))
+}
+
+fn collect_declarations(
+    node: Node,
+    content: &str,
+    container: Option<usize>,
+    out: &mut Vec<Declaration>,
+) {
+    let kind = node.kind();
+    let bound = kind == "variable_declarator";
+    let named = if bound {
+        bound_definition(node, content)
+    } else {
+        declares(kind)
+            .then(|| node.child_by_field_name("name"))
+            .flatten()
+            .and_then(|n| n.utf8_text(content.as_bytes()).ok())
+    };
+    let mut inner = container;
+    if let Some(name) = named {
+        let mut start = node;
+        while let Some(parent) = start.parent() {
+            if !matches!(
+                parent.kind(),
+                "export_statement"
+                    | "decorated_definition"
+                    | "lexical_declaration"
+                    | "variable_declaration"
+            ) {
+                break;
+            }
+            start = parent;
+        }
+        let head = content[start.start_byte()..]
+            .lines()
+            .next()
+            .unwrap_or_default()
+            .to_string();
+        out.push(Declaration {
+            name: name.to_string(),
+            start_line: node_start_line(&start),
+            end_line: node_end_line(&node),
+            head,
+            container,
+        });
+        // A function's body declares locals nothing outside it reaches.
+        if bound
+            || (kind.contains("function") || kind.contains("method")) && !kind.contains("signature")
+        {
+            return;
+        }
+        inner = Some(out.len() - 1);
+    }
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        collect_declarations(child, content, inner, out);
+    }
+}
+
+/// A name a binding gives a module that an importer reaches as it reaches a
+/// function, so its removal breaks the importer: a JS/TS `const f = () => …`
+/// or an exported `const` (#491). A JS/TS binding of any other value, and
+/// every binding inside a body, stays a value. Python, Rust and Go read
+/// their removals off their own models.
+fn bound_definition<'a>(node: Node, content: &'a str) -> Option<&'a str> {
+    let text = |n: Node| n.utf8_text(content.as_bytes()).ok();
+    let grandparent = node.parent().and_then(|p| p.parent()).map(|g| g.kind());
+    match node.kind() {
+        "variable_declarator" => {
+            let name = node
+                .child_by_field_name("name")
+                .filter(|n| n.kind() == "identifier")?;
+            let function_valued = node.child_by_field_name("value").is_some_and(|v| {
+                matches!(
+                    v.kind(),
+                    "arrow_function" | "function_expression" | "function" | "generator_function"
+                )
+            });
+            (function_valued || grandparent == Some("export_statement"))
+                .then(|| text(name))
+                .flatten()
+        }
+        _ => None,
+    }
+}
+
+fn is_interpolation(kind: &str) -> bool {
+    matches!(
+        kind,
+        "interpolation"
+            | "template_substitution"
+            | "interpolated_expression"
+            | "interpolated_identifier"
+            | "string_interpolation"
+    )
+}
+
+fn is_literal_text(kind: &str) -> bool {
+    kind.contains("string") || kind.contains("char_literal") || kind.contains("heredoc")
+}
+
+fn blank(out: &mut [u8], range: std::ops::Range<usize>) {
+    for b in &mut out[range] {
+        if *b != b'\n' {
+            *b = b' ';
+        }
+    }
+}
+
+/// Blanks `node`'s comments and literal text in `out`; an interpolation's
+/// bytes are restored from `original` and read as code again.
+fn blank_non_code(node: Node, original: &[u8], out: &mut [u8]) {
+    let kind = node.kind();
+    if kind.contains("comment") {
+        blank(out, node.byte_range());
+        return;
+    }
+    if is_literal_text(kind) && !is_interpolation(kind) {
+        blank(out, node.byte_range());
+        keep_interpolations(node, original, out);
+        return;
+    }
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        blank_non_code(child, original, out);
+    }
+}
+
+/// The interpolations anywhere inside a blanked literal, an implicitly
+/// concatenated one included, read as code again.
+fn keep_interpolations(node: Node, original: &[u8], out: &mut [u8]) {
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        if is_interpolation(child.kind()) {
+            let range = child.byte_range();
+            out[range.clone()].copy_from_slice(&original[range]);
+            blank_non_code(child, original, out);
+        } else {
+            keep_interpolations(child, original, out);
+        }
+    }
+}
+
+/// How a file's grammar read it: the fragmenter records it for the bytes it
+/// parsed, so a reader asking later learns what happened rather than
+/// guessing from the fragments that came out (#454).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ParseOutcome {
+    Clean,
+    /// Error or missing nodes: the first few lines they start on, to name,
+    /// and every line span they cover. What sits elsewhere was read.
+    Partial {
+        lines: Vec<u32>,
+        spans: Vec<(u32, u32)>,
+    },
+    TimedOut,
+}
+
+const OUTCOME_LIMIT: usize = 16_384;
+const ERROR_LINES_KEPT: usize = 3;
+
+static OUTCOMES: Lazy<std::sync::Mutex<FxHashMap<u64, ParseOutcome>>> =
+    Lazy::new(|| std::sync::Mutex::new(FxHashMap::default()));
+
+fn content_key(content: &str) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut h = rustc_hash::FxHasher::default();
+    content.hash(&mut h);
+    h.finish()
+}
+
+fn remember_outcome(content: &str, outcome: ParseOutcome) {
+    if let Ok(mut map) = OUTCOMES.lock() {
+        if map.len() >= OUTCOME_LIMIT {
+            map.clear();
+        }
+        map.insert(content_key(content), outcome);
+    }
+}
+
+fn outcome_of(tree: &Tree) -> ParseOutcome {
+    let root = tree.root_node();
+    if !root.has_error() {
+        return ParseOutcome::Clean;
+    }
+    let mut spans = Vec::new();
+    let mut stack = vec![root];
+    while let Some(n) = stack.pop() {
+        if n.is_error() || n.is_missing() {
+            let row = |p: tree_sitter::Point| p.row as u32 + 1;
+            spans.push((row(n.start_position()), row(n.end_position())));
+            continue;
+        }
+        if n.has_error() {
+            let mut cursor = n.walk();
+            stack.extend(n.children(&mut cursor));
+        }
+    }
+    spans.sort_unstable();
+    let mut lines: Vec<u32> = spans.iter().map(|&(start, _)| start).collect();
+    lines.dedup();
+    lines.truncate(ERROR_LINES_KEPT);
+    ParseOutcome::Partial { lines, spans }
+}
+
+/// What the file's grammar made of `content`: the fragmenter's own record
+/// of those bytes, else a parse of them. `None` without a grammar.
+pub(super) fn parse_outcome(path: &str, content: &str) -> Option<ParseOutcome> {
+    let config = find_lang_config(path)?;
+    if !LANGUAGE_CACHE.contains_key(config.ts_name) {
+        return None;
+    }
+    if let Some(known) = OUTCOMES
+        .lock()
+        .ok()
+        .and_then(|m| m.get(&content_key(content)).cloned())
+    {
+        return Some(known);
+    }
+    let outcome = parse_tree(config.ts_name, content)
+        .map_or(ParseOutcome::TimedOut, |tree| outcome_of(&tree));
+    remember_outcome(content, outcome.clone());
+    Some(outcome)
+}
+
+/// A parse of `content` under the grammar of `path`, and that grammar's
+/// name. `None` without a grammar or when the parse timed out.
+pub fn parse_file(path: &str, content: &str) -> Option<(Tree, &'static str)> {
+    let config = find_lang_config(path)?;
+    Some((parse_tree(config.ts_name, content)?, config.ts_name))
+}
+
+/// A parse of `content` under the named grammar, from the same thread-local
+/// parser cache and under the same wall-clock bound the fragmenter uses.
+/// `None` when the grammar is not compiled in or the parse timed out.
+pub fn parse_tree(ts_name: &'static str, content: &str) -> Option<Tree> {
+    let language = get_tree_sitter_language(ts_name)?;
+    parse_with_cached_parser(ts_name, &language, content)
+}
+
+thread_local! {
+    static PARSER_CACHE: RefCell<FxHashMap<&'static str, Parser>> = RefCell::new(FxHashMap::default());
+}
+
+/// Wall-clock deadline for a single tree-sitter parse. Pathological inputs
+/// (huge minified bundles, deeply ambiguous grammars) can otherwise pin a
+/// rayon worker indefinitely.
+const PARSE_TIMEOUT: Duration = Duration::from_secs(2);
+
+fn parse_with_cached_parser(
+    ts_name: &'static str,
+    language: &Language,
+    content: &str,
+) -> Option<Tree> {
+    let tree = parse_with_deadline(ts_name, language, content, PARSE_TIMEOUT)?;
+    if !matches!(ts_name, "javascript" | "jsx" | "tsx") || !tree.root_node().has_error() {
+        return Some(tree);
+    }
+    // JSX text may hold a bare `&`, which the grammar reads as a broken
+    // character reference, and its recovery can misread the element around
+    // it (#531). `|` stands where `&` does in text, in code and in a type,
+    // so a parse with it in place reads what the language does; it is kept
+    // when it reads the whole file.
+    let Some(spelled) = without_bare_ampersands(content) else {
+        return Some(tree);
+    };
+    match parse_with_deadline(ts_name, language, &spelled, PARSE_TIMEOUT) {
+        Some(clean) if !clean.root_node().has_error() => Some(clean),
+        _ => Some(tree),
+    }
+}
+
+/// `content` with each `&` that is neither `&&`, `&=` nor a character
+/// reference (`&amp;`, `&#38;`) spelled `|`, at the same byte; `None` when
+/// there is none.
+fn without_bare_ampersands(content: &str) -> Option<String> {
+    let bytes = content.as_bytes();
+    let reference = |rest: &[u8]| {
+        let body = rest.strip_prefix(b"#").unwrap_or(rest);
+        let len = body
+            .iter()
+            .take(32)
+            .position(|b| !b.is_ascii_alphanumeric())
+            .unwrap_or(body.len());
+        len > 0 && body.get(len) == Some(&b';')
+    };
+    let mut out = bytes.to_vec();
+    let mut changed = false;
+    for (i, &b) in bytes.iter().enumerate() {
+        let bare = b == b'&'
+            && i.checked_sub(1).is_none_or(|p| bytes[p] != b'&')
+            && !matches!(bytes.get(i + 1), Some(b'&' | b'='))
+            && !reference(&bytes[i + 1..]);
+        if bare {
+            out[i] = b'|';
+            changed = true;
+        }
+    }
+    changed.then(|| String::from_utf8(out).ok()).flatten()
+}
+
+fn parse_with_deadline(
+    ts_name: &'static str,
+    language: &Language,
+    content: &str,
+    timeout: Duration,
+) -> Option<Tree> {
+    PARSER_CACHE.with(|cache| {
+        let mut cache = cache.borrow_mut();
+        let parser = match cache.get_mut(ts_name) {
+            Some(p) => p,
+            None => {
+                let mut p = Parser::new();
+                if p.set_language(language).is_err() {
+                    return None;
+                }
+                cache.insert(ts_name, p);
+                cache.get_mut(ts_name).expect("just inserted")
+            }
+        };
+        // tree-sitter convention: progress_callback returns `true` to abort.
+        // We abort once the wall-clock deadline has passed.
+        let deadline = Instant::now() + timeout;
+        let mut progress =
+            move |_state: &tree_sitter::ParseState| -> bool { Instant::now() >= deadline };
+        let bytes = content.as_bytes();
+        let len = bytes.len();
+        let tree = parser.parse_with_options(
+            &mut |i, _| (i < len).then(|| &bytes[i..]).unwrap_or_default(),
+            None,
+            Some(ParseOptions::new().progress_callback(&mut progress)),
+        );
+        // An aborted parse leaves the parser mid-document: the next `parse`
+        // on this thread resumes it against whatever file comes next, so a
+        // 5 MB bundle that trips the deadline silently strips the definitions
+        // of the ordinary file the same rayon worker takes afterwards.
+        if tree.is_none() {
+            parser.reset();
+        }
+        tree
+    })
+}
+
+fn node_start_line(node: &Node) -> u32 {
+    node.start_position().row as u32 + 1
+}
+
+fn node_end_line(node: &Node) -> u32 {
+    node.end_position().row as u32 + 1
+}
+
+fn is_definition_type(node_type: &str, definition_types: &[&str]) -> bool {
+    definition_types.contains(&node_type)
+}
+
+fn children<'a>(node: &Node<'a>) -> impl Iterator<Item = Node<'a>> + 'a {
+    let node = *node;
+    (0..node.child_count()).filter_map(move |i| node.child(i))
+}
+
+/// The class or function a `decorated_definition` wraps.
+fn decorated_inner<'a>(node: &Node<'a>) -> Option<Node<'a>> {
+    children(node).find(|c| {
+        matches!(
+            c.kind(),
+            "function_definition" | "class_definition" | "async_function_definition"
+        )
+    })
+}
+
+fn decorated_definition_kind(node: &Node) -> &'static str {
+    match decorated_inner(node).map(|n| n.kind()) {
+        Some("class_definition") => "class",
+        _ => "function",
+    }
+}
+
+fn is_container_kind(kind: &str) -> bool {
+    CONTAINER_KINDS.contains(&kind)
+}
+
+fn adjust_start_for_ancestor(node: &Node, start: u32) -> u32 {
+    let mut ancestor = node.parent();
+    if let Some(ref a) = ancestor {
+        let a_type = a.kind();
+        if a_type != "export_statement" && a_type != "decorated_definition" {
+            ancestor = a.parent();
+        }
+    }
+    if let Some(a) = ancestor {
+        let a_type = a.kind();
+        if a_type == "export_statement" || a_type == "decorated_definition" {
+            let ancestor_start = node_start_line(&a);
+            if ancestor_start < start {
+                return ancestor_start;
+            }
+        }
+    }
+    start
+}
+
+fn unwrap_decorated<'a>(node: Node<'a>) -> Node<'a> {
+    if node.kind() != "decorated_definition" {
+        return node;
+    }
+    decorated_inner(&node).unwrap_or(node)
+}
+
+fn unwrap_declarator<'a>(mut name_node: Node<'a>) -> Node<'a> {
+    loop {
+        match name_node.kind() {
+            "pointer_declarator"
+            | "function_declarator"
+            | "init_declarator"
+            | "array_declarator" => {
+                if let Some(inner) = name_node.child_by_field_name("declarator") {
+                    name_node = inner;
+                } else {
+                    break;
+                }
+            }
+            // C++ `reference_declarator` (`int &r`) and `parenthesized_declarator`
+            // (`int (*f)()`) hold their inner declarator as a positional child,
+            // NOT under a `declarator` field, so descend the first named
+            // declarator/identifier child instead of querying the field.
+            "reference_declarator" | "parenthesized_declarator" => {
+                match (0..name_node.named_child_count())
+                    .filter_map(|i| name_node.named_child(i))
+                    .find(|c| {
+                        let k = c.kind();
+                        k.ends_with("declarator") || k.ends_with("identifier")
+                    }) {
+                    Some(inner) => name_node = inner,
+                    None => break,
+                }
+            }
+            // An Erlang `-type price() :: …` names its type through `price()`.
+            "type_name" => match name_node.child_by_field_name("name") {
+                Some(inner) => name_node = inner,
+                None => break,
+            },
+            _ => break,
+        }
+    }
+    name_node
+}
+
+fn extract_symbol_name(node: &Node, source: &[u8]) -> Option<String> {
+    let unwrapped = unwrap_decorated(*node);
+    for field_name in &["name", "declarator", "type"] {
+        if let Some(name_node) = unwrapped.child_by_field_name(field_name) {
+            let name_node = unwrap_declarator(name_node);
+            if name_node.kind() == "identifier" || name_node.named_child_count() == 0 {
+                let text = &source[name_node.byte_range()];
+                return std::str::from_utf8(text).ok().map(|s| s.to_string());
+            }
+        }
+    }
+    // `key: (x) => {…}` in an object literal — a store's action, a handler
+    // map — is named by its property (#473).
+    if FUNCTION_CHILD_TYPES.contains(&unwrapped.kind()) || unwrapped.kind() == "function_expression"
+    {
+        let key = unwrapped
+            .parent()
+            .filter(|p| p.kind() == "pair")?
+            .child_by_field_name("key")?;
+        let text = std::str::from_utf8(&source[key.byte_range()]).ok()?;
+        return Some(text.trim_matches(['"', '\'']).to_string());
+    }
+    None
+}
+
+fn find_body_node<'a>(node: &Node<'a>) -> Option<Node<'a>> {
+    BODY_FIELD_NAMES
+        .iter()
+        .find_map(|field| node.child_by_field_name(field))
+        .or_else(|| children(node).find(|c| BODY_NODE_TYPES.contains(&c.kind())))
+}
+
+/// `k` in `for (let k = 1; k <= 20; k++)`: the loop's own counter, which no
+/// importer reaches and no call names, never a definition (Forgejo #94).
+/// `for (const x of xs)` has no declarator to begin with.
+fn is_loop_counter(node: &Node) -> bool {
+    let Some(declaration) = node
+        .parent()
+        .filter(|_| node.kind() == "variable_declarator")
+    else {
+        return false;
+    };
+    declaration.parent().is_some_and(|stmt| {
+        stmt.kind() == "for_statement"
+            && stmt
+                .child_by_field_name("initializer")
+                .is_some_and(|init| init.id() == declaration.id())
+    })
+}
+
+fn has_function_child(node: &Node) -> bool {
+    children(node).any(|c| FUNCTION_CHILD_TYPES.contains(&c.kind()))
+}
+
+fn first_child_def_line(node: &Node, definition_types: &[&str], depth: u32) -> Option<u32> {
+    if depth > PARSERS.container_search_max_depth {
+        return None;
+    }
+    children(node).find_map(|child| {
+        if is_definition_type(child.kind(), definition_types) {
+            Some(node_start_line(&child))
+        } else {
+            first_child_def_line(&child, definition_types, depth + 1)
+        }
+    })
+}
+
+/// Kotlin through the fwcd grammar: names, scope and spans come from the
+/// shared Kotlin facts (`facts::kotlin`), so the fragments and every later
+/// reader of the file agree on what each declaration is called and owns.
+mod kotlin {
+    use crate::facts::kotlin as facts;
+    use tree_sitter::Node;
+
+    pub(super) fn symbol_name(node: &Node, source: &[u8]) -> Option<String> {
+        facts::declared_name(node, source)
+    }
+
+    pub(super) fn kind(node: &Node) -> Option<&'static str> {
+        match facts::declaration_kind(node)? {
+            "object" | "companion" => Some("class"),
+            "constructor" => Some("function"),
+            "interface" => Some("interface"),
+            _ => None,
+        }
+    }
+
+    /// A `val` inside a function, a lambda, an `init` block or an accessor
+    /// is a local, not a member anyone outside can reach.
+    pub(super) fn is_local_property(node: &Node) -> bool {
+        node.kind() == "property_declaration" && facts::is_local(node)
+    }
+
+    pub(super) fn end_with_accessors(node: &Node) -> u32 {
+        facts::end_with_accessors(node).0
+    }
+
+    /// A function body wraps its statements in one `statements` node.
+    pub(super) fn statements_of(body: Node) -> Node {
+        let mut cursor = body.walk();
+        let only = body.named_children(&mut cursor).collect::<Vec<_>>();
+        match only.as_slice() {
+            [single] if single.kind() == "statements" => *single,
+            _ => body,
+        }
+    }
+}
+
+/// One walk over one parse tree: the file being fragmented and what the
+/// walk has emitted so far. Every step used to thread these seven values
+/// through four mutually recursive functions.
+struct Walk<'a> {
+    source: &'a [u8],
+    path: &'a Arc<str>,
+    lines: &'a [&'a str],
+    definition_types: &'a [&'a str],
+    kotlin: bool,
+    fragments: Vec<Fragment>,
+    covered: Vec<(u32, u32)>,
+    added_ends: FxHashSet<(String, u32)>,
+    /// The body chunks emitted so far, by their lines.
+    chunks: FxHashMap<(u32, u32), usize>,
+}
+
+impl<'a> Walk<'a> {
+    fn new(
+        source: &'a [u8],
+        path: &'a Arc<str>,
+        lines: &'a [&'a str],
+        config: &'a LangConfig,
+    ) -> Self {
+        Self {
+            source,
+            path,
+            lines,
+            definition_types: config.definition_types,
+            kotlin: config.ts_name == "kotlin",
+            fragments: Vec::new(),
+            covered: Vec::new(),
+            added_ends: FxHashSet::default(),
+            chunks: FxHashMap::default(),
+        }
+    }
+
+    fn push(&mut self, start: u32, end: u32, kind: &str, sym_name: Option<&str>) -> bool {
+        // A chunk of a long body spanning exactly a definition nested in it
+        // is that definition. Kept as the chunk, it held the definition's
+        // lines, the definition was dropped as its duplicate, and its name
+        // had no definition (#554).
+        if kind != "chunk" {
+            if let Some(at) = self.chunks.remove(&(start, end)) {
+                let chunk = &mut self.fragments[at];
+                chunk.kind = FragmentKind::from_str(kind);
+                chunk.symbol_name = sym_name.map(str::to_string);
+                return true;
+            }
+        }
+        let Some(snippet) = create_snippet(self.lines, start, end) else {
+            return false;
+        };
+        let identifiers =
+            extract_identifiers(&snippet, TOKENIZATION.fragment_min_identifier_length);
+        if kind == "chunk" {
+            self.chunks.insert((start, end), self.fragments.len());
+        }
+        self.fragments.push(Fragment {
+            id: FragmentId::new(Arc::clone(self.path), start, end),
+            kind: FragmentKind::from_str(kind),
+            content: Arc::from(snippet),
+            identifiers,
+            token_count: 0,
+            symbol_name: sym_name.map(|s| s.to_string()),
+        });
+        self.covered.push((start, end));
+        true
+    }
+
+    fn emit_chunk(&mut self, start: u32, end: u32, parent_symbol: Option<&str>) {
+        if end < start || end - start + 1 < PARSERS.min_fragment_lines {
+            return;
+        }
+        let sym_name = parent_symbol.map(|ps| format!("{ps}[{start}]"));
+        self.push(start, end, "chunk", sym_name.as_deref());
+    }
+
+    fn create_sub_fragments(&mut self, node: &Node, parent_symbol: Option<&str>, depth: u32) {
+        if depth > PARSERS.max_sub_depth {
+            return;
+        }
+        let Some(mut body) = find_body_node(node) else {
+            return;
+        };
+        if self.kotlin {
+            body = kotlin::statements_of(body);
+        }
+
+        let named_count = body.named_child_count();
+        let children: Vec<Node> = (0..named_count)
+            .filter_map(|i| body.named_child(i))
+            .filter(|c| c.end_position().row >= c.start_position().row)
+            .collect();
+
+        if children.len() < 2 {
+            return;
+        }
+
+        let mut chunk_start_line = node_start_line(&children[0]);
+        let mut chunk_end_line = node_end_line(&children[0]);
+
+        for child in &children[1..] {
+            let child_start = node_start_line(child);
+            let child_end = node_end_line(child);
+            if child_end - chunk_start_line + 1 > PARSERS.sub_fragment_target_lines {
+                self.emit_chunk(chunk_start_line, chunk_end_line, parent_symbol);
+                chunk_start_line = child_start;
+                chunk_end_line = child_end;
+            } else {
+                chunk_end_line = child_end;
+            }
+        }
+
+        self.emit_chunk(chunk_start_line, chunk_end_line, parent_symbol);
+    }
+
+    fn try_container_split(
+        &mut self,
+        node: &Node,
+        depth: u32,
+        start: u32,
+        end: u32,
+        kind: &str,
+        sym_name: Option<&str>,
+    ) -> bool {
+        // For a `decorated_definition` the inner class/def node is itself a
+        // definition type, so searching from the wrapper would report the header
+        // line as the "first child" and truncate the container header to the
+        // decorator alone. Search from the unwrapped definition instead.
+        let search_root = unwrap_decorated(*node);
+        let Some(first_child_start) = first_child_def_line(&search_root, self.definition_types, 0)
+        else {
+            return false;
+        };
+        if first_child_start <= start {
+            return false;
+        }
+        self.push(start, first_child_start - 1, kind, sym_name);
+        self.added_ends.insert((kind.to_string(), end));
+        self.recurse_children(node, depth);
+        true
+    }
+
+    fn handle_definition_node(&mut self, node: &Node, depth: u32) {
+        if (self.kotlin && kotlin::is_local_property(node)) || is_loop_counter(node) {
+            self.recurse_children(node, depth);
+            return;
+        }
+        let start = node_start_line(node);
+        let end = if self.kotlin {
+            kotlin::end_with_accessors(node)
+        } else {
+            node_end_line(node)
+        };
+        let kind = if self.kotlin {
+            kotlin::kind(node).unwrap_or_else(|| node_type_to_kind(node.kind(), Some(node)))
+        } else {
+            node_type_to_kind(node.kind(), Some(node))
+        };
+
+        if self.added_ends.contains(&(kind.to_string(), end)) {
+            self.recurse_children(node, depth);
+            return;
+        }
+
+        let sym_name = if self.kotlin {
+            kotlin::symbol_name(node, self.source)
+        } else {
+            extract_symbol_name(node, self.source)
+        };
+        let start = adjust_start_for_ancestor(node, start);
+
+        if is_container_kind(kind)
+            && self.try_container_split(node, depth, start, end, kind, sym_name.as_deref())
+        {
+            return;
+        }
+
+        if end - start + 1 >= PARSERS.min_fragment_lines
+            && self.push(start, end, kind, sym_name.as_deref())
+        {
+            self.added_ends.insert((kind.to_string(), end));
+        }
+
+        if end - start + 1 > PARSERS.sub_fragment_threshold_lines {
+            self.create_sub_fragments(node, sym_name.as_deref(), 0);
+        }
+
+        if node.kind() == "variable_declarator" && has_function_child(node) {
+            return;
+        }
+
+        self.recurse_children(node, depth);
+    }
+
+    fn extract_definitions(&mut self, node: &Node, depth: u32) {
+        if depth > PARSERS.max_recursion_depth {
+            return;
+        }
+        if is_definition_type(node.kind(), self.definition_types) {
+            self.handle_definition_node(node, depth);
+        } else {
+            self.recurse_children(node, depth);
+        }
+    }
+
+    fn recurse_children(&mut self, node: &Node, depth: u32) {
+        for child in children(node) {
+            self.extract_definitions(&child, depth + 1);
+        }
+    }
+}
+
+pub(super) struct TreeSitterStrategy {
+    _private: (),
+}
+
+impl TreeSitterStrategy {
+    pub(super) fn new() -> Self {
+        Self { _private: () }
+    }
+}
+
+impl FragmentationStrategy for TreeSitterStrategy {
+    fn can_handle(&self, path: &str, content: &str) -> bool {
+        find_lang_config_for(path, content).is_some()
+    }
+
+    fn fragment(&self, path: Arc<str>, content: &str) -> Vec<Fragment> {
+        let config = match find_lang_config_for(&path, content) {
+            Some(c) => c,
+            None => return Vec::new(),
+        };
+
+        let language = match get_tree_sitter_language(config.ts_name) {
+            Some(l) => l,
+            None => return Vec::new(),
+        };
+
+        let Some(tree) = parse_with_cached_parser(config.ts_name, &language, content) else {
+            remember_outcome(content, ParseOutcome::TimedOut);
+            return Vec::new();
+        };
+        remember_outcome(content, outcome_of(&tree));
+        if config.ts_name == "kotlin" {
+            crate::facts::kotlin::record(&tree, content);
+        }
+
+        let source = content.as_bytes();
+        let lines: Vec<&str> = content.split('\n').collect();
+
+        let mut walk = Walk::new(source, &path, &lines, config);
+        walk.extract_definitions(&tree.root_node(), 0);
+        let Walk {
+            mut fragments,
+            covered,
+            ..
+        } = walk;
+
+        let gap_frags = create_code_gap_fragments(Arc::clone(&path), &lines, &covered);
+        fragments.extend(gap_frags);
+
+        if matches!(config.ts_name, "html" | "svelte") {
+            inject_embedded_languages(&tree.root_node(), source, &path, &mut fragments, 0);
+        }
+
+        fragments
+    }
+}
+
+/// Language injection for HTML: the JS inside `<script>` and the CSS inside
+/// `<style>` are parsed with their own grammars, so a changed function in a
+/// single-file web app surfaces as a definition fragment instead of degrading
+/// to a raw line window (#181). The HTML pass has already emitted the
+/// `script_element`/`style_element` container and marked its span covered;
+/// these fragments overlay it the way methods overlay a class.
+fn inject_embedded_languages(
+    node: &Node,
+    source: &[u8],
+    path: &Arc<str>,
+    fragments: &mut Vec<Fragment>,
+    depth: u32,
+) {
+    if depth > PARSERS.max_recursion_depth {
+        return;
+    }
+    let embedded = match node.kind() {
+        "script_element" if script_is_javascript(node, source) => {
+            Some(script_grammar(node, source))
+        }
+        "style_element" => Some("css"),
+        _ => None,
+    };
+    if let Some(ts_name) = embedded {
+        for i in 0..node.child_count() {
+            let Some(child) = node.child(i) else { continue };
+            if child.kind() == "raw_text" {
+                fragment_embedded_source(&child, source, path, ts_name, fragments);
+            }
+        }
+        return;
+    }
+    for i in 0..node.child_count() {
+        if let Some(child) = node.child(i) {
+            inject_embedded_languages(&child, source, path, fragments, depth + 1);
+        }
+    }
+}
+
+/// A page's JavaScript: the text of its inline scripts where the page has
+/// it, every other byte but a newline blanked, so one parse places each
+/// identifier at its line and column in the page. Classic scripts share one
+/// global scope, which one program over all of them models.
+pub fn inline_scripts(html: &str) -> Option<String> {
+    let tree = parse_tree("html", html)?;
+    let source = html.as_bytes();
+    let mut code: Vec<u8> = source
+        .iter()
+        .map(|&b| if b == b'\n' { b } else { b' ' })
+        .collect();
+    let mut stack = vec![tree.root_node()];
+    while let Some(node) = stack.pop() {
+        if node.kind() != "script_element" {
+            stack.extend(children(&node));
+            continue;
+        }
+        if script_is_javascript(&node, source) && script_grammar(&node, source) == "javascript" {
+            for raw in children(&node).filter(|c| c.kind() == "raw_text") {
+                let range = raw.byte_range();
+                code[range.clone()].copy_from_slice(&source[range]);
+            }
+        }
+    }
+    String::from_utf8(code).ok()
+}
+
+/// A `type=` attribute that names something other than JavaScript (JSON
+/// payloads, text templates) opts the element out; absent or JS-ish types are
+/// scripts. The attribute is read off the AST the grammar already built. The
+/// hand-rolled tag scan this replaces had to re-answer, badly, what the parse
+/// tree answers for free: `data-type=` is not the `type` attribute (#213),
+/// the value may be single- or double-quoted, and `type = "..."` is legal
+/// HTML that a `find("type=")` never sees.
+fn script_is_javascript(node: &Node, source: &[u8]) -> bool {
+    let Some(start_tag) = node.child(0) else {
+        return true;
+    };
+    let Some(value) = script_type_attribute(&start_tag, source) else {
+        return true;
+    };
+    matches!(
+        value.as_str(),
+        "" | "module" | "text/javascript" | "application/javascript" | "text/ecmascript"
+    )
+}
+
+/// Vue and Svelte components declare TypeScript with `lang="ts"`.
+fn script_grammar(node: &Node, source: &[u8]) -> &'static str {
+    let lang = node
+        .child(0)
+        .and_then(|start_tag| script_attribute(&start_tag, source, "lang"));
+    match lang.as_deref() {
+        Some("ts" | "typescript") => "typescript",
+        Some("tsx") => "tsx",
+        _ => "javascript",
+    }
+}
+
+/// The `type` attribute's MIME type, lowercased, with any parameter after `;`
+/// dropped — `text/javascript; charset=utf-8` is still JavaScript.
+fn script_type_attribute(start_tag: &Node, source: &[u8]) -> Option<String> {
+    script_attribute(start_tag, source, "type")
+}
+
+fn script_attribute(start_tag: &Node, source: &[u8], wanted: &str) -> Option<String> {
+    let mut cursor = start_tag.walk();
+    for attr in start_tag
+        .children(&mut cursor)
+        .filter(|n| n.kind() == "attribute")
+    {
+        let mut inner = attr.walk();
+        let parts: Vec<Node> = attr.children(&mut inner).collect();
+        let is_type = parts
+            .iter()
+            .find(|n| n.kind() == "attribute_name")
+            .and_then(|n| n.utf8_text(source).ok())
+            .is_some_and(|name| name.eq_ignore_ascii_case(wanted));
+        if !is_type {
+            continue;
+        }
+        let raw = parts
+            .iter()
+            .rev()
+            .find(|n| matches!(n.kind(), "attribute_value" | "quoted_attribute_value"))
+            .and_then(|n| n.utf8_text(source).ok())
+            .unwrap_or("");
+        let value = raw.trim().trim_matches(['"', '\'']);
+        return Some(
+            value
+                .split(';')
+                .next()
+                .unwrap_or("")
+                .trim()
+                .to_ascii_lowercase(),
+        );
+    }
+    None
+}
+
+fn fragment_embedded_source(
+    raw_text: &Node,
+    source: &[u8],
+    path: &Arc<str>,
+    ts_name: &'static str,
+    fragments: &mut Vec<Fragment>,
+) {
+    let Ok(snippet) = raw_text.utf8_text(source) else {
+        return;
+    };
+    if snippet.trim().is_empty() {
+        return;
+    }
+    let Some(language) = get_tree_sitter_language(ts_name) else {
+        return;
+    };
+    let ext = match ts_name {
+        "javascript" => ".js",
+        "typescript" => ".ts",
+        "tsx" => ".tsx",
+        _ => ".css",
+    };
+    let Some(config) = LANG_CONFIGS.iter().find(|c| c.extensions.contains(&ext)) else {
+        return;
+    };
+    let Some(tree) = parse_with_cached_parser(ts_name, &language, snippet) else {
+        return;
+    };
+
+    let snippet_lines: Vec<&str> = snippet.split('\n').collect();
+    let mut walk = Walk::new(snippet.as_bytes(), path, &snippet_lines, config);
+    walk.extract_definitions(&tree.root_node(), 0);
+    let embedded = walk.fragments;
+
+    // Fragment lines are 1-based within the snippet; the snippet's line 1 is
+    // the raw_text node's start line in the file.
+    let offset = node_start_line(raw_text) - 1;
+    for f in embedded {
+        fragments.push(Fragment {
+            id: diffctx_base::types::FragmentId::new(
+                Arc::clone(path),
+                f.id.start_line + offset,
+                f.id.end_line + offset,
+            ),
+            kind: f.kind,
+            content: f.content,
+            identifiers: f.identifiers,
+            token_count: f.token_count,
+            symbol_name: f.symbol_name,
+        });
+    }
+}
+
+#[cfg(test)]
+mod grammar_tests {
+    use super::*;
+    use std::time::Instant;
+
+    struct Case {
+        ext: &'static str,
+        source: &'static str,
+        broken_tail: &'static str,
+        expected_kind: FragmentKind,
+        expected_symbol: Option<&'static str>,
+    }
+
+    // One representative construct per registered grammar (each unique
+    // LANG_CONFIGS ts_name). expected_kind/expected_symbol are the real,
+    // observed extract_symbol_name/node_type_to_kind output for each
+    // snippet -- this is a characterization oracle: it locks in today's
+    // correct behavior so a regression in either function (e.g. dropping
+    // a field name from the ["name", "declarator", "type"] probe order,
+    // or a NODE_TYPE_KEYWORDS edit) is caught even though every anchor-line
+    // YAML case still passes.
+    const CASES: &[Case] = &[
+        Case {
+            ext: "py",
+            source: "def foo():\n    pass\n",
+            broken_tail: "def bar(\n",
+            expected_kind: FragmentKind::Function,
+            expected_symbol: Some("foo"),
+        },
+        Case {
+            ext: "js",
+            source: "function foo() {\n  return 1;\n}\n",
+            broken_tail: "function bar(\n",
+            expected_kind: FragmentKind::Function,
+            expected_symbol: Some("foo"),
+        },
+        Case {
+            ext: "jsx",
+            source: "function Foo() {\n  return null;\n}\n",
+            broken_tail: "function Bar(\n",
+            expected_kind: FragmentKind::Function,
+            expected_symbol: Some("Foo"),
+        },
+        Case {
+            ext: "ts",
+            source: "function foo(): number {\n  return 1;\n}\n",
+            broken_tail: "function bar(\n",
+            expected_kind: FragmentKind::Function,
+            expected_symbol: Some("foo"),
+        },
+        Case {
+            ext: "tsx",
+            source: "function Foo() {\n  return null;\n}\n",
+            broken_tail: "function Bar(\n",
+            expected_kind: FragmentKind::Function,
+            expected_symbol: Some("Foo"),
+        },
+        Case {
+            ext: "go",
+            source: "package main\n\nfunc Foo() int {\n  return 1\n}\n",
+            broken_tail: "func Bar(\n",
+            expected_kind: FragmentKind::Function,
+            expected_symbol: Some("Foo"),
+        },
+        Case {
+            ext: "rs",
+            source: "fn foo() -> i32 {\n    1\n}\n",
+            broken_tail: "fn bar(\n",
+            expected_kind: FragmentKind::Function,
+            expected_symbol: Some("foo"),
+        },
+        Case {
+            ext: "java",
+            source: "class Foo {\n  void bar() {}\n}\n",
+            broken_tail: "class Bar {\n",
+            expected_kind: FragmentKind::Class,
+            expected_symbol: Some("Foo"),
+        },
+        // C's function name lives behind child_by_field_name("declarator")
+        // -> unwrap_declarator, not a direct "name" field: deleting the
+        // declarator entry from the dispatch table must fail this case.
+        Case {
+            ext: "c",
+            source: "int foo() {\n    return 0;\n}\n",
+            broken_tail: "int bar(\n",
+            expected_kind: FragmentKind::Function,
+            expected_symbol: Some("foo"),
+        },
+        Case {
+            ext: "cpp",
+            source: "class Foo {\npublic:\n    void bar();\n};\n",
+            broken_tail: "class Bar {\n",
+            expected_kind: FragmentKind::Class,
+            expected_symbol: Some("Foo"),
+        },
+        Case {
+            ext: "cs",
+            source: "class Foo {\n    void Bar() {}\n}\n",
+            broken_tail: "class Bar {\n",
+            expected_kind: FragmentKind::Class,
+            expected_symbol: Some("Foo"),
+        },
+        Case {
+            ext: "php",
+            source: "<?php\nfunction foo() {\n    return 1;\n}\n",
+            broken_tail: "function bar(\n",
+            expected_kind: FragmentKind::Function,
+            expected_symbol: Some("foo"),
+        },
+        Case {
+            ext: "scala",
+            source: "class Foo {\n  def bar(): Int = 1\n}\n",
+            broken_tail: "class Bar {\n",
+            expected_kind: FragmentKind::Class,
+            expected_symbol: Some("Foo"),
+        },
+        Case {
+            ext: "kt",
+            source: "class Foo {\n    fun bar(): Int = 1\n}\n",
+            broken_tail: "class Bar {\n",
+            expected_kind: FragmentKind::Class,
+            expected_symbol: Some("Foo"),
+        },
+        Case {
+            ext: "swift",
+            source: "class Foo {\n  func bar() {}\n}\n",
+            broken_tail: "class Bar {\n",
+            expected_kind: FragmentKind::Class,
+            expected_symbol: Some("Foo"),
+        },
+        Case {
+            ext: "rb",
+            source: "def foo\n  1\nend\n",
+            broken_tail: "def bar\n",
+            expected_kind: FragmentKind::Function,
+            expected_symbol: Some("foo"),
+        },
+        Case {
+            ext: "sh",
+            source: "foo() {\n  echo hi\n}\n",
+            broken_tail: "bar() {\n",
+            expected_kind: FragmentKind::Function,
+            expected_symbol: Some("foo"),
+        },
+        Case {
+            ext: "css",
+            source: ".foo {\n  color: red;\n}\n",
+            broken_tail: ".bar {\n",
+            expected_kind: FragmentKind::Definition,
+            expected_symbol: None,
+        },
+        Case {
+            ext: "hs",
+            source: "foo :: Int\nfoo = 1\n",
+            broken_tail: "bar ::\n",
+            expected_kind: FragmentKind::Declaration,
+            expected_symbol: Some("foo"),
+        },
+        Case {
+            ext: "ex",
+            source: "def foo do\n  1\nend\n",
+            broken_tail: "def bar do\n",
+            expected_kind: FragmentKind::Definition,
+            expected_symbol: None,
+        },
+        Case {
+            ext: "lua",
+            source: "function foo()\n  return 1\nend\n",
+            broken_tail: "function bar(\n",
+            expected_kind: FragmentKind::Function,
+            expected_symbol: Some("foo"),
+        },
+        // extract_symbol_name resolves to the literal "function" keyword
+        // node here, not the assigned-to identifier `foo` -- an existing
+        // R-grammar quirk (the definition_type is the anonymous
+        // `function() {}` expression, not the `foo <-` assignment around
+        // it). Locked in as-is; not something this task's scope fixes.
+        Case {
+            ext: "r",
+            source: "foo <- function() {\n  1\n}\n",
+            broken_tail: "bar <- function(\n",
+            expected_kind: FragmentKind::Function,
+            expected_symbol: Some("function"),
+        },
+        Case {
+            ext: "erl",
+            source: "foo() -> 1.\n",
+            broken_tail: "bar(\n",
+            expected_kind: FragmentKind::Function,
+            expected_symbol: Some("foo"),
+        },
+        Case {
+            ext: "jl",
+            source: "function foo()\n    1\nend\n",
+            broken_tail: "function bar(\n",
+            expected_kind: FragmentKind::Function,
+            expected_symbol: None,
+        },
+        Case {
+            ext: "zig",
+            source: "fn foo() void {}\n",
+            broken_tail: "fn bar(\n",
+            expected_kind: FragmentKind::Function,
+            expected_symbol: Some("foo"),
+        },
+        Case {
+            ext: "clj",
+            source: "(defn foo [] 1)\n",
+            broken_tail: "(defn bar [\n",
+            expected_kind: FragmentKind::Definition,
+            expected_symbol: None,
+        },
+        Case {
+            ext: "nix",
+            source: "{ foo = 1; }\n",
+            broken_tail: "bar =\n",
+            expected_kind: FragmentKind::Variable,
+            expected_symbol: None,
+        },
+        Case {
+            ext: "groovy",
+            source: "class Foo {\n  void bar() {}\n}\n",
+            broken_tail: "class Bar {\n",
+            expected_kind: FragmentKind::Class,
+            expected_symbol: Some("Foo"),
+        },
+        Case {
+            ext: "m",
+            source: "@interface Foo\n@end\n",
+            broken_tail: "@interface Bar\n",
+            expected_kind: FragmentKind::Class,
+            expected_symbol: None,
+        },
+        Case {
+            ext: "dart",
+            source: "class Foo {\n  void bar() {}\n}\n",
+            broken_tail: "class Bar {\n",
+            expected_kind: FragmentKind::Class,
+            expected_symbol: Some("Foo"),
+        },
+        Case {
+            ext: "graphql",
+            source: "type Foo {\n  bar: String\n}\n",
+            broken_tail: "type Bar {\n",
+            expected_kind: FragmentKind::Type,
+            expected_symbol: None,
+        },
+        Case {
+            ext: "prisma",
+            source: "model Foo {\n  id Int @id\n}\n",
+            broken_tail: "model Bar {\n",
+            expected_kind: FragmentKind::Record,
+            expected_symbol: None,
+        },
+        Case {
+            ext: "svelte",
+            source: "<script>\n  let x = 1;\n</script>\n",
+            broken_tail: "<script>\nlet y =\n",
+            expected_kind: FragmentKind::Definition,
+            expected_symbol: None,
+        },
+        Case {
+            ext: "tf",
+            source: "resource \"foo\" \"bar\" {\n  baz = 1\n}\n",
+            broken_tail: "resource \"bar\" \"baz\" {\n",
+            expected_kind: FragmentKind::Definition,
+            expected_symbol: None,
+        },
+        Case {
+            ext: "cmake",
+            source: "function(foo)\nendfunction()\n",
+            broken_tail: "function(bar\n",
+            expected_kind: FragmentKind::Function,
+            expected_symbol: None,
+        },
+        Case {
+            ext: "mk",
+            source: "foo:\n\techo hi\n",
+            broken_tail: "bar:\n\tunterminated \\\n",
+            expected_kind: FragmentKind::Definition,
+            expected_symbol: None,
+        },
+        Case {
+            ext: "yaml",
+            source: "foo: bar\n",
+            broken_tail: "bar:\n  nested:\n    - unterminated [\n",
+            expected_kind: FragmentKind::Definition,
+            expected_symbol: None,
+        },
+        Case {
+            ext: "json",
+            source: "{\"foo\": 1}\n",
+            broken_tail: "\"bar\": {\n",
+            expected_kind: FragmentKind::Definition,
+            expected_symbol: None,
+        },
+        Case {
+            ext: "html",
+            source: "<div id=\"foo\"></div>\n",
+            broken_tail: "<div id=\"bar\"\n",
+            expected_kind: FragmentKind::Definition,
+            expected_symbol: None,
+        },
+    ];
+
+    fn fragment_ext(ext: &str, source: &str) -> Vec<Fragment> {
+        TreeSitterStrategy::new().fragment(Arc::from(format!("case.{ext}")), source)
+    }
+
+    fn fragment_named(name: &str, source: &str) -> Vec<Fragment> {
+        TreeSitterStrategy::new().fragment(Arc::from(name), source)
+    }
+
+    /// The fwcd Kotlin grammar names nothing by field; the adapter names
+    /// each declaration, keeps locals out, and owns what Kotlin owns.
+    #[test]
+    fn kotlin_declarations_are_named_scoped_and_owned() {
+        let body: String = (0..34).map(|i| format!("        step({i})\n")).collect();
+        let source = format!(
+            "package a\n\
+             typealias Handler = (String) -> Unit\n\
+             interface Port {{\n    fun load(id: Long): Int\n}}\n\
+             internal class Worker(val repo: Port) {{\n    val size: Int\n        get() = 1\n\
+             \n    constructor(n: Int) : this(TODO())\n\
+             \n    fun run(limit: Int = 10): Int {{\n        val local = limit\n{body}        return local\n    }}\n\
+             \n    companion object {{\n        const val MAX = 3\n    }}\n\
+             \n    private fun `weird name`() = 1\n}}\n\
+             object Covers {{\n    fun isCover(n: String) = n.isEmpty()\n}}\n\
+             fun String.pad(n: Int): String = this\n"
+        );
+        let frags = fragment_named("M.kt", &source);
+        let rows: Vec<(u32, u32, FragmentKind, Option<&str>)> = frags
+            .iter()
+            .filter(|f| f.kind != FragmentKind::Chunk || f.symbol_name.is_some())
+            .map(|f| {
+                (
+                    f.id.start_line,
+                    f.id.end_line,
+                    f.kind,
+                    f.symbol_name.as_deref(),
+                )
+            })
+            .collect();
+        let has = |kind: FragmentKind, name: &str| {
+            rows.iter()
+                .find(|r| r.2 == kind && r.3 == Some(name))
+                .copied()
+        };
+        assert!(has(FragmentKind::Type, "Handler").is_some(), "{rows:?}");
+        assert!(has(FragmentKind::Interface, "Port").is_some(), "{rows:?}");
+        assert!(has(FragmentKind::Function, "load").is_some(), "{rows:?}");
+        assert_eq!(
+            has(FragmentKind::Property, "size").map(|r| (r.0, r.1)),
+            Some((7, 8))
+        );
+        assert!(
+            has(FragmentKind::Function, "Worker").is_some(),
+            "secondary ctor: {rows:?}"
+        );
+        assert!(has(FragmentKind::Class, "Companion").is_some(), "{rows:?}");
+        assert!(has(FragmentKind::Property, "MAX").is_some(), "{rows:?}");
+        assert!(
+            has(FragmentKind::Function, "weird name").is_some(),
+            "{rows:?}"
+        );
+        assert!(has(FragmentKind::Class, "Covers").is_some(), "{rows:?}");
+        assert!(has(FragmentKind::Function, "isCover").is_some(), "{rows:?}");
+        assert!(has(FragmentKind::Function, "pad").is_some(), "{rows:?}");
+        assert!(
+            rows.iter().all(|r| r.3 != Some("local")),
+            "a local val is no member: {rows:?}"
+        );
+        let run = has(FragmentKind::Function, "run").expect("run");
+        assert!(
+            rows.iter()
+                .any(|r| r.2 == FragmentKind::Chunk && r.3.is_some_and(|s| s.starts_with("run["))),
+            "a long body is split through its statements node: {run:?} {rows:?}"
+        );
+    }
+
+    #[test]
+    fn representative_construct_per_grammar_reports_symbol_and_kind() {
+        for case in CASES {
+            let frags = fragment_ext(case.ext, case.source);
+            assert!(
+                !frags.is_empty(),
+                "{}: expected at least one fragment",
+                case.ext
+            );
+            let first = &frags[0];
+            assert_eq!(
+                first.kind, case.expected_kind,
+                "{}: kind mismatch (got {:?})",
+                case.ext, first.kind
+            );
+            assert_eq!(
+                first.symbol_name.as_deref(),
+                case.expected_symbol,
+                "{}: symbol_name mismatch (got {:?})",
+                case.ext,
+                first.symbol_name
+            );
+        }
+    }
+
+    // Regression for parsers/mod.rs:32: a syntactically broken file must
+    // still (a) never panic, (b) never report a fragment span outside the
+    // file, and (c) keep the symbol_name of any definition that appears
+    // before the broken region -- the failure mode under test is
+    // create_code_gap_fragments silently swallowing everything into a
+    // symbol_name: None blob once tree-sitter's ERROR recovery kicks in.
+    #[test]
+    fn broken_file_per_grammar_does_not_panic_and_keeps_valid_spans() {
+        for case in CASES {
+            let broken = format!("{}\n{}", case.source, case.broken_tail);
+            let total_lines = broken.split('\n').count() as u32;
+            let frags = fragment_ext(case.ext, &broken);
+
+            for f in &frags {
+                assert!(
+                    f.id.start_line >= 1,
+                    "{}: start_line must be >= 1",
+                    case.ext
+                );
+                assert!(
+                    f.id.start_line <= f.id.end_line,
+                    "{}: start_line must be <= end_line",
+                    case.ext
+                );
+                assert!(
+                    f.id.end_line <= total_lines,
+                    "{}: end_line {} exceeds file length {}",
+                    case.ext,
+                    f.id.end_line,
+                    total_lines
+                );
+            }
+
+            // Gap-filling Chunk fragments (create_code_gap_fragments) are
+            // the ones whose non-overlap is an actual algorithmic
+            // guarantee (built from a disjoint covered-line complement);
+            // semantic definition fragments can legitimately nest (e.g. an
+            // outer container header plus an inner definition sharing a
+            // line), so only the chunk set is checked for disjointness.
+            let mut chunk_spans: Vec<(u32, u32)> = frags
+                .iter()
+                .filter(|f| f.kind == FragmentKind::Chunk && f.symbol_name.is_none())
+                .map(|f| (f.id.start_line, f.id.end_line))
+                .collect();
+            chunk_spans.sort_unstable();
+            for w in chunk_spans.windows(2) {
+                assert!(
+                    w[0].1 < w[1].0,
+                    "{}: gap-fill chunks overlap: {:?}",
+                    case.ext,
+                    w
+                );
+            }
+
+            if let Some(expected_symbol) = case.expected_symbol {
+                assert!(
+                    frags
+                        .iter()
+                        .any(|f| f.symbol_name.as_deref() == Some(expected_symbol)
+                            && f.kind == case.expected_kind),
+                    "{}: definition before the error point lost its symbol_name/kind",
+                    case.ext
+                );
+            }
+        }
+    }
+
+    /// Languages the extension map knows and this build reads as text: no
+    /// grammar, by decision. A grammar dropped from the build (Kotlin, once)
+    /// or a mapping added without one fails here instead of turning into a
+    /// silent blind spot (#330).
+    const TEXT_LANGUAGES: &[&str] = &[
+        "ada",
+        "asciidoc",
+        "asm",
+        "batch",
+        "bazel",
+        "bibtex",
+        "cobol",
+        "d",
+        "diff",
+        "dockerfile",
+        "elisp",
+        "fish",
+        "fortran",
+        "fsharp",
+        "ini",
+        "jinja",
+        "latex",
+        "lisp",
+        "markdown",
+        "nim",
+        "pascal",
+        "perl",
+        "powershell",
+        "properties",
+        "protobuf",
+        "racket",
+        "rst",
+        "scheme",
+        "sql",
+        "systemverilog",
+        "text",
+        "toml",
+        "v",
+        "vhdl",
+        "vim",
+        "xml",
+    ];
+
+    #[test]
+    fn every_mapped_language_has_a_grammar_or_is_declared_text() {
+        let mut missing: Vec<(&str, &str)> = diffctx_base::languages::EXTENSION_TO_LANGUAGE
+            .iter()
+            .filter(|(ext, lang)| {
+                !has_grammar(&format!("file{ext}")) && !TEXT_LANGUAGES.contains(lang)
+            })
+            .map(|(ext, lang)| (*lang, *ext))
+            .collect();
+        missing.sort();
+        assert!(missing.is_empty(), "mapped without a grammar: {missing:?}");
+    }
+
+    #[test]
+    fn every_lang_config_extension_is_discoverable_via_extension_to_language() {
+        for config in LANG_CONFIGS {
+            for ext in config.extensions {
+                assert!(
+                    diffctx_base::languages::EXTENSION_TO_LANGUAGE.contains_key(*ext),
+                    "LANG_CONFIGS extension {:?} (ts_name {:?}) has no EXTENSION_TO_LANGUAGE \
+                     entry, so candidate_files.rs silently excludes it from discovery even \
+                     though a grammar exists for it",
+                    ext,
+                    config.ts_name
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn cmake_and_makefile_filenames_dispatch_to_their_compiled_grammars() {
+        let cmake_frags = fragment_named("CMakeLists.txt", "function(foo)\nendfunction()\n");
+        assert!(
+            cmake_frags.iter().any(|f| f.kind == FragmentKind::Function),
+            "CMakeLists.txt should route through the cmake grammar via find_lang_config_by_filename"
+        );
+
+        let make_frags = fragment_named("Makefile", "foo:\n\techo hi\n");
+        assert!(
+            !make_frags.is_empty(),
+            "Makefile should route through the make grammar via find_lang_config_by_filename"
+        );
+    }
+
+    // Regression for tree_sitter_strategy.rs:1055 (PARSE_TIMEOUT / minified
+    // files): a ~230KB single-line minified bundle collapses every
+    // definition onto physical line 1, so line-granularity fragmentation
+    // cannot separate them. The dangerous failure mode is unbounded output
+    // (one fragment per repeated construct, or output size scaling with
+    // the pathological repeat count) -- this pins that the algorithm's
+    // existing dedup-by-(kind,end_line) keeps the fragment count bounded
+    // and no single fragment grows past the source itself.
+    #[test]
+    fn minified_single_line_bundle_yields_bounded_fragment_count() {
+        let n = 8000;
+        let mut content = String::with_capacity(n * 28);
+        for i in 0..n {
+            content.push_str(&format!("function f{i}(){{return {i};}}"));
+        }
+
+        let t0 = Instant::now();
+        let frags = fragment_named("bundle.min.js", &content);
+        assert!(
+            t0.elapsed() < Duration::from_secs(5),
+            "minified parse must not hang the pipeline"
+        );
+
+        assert!(
+            frags.len() < 100,
+            "pathological single-line repetition ({n} defs) must not explode fragment count: got {}",
+            frags.len()
+        );
+        for f in &frags {
+            // +1: create_snippet appends a trailing '\n' when the source
+            // line lacks one, so a whole-line fragment can be exactly one
+            // byte longer than the (newline-free) source.
+            assert!(
+                f.content.len() <= content.len() + 1,
+                "no fragment may exceed the source file size"
+            );
+        }
+    }
+}
+
+#[cfg(test)]
+mod deadline_tests {
+    use super::*;
+
+    #[test]
+    fn an_aborted_parse_does_not_poison_the_next_parse_on_this_thread() {
+        let language = get_tree_sitter_language("python").expect("python grammar");
+        let bundle = "x = 1\n".repeat(50_000);
+        let aborted = parse_with_deadline("python", &language, &bundle, Duration::ZERO);
+        assert!(aborted.is_none(), "a zero deadline must abort the parse");
+
+        let frags =
+            TreeSitterStrategy::new().fragment(Arc::from("after.py"), "def foo():\n    return 1\n");
+        let symbols: Vec<Option<&str>> = frags.iter().map(|f| f.symbol_name.as_deref()).collect();
+        assert_eq!(symbols, vec![Some("foo")]);
+    }
+}
+
+#[cfg(test)]
+mod injection_tests {
+    use super::*;
+
+    fn html_with_script() -> String {
+        let helpers: String = (0..5)
+            .map(|i| format!("function helper{i}(x) {{\n  return x + {i};\n}}\n"))
+            .collect();
+        format!(
+            "<!doctype html>\n<style>\n.card {{ color: red; }}\n</style>\n<script>\n{helpers}function computeScore(a, b) {{\n  return a * b - 1;\n}}\n</script>\n"
+        )
+    }
+
+    #[test]
+    fn inline_script_functions_become_definition_fragments_at_file_lines() {
+        let content = html_with_script();
+        let frags = TreeSitterStrategy::new().fragment(Arc::from("app.html"), &content);
+        let compute = frags
+            .iter()
+            .find(|f| f.symbol_name.as_deref() == Some("computeScore"))
+            .expect("computeScore must surface as its own fragment");
+        assert_eq!(compute.kind, FragmentKind::Function);
+        // The function starts on the file line where it is written, not on a
+        // snippet-relative line: doctype(1) style(2-4) script(5) helpers(6-20).
+        let line = content
+            .lines()
+            .position(|l| l.starts_with("function computeScore"))
+            .unwrap() as u32
+            + 1;
+        assert_eq!(compute.id.start_line, line);
+        assert!(compute.content.contains("a * b - 1"));
+
+        let helper0 = frags
+            .iter()
+            .find(|f| f.symbol_name.as_deref() == Some("helper0"))
+            .expect("helpers must surface too");
+        assert!(helper0.id.start_line >= 6);
+    }
+
+    #[test]
+    fn inline_style_rules_become_css_fragments() {
+        let content = html_with_script();
+        let frags = TreeSitterStrategy::new().fragment(Arc::from("app.html"), &content);
+        assert!(
+            frags
+                .iter()
+                .any(|f| f.content.contains(".card") && f.id.start_line == 3),
+            "the style rule must surface at its file line"
+        );
+    }
+
+    #[test]
+    fn a_json_script_payload_is_not_parsed_as_javascript() {
+        let content = "<script type=\"application/json\">\n{\"a\": 1}\n</script>\n";
+        let frags = TreeSitterStrategy::new().fragment(Arc::from("app.html"), content);
+        assert!(
+            frags.iter().all(|f| f.symbol_name.is_none()),
+            "a JSON payload must not produce JS symbols"
+        );
+    }
+
+    #[test]
+    fn a_data_type_attribute_does_not_opt_the_script_out() {
+        let content =
+            "<script data-type=\"json\">\nfunction realJs(x) {\n  return x + 1;\n}\n</script>\n";
+        let frags = TreeSitterStrategy::new().fragment(Arc::from("app.html"), content);
+        assert!(
+            frags
+                .iter()
+                .any(|f| f.symbol_name.as_deref() == Some("realJs")),
+            "data-type is not the type attribute; the script is JavaScript"
+        );
+    }
+
+    /// Legal HTML the pre-AST scan could not see: whitespace around the `=`,
+    /// and a single-quoted non-JS type.
+    #[test]
+    fn spaced_and_single_quoted_type_attributes_are_read() {
+        let spaced = "<script type = \"application/json\">\n{\"a\": 1}\n</script>\n";
+        let frags = TreeSitterStrategy::new().fragment(Arc::from("app.html"), spaced);
+        assert!(
+            !frags.iter().any(|f| f.symbol_name.is_some()),
+            "`type = \"application/json\"` opts the block out, spaces and all"
+        );
+
+        let single = "<script type='application/json'>\n{\"a\": 1}\n</script>\n";
+        let frags = TreeSitterStrategy::new().fragment(Arc::from("app.html"), single);
+        assert!(
+            !frags.iter().any(|f| f.symbol_name.is_some()),
+            "a single-quoted JSON type opts the block out too"
+        );
+    }
+
+    #[test]
+    fn a_mime_parameter_does_not_defeat_the_javascript_type() {
+        let content = "<script type=\"text/javascript; charset=utf-8\">\nfunction legacyJs(x) {\n  return x - 1;\n}\n</script>\n";
+        let frags = TreeSitterStrategy::new().fragment(Arc::from("app.html"), content);
+        assert!(
+            frags
+                .iter()
+                .any(|f| f.symbol_name.as_deref() == Some("legacyJs")),
+            "charset parameter after ';' must not degrade the script to raw lines"
+        );
+    }
+}
+
+#[cfg(test)]
+mod injection_scale_tests {
+    use super::*;
+
+    #[test]
+    fn embedded_functions_keep_their_own_spans_at_scale() {
+        let body: String = (0..300)
+            .map(|i| {
+                format!(
+                    "function helper{i}(x) {{\n  const a = x * {i};\n  const b = a + {i};\n  return b - {i};\n}}\n"
+                )
+            })
+            .collect();
+        let content =
+            format!("<!doctype html>\n<style>.a{{color:red}}</style>\n<script>\n{body}</script>\n");
+        let frags = TreeSitterStrategy::new().fragment(Arc::from("app.html"), &content);
+        let helper0 = frags
+            .iter()
+            .find(|f| f.symbol_name.as_deref() == Some("helper0"))
+            .expect("helper0 exists");
+        assert!(
+            helper0.id.end_line - helper0.id.start_line <= 5,
+            "helper0 spans {}-{} — a 5-line function must not absorb its siblings",
+            helper0.id.start_line,
+            helper0.id.end_line
+        );
+    }
+}
+
+#[cfg(test)]
+mod code_only_tests {
+    use super::*;
+
+    /// Per grammar: `call` is code (a call, an interpolated call); `hidden`
+    /// sits in a string or a comment and must not be.
+    #[test]
+    fn strings_and_comments_are_blanked_and_interpolations_kept() {
+        let cases: &[(&str, &str)] = &[
+            (
+                "a.py",
+                "x = f\"{seen(1)}\"  # hidden(2)\ny = 'hidden(3)'\nz = a // b\n",
+            ),
+            (
+                "a.ts",
+                "const x = `${seen(1)}`; // hidden(2)\nconst y = 'hidden(3)';\n",
+            ),
+            (
+                "a.rs",
+                "fn f<'a>(s: &'a str) { seen(1); let x = \"hidden(2)\"; /* hidden(3) */ }\n",
+            ),
+            (
+                "a.go",
+                "func f() { seen(1); x := `hidden(2)` // hidden(3)\n}\n",
+            ),
+            ("a.rb", "x = \"#{seen(1)}\" # hidden(2)\ny = 'hidden(3)'\n"),
+            (
+                "a.kt",
+                "val x = \"${seen(1)}\" // hidden(2)\nval y = \"hidden(3)\"\n",
+            ),
+            (
+                "a.cs",
+                "var x = $\"{seen(1)}\"; // hidden(2)\nvar y = \"hidden(3)\";\n",
+            ),
+            (
+                "a.java",
+                "int x = seen(1); // hidden(2)\nString y = \"hidden(3)\";\n",
+            ),
+            (
+                "a.php",
+                "<?php $x = seen(1); // hidden(2)\n$y = 'hidden(3)';\n",
+            ),
+        ];
+        // A grammar this build leaves out is no case; Python and TypeScript
+        // are always compiled in.
+        assert!(has_grammar("a.py") && has_grammar("a.ts"));
+        for (path, src) in cases.iter().filter(|(p, _)| has_grammar(p)) {
+            let code = code_only(path, src).expect("a grammar parses it");
+            assert_eq!(code.len(), src.len(), "{path}: positions kept");
+            assert!(code.contains("seen(1)"), "{path}: {code:?}");
+            assert!(!code.contains("hidden"), "{path}: {code:?}");
+        }
+        // An indented snippet parses as written, its indentation restored.
+        let method = "    def m(self):\n        return f\"{seen(1)}\"  # hidden(2)\n";
+        let code = code_only("a.py", method).expect("parses");
+        assert!(
+            code.starts_with("    def m(self):\n        return"),
+            "{code:?}"
+        );
+        assert!(
+            code.contains("seen(1)") && !code.contains("hidden"),
+            "{code:?}"
+        );
+    }
+}

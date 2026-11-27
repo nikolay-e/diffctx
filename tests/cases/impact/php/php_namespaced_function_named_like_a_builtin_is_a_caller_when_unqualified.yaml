@@ -1,0 +1,39 @@
+name: php_namespaced_function_named_like_a_builtin_is_a_caller_when_unqualified
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [php, builtin, shadowing]
+repo:
+  initial_files:
+    composer.json: |
+      {"autoload":{"psr-4":{"App\\":"src/"},"files":["src/fn.php"]}}
+    src/fn.php: |
+      <?php
+      namespace App;
+
+      function strlen($s) {
+          return 0;
+      }
+    src/Use.php: |
+      <?php
+      namespace App;
+
+      class UseIt {
+          public function go($x) {
+              return strlen($x);
+          }
+      }
+  changed_files:
+    src/fn.php: |
+      <?php
+      namespace App;
+
+      function strlen($s) {
+          return 1;
+      }
+  commit_message: change
+expect:
+  changed: ['src/fn.php::strlen']
+  relations:
+  - {from: 'src/Use.php::go', to: 'src/fn.php::strlen', kind: calls, resolution: resolved}
+  exact: false

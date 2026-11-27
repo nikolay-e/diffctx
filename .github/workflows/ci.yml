@@ -5,19 +5,52 @@ name: diffctx CI
   pull_request:
     branches: ['**']
   push:
+    # A push to relay/arch is the 2.0 migration's head check; a push to probe/**
+    # rehearses it on a branch of its own.
     branches:
       - main
+      - relay/arch
+      - 'probe/**'
+  # The full macOS set: a schedule runs only the default branch's file, so main
+  # has the cron; a dispatch with full: true runs it on any other branch.
+  schedule:
+    - cron: '23 2 * * *'
+  workflow_dispatch:
+    inputs:
+      full:
+        description: 'Run the full macOS and Python set, as a PR into main does'
+        type: boolean
+        default: false
+  # cd.yml runs the full set on a release or a candidate.
+  workflow_call:
+    inputs:
+      full:
+        type: boolean
+        default: true
+    secrets:
+      DHI_USERNAME:
+        required: false
+      DHI_TOKEN:
+        required: false
+      CODECOV_TOKEN:
+        required: false
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}
   cancel-in-progress: true
 
+# relay/arch is checked by the push to it, which runs the full set; the epoch
+# pull request from it into main would run the same commit again, so every job
+# skips that event (a fork's branch of the same name still runs). A pull_request
+# trigger cannot filter on the head branch: the run exists, every job skipped
+# and no runner taken; `test` is skipped through its need.
 jobs:
   # ============================================================================
   # Pre-commit checks (fast feedback)
   # ============================================================================
   pre-commit:
     name: Pre-commit hooks
+    if: ${{ github.event.pull_request.head.label != format('{0}:relay/arch', github.repository_owner) }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -58,12 +91,105 @@ jobs:
         run: SKIP=cargo-test pre-commit run --all-files
 
   # ============================================================================
+  # A consumer pins the commit a release tag first named (#500, #513): a tag
+  # off main, or a release left as a draft, strands that pin. Both are checked
+  # on every run with the whole history. The publication check reads the
+  # releases, so it runs on pull requests only: a push to main lands a release
+  # commit and its tag a few minutes before the release is published.
+  # ============================================================================
+  release-tags:
+    name: Release tags are immutable
+    if: ${{ github.event.pull_request.head.label != format('{0}:relay/arch', github.repository_owner) }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Every release tag is an ancestor of main
+        run: |
+          off_main=$(bash .github/scripts/release-tags.sh origin/main)
+          if [[ -n "$off_main" ]]; then
+            echo "::error::release tags off main: ${off_main//$'\n'/ }"
+            exit 1
+          fi
+
+      - name: Every release tag has a published release
+        if: github.event_name == 'pull_request' || github.ref == 'refs/heads/relay/arch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          unpublished=$(bash .github/scripts/unpublished-release-tags.sh)
+          if [[ -n "$unpublished" ]]; then
+            echo "::error::release tags without a published release: ${unpublished//$'\n'/ }"
+            exit 1
+          fi
+
+  # ============================================================================
+  # A fix ships with the test that would have caught its class, red on the pull
+  # request's base and green on its head. The base build is cached by the
+  # base commit, so a frozen main is built once. The epoch pull request carries
+  # work that was gated stream by stream and is not judged again, and neither
+  # does the architecture migration's integration branch, which is that work
+  # before it is folded; its exemption ends with the branch.
+  # ============================================================================
+  class-test:
+    name: Class test
+    if: github.event_name == 'pull_request' && github.head_ref != 'next' && github.head_ref != 'relay/arch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    env:
+      BASE_TARGET_DIR: ${{ github.workspace }}/../class-test-base-target
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Fetch the base
+        run: git fetch --no-tags origin "${{ github.event.pull_request.base.sha }}"
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
+        with:
+          toolchain: "1.100.0"
+
+      - name: Restore Cargo
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: cargo-rust-${{ runner.os }}-release-${{ hashFiles('Cargo.lock') }}
+          restore-keys: cargo-rust-${{ runner.os }}-release-
+
+      - name: Cache the base build
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: ${{ env.BASE_TARGET_DIR }}
+          key: class-test-base-${{ github.event.pull_request.base.sha }}
+
+      - name: Run the class test on the base and on the head
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: bash .github/scripts/class-test.sh
+
+  # ============================================================================
   # Rust dependency advisories. Separate job because the pre-commit hook can
   # only skip when cargo-audit is absent, and it is absent on GitHub runners —
   # so this is the only place the check actually runs.
   # ============================================================================
   cargo-audit:
     name: Rust dependency advisories
+    if: ${{ github.event.pull_request.head.label != format('{0}:relay/arch', github.repository_owner) }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -82,14 +208,15 @@ jobs:
         run: cargo audit
 
   # ============================================================================
-  # Cargo.toml splits the tree-sitter grammars into lang-core/lang-extra, but
-  # only the default (both) feature set was ever compiled. Under lang-core
-  # alone every lang-extra LANG_CONFIGS entry resolves to no grammar and
-  # degrades to generic chunking, and nothing would have caught the build
-  # breaking outright.
+  # `cargo deny check`: licenses and sources for the workspace (deny.toml), and the
+  # lower crates' ban on grammars and Python bindings (crates/*/deny.toml).
+  # The advisories run here too, beside cargo-audit above: deny's default is more
+  # lenient on unmaintained crates, so the audit stays until a deny run has been
+  # green on main for a release.
   # ============================================================================
-  cargo-feature-sets:
-    name: Rust builds without default features
+  cargo-deny:
+    name: Rust licenses, sources and layer bans
+    if: ${{ github.event.pull_request.head.label != format('{0}:relay/arch', github.repository_owner) }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -101,15 +228,57 @@ jobs:
         with:
           toolchain: "1.100.0"
 
-      - name: Cache Cargo
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+      - name: Install cargo-deny
+        run: cargo install cargo-deny --locked --version 0.20.2
+
+      - name: Check the workspace
+        run: cargo deny check
+
+      - name: Check the lower crates' bans
+        run: |
+          for crate in \
+              diffctx-base \
+              diffctx-config \
+              diffctx-snapshot \
+              diffctx-facts \
+              diffctx-resolve \
+              diffctx-occurrence \
+              diffctx-graph \
+              diffctx-select \
+              diffctx-answer; do
+            (cd "crates/${crate}" && cargo deny check bans)
+          done
+
+  # ============================================================================
+  # Cargo.toml splits the tree-sitter grammars into lang-core/lang-extra, but
+  # only the default (both) feature set was ever compiled. Under lang-core
+  # alone every lang-extra LANG_CONFIGS entry resolves to no grammar and
+  # degrades to generic chunking, and nothing would have caught the build
+  # breaking outright.
+  # ============================================================================
+  cargo-feature-sets:
+    name: Rust builds without default features
+    if: ${{ github.event.pull_request.head.label != format('{0}:relay/arch', github.repository_owner) }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
+        with:
+          toolchain: "1.100.0"
+
+      - name: Restore Cargo
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: cargo-features-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
-          restore-keys: cargo-features-${{ runner.os }}-
+          key: cargo-rust-${{ runner.os }}-debug-${{ hashFiles('Cargo.lock') }}
+          restore-keys: cargo-rust-${{ runner.os }}-debug-
 
       - name: Check lang-core only
         working-directory: crates/diffctx-native
@@ -128,6 +297,9 @@ jobs:
   # ============================================================================
   cargo-publish-dry-run:
     name: Crate packages for crates.io
+    if: >-
+      github.event.pull_request.head.label != format('{0}:relay/arch', github.repository_owner) &&
+      !(github.base_ref == 'relay/arch')
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -139,19 +311,25 @@ jobs:
         with:
           toolchain: "1.100.0"
 
-      - name: Cache Cargo
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+      - name: Restore Cargo
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: cargo-publish-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
-          restore-keys: cargo-publish-${{ runner.os }}-
+          key: cargo-rust-${{ runner.os }}-debug-${{ hashFiles('Cargo.lock') }}
+          restore-keys: cargo-rust-${{ runner.os }}-debug-
 
+      # --workspace: diffctx asks the registry for diffctx-base, which is not
+      # there until the release publishes it; cargo verifies the two together.
+      # Every commit packages our crates under the same version, and cargo
+      # reuses an unpacked copy of that version from the restored registry, so
+      # a stale one from an older commit is verified instead of this tree.
       - name: Package and verify
-        working-directory: crates/diffctx-native
-        run: cargo publish --dry-run --locked
+        run: |
+          rm -rf ~/.cargo/registry/src/*/diffctx-* ~/.cargo/registry/cache/*/diffctx-*
+          cargo publish --workspace --dry-run --locked
 
   # ============================================================================
   # Docker image build. Gated here rather than only at release time: cd.yml's
@@ -165,9 +343,11 @@ jobs:
     # The base images come from dhi.io, which needs a login, and a fork's or Dependabot's PR gets no
     # secrets: its image is built by the push to main after the merge, as the release's is.
     if: >-
-      github.event_name != 'pull_request' ||
+      (github.event_name != 'pull_request' ||
       (github.event.pull_request.head.repo.full_name == github.repository &&
-      github.actor != 'dependabot[bot]')
+      github.actor != 'dependabot[bot]')) &&
+      !(github.base_ref == 'relay/arch') &&
+      github.event.pull_request.head.label != format('{0}:relay/arch', github.repository_owner)
     permissions:
       contents: read
     steps:
@@ -191,7 +371,8 @@ jobs:
       # test-only push. The fixture mirrors cd.yml's publish-image smoke.
       - name: Smoke the image on a real two-commit diff
         run: |
-          docker run --rm diffctx:ci --version | grep -qx "diffctx $(cut -d'"' -f2 src/diffctx/version.py)"
+          crate_version=$(grep -m1 '^version = ' Cargo.toml | cut -d'"' -f2)
+          docker run --rm diffctx:ci --version | grep -qx "diffctx ${crate_version}"
           SMOKE=$(mktemp -d)
           cd "$SMOKE"
           git init -q
@@ -219,6 +400,7 @@ jobs:
   # ============================================================================
   lint-type-check:
     name: Lint & Type Check
+    if: ${{ github.event.pull_request.head.label != format('{0}:relay/arch', github.repository_owner) }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -229,7 +411,7 @@ jobs:
       - name: Set up uv
         uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2  # v10.3.3
         with:
-          python-version: '3.10'
+          python-version: '3.11'
           enable-cache: true
 
       # Same reason as the pre-commit job: installing this package compiles the
@@ -256,13 +438,28 @@ jobs:
   # ============================================================================
   # Rust diffctx tests (the full YAML corpus under tests/cases, real git repos)
   # ============================================================================
+  # One job per OS runs the suites in parts, because a single job outgrew its
+  # time limit (Linux and macOS were cancelled at 60 and 90 minutes while
+  # still running tests, Windows had taken over 90 before it was split). `part`
+  # is scripts/cargo-test-suites.sh's argument, and
+  # tests/test_ci_runs_every_suite.py holds the parts of each OS to every
+  # suite. Branch protection requires the check named "Rust diffctx tests":
+  # the Linux corpus part, which also carries the lint components and the
+  # examples build.
   rust-diffctx-test:
-    name: Rust diffctx tests
+    name: Rust diffctx tests${{ matrix.label }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {part: corpus, label: "", cache: release, save: true}
+          - {part: "rest:1/3", label: " (ubuntu-latest, 1/3)", cache: debug, save: true}
+          - {part: "rest:2/3", label: " (ubuntu-latest, 2/3)", cache: debug}
+          - {part: "rest:3/3", label: " (ubuntu-latest, 3/3)", cache: debug}
+    if: ${{ github.event.pull_request.head.label != format('{0}:relay/arch', github.repository_owner) }}
     runs-on: ubuntu-latest
     # tests/git_faults.rs stalls never end on their own (#510): a run its
-    # deadline does not end hangs, and this is where it fails. Green runs
-    # took 12.6 (ubuntu), 21.5 (macos) and 37.9 (windows) minutes on
-    # 38693094541.
+    # deadline does not end hangs, and this is where it fails.
     timeout-minutes: 60
     permissions:
       contents: read
@@ -275,40 +472,74 @@ jobs:
           toolchain: "1.100.0"
           components: rustfmt, clippy
 
+      # One saver per (OS, profile): the cell marked `save` writes the entry and
+      # every other job restores it, so the repository's 10 GB of caches are not
+      # filled by cells saving the same key or by a key per job.
       - name: Cache Cargo
+        if: matrix.save
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: cargo-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
-          restore-keys: cargo-${{ runner.os }}-
+          key: cargo-rust-${{ runner.os }}-${{ matrix.cache }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: cargo-rust-${{ runner.os }}-${{ matrix.cache }}-
+      - name: Restore Cargo
+        if: ${{ !matrix.save }}
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: cargo-rust-${{ runner.os }}-${{ matrix.cache }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: cargo-rust-${{ runner.os }}-${{ matrix.cache }}-
 
-      # No DIFFCTX_YAML_CASES_LIMIT: the whole corpus is gated here (~2 min).
+      - name: Build the examples
+        if: matrix.part == 'corpus'
+        working-directory: crates/diffctx-native
+        run: cargo build --release --locked --examples
+
+      # No DIFFCTX_YAML_CASES_LIMIT: the whole corpus is gated here.
       # Cases below threshold at the shipped operating point are enumerated in
       # crates/diffctx-native/tests/known_below_threshold.txt (the file is the
       # count — numbers written here rotted twice), enforced bidirectionally, so
       # a regression in ANY case fails the build. A limit still works locally
       # for a fast stratified subset.
-      - name: Build and test
-        run: |
-          (cd crates/diffctx-native && cargo build --release --locked --examples)
-          scripts/cargo-test-suites.sh
+      - name: Test
+        env:
+          PART: ${{ matrix.part }}
+        run: scripts/cargo-test-suites.sh "$PART"
 
   # The Linux job above keeps its name because branch protection requires it;
-  # this one gates the same suites where paths, line endings and process
-  # spawning differ.
+  # this one gates the same suites on Windows, where paths, line endings and
+  # process spawning differ. A run of the binary costs it two to five times
+  # what it costs Linux, so the corpus runs in its own parts: the YAML corpus,
+  # and the class corpus (`corpus:1/2`, the heavier suite) split by case.
+  # A stream check (a PR into relay/arch, or into any branch but main) runs
+  # Linux only: the account runs 20 jobs at once (5 macOS), and six streams of
+  # ~27 jobs queued for hours.
   rust-diffctx-test-cross:
-    name: Rust diffctx tests (${{ matrix.os }})
+    name: Rust diffctx tests (${{ matrix.os }}, ${{ matrix.label }})
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-latest, windows-latest]
+        include:
+          - {os: windows-latest, part: "rest:1/4", label: "1/4", cache: debug, save: true}
+          - {os: windows-latest, part: "rest:2/4", label: "2/4", cache: debug}
+          - {os: windows-latest, part: "rest:3/4", label: "3/4", cache: debug}
+          - {os: windows-latest, part: "rest:4/4", label: "4/4", cache: debug}
+          - {os: windows-latest, part: "corpus:2/2", label: "YAML corpus", cache: release, save: true}
+          - {os: windows-latest, part: "corpus:1/2", class_shard: "1/4", label: "class corpus 1/4", cache: release}
+          - {os: windows-latest, part: "corpus:1/2", class_shard: "2/4", label: "class corpus 2/4", cache: release}
+          - {os: windows-latest, part: "corpus:1/2", class_shard: "3/4", label: "class corpus 3/4", cache: release}
+          - {os: windows-latest, part: "corpus:1/2", class_shard: "4/4", label: "class corpus 4/4", cache: release}
+    if: >-
+      github.event.pull_request.head.label != format('{0}:relay/arch', github.repository_owner) &&
+      !(github.event_name == 'pull_request' && github.base_ref != 'main')
     runs-on: ${{ matrix.os }}
-    # The hang guard of #510. The green Windows cell took 59.9 and 59.1
-    # minutes on 38751976320 and 38770819847 (corpus 2031 s and 2393 s), so
-    # 60 would cut a passing run.
+    # The hang guard of #510, no longer the margin of a whole run.
     timeout-minutes: 90
     permissions:
       contents: read
@@ -321,23 +552,99 @@ jobs:
           toolchain: "1.100.0"
 
       - name: Cache Cargo
+        if: matrix.save
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: cargo-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
-          restore-keys: cargo-${{ runner.os }}-
+          key: cargo-rust-${{ runner.os }}-${{ matrix.cache }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: cargo-rust-${{ runner.os }}-${{ matrix.cache }}-
+      - name: Restore Cargo
+        if: ${{ !matrix.save }}
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: cargo-rust-${{ runner.os }}-${{ matrix.cache }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: cargo-rust-${{ runner.os }}-${{ matrix.cache }}-
 
       - name: Build and test
         shell: bash
-        run: scripts/cargo-test-suites.sh
+        env:
+          PART: ${{ matrix.part }}
+          DIFFCTX_CLASS_SHARD: ${{ matrix.class_shard }}
+        run: scripts/cargo-test-suites.sh "$PART"
+
+  # macOS has five runner slots for the whole account, and GitHub Pro does not
+  # raise them. A push (main, a probe) runs the suites whose subject is the
+  # operating system and builds the Intel-Mac binary; the head check of
+  # relay/arch, a PR into main, the nightly and a dispatch with full add the
+  # two corpora. The suites that test only logic (impact, metamorphic, the
+  # resolvers) run on Linux and Windows. Four macOS Python versions run on the
+  # same occasions as the corpora.
+  rust-diffctx-test-macos:
+    name: Rust diffctx tests (macos-latest, ${{ matrix.label }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include: >-
+          ${{ fromJSON((github.event_name == 'push' && github.ref != 'refs/heads/relay/arch'
+            || github.event_name == 'workflow_dispatch' && !inputs.full)
+            && '[{"part":"platform","label":"platform","cache":"platform-intel","save":true}]'
+            || '[{"part":"platform","label":"platform","cache":"platform-intel","save":true},
+                 {"part":"corpus:2/2","label":"YAML corpus","cache":"release","save":true},
+                 {"part":"corpus:1/2","class_shard":"1/2","label":"class corpus 1/2","cache":"release"},
+                 {"part":"corpus:1/2","class_shard":"2/2","label":"class corpus 2/2","cache":"release"}]') }}
+    if: >-
+      github.event.pull_request.head.label != format('{0}:relay/arch', github.repository_owner) &&
+      !(github.event_name == 'pull_request' && github.base_ref != 'main')
+    runs-on: macos-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
+        with:
+          toolchain: "1.100.0"
+
+      - name: Cache Cargo
+        if: matrix.save
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: cargo-rust-${{ runner.os }}-${{ matrix.cache }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: cargo-rust-${{ runner.os }}-${{ matrix.cache }}-
+      - name: Restore Cargo
+        if: ${{ !matrix.save }}
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: cargo-rust-${{ runner.os }}-${{ matrix.cache }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: cargo-rust-${{ runner.os }}-${{ matrix.cache }}-
+
+      - name: Build and test
+        env:
+          PART: ${{ matrix.part }}
+          DIFFCTX_CLASS_SHARD: ${{ matrix.class_shard }}
+        run: scripts/cargo-test-suites.sh "$PART"
 
       # Release ships an Intel-Mac binary cross-built on this arm64 image; the
-      # first build of it must not be the release itself.
+      # first build of it must not be the release itself. The platform part does it.
       - name: Cross-build the Intel-Mac binary and run it under Rosetta
-        if: runner.os == 'macOS'
+        if: matrix.part == 'platform'
         working-directory: crates/diffctx-native
         run: |
           rustup target add x86_64-apple-darwin
@@ -357,14 +664,29 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-        python-version: ['3.10', '3.11', '3.12', '3.13', '3.14']
+        python-version: ['3.11', '3.12', '3.13', '3.14']
+        # A stream check (a PR into relay/arch, or into any branch but main)
+        # runs one Linux interpreter; exclude never drops an include-only
+        # cell, so the ARM legs are an expression too. macOS has five slots:
+        # a push (relay/arch excepted) or a dispatch without full runs one
+        # interpreter there; the head check of relay/arch, a PR into main and
+        # the nightly run the four.
+        exclude: >-
+          ${{ fromJSON((github.event_name == 'pull_request' && github.base_ref != 'main')
+            && '[{"os":"macos-latest"},{"os":"windows-latest"},
+                 {"python-version":"3.11"},{"python-version":"3.12"},{"python-version":"3.14"}]'
+            || (github.event_name == 'push' && github.ref != 'refs/heads/relay/arch'
+                || github.event_name == 'workflow_dispatch' && !inputs.full)
+            && '[{"os":"macos-latest","python-version":"3.11"},
+                 {"os":"macos-latest","python-version":"3.12"},
+                 {"os":"macos-latest","python-version":"3.14"}]'
+            || '[]') }}
         # The ARM legs of the release matrix. Windows on ARM has native
         # CPython only from 3.11, so one current interpreter each.
-        include:
-          - os: ubuntu-22.04-arm
-            python-version: '3.13'
-          - os: windows-11-arm
-            python-version: '3.13'
+        include: >-
+          ${{ fromJSON((github.event_name == 'pull_request' && github.base_ref != 'main') && '[]'
+            || '[{"os":"ubuntu-22.04-arm","python-version":"3.13"},
+                 {"os":"windows-11-arm","python-version":"3.13"}]') }}
 
     runs-on: ${{ matrix.os }}
     # The suite's hang guard (#529): no test carries a per-test timeout, whose
@@ -395,20 +717,34 @@ jobs:
           toolchain: "1.100.0"
           components: rustfmt, clippy
 
+      # One entry per OS and arch, saved by the 3.13 cell every matrix has: an entry per interpreter filled the
+      # repository's 10 GB of caches and evicted the oracle's indexes, whose rebuild then hit Maven Central's 429s.
       - name: Cache Cargo
+        if: matrix.python-version == '3.13'
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: cargo-${{ runner.os }}-${{ runner.arch }}-py${{ matrix.python-version }}-${{ hashFiles('Cargo.lock') }}
-          restore-keys: cargo-${{ runner.os }}-${{ runner.arch }}-py${{ matrix.python-version }}-
+          key: cargo-${{ runner.os }}-${{ runner.arch }}-py-${{ hashFiles('Cargo.lock') }}
+          restore-keys: cargo-${{ runner.os }}-${{ runner.arch }}-py
+      - name: Restore Cargo
+        if: matrix.python-version != '3.13'
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: cargo-${{ runner.os }}-${{ runner.arch }}-py-${{ hashFiles('Cargo.lock') }}
+          restore-keys: cargo-${{ runner.os }}-${{ runner.arch }}-py
 
       - name: Build and install diffctx (with Rust _diffctx) and dev deps
         shell: bash
         env:
           PYO3_USE_ABI3_FORWARD_COMPATIBILITY: "1"
+          EVAL_PYTHON: ${{ matrix.os == 'macos-latest' && '3.11' || '3.12' }}
         run: |
           # Editable install of the project plus every extra the suite needs.
           # uv provisions maturin in its own build environment, so the build
@@ -417,7 +753,8 @@ jobs:
           # tests/conftest.py drops tests/eval/* at COLLECTION time, so those
           # tests reported as neither run nor skipped and executed in no job at
           # all. Installed on one interpreter: the cost is one matrix cell, the
-          # alternative was a suite nobody ran.
+          # alternative was a suite nobody ran. 3.12, or 3.11 on macOS, which
+          # runs only the lowest and the highest interpreter.
           SYNC=(uv sync --locked --no-build --extra dev --extra full --extra mcp)
           # Windows on ARM: cryptography (pulled in by mcp) publishes no wheel
           # and needs OpenSSL to build, so the MCP suites skip there; tiktoken,
@@ -425,7 +762,7 @@ jobs:
           if [[ "$RUNNER_OS" == "Windows" && "$RUNNER_ARCH" == "ARM64" ]]; then
             SYNC=(uv sync --locked --extra dev --extra full)
           fi
-          if [[ "${{ matrix.python-version }}" == "3.12" ]]; then
+          if [[ "${{ matrix.python-version }}" == "$EVAL_PYTHON" ]]; then
             SYNC+=(--group eval)
           fi
           "${SYNC[@]}"
@@ -436,14 +773,18 @@ jobs:
           fi
 
       # tests/test_fit_contract.py holds the native binary to the artifact the
-      # Python CLI and the MCP server deliver (#507); one cell builds it, and
-      # without it those cases skip.
+      # Python CLI and the MCP server deliver (#507); one cell builds it. Where
+      # it is built those cases fail rather than skip, and the other cells
+      # skip them.
       - name: Build the native binary for the door contract
         if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.12'
         shell: bash
         run: |
           cargo build --release --locked --bin diffctx
-          echo "DIFFCTX_NATIVE_BIN=$PWD/target/release/diffctx" >> "$GITHUB_ENV"
+          {
+            echo "DIFFCTX_NATIVE_BIN=$PWD/target/release/diffctx"
+            echo "DIFFCTX_REQUIRE_NATIVE=1"
+          } >> "$GITHUB_ENV"
 
       - name: Run Tests with Coverage
         shell: bash
@@ -455,6 +796,18 @@ jobs:
         run: |
           coverage report --fail-under=40
 
+      - name: Upload coverage reports to Codecov
+        # Every OS uploads: platform-only branches (Windows paths, POSIX modes)
+        # are covered nowhere else, and Codecov merges the reports.
+        if: matrix.python-version == (matrix.os == 'macos-latest' && '3.11' || '3.12')
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5  # v7.1.1
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: ./coverage.xml
+          flags: integration
+          fail_ci_if_error: false
+          verbose: true
+
   # ============================================================================
   # The landing page is a PWA; tests/test_publishing_manifests.py checks the
   # manifest and precache list statically, this job opens the site in a real
@@ -464,6 +817,9 @@ jobs:
   # ============================================================================
   docs-pwa:
     name: Landing page installs and opens offline
+    if: >-
+      github.event.pull_request.head.label != format('{0}:relay/arch', github.repository_owner) &&
+      !(github.base_ref == 'relay/arch')
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -497,6 +853,7 @@ jobs:
   # ============================================================================
   complexity-checks:
     name: Complexity & Maintainability Analysis
+    if: ${{ github.event.pull_request.head.label != format('{0}:relay/arch', github.repository_owner) }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -537,6 +894,7 @@ jobs:
   # ============================================================================
   architecture-checks:
     name: Architecture & Import Contracts
+    if: ${{ github.event.pull_request.head.label != format('{0}:relay/arch', github.repository_owner) }}
     runs-on: ubuntu-latest
     permissions:
       contents: read

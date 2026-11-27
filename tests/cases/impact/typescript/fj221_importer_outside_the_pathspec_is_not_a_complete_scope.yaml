@@ -1,0 +1,32 @@
+name: fj221_importer_outside_the_pathspec_is_not_a_complete_scope
+mode: impact
+source: fj#221
+issue_state: open
+tags: [typescript, absence-claim, scope]
+repo:
+  initial_files:
+    app/package.json: |
+      {"name":"app","private":true}
+    other-app/package.json: |
+      {"name":"other-app","private":true}
+    app/src/lib/a.ts: |
+      export function f(x: number): number {
+        return x + 1;
+      }
+    other-app/src/feature/use.ts: |
+      import { f } from "../../../app/src/lib/a";
+
+      export function g(): number {
+        return f(2);
+      }
+  changed_files:
+    app/src/lib/a.ts: |
+      export function f(x: number): number {
+        return x + 2;
+      }
+query:
+  args: ["app"]
+expect:
+  exact: false
+  changed: [app/src/lib/a.ts::f]
+  no_negative_claims: true

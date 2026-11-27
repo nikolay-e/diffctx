@@ -33,11 +33,85 @@ concurrency:
         type: boolean
 
 jobs:
+  # The release tokens are only used after PyPI may have published, and the
+  # build_only dry run never touches them: prove both here, read-only, before
+  # anything is built.
+  check-credentials:
+    name: Check Release Credentials
+    runs-on: ubuntu-latest
+    steps:
+      # finalize-release pushes to a protected main as an admin, which the
+      # protection exempts (enforce_admins: false, #69).
+      - name: Check RELEASE_PUSH_TOKEN
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_PUSH_TOKEN }}
+          REPO_FULL_NAME: ${{ github.repository }}
+        run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::error::RELEASE_PUSH_TOKEN is not set"
+            exit 1
+          fi
+          if ! admin=$(gh api "repos/${REPO_FULL_NAME}" --jq .permissions.admin 2>/dev/null); then
+            echo "::error::RELEASE_PUSH_TOKEN does not authenticate against ${REPO_FULL_NAME}"
+            exit 1
+          fi
+          if [ "$admin" != "true" ]; then
+            echo "::error::RELEASE_PUSH_TOKEN is not an admin of ${REPO_FULL_NAME}; it could not push to main"
+            exit 1
+          fi
+          # Dry run: the remote authenticates the push and nothing is written.
+          # The token cannot read main's branch protection (no Administration
+          # scope), so that admins are exempt stays a setting to trust.
+          git init -q probe
+          git -C probe -c user.name=probe -c user.email=probe@localhost commit -q --allow-empty -m probe
+          url="https://x-access-token:${GH_TOKEN}@github.com/${REPO_FULL_NAME}.git"
+          if ! git -C probe push --dry-run "$url" HEAD:refs/heads/credential-check >/dev/null 2>&1; then
+            echo "::error::RELEASE_PUSH_TOKEN cannot push to ${REPO_FULL_NAME}"
+            exit 1
+          fi
+          echo "RELEASE_PUSH_TOKEN is an admin and can push to ${REPO_FULL_NAME}."
+
+      - name: Check DHI_TOKEN
+        if: ${{ !cancelled() }}
+        env:
+          DHI_USERNAME: ${{ secrets.DHI_USERNAME }}
+          DHI_TOKEN: ${{ secrets.DHI_TOKEN }}
+        run: |
+          if [ -z "$DHI_USERNAME" ] || [ -z "$DHI_TOKEN" ]; then
+            echo "::error::DHI_USERNAME or DHI_TOKEN is not set"
+            exit 1
+          fi
+          if ! printf '%s' "$DHI_TOKEN" |
+            docker login dhi.io --username "$DHI_USERNAME" --password-stdin >/dev/null 2>&1; then
+            echo "::error::docker login to dhi.io failed: DHI_USERNAME/DHI_TOKEN are rejected"
+            exit 1
+          fi
+          docker logout dhi.io >/dev/null
+          echo "DHI_TOKEN logs in to dhi.io."
+
+  # The full platform set (macOS included) on the commit being released. A red
+  # run blocks the publish and finalize jobs, and so everything behind them.
+  ci:
+    name: CI on the full platform set
+    if: ${{ !inputs.build_only }}
+    uses: ./.github/workflows/ci.yml
+    with:
+      full: true
+    secrets:
+      DHI_USERNAME: ${{ secrets.DHI_USERNAME }}
+      DHI_TOKEN: ${{ secrets.DHI_TOKEN }}
+      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+    permissions:
+      contents: read
+
   prepare-version:
     name: Prepare Version Commit
+    needs: check-credentials
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.set_outputs.outputs.version }}
+      semver: ${{ steps.set_outputs.outputs.semver }}
+      prerelease: ${{ steps.set_outputs.outputs.prerelease }}
       tag_name: ${{ steps.set_outputs.outputs.tag_name }}
       commit_sha: ${{ steps.commit_version.outputs.commit_sha }}
     steps:
@@ -81,6 +155,15 @@ jobs:
           fi
           echo "Version format valid (PEP 440): $VERSION"
 
+      # A candidate (a, b, rc) goes to every channel as a pre-release and moves
+      # no pin a user installs from. The binary, the assets, the tag, npm and
+      # the crates spell it as semver (2.0.0-rc.1); PyPI and the tree as PEP 440.
+      - name: Classify the version
+        id: kind
+        env:
+          VERSION: ${{ github.event.inputs.version }}
+        run: python scripts/release/tree_version.py describe "$VERSION" | tee -a "$GITHUB_OUTPUT"
+
       - name: Check version is not already set
         env:
           VERSION: ${{ github.event.inputs.version }}
@@ -103,6 +186,14 @@ jobs:
           VERSION: ${{ github.event.inputs.version }}
         run: |
           echo "Setting version to $VERSION"
+          python scripts/release/tree_version.py set "$VERSION"
+
+      # What users install from moves only with a final release.
+      - name: Move the user pins to the release
+        if: steps.kind.outputs.prerelease != 'true'
+        env:
+          VERSION: ${{ github.event.inputs.version }}
+        run: |
           python - <<'PY'
           import json, os, re, pathlib
           ver = os.environ["VERSION"]
@@ -112,24 +203,6 @@ jobs:
           s, n = re.subn(r'^version:\s*.*$', f'version: {ver}', s, count=1, flags=re.M)
           assert n == 1, "CITATION.cff has no version line"
           p.write_text(s, encoding="utf-8")
-
-          p = pathlib.Path("src/diffctx/version.py")
-          s = p.read_text(encoding="utf-8")
-          s, n = re.subn(r'__version__\s*=\s*["\'].*?["\']', f'__version__ = "{ver}"', s, count=1)
-          assert n == 1, "version.py: __version__ assignment not found"
-          p.write_text(s, encoding="utf-8")
-
-          py = pathlib.Path("pyproject.toml")
-          s = py.read_text(encoding="utf-8")
-          s, n = re.subn(r'(?m)^version\s*=\s*["\'][^"\']+["\']', f'version = "{ver}"', s, count=1)
-          assert n == 1, "pyproject.toml: [project].version not found"
-          py.write_text(s, encoding="utf-8")
-
-          cargo = pathlib.Path("crates/diffctx-native/Cargo.toml")
-          s = cargo.read_text(encoding="utf-8")
-          s, n = re.subn(r'(?m)^version\s*=\s*"[^"]+"', f'version = "{ver}"', s, count=1)
-          assert n == 1, "Cargo.toml: [package].version not found"
-          cargo.write_text(s, encoding="utf-8")
 
           # The Action's default pin and the plugin manifest are consumer-facing
           # versions: left unbumped, Marketplace and plugin users stay on the
@@ -178,49 +251,30 @@ jobs:
           srv.write_text(json.dumps(doc, indent=2) + "\n", encoding="utf-8")
 
           # The action doc pins `nikolay-e/diffctx@v<semver>` in its examples;
-          # test_version_consistency gates them against __version__, so a
+          # test_version_consistency gates them against the release, so a
           # release that skips this file fails the next full pytest run.
           doc_md = pathlib.Path("docs/product/github-action.md")
           s = doc_md.read_text(encoding="utf-8")
           s, n = re.subn(r"(nikolay-e/diffctx@v)\d+\.\d+\.\d+", r"\g<1>" + ver, s)
           assert n >= 2, "github-action.md: expected at least 2 version pins"
           doc_md.write_text(s, encoding="utf-8")
-
-          lock = pathlib.Path("Cargo.lock")
-          s = lock.read_text(encoding="utf-8")
-          s, n = re.subn(
-              r'(\[\[package\]\]\nname = "diffctx"\nversion = ")[^"]+',
-              lambda m: m.group(1) + ver,
-              s,
-              count=1,
-          )
-          assert n == 1, "Cargo.lock: diffctx package entry not found"
-          lock.write_text(s, encoding="utf-8")
-
-          # CI installs with `uv sync --locked`, which refuses a lockfile whose
-          # editable diffctx entry lags pyproject — every job after 1.17.0 did.
-          uv_lock = pathlib.Path("uv.lock")
-          s = uv_lock.read_text(encoding="utf-8")
-          s, n = re.subn(
-              r'(\[\[package\]\]\nname = "diffctx"\nversion = ")[^"]+(?="\nsource = \{ editable = "\." \})',
-              lambda m: m.group(1) + ver,
-              s,
-              count=1,
-          )
-          assert n == 1, "uv.lock: editable diffctx entry not found"
-          uv_lock.write_text(s, encoding="utf-8")
           PY
+
+      - name: Show the tree versions
+        run: |
           echo "version.py:"
           cat src/diffctx/version.py
           echo "pyproject.toml (version line):"
           grep -E '^version\s*=' pyproject.toml
           echo "Cargo.toml (version line):"
-          grep -E '^version\s*=' crates/diffctx-native/Cargo.toml
+          grep -E '^version\s*=' Cargo.toml
 
       # tests/test_version_consistency.py requires a `## [<version>] - <date>`
       # section; 1.16.0 needed a hand commit for it. Rolling [Unreleased] here
       # is what keeps that gate from ever blocking the release it guards.
+      # A candidate leaves [Unreleased] for the final release to roll.
       - name: Roll the CHANGELOG [Unreleased] section into the release
+        if: steps.kind.outputs.prerelease != 'true'
         env:
           VERSION: ${{ github.event.inputs.version }}
         run: |
@@ -253,18 +307,18 @@ jobs:
       - name: Commit version bump (locally only, no push yet)
         id: commit_version
         env:
-          VERSION: ${{ github.event.inputs.version }}
+          SEMVER: ${{ steps.kind.outputs.semver }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add src/diffctx/version.py pyproject.toml crates/diffctx-native/Cargo.toml Cargo.lock uv.lock \
+          git add src/diffctx/version.py pyproject.toml Cargo.toml Cargo.lock uv.lock \
             server.json action.yml plugin/.claude-plugin/plugin.json plugin/.mcp.json plugin/pyproject.toml \
             plugin/hooks/diffctx-impact.sh plugin/hooks/diffctx-session.sh \
             plugin/skills/commit/SKILL.md plugin/skills/diffctx/SKILL.md plugin/skills/impact/SKILL.md \
             docs/product/github-action.md CITATION.cff \
             CHANGELOG.md
           if ! git diff --staged --quiet; then
-            git commit -m "Release version ${VERSION}"
+            git commit -m "Release version ${SEMVER}"
           else
             echo "No changes to commit."
           fi
@@ -272,11 +326,27 @@ jobs:
           echo "Commit SHA: $COMMIT_SHA"
           echo "commit_sha=$COMMIT_SHA" >> "$GITHUB_OUTPUT"
 
+      # The pins are what `uvx`, the Action, the plugin, the registry and Scoop
+      # users get without asking: a candidate's commit may touch the tree
+      # surfaces and nothing else, whatever a later edit of the steps above does.
+      - name: A candidate moves no pin
+        if: steps.kind.outputs.prerelease == 'true'
+        run: |
+          surfaces='^(src/diffctx/version\.py|pyproject\.toml|uv\.lock'
+          surfaces+='|Cargo\.(toml|lock)|crates/[^/]+/Cargo\.toml)$'
+          moved=$(git diff --name-only HEAD~1 HEAD | grep -Ev "$surfaces" || true)
+          if [ -n "$moved" ]; then
+            echo "::error::a candidate's commit moved files that are not tree surfaces:"
+            echo "$moved"
+            exit 1
+          fi
+          echo "Only tree surfaces changed: no pin moves."
+
       - name: Check tag doesn't already exist
         env:
-          VERSION: ${{ github.event.inputs.version }}
+          SEMVER: ${{ steps.kind.outputs.semver }}
         run: |
-          TAG="v${VERSION}"
+          TAG="v${SEMVER}"
           git fetch --tags origin 2>/dev/null || true
           if git rev-parse "$TAG" >/dev/null 2>&1; then
             echo "Error: Tag $TAG already exists locally"
@@ -290,10 +360,10 @@ jobs:
 
       - name: Create local tag (no push yet)
         env:
-          VERSION: ${{ github.event.inputs.version }}
+          SEMVER: ${{ steps.kind.outputs.semver }}
         run: |
-          git tag -a "v${VERSION}" -m "Release version ${VERSION}"
-          echo "Tag created locally: v${VERSION}"
+          git tag -a "v${SEMVER}" -m "Release version ${SEMVER}"
+          echo "Tag created locally: v${SEMVER}"
 
       - name: Create git bundle
         run: git bundle create repo.bundle --all
@@ -309,9 +379,15 @@ jobs:
         id: set_outputs
         env:
           VERSION: ${{ github.event.inputs.version }}
+          SEMVER: ${{ steps.kind.outputs.semver }}
+          PRERELEASE: ${{ steps.kind.outputs.prerelease }}
         run: |
-          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
-          echo "tag_name=v${VERSION}" >> "$GITHUB_OUTPUT"
+          {
+            echo "version=${VERSION}"
+            echo "semver=${SEMVER}"
+            echo "prerelease=${PRERELEASE}"
+            echo "tag_name=v${SEMVER}"
+          } >> "$GITHUB_OUTPUT"
 
   build-wheels:
     name: Build wheel (${{ matrix.target }})
@@ -490,6 +566,15 @@ jobs:
         run: |
           listing=$(tar tzf ./repo/dist/*.tar.gz)
           echo "${listing}" | grep -m5 -E 'crates/diffctx-native/src/.*\.rs$'
+          echo "${listing}" | grep -m1 -E 'crates/diffctx-base/src/.*\.rs$'
+          echo "${listing}" | grep -m1 -E 'crates/diffctx-snapshot/src/.*\.rs$'
+          echo "${listing}" | grep -m1 -E 'crates/diffctx-facts/src/.*\.rs$'
+          echo "${listing}" | grep -m1 -E 'crates/diffctx-resolve/src/.*\.rs$'
+          echo "${listing}" | grep -m1 -E 'crates/diffctx-occurrence/src/.*\.rs$'
+          echo "${listing}" | grep -m1 -E 'crates/diffctx-graph/src/.*\.rs$'
+          echo "${listing}" | grep -m1 -E 'crates/diffctx-select/src/.*\.rs$'
+          echo "${listing}" | grep -m1 -E 'crates/diffctx-answer/src/.*\.rs$'
+          echo "${listing}" | grep -m1 -E 'crates/diffctx-config/src/.*\.rs$'
           echo "OK: sdist contains Rust sources"
 
       # The sdist is what every platform without a wheel falls back to, and
@@ -582,7 +667,7 @@ jobs:
         if: matrix.archive == 'tar.gz'
         shell: bash
         env:
-          VERSION: ${{ needs.prepare-version.outputs.version }}
+          VERSION: ${{ needs.prepare-version.outputs.semver }}
           TARGET: ${{ matrix.target }}
         run: |
           mkdir -p out
@@ -595,7 +680,7 @@ jobs:
         if: matrix.archive == 'zip'
         shell: bash
         env:
-          VERSION: ${{ needs.prepare-version.outputs.version }}
+          VERSION: ${{ needs.prepare-version.outputs.semver }}
           TARGET: ${{ matrix.target }}
         run: |
           mkdir -p out
@@ -609,7 +694,7 @@ jobs:
         working-directory: ./repo
         env:
           TARGET: ${{ matrix.target }}
-          VERSION: ${{ needs.prepare-version.outputs.version }}
+          VERSION: ${{ needs.prepare-version.outputs.semver }}
           BUILD_SHA: ${{ needs.prepare-version.outputs.commit_sha }}
         # The x86_64 macOS binary runs here under Rosetta, which the arm64
         # runner image ships.
@@ -662,7 +747,7 @@ jobs:
 
   publish-to-pypi:
     name: Publish to PyPI
-    needs: [prepare-version, build-wheels, build-sdist]
+    needs: [ci, prepare-version, build-wheels, build-sdist]
     if: github.event.inputs.publish_to_pypi == 'true'
     runs-on: ubuntu-latest
     environment:
@@ -696,7 +781,7 @@ jobs:
           twine check dist/*
 
       - name: Publish to PyPI (OIDC trusted publishing)
-        uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086  # release/v1
+        uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086  # v1.14.3
         with:
           packages-dir: ./dist
           print-hash: true
@@ -718,7 +803,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-        python-version: ['3.10', '3.14']
+        python-version: ['3.11', '3.14']
         # Windows on ARM has native CPython only from 3.11. macos-15-intel is
         # the only Intel-Mac pool GitHub still hosts (macos-13 retired).
         include:
@@ -742,6 +827,7 @@ jobs:
         shell: bash
         env:
           VERSION: ${{ needs.prepare-version.outputs.version }}
+          SEMVER: ${{ needs.prepare-version.outputs.semver }}
         run: |
           python -m pip install --only-binary :all: --upgrade pip
           # One gate for every installer the smokes use (#364): pip and uv keep
@@ -755,7 +841,7 @@ jobs:
           until python -m pip download -q --no-cache-dir --no-deps --only-binary :all: \
                   -d "${RUNNER_TEMP}/probe" "diffctx==${VERSION}" &&
                 uvx --refresh --python 3.13 --no-build "diffctx==${VERSION}" --version |
-                  tr -d '\r' | grep -x "diffctx ${VERSION}" >/dev/null; do
+                  tr -d '\r' | grep -x "diffctx ${SEMVER}" >/dev/null; do
             if (( SECONDS >= deadline )); then
               echo "::error::diffctx ${VERSION} did not resolve for pip and uv within 10 minutes of the upload"
               exit 1
@@ -771,8 +857,8 @@ jobs:
       - name: Smoke - diffctx --version
         shell: bash
         env:
-          VERSION: ${{ needs.prepare-version.outputs.version }}
-        run: diffctx --version | grep -qx "diffctx ${VERSION}"
+          SEMVER: ${{ needs.prepare-version.outputs.semver }}
+        run: diffctx --version | grep -qx "diffctx ${SEMVER}"
 
       - name: Smoke - tree mapping mode
         shell: bash
@@ -829,13 +915,14 @@ jobs:
         shell: bash
         env:
           VERSION: ${{ needs.prepare-version.outputs.version }}
+          SEMVER: ${{ needs.prepare-version.outputs.semver }}
         run: |
           python -m venv "${RUNNER_TEMP}/base"
           bin="${RUNNER_TEMP}/base/bin"
           [[ -d "$bin" ]] || bin="${RUNNER_TEMP}/base/Scripts"
           "$bin/python" -m pip install --no-cache-dir --only-binary :all: \
             --find-links "${RUNNER_TEMP}/probe" "diffctx==${VERSION}"
-          test "$("$bin/diffctx-mcp" --version)" = "diffctx-mcp ${VERSION}"
+          test "$("$bin/diffctx-mcp" --version)" = "diffctx-mcp ${SEMVER}"
           set +e
           "$bin/diffctx-mcp" --help >/dev/null 2>&1
           help_rc=$?
@@ -860,6 +947,7 @@ jobs:
         shell: bash
         env:
           VERSION: ${{ needs.prepare-version.outputs.version }}
+          SEMVER: ${{ needs.prepare-version.outputs.semver }}
         run: |
           python -m pip install --no-cache-dir --only-binary :all: \
             --find-links "${RUNNER_TEMP}/probe" "diffctx[mcp]==${VERSION}"
@@ -943,7 +1031,7 @@ jobs:
 
           init_result = result_for(1)
           reported = init_result["serverInfo"]["version"]
-          expected = os.environ["VERSION"]
+          expected = os.environ["SEMVER"]
           if reported != expected:
               sys.exit(f"server reports {reported}, expected {expected}")
 
@@ -978,10 +1066,11 @@ jobs:
         shell: bash
         env:
           VERSION: ${{ needs.prepare-version.outputs.version }}
+          SEMVER: ${{ needs.prepare-version.outputs.semver }}
         run: |
           deadline=$((SECONDS + 600))
           until out=$(uvx --refresh --python 3.14t --no-build "diffctx==${VERSION}" --version 2>&1) &&
-                printf '%s\n' "$out" | tail -n 1 | tr -d '\r' | grep -qx "diffctx ${VERSION}"; do
+                printf '%s\n' "$out" | tail -n 1 | tr -d '\r' | grep -qx "diffctx ${SEMVER}"; do
             echo "$out"
             if (( SECONDS >= deadline )); then
               echo "::error::the cp314t wheel of diffctx ${VERSION} did not install within 10 minutes"
@@ -1015,6 +1104,7 @@ jobs:
   finalize-release:
     name: Push Release and Create GitHub Release
     needs:
+      - ci
       - prepare-version
       - build-wheels
       - build-sdist
@@ -1025,6 +1115,7 @@ jobs:
     if: |
       always() &&
       !inputs.build_only &&
+      needs.ci.result == 'success' &&
       needs.prepare-version.result == 'success' &&
       needs.build-wheels.result == 'success' &&
       needs.build-sdist.result == 'success' &&
@@ -1076,7 +1167,7 @@ jobs:
       # already serves, so it lands here, one commit on top of the release.
       # Seeded with the root uv.lock, uv keeps every version CI tested.
       - name: Lock the plugin to the published release
-        if: github.event.inputs.publish_to_pypi == 'true'
+        if: github.event.inputs.publish_to_pypi == 'true' && needs.prepare-version.outputs.prerelease != 'true'
         working-directory: ./repo
         env:
           VERSION: ${{ needs.prepare-version.outputs.version }}
@@ -1118,7 +1209,9 @@ jobs:
       # squash of main leaves the previous release off the new history.
       # Off keeps a version that is already with the reviewer from being superseded.
       - name: Point the plugin directory at the release
-        if: github.event.inputs.publish_to_pypi == 'true' && inputs.move_plugin_release
+        if: >-
+          github.event.inputs.publish_to_pypi == 'true' && inputs.move_plugin_release &&
+          needs.prepare-version.outputs.prerelease != 'true'
         working-directory: ./repo
         run: git push --force origin HEAD:refs/heads/plugin-release
 
@@ -1175,9 +1268,10 @@ jobs:
         uses: softprops/action-gh-release@8a0cd651e5b2365bd640854a3fa5dfc70e4875f3  # v3.0.4
         with:
           tag_name: ${{ needs.prepare-version.outputs.tag_name }}
-          name: Release ${{ needs.prepare-version.outputs.version }}
+          name: Release ${{ needs.prepare-version.outputs.semver }}
           draft: false
-          prerelease: false
+          prerelease: ${{ needs.prepare-version.outputs.prerelease == 'true' }}
+          make_latest: ${{ needs.prepare-version.outputs.prerelease == 'true' && 'false' || 'true' }}
           generate_release_notes: true
           files: ./release-assets/*
 
@@ -1195,7 +1289,7 @@ jobs:
       - name: Dispatch the crate publish workflow
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          VERSION: ${{ needs.prepare-version.outputs.version }}
+          VERSION: ${{ needs.prepare-version.outputs.semver }}
           COMMIT_SHA: ${{ needs.prepare-version.outputs.commit_sha }}
           REPO: ${{ github.repository }}
         run: |
@@ -1222,10 +1316,13 @@ jobs:
           echo "Watching run $RUN_ID"
           gh run watch "$RUN_ID" --repo "$REPO" --exit-status --interval 20
 
+  # A candidate is not published here: server.json is the registry's own pin
+  # (its version stays the last release's), and the registry ranks a version it
+  # holds as the latest by its own rule.
   publish-mcp-registry:
     name: Publish to the MCP registry
     needs: [prepare-version, finalize-release]
-    if: github.event.inputs.publish_to_pypi == 'true'
+    if: github.event.inputs.publish_to_pypi == 'true' && needs.prepare-version.outputs.prerelease != 'true'
     runs-on: ubuntu-latest
     permissions:
       id-token: write
@@ -1312,7 +1409,7 @@ jobs:
           context: .
           platforms: ${{ matrix.platform }}
           build-args: |
-            VERSION=${{ needs.prepare-version.outputs.version }}
+            VERSION=${{ needs.prepare-version.outputs.semver }}
             DIFFCTX_BUILD_SHA=${{ needs.prepare-version.outputs.commit_sha }}
           outputs: >-
             type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
@@ -1360,18 +1457,20 @@ jobs:
         working-directory: ./digests
         env:
           IMAGE: ghcr.io/${{ github.repository_owner }}/diffctx
-          VERSION: ${{ needs.prepare-version.outputs.version }}
+          VERSION: ${{ needs.prepare-version.outputs.semver }}
+          PRERELEASE: ${{ needs.prepare-version.outputs.prerelease }}
         run: |
+          # `latest` is what a bare `docker pull` serves: a candidate never takes it.
+          tags=(-t "${IMAGE}:${VERSION}")
+          [ "$PRERELEASE" = true ] || tags+=(-t "${IMAGE}:latest")
           # shellcheck disable=SC2046
-          docker buildx imagetools create \
-            -t "${IMAGE}:${VERSION}" \
-            -t "${IMAGE}:latest" \
+          docker buildx imagetools create "${tags[@]}" \
             $(printf "${IMAGE}@sha256:%s " *)
 
       - name: Smoke - image runs
         env:
           IMAGE: ghcr.io/${{ github.repository_owner }}/diffctx
-          VERSION: ${{ needs.prepare-version.outputs.version }}
+          VERSION: ${{ needs.prepare-version.outputs.semver }}
           BUILD_SHA: ${{ needs.prepare-version.outputs.commit_sha }}
         run: |
           docker run --rm "${IMAGE}:${VERSION}" --version | grep -qx "diffctx ${VERSION}"
@@ -1417,7 +1516,7 @@ jobs:
 
       - name: Render manifests
         env:
-          VERSION: ${{ needs.prepare-version.outputs.version }}
+          VERSION: ${{ needs.prepare-version.outputs.semver }}
         run: |
           python scripts/render_packaging.py \
             --version "$VERSION" \
@@ -1431,7 +1530,7 @@ jobs:
       # Windows user silently. Verify against the actual artifact before pushing.
       - name: Verify the rendered Scoop manifest
         env:
-          VERSION: ${{ needs.prepare-version.outputs.version }}
+          VERSION: ${{ needs.prepare-version.outputs.semver }}
         run: |
           python - <<'PY'
           import hashlib, json, os, pathlib, sys
@@ -1473,9 +1572,20 @@ jobs:
               print(f"OK: {asset_name} hash matches and bin {bins} resolves inside the archive")
           PY
 
+      # A candidate leaves the bucket alone, since the bucket is every Windows
+      # user's pin: the verified manifest goes to the smoke as a file instead.
+      - name: Keep the manifest of a candidate for the smoke
+        if: needs.prepare-version.outputs.prerelease == 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        with:
+          name: scoop-manifest
+          path: bucket/diffctx.json
+          retention-days: 1
+
       - name: Commit and push
+        if: needs.prepare-version.outputs.prerelease != 'true'
         env:
-          VERSION: ${{ needs.prepare-version.outputs.version }}
+          VERSION: ${{ needs.prepare-version.outputs.semver }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -1506,6 +1616,7 @@ jobs:
           "$env:USERPROFILE\scoop\shims" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
 
       - name: Install diffctx from the bucket
+        if: needs.prepare-version.outputs.prerelease != 'true'
         shell: pwsh
         env:
           REPO_URL: ${{ github.server_url }}/${{ github.repository }}
@@ -1513,10 +1624,24 @@ jobs:
           scoop bucket add diffctx $env:REPO_URL
           scoop install diffctx/diffctx
 
+      # The candidate is installed from its own verified manifest, which names
+      # the public release assets: the same download and extraction as the bucket's.
+      - name: Download the candidate's manifest
+        if: needs.prepare-version.outputs.prerelease == 'true'
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333  # v8.0.2
+        with:
+          name: scoop-manifest
+          path: scoop-manifest
+
+      - name: Install diffctx from the candidate's manifest
+        if: needs.prepare-version.outputs.prerelease == 'true'
+        shell: pwsh
+        run: scoop install "$env:GITHUB_WORKSPACE\scoop-manifest\diffctx.json"
+
       - name: Assert the installed version
         shell: bash
         env:
-          VERSION: ${{ needs.prepare-version.outputs.version }}
+          VERSION: ${{ needs.prepare-version.outputs.semver }}
         run: |
           diffctx --version | grep -qx "diffctx ${VERSION}"
           echo "OK: scoop installed diffctx ${VERSION}"
@@ -1539,7 +1664,7 @@ jobs:
       - name: Dispatch the downstream publish workflow
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          VERSION: ${{ needs.prepare-version.outputs.version }}
+          VERSION: ${{ needs.prepare-version.outputs.semver }}
           COMMIT_SHA: ${{ needs.prepare-version.outputs.commit_sha }}
           REPO: ${{ github.repository }}
         run: |
@@ -1568,3 +1693,193 @@ jobs:
           [[ -n "$RUN_ID" ]] || { echo "::error::no publish-extras.yml run started after $DISPATCHED_AT"; exit 1; }
           echo "Watching run $RUN_ID"
           gh run watch "$RUN_ID" --repo "$REPO" --exit-status --interval 20
+
+  # The tree moves on the moment a release has shipped (#570): X.Y.(Z+1).dev0,
+  # so a build from source never satisfies the `==X.Y.Z` pin of the release it
+  # follows. Tree surfaces only; every user pin stays on the release. After the
+  # packaging job so the two commits to main never race for the push.
+  open-next-dev-version:
+    name: Open the next development version
+    needs: [prepare-version, finalize-release, update-packaging-manifests]
+    if: |
+      always() &&
+      !inputs.build_only &&
+      needs.finalize-release.result == 'success' &&
+      (needs.update-packaging-manifests.result == 'success' ||
+       needs.update-packaging-manifests.result == 'skipped')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          ref: main
+          fetch-depth: 0
+          token: ${{ secrets.RELEASE_PUSH_TOKEN }}
+
+      - name: Set up Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0  # v7.1.0
+        with:
+          python-version: '3.12'
+
+      - name: Commit and push the development version
+        env:
+          VERSION: ${{ needs.prepare-version.outputs.version }}
+          TAG_NAME: ${{ needs.prepare-version.outputs.tag_name }}
+        run: |
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "${VERSION} is not a final release: the tree keeps its version."
+            exit 0
+          fi
+          if ! git merge-base --is-ancestor "$TAG_NAME" HEAD; then
+            echo "::error::${TAG_NAME} is not an ancestor of main; the tree is not opened past it"
+            exit 1
+          fi
+          dev=$(python scripts/release/tree_version.py open-dev "$VERSION")
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/diffctx/version.py pyproject.toml Cargo.toml Cargo.lock uv.lock
+          if git diff --staged --quiet; then
+            echo "main is already at ${dev}."
+            exit 0
+          fi
+          git commit -m "chore: open ${dev}"
+          for _ in 1 2 3; do
+            git push origin HEAD:main && exit 0
+            git pull --rebase origin main
+          done
+          echo "::error::main kept moving; ${dev} was not pushed"
+          exit 1
+
+  # A fixed issue closes when the fix reaches users (#595): the `smoke` cases
+  # run against what each channel serves, through the binary it installed.
+  # DIFFCTX_CASE_TAG keeps the harness to the tagged impact and symbol cases.
+  smoke-published:
+    name: Post-release smoke (${{ matrix.channel }})
+    needs: [prepare-version, finalize-release, publish-to-pypi, smoke-pypi, publish-extras]
+    if: github.event.inputs.publish_to_pypi == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        channel: [pypi, npm, plugin]
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    env:
+      VERSION: ${{ needs.prepare-version.outputs.version }}
+      SEMVER: ${{ needs.prepare-version.outputs.semver }}
+      PRERELEASE: ${{ needs.prepare-version.outputs.prerelease }}
+      COMMIT_SHA: ${{ needs.prepare-version.outputs.commit_sha }}
+    steps:
+      # The workflow's own ref carries the cases and the harness: the release
+      # commit differs from it by the version bump alone, and a job that checks
+      # out another commit and runs it must neither write a cache nor hold more
+      # than read access (CodeQL actions/cache-poisoning, as eval-sweep's
+      # ext-build). Nothing is cached here: a saved cache would be restored by
+      # later runs.
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - name: Set up uv
+        if: matrix.channel == 'plugin'
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2  # v10.3.3
+
+      - name: Set up Node
+        if: matrix.channel == 'npm'
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1  # v7.1.0
+        with:
+          node-version: '24'
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
+        with:
+          toolchain: "1.100.0"
+
+      # The binary under test is what a user of the channel runs, installed the
+      # way the channel documents it, never one built from this checkout.
+      - name: Install what the channel published
+        run: |
+          case "${{ matrix.channel }}" in
+            pypi)
+              python3 -m venv "${RUNNER_TEMP}/pypi"
+              "${RUNNER_TEMP}/pypi/bin/python" -m pip install --quiet --no-cache-dir \
+                --only-binary :all: "diffctx==${VERSION}"
+              bin="${RUNNER_TEMP}/pypi/bin/diffctx"
+              ;;
+            npm)
+              mkdir "${RUNNER_TEMP}/npm" && cd "${RUNNER_TEMP}/npm"
+              npm init -y >/dev/null
+              npm install --prefer-online --ignore-scripts "diffctx@${SEMVER}"
+              node node_modules/diffctx/install.js
+              bin="${RUNNER_TEMP}/npm/node_modules/.bin/diffctx"
+              ;;
+            plugin)
+              # The pin the release commit launches, read as data: a release
+              # that forgot to move it fails here.
+              git fetch --quiet --depth=1 origin "$COMMIT_SHA"
+              pin=$(git show FETCH_HEAD:plugin/.mcp.json | jq -r '.mcpServers.diffctx.args[0]')
+              if [[ "$PRERELEASE" == true ]]; then
+                # The pin stays on the last release; the candidate is launched by an explicit pin of its own.
+                released=$(git show FETCH_HEAD:server.json | jq -r .version)
+                [[ "$pin" == "diffctx[mcp]==${released}" ]] || { echo "::error::pin moved to ${pin}"; exit 1; }
+                pin="diffctx[mcp]==${VERSION}"
+              else
+                [[ "$pin" == "diffctx[mcp]==${VERSION}" ]] || { echo "::error::plugin pin is ${pin}"; exit 1; }
+              fi
+              mkdir "${RUNNER_TEMP}/plugin"
+              printf '#!/usr/bin/env bash\nexport UV_ISOLATED=1\nexec uvx -q "%s" "$@"\n' "$pin" \
+                > "${RUNNER_TEMP}/plugin/diffctx"
+              chmod +x "${RUNNER_TEMP}/plugin/diffctx"
+              bin="${RUNNER_TEMP}/plugin/diffctx"
+              ;;
+          esac
+          "$bin" --version | grep -qx "diffctx ${SEMVER}"
+          echo "DIFFCTX_BIN=${bin}" >> "$GITHUB_ENV"
+
+      # `npm install diffctx` and `npx diffctx` serve `latest`, which a
+      # candidate must not become.
+      - name: A candidate took the next tag, not latest
+        if: matrix.channel == 'npm' && env.PRERELEASE == 'true'
+        run: |
+          [[ "$(npm view --prefer-online diffctx dist-tags.next)" == "$SEMVER" ]]
+          [[ "$(npm view --prefer-online diffctx dist-tags.latest)" != "$SEMVER" ]]
+          echo "OK: diffctx@next is ${SEMVER}, latest untouched"
+
+      - name: Run the smoke cases against it
+        working-directory: crates/diffctx-native
+        env:
+          DIFFCTX_CASE_TAG: smoke
+        run: cargo test --release --locked --test yaml_cases
+
+  # Closing is the last step of a release and never earlier: every channel is
+  # published and the smoke ran on what they serve. The label, not a commit
+  # message, says which issues this release fixed (#595). Forgejo is closed by
+  # hand from the releasing session; no Forgejo credential lives here.
+  close-released-issues:
+    name: Close the issues this release fixed
+    needs:
+      - prepare-version
+      - smoke-published
+      - smoke-pypi-free-threaded
+      - smoke-scoop
+      - publish-crate
+      - publish-mcp-registry
+    if: github.event.inputs.publish_to_pypi == 'true' && needs.prepare-version.outputs.prerelease != 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      # The workflow's own ref, never the release commit: this job holds a
+      # token that writes issues.
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - name: Close the labelled issues
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ needs.prepare-version.outputs.tag_name }}
+          REPO: ${{ github.repository }}
+        run: python3 scripts/release/close-released.py --tracker github --repo "$REPO" --tag "$TAG_NAME"

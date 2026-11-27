@@ -1,0 +1,38 @@
+name: k6_php_add_action_in_the_definitions_own_file
+mode: impact
+source: synthetic
+tags: [php, literal-name, callable-string, own-file, wordpress]
+repo:
+  initial_files:
+    plugin.php: |
+      <?php
+      /*
+       * Plugin Name: Demo
+       */
+
+      function demo_boot(): void
+      {
+          update_option('demo', 1);
+      }
+
+      add_action('init', 'demo_boot');
+  changed_files:
+    plugin.php: |
+      <?php
+      /*
+       * Plugin Name: Demo
+       */
+
+      function demo_boot(): void
+      {
+          update_option('demo', 2);
+      }
+
+      add_action('init', 'demo_boot');
+  commit_message: "plugin: demo_boot stores two"
+expect:
+  exact: false
+  discloses: true
+  no_negative_claims: true
+  relations:
+    - {from: plugin.php, to: plugin.php::demo_boot, kind: calls, resolution: unresolved}

@@ -1,0 +1,791 @@
+use std::path::Path;
+use std::sync::Arc;
+
+use once_cell::sync::Lazy;
+use regex::Regex;
+use rustc_hash::{FxHashMap, FxHashSet};
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
+
+use crate::answer::envelope::{self, Inventory};
+use crate::answer::v2::{Fit, Range};
+use diffctx_base::types::{Fragment, FragmentId, FragmentKind};
+use diffctx_config::config::render::RENDER;
+
+pub mod shed;
+
+/// Orientation header for the diff-context output: tells the reader *what*
+/// changed before they read the fragments. Empty for working-tree / no-commit
+/// diffs.
+#[derive(Default)]
+pub struct ChangeSummary {
+    /// The range as asked, and the staged tree when it is one: what the answer's
+    /// `range` states.
+    pub range_spec: Option<String>,
+    pub index_tree: Option<String>,
+    pub commit_message: Option<String>,
+    /// Every commit message of the range (subject and body), newest first;
+    /// empty for a working-tree diff with no committed range.
+    pub commit_messages: Vec<String>,
+    pub commit_count: usize,
+    /// `(display path, class, reason)` for every changed file, the class the
+    /// selection policy ranked evidence by.
+    pub changes: Vec<(
+        String,
+        diffctx_facts::change_class::ChangeClass,
+        &'static str,
+    )>,
+    /// Display paths of changed files that yielded no fragment at all (not
+    /// code, binary, over the size cap): unrepresented by nature, not because
+    /// the budget or the selection dropped them.
+    pub fragmentless: FxHashSet<String>,
+    pub changed_files: Vec<String>,
+    pub deleted_files: Vec<String>,
+    pub renamed_files: Vec<(String, String)>,
+    pub lockfile_changes: Vec<String>,
+    pub ignored_changes: Vec<String>,
+    pub policy_excluded_count: usize,
+}
+
+/// The public artifact: the one document every surface derives from.
+pub const CONTEXT_SCHEMA: &str = "diffctx.context.v2";
+
+/// One changed file's inventory row: what kind of change it carries and
+/// whether anything of it made it into the output. The row exists for every
+/// changed file whatever the budget — an omission is stated, never implied.
+#[derive(Serialize, Deserialize, JsonSchema, Clone, Debug)]
+pub struct ChangeEntry {
+    pub path: String,
+    pub class: diffctx_facts::change_class::ChangeClass,
+    pub represented: bool,
+    /// The file produced no fragment for any budget to keep or drop.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub no_fragments: bool,
+}
+
+/// What the sanitizer replaced in the artifact, as the document states it.
+#[derive(Serialize, Deserialize, JsonSchema, Clone, Debug, Default, PartialEq, Eq)]
+pub struct PackRedactions {
+    pub count: usize,
+    /// Distinct shapes matched, in the order first seen.
+    pub categories: Vec<String>,
+}
+
+impl From<diffctx_base::sanitize::Redactions> for PackRedactions {
+    fn from(found: diffctx_base::sanitize::Redactions) -> Self {
+        Self {
+            count: found.count,
+            categories: found.categories.into_iter().map(str::to_string).collect(),
+        }
+    }
+}
+
+/// `diffctx.context.v2`: the pack document. A typed value from the builder to
+/// the last renderer; the Python bridge hands it back as a dict, which parses
+/// into this type again.
+#[derive(Serialize, Deserialize, JsonSchema, Clone, Debug)]
+pub struct DiffContextOutput {
+    /// `diffctx.context.v2`: the schema a consumer validates against; the
+    /// document below is generated from this type and pinned by test.
+    pub schema: String,
+    pub name: String,
+    #[serde(rename = "type")]
+    pub output_type: String,
+    /// The range, and the newest of its commits' messages.
+    pub range: Range,
+    #[serde(default, skip_serializing_if = "Inventory::is_empty")]
+    pub inventory: Inventory,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub changes: Vec<ChangeEntry>,
+    /// The budget the answer was cut to and what that cost it. Absent when no
+    /// budget applied (`--full`, `--budget 0`, unlimited).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fit: Option<Fit>,
+    /// Present only when a limit stopped the run short: what stopped it and
+    /// what was consumed. A complete run's output carries no block.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub coverage: Option<diffctx_snapshot::resource::CoverageReport>,
+    /// Present only when the sanitizer replaced a credential-shaped string
+    /// somewhere in this artifact — fragment text, a commit message.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub redactions: Option<PackRedactions>,
+    /// Absent only for outputs no pipeline run produced (the in-memory
+    /// harness, an empty tree). Held as the value it serializes to: the record
+    /// names the engine by `&'static str`s no parser can give back.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schemars(with = "Option<crate::run_provenance::Provenance>")]
+    pub provenance: Option<serde_json::Value>,
+    /// The patch itself, verbatim input and so not charged to `--budget`
+    /// (`fit.exempt` says how much it is).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub raw_diff: Option<String>,
+    pub fragments: Vec<FragmentEntry>,
+    /// Telemetry, not artifact: two runs of one input must compare equal
+    /// without it, so it never enters the serialized document. The Python
+    /// bridge attaches it beside the artifact.
+    #[serde(skip)]
+    #[schemars(skip)]
+    pub latency: Option<LatencyBreakdown>,
+}
+
+impl DiffContextOutput {
+    /// A document that says nothing a caller can act on: no fragment, no patch and
+    /// no file deleted, renamed, locked, withheld or ignored. Judged on the fitted
+    /// document, what is actually emitted.
+    pub fn carries_nothing(&self) -> bool {
+        self.fragments.is_empty()
+            && self.raw_diff.as_deref().is_none_or(str::is_empty)
+            && !self.inventory.says_something_without_fragments()
+    }
+}
+
+/// The record a pipeline run attaches as `provenance`.
+pub fn provenance_value(record: &crate::run_provenance::Provenance) -> serde_json::Value {
+    serde_json::to_value(record).unwrap_or(serde_json::Value::Null)
+}
+
+/// JSON Schema 2020-12 for `diffctx.context.v2`, generated from the type —
+/// the hand-written copies (a Rust `set_item` bridge, a Python key list)
+/// are gone, so this is the only place the shape is stated.
+pub fn context_schema() -> serde_json::Value {
+    let mut generator = schemars::generate::SchemaSettings::draft2020_12().into_generator();
+    let schema = generator.root_schema_for::<DiffContextOutput>();
+    serde_json::to_value(schema).expect("schema serializes")
+}
+
+fn serialize_emissions<S>(
+    emissions: &[(&'static str, u64, u64)],
+    serializer: S,
+) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    use serde::ser::SerializeMap;
+    let mut map = serializer.serialize_map(Some(emissions.len()))?;
+    for (category, raw, deduped) in emissions {
+        let mut counts = std::collections::BTreeMap::new();
+        counts.insert("raw", *raw);
+        counts.insert("deduped", *deduped);
+        map.serialize_entry(category, &counts)?;
+    }
+    map.end()
+}
+
+fn round_ms<S>(ms: &f64, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    serializer.serialize_f64((ms * 10.0).round() / 10.0)
+}
+
+#[derive(Serialize, Clone, Debug)]
+pub struct LatencyBreakdown {
+    /// Pre-heavy-phase work: hunk parse, untracked scan, ignore resolution and
+    /// the `git diff` calls. Outside every timer until #183, which is why the
+    /// reported phases could not be reconciled with the wall clock.
+    #[serde(serialize_with = "round_ms")]
+    pub pre_phase_ms: f64,
+    #[serde(serialize_with = "round_ms")]
+    pub parse_changed_ms: f64,
+    #[serde(serialize_with = "round_ms")]
+    pub universe_walk_ms: f64,
+    #[serde(serialize_with = "round_ms")]
+    pub discovery_ms: f64,
+    #[serde(serialize_with = "round_ms")]
+    pub parse_discovered_ms: f64,
+    #[serde(serialize_with = "round_ms")]
+    pub tokenization_ms: f64,
+    /// Typed dependency graph construction: edge builders + dedup + hub
+    /// suppression + per-source cap. Carved out of `scoring_ms` (which
+    /// used to absorb it) so the cost distribution is truthful. Zero for
+    /// BM25 mode (no graph built).
+    #[serde(serialize_with = "round_ms")]
+    pub graph_build_ms: f64,
+    /// Combined graph build + scoring + selection time. Kept for
+    /// backward compatibility with the existing checkpoint schema; the
+    /// split values below are the new diagnostic signal.
+    #[serde(serialize_with = "round_ms")]
+    pub scoring_selection_ms: f64,
+    #[serde(serialize_with = "round_ms")]
+    pub total_ms: f64,
+    /// Heavy-phase rank computation only (PPR/EGO/BM25 + relevance
+    /// filtering). Graph construction is reported in `graph_build_ms`;
+    /// the selection stage is excluded.
+    #[serde(serialize_with = "round_ms")]
+    pub scoring_ms: f64,
+    /// Selection stage only (lazy greedy / Boltzmann + post-passes).
+    #[serde(serialize_with = "round_ms")]
+    pub selection_ms: f64,
+    /// Size of the candidate fragment universe handed to the scoring
+    /// strategy (after fragment generation + signature variants but
+    /// before per-strategy filtering). Surfaces blowup on large repos —
+    /// pathological scoring time is correlated with this number, not
+    /// with `fragment_count` (which is the *output* size after
+    /// selection).
+    pub candidate_count: usize,
+    /// Edge count of the typed dependency graph used by PPR/EGO. Zero
+    /// for BM25 mode (no graph built).
+    pub edge_count: usize,
+    /// Number of greedy iterations actually executed (selected non-core
+    /// fragments). Bounded by `selected.len() - core.len()`. Pairs with
+    /// `selection_ms` to spot lazy-heap blowup vs. genuine large output.
+    pub greedy_iters: usize,
+    /// Edge count after merge + hub suppression, before per-source cap.
+    pub edges_before_cap: usize,
+    /// Edges discarded by the per-source top-K cap.
+    pub edges_dropped_by_cap: usize,
+    /// Source nodes whose outgoing edge list was truncated by the cap.
+    pub nodes_capped: usize,
+    /// The K value applied for the per-source cap.
+    pub max_out_edges_per_node: usize,
+    /// PPR push iteration was truncated by `max_pushes_cap` before
+    /// convergence. When true, `rel_scores` are biased toward seeds
+    /// and absolute file_recall on this instance should be flagged
+    /// in post-analysis. Always false for non-PPR scoring modes.
+    pub ppr_truncated: bool,
+    pub ppr_forward_pushes: usize,
+    pub ppr_backward_pushes: usize,
+    /// Additive stopping certificate: upper bound
+    /// (`tau * peak_density * remaining_budget`) on utility foregone by
+    /// adaptive stopping. 0 when the greedy loop ended for another
+    /// reason (budget exhausted, no candidates, singleton override).
+    pub stopping_certificate: f64,
+    /// Lifetime peak physical memory of the process, sampled in-process
+    /// at the end of the run. 0 when the platform query fails.
+    pub peak_rss_bytes: u64,
+    /// Per-category (raw, first-seen deduped) edge emission counts from
+    /// pass 1 of the two-pass edge build, sorted by category name. Names
+    /// the builder category behind near-dense emission blowups (#116).
+    /// Empty for BM25 mode (no graph built).
+    #[serde(serialize_with = "serialize_emissions")]
+    pub edge_emissions_by_category: Vec<(&'static str, u64, u64)>,
+}
+
+#[derive(Serialize, Deserialize, JsonSchema, Clone, Debug)]
+pub struct FragmentEntry {
+    pub path: String,
+    pub lines: String,
+    /// `Some("changed")` for fragments overlapping the diff hunks; omitted
+    /// (treated as supporting context) otherwise. This is the single signal a
+    /// reader needs to tell the change apart from its context.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub role: Option<String>,
+    pub kind: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub symbol: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub content: Option<Arc<str>>,
+}
+
+struct SymbolPatterns {
+    function: Vec<Regex>,
+    class: Vec<Regex>,
+    r#struct: Vec<Regex>,
+    interface: Vec<Regex>,
+    r#enum: Vec<Regex>,
+    r#impl: Vec<Regex>,
+    r#type: Vec<Regex>,
+    module: Vec<Regex>,
+    section: Vec<Regex>,
+}
+
+static SYMBOL_PATTERNS: Lazy<SymbolPatterns> = Lazy::new(|| {
+    SymbolPatterns {
+    function: vec![
+        Regex::new(r"(?m)^\s*(?:async\s+)?def\s+(\w+)\s*\(").unwrap(),
+        Regex::new(r"(?m)^\s*(?:export\s+)?(?:async\s+)?function\s+(\w+)\s*[\(<]").unwrap(),
+        Regex::new(r"(?m)^\s*(?:export\s+)?(?:const|let|var)\s+(\w+)\s*=\s*(?:async\s+)?(?:\([^)]*\)|\w)\s*=>").unwrap(),
+        Regex::new(r"(?m)^func\s+(?:\([^)]+\)\s+)?(\w+)\s*[\(\[]").unwrap(),
+        Regex::new(r"(?m)^\s*(?:pub\s+)?(?:async\s+)?fn\s+(\w+)\s*[\(<]").unwrap(),
+        Regex::new(r"(?m)^\s*(?:(?:public|private|protected|static)\s+)*\w[\w<>\[\],]*\s+(\w+)\s*\(").unwrap(),
+    ],
+    class: vec![
+        Regex::new(r"(?m)^\s*class\s+(\w+)\s*[:\({\s]").unwrap(),
+        Regex::new(r"(?m)^\s*(?:export\s+)?(?:abstract\s+)?class\s+(\w+)").unwrap(),
+    ],
+    r#struct: vec![
+        Regex::new(r"(?m)^\s*(?:pub\s+)?struct\s+(\w+)").unwrap(),
+        Regex::new(r"(?m)^\s*type\s+(\w+)\s+struct\s*\{").unwrap(),
+    ],
+    interface: vec![
+        Regex::new(r"(?m)^\s*(?:export\s+)?interface\s+(\w+)").unwrap(),
+        Regex::new(r"(?m)^\s*type\s+(\w+)\s+interface\s*\{").unwrap(),
+        Regex::new(r"(?m)^\s*(?:pub\s+)?trait\s+(\w+)").unwrap(),
+    ],
+    r#enum: vec![
+        Regex::new(r"(?m)^\s*(?:pub\s+)?enum\s+(\w+)").unwrap(),
+        Regex::new(r"(?m)^\s*class\s+(\w+)\s*\(.*Enum\)").unwrap(),
+    ],
+    r#impl: vec![
+        Regex::new(r"(?m)^\s*impl(?:<[^>]+>)?\s+(\w+)").unwrap(),
+    ],
+    r#type: vec![
+        Regex::new(r"(?m)^\s*(?:export\s+)?type\s+(\w+)").unwrap(),
+        Regex::new(r"(?m)^\s*type\s+(\w+)\s").unwrap(),
+    ],
+    module: vec![
+        Regex::new(r"(?m)^\s*(?:pub\s+)?mod\s+(\w+)").unwrap(),
+        Regex::new(r"(?m)^\s*package\s+(\w+)").unwrap(),
+    ],
+    section: vec![
+        Regex::new(r"(?m)^#{1,6}\s+(\S[^\n]*)$").unwrap(),
+    ],
+}
+});
+
+fn extract_symbol(frag: &Fragment) -> Option<String> {
+    let patterns = match frag.kind {
+        FragmentKind::Function | FragmentKind::FunctionSignature => &SYMBOL_PATTERNS.function,
+        FragmentKind::Class | FragmentKind::ClassSignature => &SYMBOL_PATTERNS.class,
+        FragmentKind::Struct | FragmentKind::StructSignature => &SYMBOL_PATTERNS.r#struct,
+        FragmentKind::Interface | FragmentKind::InterfaceSignature => &SYMBOL_PATTERNS.interface,
+        FragmentKind::Enum | FragmentKind::EnumSignature => &SYMBOL_PATTERNS.r#enum,
+        FragmentKind::Impl => &SYMBOL_PATTERNS.r#impl,
+        FragmentKind::Type => &SYMBOL_PATTERNS.r#type,
+        FragmentKind::Module => &SYMBOL_PATTERNS.module,
+        FragmentKind::Section => &SYMBOL_PATTERNS.section,
+        _ => return None,
+    };
+
+    for pattern in patterns {
+        if let Some(caps) = pattern.captures(&frag.content) {
+            if let Some(m) = caps.get(1) {
+                let result = m.as_str().trim();
+                return Some(if frag.kind == FragmentKind::Section {
+                    result
+                        .chars()
+                        .take(RENDER.section_symbol_max_chars)
+                        .collect()
+                } else {
+                    result.to_string()
+                });
+            }
+        }
+    }
+    None
+}
+
+/// The one spelling of a fragment's path in output — the same function the
+/// changed-file list uses, so "is this changed file represented?" compares
+/// like with like. A private variant here stripped an un-canonicalised root
+/// and could disagree with the list on a symlinked checkout (#263).
+pub(crate) fn get_relative_path(frag: &Fragment, repo_root: &Path) -> String {
+    diffctx_base::paths::display_rel_or_abs(repo_root, Path::new(frag.path()))
+}
+
+fn create_fragment_entry(frag: &Fragment, path_str: &str) -> FragmentEntry {
+    let symbol = frag.symbol_name.clone().or_else(|| extract_symbol(frag));
+    let content = if frag.content.is_empty() {
+        None
+    } else {
+        Some(Arc::clone(&frag.content))
+    };
+
+    FragmentEntry {
+        path: path_str.to_string(),
+        lines: format!("{}-{}", frag.start_line(), frag.end_line()),
+        role: None,
+        kind: frag.kind.as_str().to_string(),
+        symbol,
+        content,
+    }
+}
+
+impl DiffContextOutput {
+    /// The one empty output. Three hand-written literals used to exist
+    /// (pipeline, in-memory harness, the pybridge empty branch), and the
+    /// withheld-change disclosure went missing from exactly one of them.
+    pub fn empty(name: &str) -> Self {
+        DiffContextOutput {
+            schema: CONTEXT_SCHEMA.to_string(),
+            name: name.to_string(),
+            output_type: "diff_context".to_string(),
+            range: envelope::worktree_range(),
+            inventory: Inventory::default(),
+            changes: Vec::new(),
+            fit: None,
+            coverage: None,
+            redactions: None,
+            provenance: None,
+            raw_diff: None,
+            fragments: Vec::new(),
+            latency: None,
+        }
+    }
+}
+
+/// Collapse a file's fragments (sorted by start line, ties by descending end
+/// line) into the rendered entries. Two behaviors:
+/// - a same-role fragment fully contained in the running range (`next.end <=
+///   end`) is dropped: its content is already covered by the enclosing
+///   fragment (e.g. a symbol-level "function" extraction and a hunk-level
+///   "chunk" both covering the same edited lines), so keeping it is pure
+///   duplication, not additional information.
+/// - a same-role fragment that is line-contiguous with the running range
+///   (`next.start == end + 1`) is merged into it.
+/// Both are lossless on line coverage and remove the per-fragment scaffolding
+/// tax that dominates output on one-line/near-duplicate snippets.
+fn merge_file_fragments(
+    rel_path: &str,
+    frags: &[&Fragment],
+    core_ids: &FxHashSet<FragmentId>,
+    stand_in_ids: &FxHashSet<FragmentId>,
+) -> Vec<(bool, u32, FragmentEntry)> {
+    let mut out: Vec<(bool, u32, FragmentEntry)> = Vec::new();
+    let mut i = 0;
+    while i < frags.len() {
+        let first = frags[i];
+        let role_changed = diffctx_base::types::carries_change(first, core_ids, stand_in_ids);
+        let mut end = first.end_line();
+        let mut parts: Vec<&str> = vec![first.content.trim_end_matches('\n')];
+        let mut uniform_kind = true;
+        let mut j = i + 1;
+        while j < frags.len() {
+            let next = frags[j];
+            if diffctx_base::types::carries_change(next, core_ids, stand_in_ids) != role_changed {
+                break;
+            }
+            if next.end_line() <= end {
+                // Fully contained in the range covered so far - redundant.
+                j += 1;
+            } else if next.start_line() == end + 1 {
+                parts.push(next.content.trim_end_matches('\n'));
+                uniform_kind &= next.kind == first.kind;
+                end = next.end_line();
+                j += 1;
+            } else {
+                break;
+            }
+        }
+
+        let mut entry = create_fragment_entry(first, rel_path);
+        if j > i + 1 {
+            entry.lines = format!("{}-{}", first.start_line(), end);
+            let merged = parts.join("\n");
+            entry.content = if merged.is_empty() {
+                None
+            } else {
+                Some(Arc::from(merged.as_str()))
+            };
+            // The merged span is no longer what `first` was, and the kind has
+            // to stop claiming otherwise. A one-line `function_signature`
+            // followed by contiguous body chunks was emitted as a
+            // `function_signature` carrying the whole 101-line function — the
+            // exact opposite of what a signature means, since it exists as the
+            // cheap stand-in when the full fragment misses the budget (#184).
+            // `chunk` is the vocabulary's name for a span of lines with no
+            // single semantic identity, which is precisely what a mixed run is.
+            if !uniform_kind {
+                entry.kind = diffctx_base::types::FragmentKind::Chunk
+                    .as_str()
+                    .to_string();
+            }
+        }
+        entry.role = role_changed.then(|| "changed".to_string());
+        out.push((role_changed, first.start_line(), entry));
+        i = j;
+    }
+    out
+}
+
+pub fn build_diff_context_output(
+    repo_root: &Path,
+    selected: &[Fragment],
+    no_content: bool,
+    core_ids: &FxHashSet<FragmentId>,
+    stand_in_ids: &FxHashSet<FragmentId>,
+    rel_scores: &FxHashMap<FragmentId, f64>,
+    change: ChangeSummary,
+) -> DiffContextOutput {
+    let mut by_path: FxHashMap<String, Vec<&Fragment>> = FxHashMap::default();
+    for frag in selected {
+        by_path
+            .entry(get_relative_path(frag, repo_root))
+            .or_default()
+            .push(frag);
+    }
+
+    // Changed code first (the answer to "what changed"), then supporting
+    // context ordered by descending per-file relevance so the reader's primacy
+    // attention lands on the most relevant material, not on alphabetical noise.
+    let mut changed: Vec<(String, u32, FragmentEntry)> = Vec::new();
+    let mut context: Vec<(f64, String, u32, FragmentEntry)> = Vec::new();
+    for (rel_path, frags) in &by_path {
+        let mut sorted: Vec<&Fragment> = frags.clone();
+        // Tie-break by descending end line so, among same-start fragments, the
+        // widest range sorts first and containment-absorption below (which scans
+        // forward from the first entry of a run) sees the enclosing range before
+        // any of its nested sub-fragments.
+        sorted.sort_by_key(|f| (f.start_line(), std::cmp::Reverse(f.end_line())));
+        let file_rel = sorted
+            .iter()
+            .map(|f| rel_scores.get(&f.id).copied().unwrap_or(0.0))
+            .fold(0.0_f64, f64::max);
+        for (role_changed, start, mut entry) in
+            merge_file_fragments(rel_path, &sorted, core_ids, stand_in_ids)
+        {
+            if no_content {
+                entry.content = None;
+            }
+            if role_changed {
+                changed.push((rel_path.clone(), start, entry));
+            } else {
+                context.push((file_rel, rel_path.clone(), start, entry));
+            }
+        }
+    }
+
+    changed.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
+    context.sort_by(|a, b| {
+        b.0.partial_cmp(&a.0)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then(a.1.cmp(&b.1))
+            .then(a.2.cmp(&b.2))
+    });
+
+    let mut fragments_out: Vec<FragmentEntry> = Vec::with_capacity(changed.len() + context.len());
+    fragments_out.extend(changed.into_iter().map(|(_, _, e)| e));
+    fragments_out.extend(context.into_iter().map(|(_, _, _, e)| e));
+
+    let mut redactions = diffctx_base::sanitize::Redactions::default();
+    for entry in &mut fragments_out {
+        if let Some(content) = entry.content.as_deref() {
+            let (clean, found) = diffctx_base::sanitize::sanitize(content);
+            if !found.is_empty() {
+                entry.content = Some(Arc::from(clean));
+                redactions.merge(found);
+            }
+        }
+    }
+    let mut change = change;
+    if let Some(m) = change.commit_message.as_mut() {
+        redactions.merge(diffctx_base::sanitize::sanitize_in_place(m));
+    }
+    for m in &mut change.commit_messages {
+        redactions.merge(diffctx_base::sanitize::sanitize_in_place(m));
+    }
+    let messages = envelope::messages_of(
+        change.commit_message.take(),
+        std::mem::take(&mut change.commit_messages),
+    );
+
+    let resolved = dunce::canonicalize(repo_root).unwrap_or_else(|_| repo_root.to_path_buf());
+    let name = resolved
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_else(|| resolved.to_string_lossy().to_string());
+
+    let changes: Vec<ChangeEntry> = change
+        .changes
+        .into_iter()
+        .map(|(path, class, _reason)| ChangeEntry {
+            represented: by_path.contains_key(&path),
+            no_fragments: change.fragmentless.contains(&path),
+            path,
+            class,
+        })
+        .collect();
+
+    DiffContextOutput {
+        schema: CONTEXT_SCHEMA.to_string(),
+        name,
+        output_type: "diff_context".to_string(),
+        range: envelope::range_of(
+            change.range_spec.as_deref(),
+            change.index_tree.as_deref(),
+            change.commit_count,
+            messages,
+        ),
+        inventory: Inventory::new(
+            change.changed_files,
+            change.deleted_files,
+            change.renamed_files,
+            change.lockfile_changes,
+            change.ignored_changes,
+            change.policy_excluded_count,
+        ),
+        changes,
+        fit: None,
+        coverage: None,
+        redactions: (!redactions.is_empty()).then(|| PackRedactions::from(redactions)),
+        provenance: None,
+        raw_diff: None,
+        fragments: fragments_out,
+        latency: None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn empty_output(renamed_files: Vec<(String, String)>) -> DiffContextOutput {
+        let mut output = DiffContextOutput::empty("repo");
+        output.inventory.renamed = Inventory::new(
+            Vec::new(),
+            Vec::new(),
+            renamed_files,
+            Vec::new(),
+            Vec::new(),
+            0,
+        )
+        .renamed;
+        output
+    }
+
+    #[test]
+    fn renamed_files_serialize_as_labelled_from_to_in_json() {
+        let out = empty_output(vec![("old.py".to_string(), "new.py".to_string())]);
+        let json = serde_json::to_value(&out).unwrap();
+        let renamed = json["inventory"]["renamed"]["items"]
+            .as_array()
+            .expect("renamed files must serialize as an array");
+        assert_eq!(renamed.len(), 1);
+        assert_eq!(renamed[0]["from"], "old.py");
+        assert_eq!(renamed[0]["to"], "new.py");
+        assert!(
+            renamed[0].is_object(),
+            "must not serialize as a positional [old, new] tuple: {renamed:?}"
+        );
+    }
+
+    #[test]
+    fn renamed_files_empty_is_omitted_from_output() {
+        let out = empty_output(Vec::new());
+        let json = serde_json::to_value(&out).unwrap();
+        assert!(json.get("inventory").is_none());
+    }
+
+    /// The Python bridge hands a document back as a dict: what the engine
+    /// serialized parses into the same document.
+    #[test]
+    fn a_document_parses_back_from_what_it_serialized() {
+        let mut out = empty_output(vec![("old.py".to_string(), "new.py".to_string())]);
+        out.fragments.push(FragmentEntry {
+            path: "a.py".to_string(),
+            lines: "1-2".to_string(),
+            role: Some("changed".to_string()),
+            kind: "function".to_string(),
+            symbol: Some("f".to_string()),
+            content: Some(Arc::from("def f():\n    pass\n")),
+        });
+        let value = serde_json::to_value(&out).unwrap();
+        let back: DiffContextOutput = serde_json::from_value(value.clone()).unwrap();
+        assert_eq!(serde_json::to_value(&back).unwrap(), value);
+    }
+
+    fn frag_at(path: &str) -> Fragment {
+        Fragment {
+            id: FragmentId::new(Arc::from(path), 1, 5),
+            kind: FragmentKind::Function,
+            content: Arc::from(""),
+            identifiers: FxHashSet::default(),
+            token_count: 1,
+            symbol_name: None,
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn get_relative_path_posix_backslash_in_filename_round_trips_unchanged() {
+        // On POSIX `\` is a legal filename character: `src\utils.py` is one
+        // file, not `src/utils.py` in a subdirectory. Rewriting the
+        // separator here would report a path that does not exist.
+        let frag = frag_at("src\\utils.py");
+        let root = Path::new("/repo");
+        let rel = get_relative_path(&frag, root);
+        assert_eq!(rel, "src\\utils.py");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn get_relative_path_strips_repo_root_on_posix() {
+        let frag = frag_at("/repo/src/lib.rs");
+        let root = Path::new("/repo");
+        let rel = get_relative_path(&frag, root);
+        assert_eq!(rel, "src/lib.rs");
+    }
+}
+
+#[cfg(test)]
+mod merge_kind_tests {
+    use super::*;
+    use diffctx_base::types::{FragmentId, FragmentKind};
+
+    fn frag(start: u32, end: u32, kind: FragmentKind, body: &str) -> Fragment {
+        Fragment {
+            id: FragmentId::new(Arc::from("a.py"), start, end),
+            kind,
+            content: Arc::from(body),
+            identifiers: FxHashSet::default(),
+            token_count: 10,
+            symbol_name: None,
+        }
+    }
+
+    /// The defect this guards (#184): a one-line signature followed by
+    /// contiguous body chunks was emitted as a `function_signature` carrying the
+    /// whole function. A signature exists to be the cheap stand-in when the full
+    /// fragment misses the budget, so one that holds the body is the opposite of
+    /// its own contract — and `drop_redundant_signatures` decides using that
+    /// contract.
+    #[test]
+    fn a_merged_run_of_mixed_kinds_does_not_claim_the_first_kind() {
+        let frags = vec![
+            frag(1, 1, FragmentKind::FunctionSignature, "def big(a):"),
+            frag(2, 3, FragmentKind::Chunk, "    x = 1\n    y = 2"),
+        ];
+        let refs: Vec<&Fragment> = frags.iter().collect();
+        let out = merge_file_fragments("a.py", &refs, &FxHashSet::default(), &FxHashSet::default());
+
+        assert_eq!(out.len(), 1, "contiguous fragments should merge into one");
+        assert_eq!(out[0].2.kind, "chunk");
+        assert_eq!(out[0].2.lines, "1-3");
+    }
+
+    /// #209: the stand-in the selection recorded for a changed core renders as
+    /// `changed`; a signature the selection merely chose as context does not,
+    /// even when it starts on the very line the core starts on — that
+    /// coincidence used to BE the rule, and it was what made the role fragile.
+    #[test]
+    fn a_recorded_stand_in_renders_changed_and_a_context_signature_does_not() {
+        let core_id = FragmentId::new(Arc::from("a.py"), 10, 120);
+        let core_ids: FxHashSet<FragmentId> = std::iter::once(core_id).collect();
+
+        let substituted = frag(10, 11, FragmentKind::FunctionSignature, "def big(a):");
+        let stand_in_ids: FxHashSet<FragmentId> = std::iter::once(substituted.id.clone()).collect();
+        let refs: Vec<&Fragment> = vec![&substituted];
+        let out = merge_file_fragments("a.py", &refs, &core_ids, &stand_in_ids);
+        assert!(out[0].0, "the recorded stand-in must carry role=changed");
+
+        let elsewhere = frag(300, 301, FragmentKind::FunctionSignature, "def other(b):");
+        let refs: Vec<&Fragment> = vec![&elsewhere];
+        let out = merge_file_fragments("a.py", &refs, &core_ids, &stand_in_ids);
+        assert!(!out[0].0, "an ordinary context signature must stay context");
+    }
+
+    /// A run that is genuinely all one kind keeps it — the rule is about the
+    /// label becoming false, not about merging itself.
+    #[test]
+    fn a_merged_run_of_one_kind_keeps_it() {
+        let frags = vec![
+            frag(1, 2, FragmentKind::Chunk, "a\nb"),
+            frag(3, 4, FragmentKind::Chunk, "c\nd"),
+        ];
+        let refs: Vec<&Fragment> = frags.iter().collect();
+        let out = merge_file_fragments("a.py", &refs, &FxHashSet::default(), &FxHashSet::default());
+
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0].2.kind, "chunk");
+    }
+
+    /// An unmerged fragment is untouched: nothing about it became untrue.
+    #[test]
+    fn a_lone_fragment_keeps_its_kind() {
+        let frags = vec![frag(1, 1, FragmentKind::FunctionSignature, "def big(a):")];
+        let refs: Vec<&Fragment> = frags.iter().collect();
+        let out = merge_file_fragments("a.py", &refs, &FxHashSet::default(), &FxHashSet::default());
+
+        assert_eq!(out[0].2.kind, "function_signature");
+    }
+}

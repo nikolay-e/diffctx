@@ -11,7 +11,7 @@ concurrency:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Released version to publish downstream (e.g. 1.12.1)'
+        description: 'Released version to publish downstream, spelled as semver (1.12.1, 2.0.0-rc.1)'
         required: true
       commit:
         description: 'Release commit SHA (default: the tag, else the "Release version X" commit on main)'
@@ -105,8 +105,10 @@ jobs:
             echo "::warning::${TAG} was missing on GitHub; recreated at ${COMMIT}. Push it to Forgejo too."
           fi
           if [ "$(gh api "repos/${REPO}/releases/${RELEASE_ID}" --jq .draft)" = true ]; then
+            latest=legacy
+            [[ "$VERSION" == *-* ]] && latest=false
             gh api -X PATCH "repos/${REPO}/releases/${RELEASE_ID}" \
-              -f tag_name="$TAG" -F draft=false -f make_latest=legacy >/dev/null
+              -f tag_name="$TAG" -F draft=false -f make_latest="$latest" >/dev/null
             echo "::warning::release ${TAG} was a draft; published it again"
           fi
           [ "$(gh api "repos/${REPO}/releases/tags/${TAG}" --jq .id)" = "$RELEASE_ID" ]
@@ -208,15 +210,20 @@ jobs:
       # Idempotent like the PyPI step's skip-existing: a rerun after a
       # smoke-only failure must not die on "cannot publish over previously
       # published versions" (observed on 1.15.0).
+      # A pre-release version needs a tag of its own, and `latest` (what
+      # `npm install diffctx` serves) stays on the last release: the candidate
+      # is `next`.
       - name: Publish
         working-directory: ./packaging/npm
         env:
           VERSION: ${{ github.event.inputs.version }}
         run: |
+          tag=latest
+          [[ "$VERSION" == *-* ]] && tag=next
           if npm view "diffctx@$VERSION" version >/dev/null 2>&1; then
             echo "diffctx@$VERSION already on the registry; skipping publish"
           else
-            npm publish --access public --provenance
+            npm publish --access public --provenance --tag "$tag"
           fi
 
       # npm now answers a publish with "being processed and may take a few
@@ -349,10 +356,9 @@ jobs:
           SOURCE: ghcr.io/${{ github.repository_owner }}/diffctx
           TARGET: docker.io/${{ secrets.DOCKERHUB_USERNAME }}/diffctx
         run: |
-          docker buildx imagetools create \
-            -t "${TARGET}:${VERSION}" \
-            -t "${TARGET}:latest" \
-            "${SOURCE}:${VERSION}"
+          tags=(-t "${TARGET}:${VERSION}")
+          [[ "$VERSION" == *-* ]] || tags+=(-t "${TARGET}:latest")
+          docker buildx imagetools create "${tags[@]}" "${SOURCE}:${VERSION}"
           docker buildx imagetools inspect "${TARGET}:${VERSION}"
 
       # Inspecting the manifest proves the copy landed; only a pull and a run

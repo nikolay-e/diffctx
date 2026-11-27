@@ -1,0 +1,43 @@
+[package]
+name = "diffctx-graph"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "The fragment graph of diffctx and what ranks it: files cut into fragments, the edge builders of every language and file format, personalised PageRank, candidate discovery and the token corpus"
+license-file.workspace = true
+repository.workspace = true
+homepage = "https://diffctx.com/"
+readme = "../../README.md"
+keywords = ["git", "diff", "llm", "context"]
+categories = ["development-tools"]
+
+[features]
+test-support = []
+
+[dependencies]
+diffctx-base.workspace = true
+diffctx-config.workspace = true
+diffctx-facts.workspace = true
+diffctx-snapshot.workspace = true
+dunce.workspace = true
+once_cell.workspace = true
+rayon.workspace = true
+regex.workspace = true
+rustc-hash.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+diffctx-base = { workspace = true, features = ["test-support"] }
+# Its tests parse sources; the workspace dependency turns the grammars off for a crate tested alone.
+diffctx-facts = { workspace = true, features = ["lang-core", "lang-extra"] }
+tempfile.workspace = true
+
+# The token fingerprint digests the sources of the workspace path dependencies, read
+# from the manifests.
+[build-dependencies]
+toml.workspace = true
+
+[lints]
+workspace = true

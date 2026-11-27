@@ -1,0 +1,51 @@
+name: tf_changed_data_source_reaches_the_references_to_it
+mode: impact
+source: synthetic
+issue_state: closed
+tags:
+- terraform
+- body-only
+repo:
+  initial_files:
+    main.tf: |
+      data "terraform_remote_state" "net" {
+        backend = "local"
+        config = {
+          path = "a.tfstate"
+        }
+      }
+
+      resource "terraform_data" "net" {
+        input = "1"
+      }
+
+      output "ids" {
+        value = data.terraform_remote_state.net.outputs
+      }
+  changed_files:
+    main.tf: |
+      data "terraform_remote_state" "net" {
+        backend = "local"
+        config = {
+          path = "b.tfstate"
+        }
+      }
+
+      resource "terraform_data" "net" {
+        input = "1"
+      }
+
+      output "ids" {
+        value = data.terraform_remote_state.net.outputs
+      }
+  commit_message: tf changed data source reaches the references to it
+expect:
+  changed:
+  - main.tf::data.terraform_remote_state.net
+  relations:
+  - from: main.tf::output.ids
+    to: main.tf::data.terraform_remote_state.net
+    kind: reads
+    resolution: resolved
+    site: 13
+  exact: true

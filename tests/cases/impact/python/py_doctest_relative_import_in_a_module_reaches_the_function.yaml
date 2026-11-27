@@ -1,0 +1,46 @@
+name: py_doctest_relative_import_in_a_module_reaches_the_function
+mode: impact
+source: synthetic
+tags:
+- python
+- tests-reach
+- doctest
+repo:
+  initial_files:
+    pkg/__init__.py: ""
+    pkg/core.py: |
+      def helper(x):
+          return x
+
+
+      def spare(x):
+          return x
+    pkg/api.py: |
+      from .core import helper
+
+
+      def show(x):
+          """Show the value.
+
+          >>> helper(2)
+          2
+          """
+          return x
+  changed_files:
+    pkg/core.py: |
+      def helper(x):
+          return x + 1
+
+
+      def spare(x):
+          return x + 2
+  commit_message: change both
+expect:
+  changed:
+  - pkg/core.py::helper
+  - pkg/core.py::spare
+  exact: false
+  not_untested:
+  - helper
+  untested:
+  - spare

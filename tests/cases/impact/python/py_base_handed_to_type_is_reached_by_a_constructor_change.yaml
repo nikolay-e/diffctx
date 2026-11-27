@@ -1,0 +1,35 @@
+name: py_base_handed_to_type_is_reached_by_a_constructor_change
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [python, oracle, init-reach, passes-as-value, type-call]
+repo:
+  initial_files:
+    widgets/__init__.py: ""
+    widgets/base.py: |
+      class Base:
+          def __init__(self):
+              self.ready = True
+    widgets/build.py: |
+      from widgets.base import Base
+
+
+      def greet(self):
+          return "hello"
+
+
+      Dynamic = type("Dynamic", (Base,), {"greet": greet})
+      widget = Dynamic()
+  changed_files:
+    widgets/base.py: |
+      class Base:
+          def __init__(self):
+              self.ready = False
+  commit_message: "base: widgets start not ready"
+expect:
+  relations:
+    - from: "widgets/build.py::Dynamic"
+      to: "widgets/base.py::Base"
+      kind: passes_as_value
+      resolution: resolved
+      site: 8

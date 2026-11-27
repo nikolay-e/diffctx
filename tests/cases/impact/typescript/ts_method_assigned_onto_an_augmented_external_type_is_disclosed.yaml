@@ -1,0 +1,44 @@
+name: ts_method_assigned_onto_an_augmented_external_type_is_disclosed
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [typescript, external-base, module-augmentation, absence-claim]
+repo:
+  initial_files:
+    package.json: |
+      {"name":"app","version":"1.0.0","dependencies":{"express":"^4.0.0"}}
+    tsconfig.json: |
+      {"compilerOptions":{"strict":true}}
+    src/aug.ts: |
+      import express from 'express';
+
+      declare module 'express-serve-static-core' {
+        interface Request {
+          audit(): void;
+        }
+      }
+
+      express.request.audit = function (): void {
+        console.log('a');
+      };
+    src/use.ts: |
+      import type { Request } from 'express';
+
+      export function handle(req: Request): void {
+        req.audit();
+      }
+  changed_files:
+    src/aug.ts: |
+      import express from 'express';
+
+      declare module 'express-serve-static-core' {
+        interface Request {
+          audit(): void;
+        }
+      }
+
+      express.request.audit = function (): void {
+        console.log('b');
+      };
+  commit_message: change
+expect: {never_empty: true, discloses: true, no_negative_claims: true}

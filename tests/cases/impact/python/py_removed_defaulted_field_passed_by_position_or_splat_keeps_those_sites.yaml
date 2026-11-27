@@ -1,0 +1,54 @@
+name: py_removed_defaulted_field_passed_by_position_or_splat_keeps_those_sites
+mode: impact
+source: gh#400
+issue_state: closed
+tags: [python, removed-field, construction, control, decoy, dataclass]
+repo:
+  initial_files:
+    svc/__init__.py: ""
+    svc/model.py: |
+      from dataclasses import dataclass
+
+
+      @dataclass
+      class Item:
+          id: int
+          size: int = 0
+          note: str = ""
+    svc/by_position.py: |
+      from svc.model import Item
+
+
+      def build():
+          return Item(1, 2)
+    svc/by_splat.py: |
+      from svc.model import Item
+
+
+      def build(fields):
+          return Item(**fields)
+    svc/by_name.py: |
+      from svc.model import Item
+
+
+      def build():
+          return Item(id=1, note="n")
+  changed_files:
+    svc/model.py: |
+      from dataclasses import dataclass
+
+
+      @dataclass
+      class Item:
+          id: int
+          note: str = ""
+  commit_message: "model: drop the size field"
+expect:
+  removed: [size]
+  # A positional argument or a splat may fill the removed field, so those two
+  # constructions stay sites; the one that names only other fields does not.
+  relations:
+    - {from: "svc/by_position.py::build", to: "svc/model.py::Item", kind: instantiates, resolution: resolved, site: 5}
+    - {from: "svc/by_splat.py::build", to: "svc/model.py::Item", kind: instantiates, resolution: resolved, site: 5}
+  decoys:
+    "svc/model.py::Item": [svc/by_name.py]

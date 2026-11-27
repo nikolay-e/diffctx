@@ -11,13 +11,15 @@ use rayon::prelude::*;
 use rustc_hash::FxHashMap;
 use serde::Serialize;
 
-use _diffctx::config::limits::DEFAULT_PPR_ALPHA;
-use _diffctx::in_memory_harness::{MemoryRepo, build_diff_context_in_memory};
-use _diffctx::mode::ScoringMode;
+use diffctx_config::config::limits::DEFAULT_PPR_ALPHA;
+use diffctx_config::mode::ScoringMode;
 
 #[path = "../tests/common/mod.rs"]
 mod common;
 use common::{TestCase, calculate_budget, evaluate_oracle, garbage_files};
+#[path = "../tests/support/memory.rs"]
+mod memory;
+use memory::{MemoryRepo, build_diff_context_in_memory};
 
 #[derive(Parser)]
 #[command(name = "diffctx-test", about = "Run YAML diff test cases in-memory")]
@@ -207,7 +209,7 @@ fn load_all_cases(dir: &Path) -> Vec<(PathBuf, TestCase)> {
             }
         };
 
-        if let Ok(case) = serde_yaml::from_str::<TestCase>(&content) {
+        if let Ok(case) = diffctx_base::yaml::from_str::<TestCase>(&content) {
             let mut c = case;
             if c.name.is_empty() {
                 c.name = path
@@ -219,14 +221,14 @@ fn load_all_cases(dir: &Path) -> Vec<(PathBuf, TestCase)> {
             continue;
         }
 
-        if let Ok(list) = serde_yaml::from_str::<Vec<TestCase>>(&content) {
+        if let Ok(list) = diffctx_base::yaml::from_str::<Vec<TestCase>>(&content) {
             for case in list {
                 cases.push((path.clone(), case));
             }
             continue;
         }
 
-        if let Ok(wrapper) = serde_yaml::from_str::<TestsWrapper>(&content) {
+        if let Ok(wrapper) = diffctx_base::yaml::from_str::<TestsWrapper>(&content) {
             for case in wrapper.tests {
                 cases.push((path.clone(), case));
             }

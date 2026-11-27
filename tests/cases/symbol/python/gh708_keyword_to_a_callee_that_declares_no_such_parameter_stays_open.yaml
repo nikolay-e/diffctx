@@ -1,0 +1,40 @@
+name: gh708_keyword_to_a_callee_that_declares_no_such_parameter_stays_open
+mode: symbol
+source: gh#708
+issue_state: closed
+tags: [python, keyword-argument, parameter, decoy]
+# `build_context` takes the keyword in `**extra` and may hand it on to a class that has the field,
+# so the keyword's name is no proof of a parameter: that one site stays open in the reads of the field.
+repo:
+  initial_files:
+    bot/__init__.py: ""
+    bot/config.py: |
+      import os
+
+
+      class Settings:
+          def __init__(self) -> None:
+              self.tz_offset_hours = float(os.environ.get("BOT_TZ_OFFSET", "0"))
+
+
+      SETTINGS = Settings()
+    bot/client.py: |
+      from bot.config import SETTINGS
+      from record.tools import build_context
+
+
+      def refresh(user_id: int) -> dict:
+          return build_context(user_id, tz_offset_hours=SETTINGS.tz_offset_hours)
+    record/__init__.py: ""
+    record/tools.py: |
+      def build_context(user_id: int, **extra) -> dict:
+          return {"user": user_id, **extra}
+query:
+  symbol: tz_offset_hours
+expect:
+  definitions: [bot/config.py::tz_offset_hours]
+  relations:
+    - {from: bot/client.py::refresh, to: bot/config.py::tz_offset_hours, kind: reads, site: 6}
+  partial:
+    bot/config.py::tz_offset_hours:
+      reads: unlanded

@@ -30,7 +30,7 @@ fn fragments(text: &str, format: &str) -> Vec<(String, String, bool)> {
     let doc: serde_json::Value = if format == "json" {
         serde_json::from_str(text).unwrap()
     } else {
-        serde_yaml::from_str(text).unwrap()
+        diffctx_base::yaml::from_str(text).unwrap()
     };
     doc["fragments"]
         .as_array()
@@ -96,8 +96,13 @@ fn every_format_fits_its_own_text_and_production_goes_last() {
     let repo = tier_repo();
     for format in ["json", "yaml"] {
         for budget in [600, 700, 900, 1100, 1300] {
+            // A JSON document is charged for its own framing: below it no fragment
+            // fits, and the door exits 4 saying the budget is too small.
+            if format == "json" && budget < 700 {
+                continue;
+            }
             let text = pack(repo.path(), budget, format);
-            let tokens = _diffctx::tokenizer::count_tokens(&text);
+            let tokens = diffctx_base::tokenizer::count_tokens(&text);
             assert!(tokens <= budget, "-f {format} at {budget}: {tokens}");
             let shown: Vec<String> = fragments(&text, format)
                 .into_iter()

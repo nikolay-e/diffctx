@@ -1,0 +1,26 @@
+name: config_gitignore_whitelist_entry_is_no_path_reference
+mode: impact
+source: gh#682
+issue_state: open
+tags:
+- config
+- gitignore
+- named-by
+- decoy
+repo:
+  initial_files:
+    .gitignore: |
+      *
+      !.gitignore
+      !GUIDE.md
+    GUIDE.md: |
+      # Guide
+      line
+  changed_files:
+    GUIDE.md: |
+      # Guide
+      line two
+  commit_message: Change config gitignore whitelist entry is no path reference
+expect:
+  not_named_by:
+  - .gitignore

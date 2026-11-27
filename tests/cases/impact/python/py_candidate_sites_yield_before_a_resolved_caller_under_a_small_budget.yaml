@@ -1,0 +1,66 @@
+name: py_candidate_sites_yield_before_a_resolved_caller_under_a_small_budget
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [python, budget, shedding]
+query:
+  args: ["--budget", "500"]
+repo:
+  initial_files:
+    shop/decorators.py: |
+      def command(name=None, **attrs):
+          return attrs
+
+
+      def option(name=None, **attrs):
+          return attrs
+
+
+      def group(name=None, **attrs):
+          return command(name, **attrs)
+    examples/use_0.py: |
+      def use_0(app):
+          return app.option(0)
+    examples/use_1.py: |
+      def use_1(app):
+          return app.option(1)
+    examples/use_2.py: |
+      def use_2(app):
+          return app.option(2)
+    examples/use_3.py: |
+      def use_3(app):
+          return app.option(3)
+    examples/use_4.py: |
+      def use_4(app):
+          return app.option(4)
+    examples/use_5.py: |
+      def use_5(app):
+          return app.option(5)
+    examples/use_6.py: |
+      def use_6(app):
+          return app.option(6)
+    examples/use_7.py: |
+      def use_7(app):
+          return app.option(7)
+    examples/use_8.py: |
+      def use_8(app):
+          return app.option(8)
+    examples/use_9.py: |
+      def use_9(app):
+          return app.option(9)
+  changed_files:
+    shop/decorators.py: |
+      def command(name=None, cls=None, **attrs):
+          return attrs
+
+
+      def option(name=None, flag=None, **attrs):
+          return attrs
+
+
+      def group(name=None, **attrs):
+          return command(name, **attrs)
+expect:
+  exact: false
+  relations:
+    - {from: shop/decorators.py::group, to: shop/decorators.py::command, kind: calls}

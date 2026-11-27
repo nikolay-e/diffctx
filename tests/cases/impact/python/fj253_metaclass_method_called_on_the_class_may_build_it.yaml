@@ -1,0 +1,45 @@
+name: fj253_metaclass_method_called_on_the_class_may_build_it
+mode: impact
+source: fj#253
+issue_state: open
+tags: [python, metaclass, construction, absence-claim]
+repo:
+  initial_files:
+    m/__init__.py: ""
+    m/model.py: |
+      class Meta(type):
+          def create(cls):
+              return cls()
+
+
+      class Model(metaclass=Meta):
+          def __init__(self):
+              self.v = 1
+    m/use.py: |
+      from m.model import Model
+
+
+      def plain():
+          return Model()
+
+
+      def build():
+          return Model.create()
+  changed_files:
+    m/model.py: |
+      class Meta(type):
+          def create(cls):
+              return cls()
+
+
+      class Model(metaclass=Meta):
+          def __init__(self):
+              self.v = 2
+  commit_message: "model: v starts at two"
+# `Model.create()` runs a method of the metaclass on the class, which may build
+# it: `build` is a possible constructor, named beside `plain`.
+expect:
+  changed: [m/model.py::Model, m/model.py::v]
+  relations:
+    - {from: "m/use.py::plain", to: "m/model.py::Model", kind: instantiates, resolution: resolved, site: 5}
+    - {from: "m/use.py::build", to: "m/model.py::Model", kind: instantiates, resolution: candidate, site: 9}

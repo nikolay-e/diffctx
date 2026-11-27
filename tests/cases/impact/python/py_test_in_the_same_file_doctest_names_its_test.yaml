@@ -1,0 +1,49 @@
+name: py_test_in_the_same_file_doctest_names_its_test
+mode: impact
+source: synthetic
+issue_state: open
+tags:
+- python
+- tests-reach
+- test-in-the-same-file
+- doctest
+repo:
+  initial_files:
+    pyproject.toml: |
+      [tool.pytest.ini_options]
+      addopts = "--doctest-modules"
+    shop/price.py: |
+      def total(items):
+          """Sum the items.
+
+          >>> total([1, 2])
+          3
+          """
+          return sum(items)
+
+
+      def tax(amount):
+          return amount * 2
+  changed_files:
+    shop/price.py: |
+      def total(items):
+          """Sum the items.
+
+          >>> total([1, 2])
+          3
+          """
+          return sum(items) + 0
+
+
+      def tax(amount):
+          return amount * 3
+  commit_message: Touch both functions
+expect:
+  changed:
+  - shop/price.py::total
+  - shop/price.py::tax
+  exact: false
+  not_untested:
+  - total
+  untested:
+  - tax

@@ -1,0 +1,315 @@
+# Every pub item of diffctx-facts, as tests/public_api.rs reads it from the crate's src/.
+# A new item is red; so is a line the code no longer has: delete it. The count is capped by
+# public_items.diffctx-facts in budget.toml, which only goes down.
+change_class mod
+change_class::ChangeClass enum derive(, Clone, Copy, Debug, Deserialize, Eq, JsonSchema, Ord, PartialEq, PartialOrd, Serialize)
+change_class::ChangeClass::Content variant Content
+change_class::ChangeClass::Generated variant Generated
+change_class::ChangeClass::Layout variant Layout
+change_class::ChangeClass::Mechanical variant Mechanical
+change_class::ChangeClass::Unknown variant Unknown
+change_class::classify fn ( hunks: &[&DiffHunk], changed_lines: &[String], generated: bool, layout: bool, ) -> (ChangeClass, &'static str)
+change_class::settle_layout fn ( runs: &mut [HunkText], new: Option<&str>, within_deadline: &(dyn Fn() -> bool + Sync), )
+facts mod
+facts use blob::blob_oid
+facts use cache::{ CacheKey, CacheStats, DEFAULT_CAP_BYTES, FINGERPRINT, FactsCache, SCHEMA, default_dir, }
+facts use changes::{DefChange, Delta, Origin, SemanticChangeSet, SemanticDef, semantic_changes}
+facts use changes::{holds_data, members_of}
+facts use extractor::{Extractor, Registry, expired}
+facts use file::facts_of
+facts use hash::{Hasher, hash_text, hash_tokens}
+facts use ids::{ModulePath, Name, ProjectId, Span, TypeName}
+facts use language::Language
+facts use model::{ BlobFacts, ComputedImport, Def, DefKey, DefKind, Disambig, EntryKind, EntryPoint, Export, Fact, FileFacts, Framework, HeldAs, HeldString, Import, ImportKind, Initializer, Lexical, Local, LocalKey, LocalKind, Namespace, PathMention, Receiver, Ref, Scope, Star, UseKind, Visibility, }
+facts::config mod
+facts::config use candidates::{Candidate, candidates}
+facts::config use globs::{PathGlob, Selects, globs_of, may_select}
+facts::config use helm::{Analysis, ConfigUse, Define, UseOf, analyse}
+facts::config use object::{Found, Object, ObjectId, identity_of, local_key, objects}
+facts::config use pointer::{PointerKind, Resolved, SourcePointer, directory_of}
+facts::config use pointers::{Release, document_kind, pointers_of, releases_of}
+facts::config use reference::{ConfigRef, Row, Strength, extract}
+facts::config use selectors::{LabelSet, Labels, Selector, SelectorRow, pairs_of, selectors}
+facts::config use template::Template
+facts::config use tree::{Entry, FieldPath, Key, Match, Node, Scalar, ScalarKind, Segment, Value}
+facts::config::Dialect enum derive(Clone, Copy, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)
+facts::config::Dialect::Ini variant Ini
+facts::config::Dialect::Json variant Json
+facts::config::Dialect::Toml variant Toml
+facts::config::Dialect::Yaml variant Yaml
+facts::config::Flaw enum derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)
+facts::config::Flaw::Deadline variant Deadline
+facts::config::Flaw::NotUtf8 variant NotUtf8
+facts::config::Flaw::TooDeep variant TooDeep
+facts::config::Flaw::TooLarge variant TooLarge
+facts::config::Flaw::UnresolvedAlias variant UnresolvedAlias { name: String, line: u32 }
+facts::config::Flaw::Unsupported variant Unsupported
+facts::config::Options struct derive(Clone, Copy, Debug, Default, Eq, PartialEq)
+facts::config::Options.templating field Templating
+facts::config::Reading struct derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)
+facts::config::Reading.dialect field Dialect
+facts::config::Reading.documents field Vec<Node>
+facts::config::Reading.errors field Vec<(u32, u32)>
+facts::config::Reading.flaws field Vec<Flaw>
+facts::config::Reading.lexical field Vec<(std::ops::Range<u32>, crate::facts::Lexical)>
+facts::config::Reading.templates field Vec<Template>
+facts::config::Reading::is_whole fn (&self) -> bool
+facts::config::Templating enum derive(Clone, Copy, Debug, Default, Eq, PartialEq)
+facts::config::Templating::Go variant Go
+facts::config::Templating::None variant None
+facts::config::commands mod
+facts::config::commands::Command struct derive(Clone, Debug, Eq, PartialEq)
+facts::config::commands::Command.lines field (u32, u32)
+facts::config::commands::Command.text field String
+facts::config::commands::commands fn (path: &str, text: &str, budget: &RunBudget) -> Vec<Command>
+facts::config::dockerfile mod
+facts::config::dockerfile::Dockerfile struct derive(Clone, Debug, Default, Eq, PartialEq)
+facts::config::dockerfile::Dockerfile.instructions field Vec<Instruction>
+facts::config::dockerfile::Flag struct derive(Clone, Debug, Eq, PartialEq)
+facts::config::dockerfile::Flag.name field String
+facts::config::dockerfile::Flag.span field Span
+facts::config::dockerfile::Flag.value field String
+facts::config::dockerfile::Instruction struct derive(Clone, Debug, Eq, PartialEq)
+facts::config::dockerfile::Instruction.flags field Vec<Flag>
+facts::config::dockerfile::Instruction.heredoc field bool
+facts::config::dockerfile::Instruction.keyword field String
+facts::config::dockerfile::Instruction.keyword_span field Span
+facts::config::dockerfile::Instruction.span field Span
+facts::config::dockerfile::Instruction.words field Vec<Word>
+facts::config::dockerfile::Instruction::flag fn (&self, name: &str) -> Option<&Flag>
+facts::config::dockerfile::Word struct derive(Clone, Debug, Eq, PartialEq)
+facts::config::dockerfile::Word.span field Span
+facts::config::dockerfile::Word.text field String
+facts::config::dockerfile::parse fn (text: &str) -> Dockerfile
+facts::config::k8s mod
+facts::config::k8s::is_namespaced fn (kind: &str) -> Option<bool>
+facts::config::k8s::pod_labels_path fn (kind: &str) -> Option<&'static str>
+facts::config::k8s::references fn () -> &'static [Row]
+facts::config::k8s::selector_rows fn () -> &'static [SelectorRow]
+facts::config::read fn (dialect: Dialect, text: &[u8], options: Options, budget: &RunBudget) -> Reading
+facts::framework mod
+facts::framework::ENTRY_PREFIX const &str
+facts::framework::derive fn (blob: &mut BlobFacts)
+facts::framework::derive_in fn (blob: &mut BlobFacts, source: &[u8])
+facts::framework::describe fn (kind: EntryKind, framework: &Framework) -> String
+facts::framework::jvm mod
+facts::framework::jvm::balanced fn (text: &str) -> Option<usize>
+facts::framework::jvm::constant_literal fn (text: &str, name: &str) -> Option<String>
+facts::framework::jvm::resolve_constants fn ( path: &str, lookup: impl Fn(&str, &str) -> Option<String>, ) -> Option<String>
+facts::java mod
+facts::kotlin mod
+facts::kotlin::Binding struct derive(Clone, Debug)
+facts::kotlin::Binding.alias field Option<String>
+facts::kotlin::Binding.init_call field Option<InitCall>
+facts::kotlin::Binding.name field String
+facts::kotlin::Binding.scope field Range<usize>
+facts::kotlin::Binding.start field usize
+facts::kotlin::Binding.type_name field Option<String>
+facts::kotlin::Binding::new fn (name: String, type_name: Option<String>, start: usize, scope: Range<usize>) -> Self
+facts::kotlin::Declaration struct derive(Clone, Debug)
+facts::kotlin::Declaration.annotations field Vec<String>
+facts::kotlin::Declaration.effective field Option<Visibility>
+facts::kotlin::Declaration.end_line field u32
+facts::kotlin::Declaration.header field Range<usize>
+facts::kotlin::Declaration.init_call field Option<InitCall>
+facts::kotlin::Declaration.inner field bool
+facts::kotlin::Declaration.is_override field bool
+facts::kotlin::Declaration.kind field &'static str
+facts::kotlin::Declaration.name field String
+facts::kotlin::Declaration.owners field Vec<String>
+facts::kotlin::Declaration.receiver field Option<String>
+facts::kotlin::Declaration.signature field String
+facts::kotlin::Declaration.span field Range<usize>
+facts::kotlin::Declaration.start_line field u32
+facts::kotlin::Declaration.type_name field Option<String>
+facts::kotlin::Declaration.visibility field Option<Visibility>
+facts::kotlin::Declaration::is_member fn (&self) -> bool
+facts::kotlin::Declaration::is_type fn (&self) -> bool
+facts::kotlin::HeldString struct derive(Clone, Debug)
+facts::kotlin::HeldString.range field Range<usize>
+facts::kotlin::HeldString.text field String
+facts::kotlin::HeldString.value field bool
+facts::kotlin::Import struct derive(Clone, Debug, Eq, PartialEq)
+facts::kotlin::Import.alias field Option<String>
+facts::kotlin::Import.line field u32
+facts::kotlin::Import.path field String
+facts::kotlin::Import.wildcard field bool
+facts::kotlin::Import::local_name fn (&self) -> Option<&str>
+facts::kotlin::Import::target_name fn (&self) -> &str
+facts::kotlin::InitCall struct derive(Clone, Debug, Eq, PartialEq)
+facts::kotlin::InitCall.callee field String
+facts::kotlin::InitCall.receiver field Option<String>
+facts::kotlin::KotlinFacts struct derive(Clone, Debug, Default)
+facts::kotlin::KotlinFacts.bindings field Vec<Binding>
+facts::kotlin::KotlinFacts.computed field Vec<ComputedCall>
+facts::kotlin::KotlinFacts.consts field Vec<String>
+facts::kotlin::KotlinFacts.declarations field Vec<Declaration>
+facts::kotlin::KotlinFacts.error_lines field Vec<u32>
+facts::kotlin::KotlinFacts.held field Vec<HeldString>
+facts::kotlin::KotlinFacts.imports field Vec<Import>
+facts::kotlin::KotlinFacts.package field Option<String>
+facts::kotlin::KotlinFacts.reflects field bool
+facts::kotlin::KotlinFacts.supertypes field Vec<(String, Vec<String>)>
+facts::kotlin::KotlinFacts.text field Vec<Range<usize>>
+facts::kotlin::KotlinFacts.uses field Vec<Use>
+facts::kotlin::KotlinFacts::binding_at fn (&self, name: &str, at: usize) -> Option<&Binding>
+facts::kotlin::KotlinFacts::declaration_named fn (&self, name: &str, line: u32) -> Option<&Declaration>
+facts::kotlin::KotlinFacts::imported fn (&self, local: &str) -> Option<&Import>
+facts::kotlin::KotlinFacts::is_text fn (&self, byte: usize) -> bool
+facts::kotlin::KotlinFacts::supertypes_of fn (&self, name: &str) -> &[String]
+facts::kotlin::Receiver enum derive(Clone, Debug, Eq, PartialEq)
+facts::kotlin::Receiver::Call variant Call(String)
+facts::kotlin::Receiver::Expr variant Expr
+facts::kotlin::Receiver::Member variant Member(Vec<String>)
+facts::kotlin::Receiver::Name variant Name(String)
+facts::kotlin::Receiver::Path variant Path(Vec<String>)
+facts::kotlin::Receiver::This variant This
+facts::kotlin::Use struct derive(Clone, Debug)
+facts::kotlin::Use.at field usize
+facts::kotlin::Use.kind field UseKind
+facts::kotlin::Use.line field u32
+facts::kotlin::Use.name field String
+facts::kotlin::Use.receiver field Option<Receiver>
+facts::kotlin::UseKind enum derive(Clone, Copy, Debug, Eq, PartialEq)
+facts::kotlin::UseKind::Access variant Access
+facts::kotlin::UseKind::Call variant Call
+facts::kotlin::UseKind::Reference variant Reference
+facts::kotlin::UseKind::TypeUse variant TypeUse
+facts::kotlin::Visibility enum derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)
+facts::kotlin::Visibility::Internal variant Internal
+facts::kotlin::Visibility::Private variant Private
+facts::kotlin::Visibility::Protected variant Protected
+facts::kotlin::Visibility::Public variant Public
+facts::kotlin::Visibility::bounded fn (own: Option<Self>, owners: impl IntoIterator<Item = Option<Self>>) -> Self
+facts::kotlin::declaration_kind fn (node: &Node) -> Option<&'static str>
+facts::kotlin::declared_name fn (node: &Node, bytes: &[u8]) -> Option<String>
+facts::kotlin::end_with_accessors fn (node: &Node) -> (u32, usize)
+facts::kotlin::facts fn (content: &str) -> Option<Arc<KotlinFacts>>
+facts::kotlin::is_local fn (node: &Node) -> bool
+facts::kotlin::name_of fn (node: &Node, bytes: &[u8]) -> Option<String>
+facts::kotlin::record fn (tree: &Tree, content: &str) -> Arc<KotlinFacts>
+facts::lang mod
+facts::lang::builtin fn () -> Registry
+facts::lang::c mod
+facts::lang::c::CExtractor impl Extractor for CExtractor
+facts::lang::c::CExtractor struct
+facts::lang::c::CppExtractor impl Extractor for CppExtractor
+facts::lang::c::CppExtractor struct
+facts::lang::config mod
+facts::lang::config::ConfigExtractor impl Extractor for ConfigExtractor
+facts::lang::config::ConfigExtractor struct
+facts::lang::dockerfile mod
+facts::lang::dockerfile::DockerfileExtractor impl Extractor for DockerfileExtractor
+facts::lang::dockerfile::DockerfileExtractor struct
+facts::lang::go mod
+facts::lang::go::BY_NAME_LOOKUPS const &[&str]
+facts::lang::go::GoExtractor impl Extractor for GoExtractor
+facts::lang::go::GoExtractor struct
+facts::lang::grammar_digest fn (language: Language) -> u64
+facts::lang::helm mod
+facts::lang::helm::HelmTemplateExtractor impl Extractor for HelmTemplateExtractor
+facts::lang::helm::HelmTemplateExtractor struct
+facts::lang::helm::HelmValuesExtractor impl Extractor for HelmValuesExtractor
+facts::lang::helm::HelmValuesExtractor struct
+facts::lang::helm::defined fn (text: &str) -> Vec<(String, (u32, u32))>
+facts::lang::helm::is_template fn (path: &str) -> bool
+facts::lang::html mod
+facts::lang::html::AstroExtractor impl Extractor for AstroExtractor
+facts::lang::html::AstroExtractor struct
+facts::lang::html::HtmlExtractor impl Extractor for HtmlExtractor
+facts::lang::html::HtmlExtractor struct
+facts::lang::java mod
+facts::lang::java::JavaExtractor impl Extractor for JavaExtractor
+facts::lang::java::JavaExtractor struct
+facts::lang::kotlin mod
+facts::lang::kotlin::KotlinExtractor impl Extractor for KotlinExtractor
+facts::lang::kotlin::KotlinExtractor struct
+facts::lang::php mod
+facts::lang::php::PROPERTIES const &str
+facts::lang::php::PhpExtractor impl Extractor for PhpExtractor
+facts::lang::php::PhpExtractor struct
+facts::lang::python mod
+facts::lang::python::PythonExtractor impl Extractor for PythonExtractor
+facts::lang::python::PythonExtractor struct
+facts::lang::python::is_dotted_name fn (text: &str) -> bool
+facts::lang::rust mod
+facts::lang::rust::RustExtractor impl Extractor for RustExtractor
+facts::lang::rust::RustExtractor struct
+facts::lang::shell mod
+facts::lang::shell::SCRIPT const &str
+facts::lang::shell::SHEBANG const &str
+facts::lang::shell::ShellExtractor impl Extractor for ShellExtractor
+facts::lang::shell::ShellExtractor struct
+facts::lang::shell::UnreadShellExtractor impl Extractor for UnreadShellExtractor
+facts::lang::shell::UnreadShellExtractor struct
+facts::lang::sql mod
+facts::lang::sql::Defined struct
+facts::lang::sql::Defined.lines field (u32, u32)
+facts::lang::sql::Defined.routine field bool
+facts::lang::sql::Defined.schema field Option<String>
+facts::lang::sql::Defined.spelled field String
+facts::lang::sql::SqlExtractor impl Extractor for SqlExtractor
+facts::lang::sql::SqlExtractor struct
+facts::lang::sql::defined fn (text: &str) -> (Vec<Defined>, Vec<(u32, u32)>)
+facts::lang::swift mod
+facts::lang::swift::SwiftExtractor impl Extractor for SwiftExtractor
+facts::lang::swift::SwiftExtractor struct
+facts::lang::terraform mod
+facts::lang::terraform::TerraformExtractor impl Extractor for TerraformExtractor
+facts::lang::terraform::TerraformExtractor struct
+facts::lang::typescript mod
+facts::lang::typescript::JavaScript impl Extractor for JavaScript
+facts::lang::typescript::JavaScript struct
+facts::lang::typescript::TypeScript impl Extractor for TypeScript
+facts::lang::typescript::TypeScript struct
+facts::lang::typescript::extractors fn () -> Vec<Arc<dyn Extractor>>
+facts::local_facts fn (path: &str, text: &str) -> Option<BlobFacts>
+facts::shell mod
+facts::shell::PathHead enum derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)
+facts::shell::PathHead::Literal variant Literal
+facts::shell::PathHead::ScriptDir variant ScriptDir
+facts::shell::PathHead::Unknown variant Unknown
+facts::shell::PathUse enum derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)
+facts::shell::PathUse::Run variant Run
+facts::shell::PathUse::Source variant Source
+facts::shell::ShellPath struct derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)
+facts::shell::ShellPath.enclosing field Scope
+facts::shell::ShellPath.head field PathHead
+facts::shell::ShellPath.how field PathUse
+facts::shell::ShellPath.site field Span
+facts::shell::ShellPath.tail field String
+overlay mod
+overlay::declared_names fn (path: &str, text: &str) -> Vec<String>
+overlay::overlay_definitions fn (fragments: &mut Vec<Fragment>, source: &Source)
+overlay::stated_owner fn (path: &str, line: u32, owner: &str, source: &Source) -> Option<bool>
+parsers mod
+parsers use tree_sitter_strategy::{Declaration, ParseOutcome, code_only, declarations}
+parsers use tree_sitter_strategy::{has_grammar, inline_scripts, parse_file, parse_tree}
+parsers::Syntax struct
+parsers::Syntax::of_file fn (path: &str, content: &str) -> Option<Self>
+parsers::Syntax::position fn (&self, start: usize, end: usize) -> Option<String>
+parsers::code_text fn (path: &str, content: &str) -> std::sync::Arc<str>
+parsers::embedded mod
+parsers::embedded::embedded_naming fn ( script: &str, runtime: &str, name: &str, ) -> Option<(u32, std::ops::Range<u32>)>
+parsers::embedded::names_word fn (text: &str, name: &str) -> bool
+parsers::fragment_file fn (path: Arc<str>, content: &str) -> Vec<Fragment>
+parsers::keyword_calls mod
+parsers::keyword_calls::Callee struct
+parsers::keyword_calls::Callee.name field String
+parsers::keyword_calls::Callee.qualifier field Option<Vec<String>>
+parsers::keyword_calls::of_file fn (path: &str, text: &str, name: &str) -> Option<Vec<Callee>>
+parsers::rust_tests mod
+parsers::rust_tests::test_functions fn (text: &str) -> Result<Vec<(u32, u32)>, Utf8Error>
+parsers::scala mod
+parsers::scala::ImportFact struct derive(Clone, Debug, Default, Eq, PartialEq)
+parsers::scala::ImportFact.prefix field String
+parsers::scala::ImportFact.renamed field Vec<(String, String)>
+parsers::scala::ImportFact.selectors field Vec<String>
+parsers::scala::ImportFact.wildcard field bool
+parsers::scala::ScalaFacts struct derive(Clone, Debug, Default)
+parsers::scala::ScalaFacts.imports field Vec<ImportFact>
+parsers::scala::ScalaFacts.inherits field FxHashSet<String>
+parsers::scala::ScalaFacts.package field Option<String>
+parsers::scala::facts fn (content: &str) -> Option<ScalaFacts>
+parsers::unanalysed_reason fn ( path: &str, has_definition: bool, content: impl FnOnce() -> Option<Vec<u8>>, ) -> Option<(&'static str, Vec<u32>)>
+parsers::unanalysed_text fn (reason: &str) -> &'static str

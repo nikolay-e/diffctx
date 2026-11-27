@@ -1,0 +1,52 @@
+name: ts_guard_names_the_tests_two_helpers_lead_to
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [typescript, tests-reach]
+repo:
+  initial_files:
+    src/pricing.ts: |
+      export function total(price: number, qty: number): number {
+        return price * qty;
+      }
+    src/checkout.ts: |
+      import { total } from './pricing';
+
+      export function charge(price: number, qty: number): number {
+        return total(price, qty);
+      }
+    src/quote.ts: |
+      import { charge } from './checkout';
+
+      export function quote(price: number, qty: number): number {
+        return charge(price, qty);
+      }
+    src/refund.ts: |
+      import { charge } from './checkout';
+
+      export function refund(price: number, qty: number): number {
+        return -charge(price, qty);
+      }
+    test/quote.test.ts: |
+      import { quote } from '../src/quote';
+
+      test('quotes', () => {
+        expect(quote(2, 3)).toBe(6);
+      });
+    test/refund.test.ts: |
+      import { refund } from '../src/refund';
+
+      test('refunds', () => {
+        expect(refund(2, 3)).toBe(-6);
+      });
+  changed_files:
+    src/pricing.ts: |
+      export function total(price: number, qty: number): number {
+        return Math.round(price * qty * 100) / 100;
+      }
+  commit_message: "pricing: round the total"
+expect:
+  relations:
+    - {from: "src/checkout.ts::charge", to: "src/pricing.ts::total", kind: calls, resolution: resolved, site: 4}
+    - {from: "test/quote.test.ts", to: "src/checkout.ts::charge", kind: tests_reach, resolution: resolved}
+    - {from: "test/refund.test.ts", to: "src/checkout.ts::charge", kind: tests_reach, resolution: resolved}

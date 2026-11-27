@@ -1,0 +1,292 @@
+"""Isolated SCIP indexing: scrubbed environment, no secrets, lifecycle scripts off, results cached.
+
+The cache key is (repository, commit, indexer, indexer version). A failed or incomplete index is recorded,
+counted and excluded; it is never read as an empty answer.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+import time
+from dataclasses import asdict, dataclass, field
+from pathlib import Path
+
+import corpus as corpus_config
+from runners import NEEDS_SANDBOX, PLANNERS, Context, clean_gradle_outputs, sandboxed
+from scipindex import Index, read_index
+from toolbin import install_tool, tool_path
+
+CACHE = corpus_config.CACHE
+TOOLS = corpus_config.ROOT / "tools"
+FAILURE_LOG = "failure.log"  # beside the index slot: the end of what a failed indexer printed
+FAILURE_LOG_CHARS = 200_000
+REASON_CHARS = 400
+# Maven Central answers a shared runner address with 429 for a while; Gradle retries within milliseconds, so the harness
+# waits (seconds) and runs the build again, which resumes from the artifacts it already has.
+RATE_LIMITED = "status code 429"
+RATE_LIMIT_WAITS = (30, 90, 270)
+TIMED_OUT = "timeout"
+RATE_LIMITED_REASON = "rate-limited"  # the waits ran out and the last run was refused again
+REPEATING_REASONS = (TIMED_OUT, RATE_LIMITED_REASON)  # the next snapshots of the repository fail the same way
+# The first line a failed build blames: Maven `[ERROR] ...`, Kotlin `e: ...`, javac `error: ...` or `File.java:3: error: ...`.
+ERROR_LINE = re.compile(r"\[ERROR\]\s+\S|e: |error: |\S+\.java:\d+: error: ")
+WHAT_WENT_WRONG = "* What went wrong:"  # Gradle's report: the next line names the failure
+EXCLUDED_PARTS = ("node_modules", ".git", "dist", "build", "vendor", ".venv", "site-packages", "__pycache__", "target", ".gradle")
+
+
+@dataclass
+class Completeness:
+    files_present: int = 0
+    files_indexed: int = 0
+    definitions: int = 0
+    references: int = 0
+    references_to_indexed_definitions: int = 0
+    lint_ok: bool | None = None
+
+    @property
+    def file_ratio(self) -> float:
+        return 1.0 if self.files_present == 0 else self.files_indexed / self.files_present
+
+    @property
+    def resolved_ratio(self) -> float:
+        return 1.0 if self.references == 0 else self.references_to_indexed_definitions / self.references
+
+
+@dataclass
+class IndexResult:
+    ok: bool
+    reason: str
+    path: Path | None
+    indexer: str
+    version: str
+    seconds: float = 0.0
+    completeness: Completeness = field(default_factory=Completeness)
+
+    @property
+    def repeats(self) -> bool:
+        return self.reason in REPEATING_REASONS
+
+    def summary(self) -> dict:
+        data = asdict(self)
+        data["path"] = None if self.path is None else str(self.path)
+        data["completeness"]["file_ratio"] = round(self.completeness.file_ratio, 4)
+        data["completeness"]["resolved_ratio"] = round(self.completeness.resolved_ratio, 4)
+        return data
+
+
+def scrubbed_env(home: Path) -> dict[str, str]:
+    """What an indexer or an installer sees: no tokens, no user config, a throwaway home."""
+    (home / "tmp").mkdir(parents=True, exist_ok=True)
+    for name in ("user.npmrc", "global.npmrc"):  # two files: npm refuses one path loaded as both levels
+        (home / name).write_text("", encoding="utf-8")
+    return {
+        "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
+        "HOME": str(home),
+        "TMPDIR": str(home / "tmp"),
+        "LANG": "C.UTF-8",
+        "CI": "1",
+        "NO_COLOR": "1",
+        "NODE_OPTIONS": "--max-old-space-size=8192",
+        "npm_config_ignore_scripts": "true",
+        "npm_config_audit": "false",
+        "npm_config_fund": "false",
+        "npm_config_update_notifier": "false",
+        "npm_config_userconfig": str(home / "user.npmrc"),
+        "npm_config_globalconfig": str(home / "global.npmrc"),
+    }
+
+
+def present_code_files(tree: Path, language: str) -> set[str]:
+    found: set[str] = set()
+    for path in tree.rglob("*"):
+        relative = path.relative_to(tree)
+        if any(part in EXCLUDED_PARTS for part in relative.parts) or not path.is_file() or path.is_symlink():
+            continue
+        if language == "go" and any(part.startswith(("_", ".")) or part == "testdata" for part in relative.parts[:-1]):
+            continue  # the go tool leaves out directories named like this: no package is built from them
+        if corpus_config.is_code_path(language, relative.as_posix()):
+            found.add(relative.as_posix())
+    return found
+
+
+def measure_completeness(index: Index, tree: Path, language: str) -> Completeness:
+    present = present_code_files(tree, language)
+    indexed = [d for d in index.documents if d.path in present]
+    defined = {o.symbol for d in index.documents for o in d.occurrences if o.is_definition}
+    result = Completeness(files_present=len(present), files_indexed=len(indexed))
+    for doc in indexed:
+        for occ in doc.occurrences:
+            if occ.symbol.startswith("local ") or not occ.symbol:
+                continue
+            if occ.is_definition:
+                result.definitions += 1
+            else:
+                result.references += 1
+                result.references_to_indexed_definitions += occ.symbol in defined
+    return result
+
+
+def _lint(corpus: corpus_config.Corpus, index_path: Path, env: dict[str, str]) -> bool | None:
+    scip = tool_path(corpus.tools["scip"])
+    if not scip.exists():
+        return None
+    return subprocess.run([str(scip), "lint", str(index_path)], env=env, capture_output=True, check=False).returncode == 0
+
+
+def slot_of(repo: corpus_config.Repo, sha: str, package: str, version: str) -> Path:
+    return CACHE / "index" / repo.name / sha / f"{package}-{version}"
+
+
+def keep_failure_log(result: IndexResult, repo: corpus_config.Repo, sha: str, side: str, logs: Path | None) -> None:
+    """A failed build's `failure.log` outlives its cache slot: copied to `logs/<repo>-<commit12>-<side>.log`, and named once."""
+    failure = slot_of(repo, sha, result.indexer, result.version) / FAILURE_LOG
+    if logs is None or result.ok or not failure.is_file():
+        return
+    kept = logs / f"{repo.name}-{sha[:12]}-{side}.log"
+    kept.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(failure, kept)
+    print(f"{repo.name} {sha[:12]} {side}: the index build's log is kept at {kept}", file=sys.stderr, flush=True)
+
+
+def index_snapshot(
+    corpus: corpus_config.Corpus,
+    repo: corpus_config.Repo,
+    sha: str,
+    tree: Path,
+    *,
+    install: bool = True,
+    retry_failed: bool = False,
+) -> IndexResult:
+    package, version = corpus_config.indexer_pin(corpus, repo.language)
+    slot = slot_of(repo, sha, package, version)
+    meta = slot / "meta.json"
+    if meta.exists():
+        cached = json.loads(meta.read_text(encoding="utf-8"))
+        if cached["ok"] or not retry_failed:
+            return _from_meta(cached, slot, package, version)
+    slot.mkdir(parents=True, exist_ok=True)
+    out = slot / "index.scip"
+    started = time.monotonic()
+    with tempfile.TemporaryDirectory(prefix="oracle-home-", ignore_cleanup_errors=True) as home_dir:
+        home = Path(home_dir)
+        env = scrubbed_env(home)
+        result = _run_indexer(corpus, repo, sha, tree, out, home, env, install)
+        if result.reason.startswith(NEEDS_SANDBOX):
+            result.indexer, result.version = package, version
+            return result  # depends on where this runs, not on the commit: not cached
+        result.seconds = round(time.monotonic() - started, 1)
+        if result.ok:
+            index = read_index(out)
+            result.completeness = measure_completeness(index, tree, repo.language)
+            result.completeness.lint_ok = _lint(corpus, out, env)
+            if result.completeness.file_ratio < corpus.min_file_ratio:
+                result.ok, result.reason = False, "incomplete"
+    result.indexer, result.version = package, version
+    result.path = out if out.exists() else None
+    meta.write_text(json.dumps(result.summary(), indent=2), encoding="utf-8")
+    print(f"{sha[:12]}: {result.reason} in {result.seconds}s", flush=True)
+    return result
+
+
+def first_error(output: str) -> str:
+    """The first line of `output` that a build tool reports as an error, or "" when it reports none.
+
+    A Gradle build ends with a deprecation banner and Maven with a help text, so the end of the output says nothing
+    about the cause; the first error does. A Maven header that only introduces the list (`COMPILATION ERROR :`) is
+    passed over for the line it introduces.
+    """
+    lines = output.splitlines()
+    headers = []
+    for number, line in enumerate(lines):
+        if line.strip() == WHAT_WENT_WRONG:
+            blamed = next((later.strip() for later in lines[number + 1 :] if later.strip()), "")
+            return blamed[:REASON_CHARS]
+        if ERROR_LINE.match(line):
+            if line.rstrip().endswith(":"):
+                headers.append(line.strip())
+                continue
+            return line.strip()[:REASON_CHARS]
+    return headers[0][:REASON_CHARS] if headers else ""
+
+
+def _run_until_served(
+    command: list[str], cwd: Path, env: dict[str, str], timeout: int
+) -> tuple[subprocess.CompletedProcess[bytes], str]:
+    """Run the indexer; again after a wait when a download was refused with 429, up to `RATE_LIMIT_WAITS` times."""
+    for wait in (*RATE_LIMIT_WAITS, None):
+        done = subprocess.run(command, cwd=cwd, env=env, capture_output=True, timeout=timeout, check=False)
+        output = (done.stderr + done.stdout).decode(errors="replace")
+        if done.returncode == 0 or wait is None or RATE_LIMITED not in output:
+            break
+        print(f"{cwd.name}: a download was refused with 429; again in {wait}s", flush=True)
+        time.sleep(wait)
+    return done, output
+
+
+def _keep_output(out: Path, output: str) -> None:
+    out.parent.mkdir(parents=True, exist_ok=True)
+    (out.parent / FAILURE_LOG).write_text(output[-FAILURE_LOG_CHARS:], encoding="utf-8")
+
+
+def _run_indexer(
+    corpus: corpus_config.Corpus,
+    repo: corpus_config.Repo,
+    sha: str,
+    tree: Path,
+    out: Path,
+    home: Path,
+    env: dict[str, str],
+    install: bool,
+) -> IndexResult:
+    result = IndexResult(ok=False, reason="", path=None, indexer="", version="")
+    context = Context(corpus, repo, sha, tree, out, home, env, install, corpus.index_seconds)
+    plan = PLANNERS[repo.language](context)
+    if plan.command is None:
+        result.reason = plan.blocked
+        return result
+    if plan.runs_third_party_code and not sandboxed():
+        result.reason = f"{NEEDS_SANDBOX}: refused to run the repository's build tooling outside a container"
+        return result
+    try:
+        done, output = _run_until_served(plan.command, tree, plan.env, corpus.index_seconds)
+    except subprocess.TimeoutExpired as expired:
+        _keep_output(out, ((expired.stderr or b"") + (expired.stdout or b"")).decode(errors="replace"))
+        result.reason = TIMED_OUT
+        return result
+    if done.returncode != 0 or not out.exists():
+        _keep_output(out, output)
+        blamed = first_error(output) or output[-REASON_CHARS:].strip().replace("\n", " | ")
+        refused = done.returncode != 0 and RATE_LIMITED in output  # the last run, after every wait, was refused again
+        result.reason = RATE_LIMITED_REASON if refused else f"indexer exited {done.returncode}: {blamed}"
+        return result
+    result.ok, result.reason = True, "ok"
+    if repo.language in ("kotlin", "java"):
+        clean_gradle_outputs(tree)
+    return result
+
+
+def _from_meta(meta: dict, slot: Path, package: str, version: str) -> IndexResult:
+    stored = meta["completeness"]
+    completeness = Completeness(**{k: stored[k] for k in Completeness.__dataclass_fields__})
+    path = slot / "index.scip"
+    return IndexResult(
+        meta["ok"], meta["reason"], path if path.exists() else None, package, version, meta["seconds"], completeness
+    )
+
+
+def setup_tools(corpus: corpus_config.Corpus, languages: set[str] | None = None) -> None:
+    """Install the pinned npm indexers without lifecycle scripts, and every release binary after its checksum matches."""
+    wanted = languages or set(corpus_config.LANGUAGES)
+    if wanted & set(corpus_config.INDEXERS):
+        with tempfile.TemporaryDirectory(prefix="oracle-home-", ignore_cleanup_errors=True) as home:
+            env = scrubbed_env(Path(home))
+            subprocess.run(["npm", "ci", "--ignore-scripts", "--no-audit", "--no-fund"], cwd=TOOLS, env=env, check=True)
+    names = {"scip"} | {corpus_config.INDEXER_TOOLS[lang] for lang in wanted if lang in corpus_config.INDEXER_TOOLS}
+    for name in sorted(names):
+        install_tool(corpus.tools[name])

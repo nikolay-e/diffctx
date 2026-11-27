@@ -68,6 +68,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "330a5ed07fa54e4702c9d6c4174f74427fc0ef6e214bbd677ae50a5099946470"
 
 [[package]]
+name = "arraydeque"
+version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7d902e3d592a523def97af8f317b08ce16b7ab854c1985a0c671e6f15cebc236"
+
+[[package]]
 name = "autocfg"
 version = "1.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -236,29 +242,34 @@ checksum = "a31eee39dddec8330830986fcd7625edb5a24ec90ea038215273bbc3adb08ac6"
 
 [[package]]
 name = "diffctx"
-version = "1.20.0"
+version = "2.0.0-dev.0"
 dependencies = [
  "anyhow",
  "brokk-tree-sitter-kotlin",
  "clap",
+ "diffctx-answer",
+ "diffctx-base",
+ "diffctx-config",
+ "diffctx-facts",
+ "diffctx-graph",
+ "diffctx-occurrence",
+ "diffctx-resolve",
+ "diffctx-select",
+ "diffctx-snapshot",
  "dunce",
  "glob",
  "libc",
  "libtest-mimic",
  "mimalloc",
- "once_cell",
  "proptest",
  "pyo3",
  "rayon",
  "regex",
  "rustc-hash",
- "schemars",
  "serde",
  "serde_json",
- "serde_yaml",
  "similar",
  "tempfile",
- "thiserror",
  "tiktoken-rs",
  "toml",
  "tracing",
@@ -296,14 +307,200 @@ dependencies = [
  "tree-sitter-ruby",
  "tree-sitter-rust",
  "tree-sitter-scala",
- "tree-sitter-sequel",
  "tree-sitter-svelte-ng",
  "tree-sitter-swift",
  "tree-sitter-typescript",
  "tree-sitter-yaml",
  "tree-sitter-zig",
- "wait-timeout",
  "walkdir",
+]
+
+[[package]]
+name = "diffctx-answer"
+version = "2.0.0-dev.0"
+dependencies = [
+ "anyhow",
+ "diffctx-base",
+ "diffctx-config",
+ "diffctx-facts",
+ "diffctx-graph",
+ "diffctx-occurrence",
+ "diffctx-resolve",
+ "diffctx-select",
+ "diffctx-snapshot",
+ "dunce",
+ "memchr",
+ "once_cell",
+ "regex",
+ "rustc-hash",
+ "schemars",
+ "serde",
+ "serde_json",
+ "toml",
+ "tracing",
+]
+
+[[package]]
+name = "diffctx-base"
+version = "2.0.0-dev.0"
+dependencies = [
+ "libc",
+ "once_cell",
+ "regex",
+ "rustc-hash",
+ "saphyr",
+ "saphyr-parser",
+ "schemars",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "tiktoken-rs",
+ "toml",
+]
+
+[[package]]
+name = "diffctx-config"
+version = "2.0.0-dev.0"
+dependencies = [
+ "diffctx-base",
+ "once_cell",
+ "regex",
+ "rustc-hash",
+]
+
+[[package]]
+name = "diffctx-facts"
+version = "2.0.0-dev.0"
+dependencies = [
+ "brokk-tree-sitter-kotlin",
+ "diffctx-base",
+ "diffctx-config",
+ "diffctx-snapshot",
+ "once_cell",
+ "regex",
+ "rustc-hash",
+ "schemars",
+ "serde",
+ "serde_json",
+ "toml",
+ "tree-sitter",
+ "tree-sitter-bash",
+ "tree-sitter-c",
+ "tree-sitter-c-sharp",
+ "tree-sitter-clojure",
+ "tree-sitter-cmake",
+ "tree-sitter-cpp",
+ "tree-sitter-css",
+ "tree-sitter-dart",
+ "tree-sitter-elixir",
+ "tree-sitter-erlang",
+ "tree-sitter-go",
+ "tree-sitter-graphql",
+ "tree-sitter-groovy",
+ "tree-sitter-haskell",
+ "tree-sitter-hcl",
+ "tree-sitter-html",
+ "tree-sitter-java",
+ "tree-sitter-javascript",
+ "tree-sitter-json",
+ "tree-sitter-julia",
+ "tree-sitter-lua",
+ "tree-sitter-make",
+ "tree-sitter-nix",
+ "tree-sitter-objc",
+ "tree-sitter-ocaml",
+ "tree-sitter-php",
+ "tree-sitter-prisma-io",
+ "tree-sitter-python",
+ "tree-sitter-r",
+ "tree-sitter-ruby",
+ "tree-sitter-rust",
+ "tree-sitter-scala",
+ "tree-sitter-svelte-ng",
+ "tree-sitter-swift",
+ "tree-sitter-typescript",
+ "tree-sitter-yaml",
+ "tree-sitter-zig",
+]
+
+[[package]]
+name = "diffctx-graph"
+version = "2.0.0-dev.0"
+dependencies = [
+ "diffctx-base",
+ "diffctx-config",
+ "diffctx-facts",
+ "diffctx-snapshot",
+ "dunce",
+ "once_cell",
+ "rayon",
+ "regex",
+ "rustc-hash",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "toml",
+ "tracing",
+]
+
+[[package]]
+name = "diffctx-occurrence"
+version = "2.0.0-dev.0"
+dependencies = [
+ "diffctx-base",
+ "diffctx-facts",
+ "diffctx-resolve",
+ "diffctx-snapshot",
+ "serde_json",
+]
+
+[[package]]
+name = "diffctx-resolve"
+version = "2.0.0-dev.0"
+dependencies = [
+ "anyhow",
+ "diffctx-base",
+ "diffctx-config",
+ "diffctx-facts",
+ "diffctx-snapshot",
+ "rustc-hash",
+ "serde_json",
+]
+
+[[package]]
+name = "diffctx-select"
+version = "2.0.0-dev.0"
+dependencies = [
+ "diffctx-base",
+ "diffctx-config",
+ "diffctx-graph",
+ "diffctx-snapshot",
+ "once_cell",
+ "regex",
+ "rustc-hash",
+]
+
+[[package]]
+name = "diffctx-snapshot"
+version = "2.0.0-dev.0"
+dependencies = [
+ "aho-corasick",
+ "diffctx-base",
+ "diffctx-config",
+ "dunce",
+ "libc",
+ "once_cell",
+ "rayon",
+ "regex",
+ "rustc-hash",
+ "schemars",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror",
+ "toml",
+ "tracing",
+ "wait-timeout",
 ]
 
 [[package]]
@@ -398,6 +595,18 @@ name = "hashbrown"
 version = "0.17.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ed5909b6e89a2db4456e54cd5f673791d7eca6732202bbf2a9cc504fe2f9b84a"
+dependencies = [
+ "foldhash",
+]
+
+[[package]]
+name = "hashlink"
+version = "0.12.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a596f1b20ed2cc5ecac41a164aaebc7258057060f06c0cf7a2ba3991ee7990fb"
+dependencies = [
+ "hashbrown",
+]
 
 [[package]]
 name = "heck"
@@ -525,6 +734,15 @@ name = "once_cell_polyfill"
 version = "1.70.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "384b8ab6d37215f3c5301a95a4accb5d64aa607f1fcb26a11b5303878451b4fe"
+
+[[package]]
+name = "ordered-float"
+version = "5.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7f59006ce1e204c30956638535b74d317bca99477b9356dfaec54c37f6f600ab"
+dependencies = [
+ "num-traits",
+]
 
 [[package]]
 name = "pin-project-lite"
@@ -749,18 +967,34 @@ dependencies = [
 ]
 
 [[package]]
-name = "ryu"
-version = "1.0.23"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9774ba4a74de5f7b1c1451ed6cd5285a32eddb5cccb8cc655a4e50009e06477f"
-
-[[package]]
 name = "same-file"
 version = "1.0.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "93fc1dc3aaa9bfed95e02e6eadabb4baf7e3078b0bd1b4d7b6b0b68378900502"
 dependencies = [
  "winapi-util",
+]
+
+[[package]]
+name = "saphyr"
+version = "0.3.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "239ada9508355b353044d043e5806c6d84030234503b62ccb8785f549cd9359b"
+dependencies = [
+ "hashlink",
+ "ordered-float",
+ "saphyr-parser",
+ "thiserror",
+]
+
+[[package]]
+name = "saphyr-parser"
+version = "0.3.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c98d2738e44a25e6ba2e6d83d91805648df204768abc96f4f1278cb3d5c90bbe"
+dependencies = [
+ "arraydeque",
+ "thiserror",
 ]
 
 [[package]]
@@ -851,19 +1085,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9c187e0a369471c550af028cba56d4f4fa2a489ad28151ae95a4d340a2a8b782"
 dependencies = [
  "serde_core",
-]
-
-[[package]]
-name = "serde_yaml"
-version = "0.9.34+deprecated"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6a8b1a1a2ebf674015cc02edccce75287f1a0130d394307b36743c2f5d504b47"
-dependencies = [
- "indexmap",
- "itoa",
- "ryu",
- "serde",
- "unsafe-libyaml",
 ]
 
 [[package]]
@@ -1434,16 +1655,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "tree-sitter-sequel"
-version = "0.3.13"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "711e236e1ae0708f911d8413c3b5656f522416cba683ea91589aebc49eda1b5a"
-dependencies = [
- "cc",
- "tree-sitter-language",
-]
-
-[[package]]
 name = "tree-sitter-svelte-ng"
 version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1504,12 +1715,6 @@ name = "unicode-ident"
 version = "1.0.27"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a2c754d6c33795a1c324727428e5a7dedb5b06195f9890bdbcba760d3e246563"
-
-[[package]]
-name = "unsafe-libyaml"
-version = "0.2.11"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "673aac59facbab8a9007c7f6108d11f63b603f7cabff99fabf650fea5c32b861"
 
 [[package]]
 name = "utf8parse"

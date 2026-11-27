@@ -1,0 +1,21 @@
+name: fj262_a_quoted_value_after_a_key_colon_names_the_script_spelling_its_old_word
+mode: impact
+source: fj#262
+issue_state: closed
+tags: [config, yaml, textual, quoted]
+repo:
+  initial_files:
+    config/alerts.yaml: |
+      name: ledger-errors
+      query: service:"billing ledgersync" AND level:error
+    scripts/reindex.sh: |
+      #!/bin/sh
+      exec indexer --source ledgersync --full
+  changed_files:
+    config/alerts.yaml: |
+      name: ledger-errors
+      query: service:"billing ledgerstream" AND level:error
+expect:
+  exact: false
+  relations:
+    - {from: scripts/reindex.sh, to: config/alerts.yaml, kind: references_path, resolution: candidate, site: 2}

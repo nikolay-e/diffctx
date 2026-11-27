@@ -1,0 +1,53 @@
+name: erlang_symbol_type_alias_is_a_definition
+mode: symbol
+source: gh#616
+issue_state: open
+tags:
+- tier3
+- erlang
+- types
+repo:
+  initial_files:
+    shop.erl: |
+      -module(shop).
+      -export([total/1]).
+
+      -type price() :: non_neg_integer().
+
+      -spec total([price()]) -> price().
+      total(Items) ->
+          lists:sum(Items).
+    cart.erl: |
+      -module(cart).
+      -export([sum/1]).
+
+      -spec sum([shop:price()]) -> shop:price().
+      sum(Xs) ->
+          shop:total(Xs).
+  commit_message: Change erlang symbol type alias is a definition
+query:
+  symbol: price
+expect:
+  relations:
+  # The bare `price()` of shop.erl's own spec (both at line 6) names the type its module
+  # declares and nothing else, so that read is certain.
+  - from: shop.erl::total
+    to: shop.erl::price
+    kind: reads
+    resolution: resolved
+    site: 6
+  # Both `shop:price()` of cart.erl's spec are one read at line 4. No binding model reads
+  # Erlang, so a remote use is a candidate whatever the module exports, as the sibling
+  # case reads the qualified call of an exported function.
+  - from: cart.erl::sum
+    to: shop.erl::price
+    kind: reads
+    resolution: candidate
+    site: 4
+  definitions:
+  - shop.erl::price
+  no_negative_claims: true
+  partial:
+    shop.erl::price:
+      calls: not_traced
+      reads: not_traced

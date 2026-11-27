@@ -1,0 +1,46 @@
+name: kt_interface_default_beside_an_external_base_is_still_called
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [kotlin, external-base, inheritance]
+repo:
+  initial_files:
+    build.gradle.kts: |
+      plugins { kotlin("jvm") version "2.0.0" }
+    src/main/kotlin/com/acme/Audited.kt: |
+      package com.acme
+
+      interface Audited {
+          fun audit(x: Int): Int {
+              return x
+          }
+      }
+    src/main/kotlin/com/acme/Client.kt: |
+      package com.acme
+
+      class Client : java.util.ArrayList<String>(), Audited
+    src/main/kotlin/com/acme/Use.kt: |
+      package com.acme
+
+      fun go(): Int {
+          val c = Client()
+          return c.audit(1)
+      }
+  changed_files:
+    src/main/kotlin/com/acme/Audited.kt: |
+      package com.acme
+
+      interface Audited {
+          fun audit(x: Int): Int {
+              return x + 1
+          }
+      }
+  commit_message: change
+expect:
+  changed: ['src/main/kotlin/com/acme/Audited.kt::audit']
+  relations:
+  - from: src/main/kotlin/com/acme/Use.kt::go
+    to: src/main/kotlin/com/acme/Audited.kt::audit
+    kind: calls
+    resolution: resolved
+  exact: false

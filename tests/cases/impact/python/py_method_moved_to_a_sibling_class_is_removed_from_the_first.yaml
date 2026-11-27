@@ -1,0 +1,46 @@
+name: py_method_moved_to_a_sibling_class_is_removed_from_the_first
+mode: impact
+source: synthetic
+tags: [python, move, removed, inheritance]
+repo:
+  initial_files:
+    a.py: |
+      class Base:
+          def a(self):
+              return 1
+
+
+      class Foo(Base):
+          def total(self):
+              return 2
+
+
+      class Bar(Base):
+          pass
+    use.py: |
+      from a import Foo
+
+
+      def go(f: Foo):
+          return f.total()
+  changed_files:
+    a.py: |
+      class Base:
+          def a(self):
+              return 1
+
+
+      class Foo(Base):
+          pass
+
+
+      class Bar(Base):
+          def total(self):
+              return 2
+  commit_message: Move total to the sibling Bar
+expect:
+  removed: ['a.py::Foo.total']
+  relations:
+  - {from: 'use.py::go', to: 'a.py::Foo.total', kind: calls, resolution: resolved}
+  partial:
+    'a.py::Foo.total': {calls: unlanded}

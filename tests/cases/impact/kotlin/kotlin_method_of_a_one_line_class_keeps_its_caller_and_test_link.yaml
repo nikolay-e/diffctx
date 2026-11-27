@@ -1,0 +1,50 @@
+name: kotlin_method_of_a_one_line_class_keeps_its_caller_and_test_link
+mode: impact
+source: synthetic
+tags: [kotlin, one-line, tests-reach]
+repo:
+  initial_files:
+    src/main/kotlin/com/acme/lib/W.kt: |
+      package com.acme.lib
+
+      class W { fun wm(): Int { return 1 } }
+    src/main/kotlin/com/acme/app/Use.kt: |
+      package com.acme.app
+
+      import com.acme.lib.W
+
+      class Use {
+          fun go(): Int {
+              val w = W()
+              return w.wm()
+          }
+      }
+    src/test/kotlin/com/acme/app/UseTest.kt: |
+      package com.acme.app
+
+      import kotlin.test.Test
+
+      class UseTest {
+          @Test
+          fun t() {
+              Use().go()
+          }
+      }
+  changed_files:
+    src/main/kotlin/com/acme/lib/W.kt: |
+      package com.acme.lib
+
+      class W { fun wm(): Int { return 2 } }
+  commit_message: "W.wm returns 2"
+expect:
+  changed: [src/main/kotlin/com/acme/lib/W.kt::W.wm]
+  relations:
+    - from: "src/main/kotlin/com/acme/app/Use.kt::Use.go"
+      to: "src/main/kotlin/com/acme/lib/W.kt::W.wm"
+      kind: calls
+      resolution: resolved
+      site: 8
+    - from: "src/test/kotlin/com/acme/app/UseTest.kt::UseTest.t"
+      to: "src/main/kotlin/com/acme/app/Use.kt::Use.go"
+      kind: tests_reach
+  not_untested: [wm]

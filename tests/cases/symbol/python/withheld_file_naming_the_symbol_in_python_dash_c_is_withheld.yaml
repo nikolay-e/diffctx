@@ -1,0 +1,34 @@
+name: withheld_file_naming_the_symbol_in_python_dash_c_is_withheld
+mode: symbol
+source: fj#269
+issue_state: open
+tags: [python, ignore, disclosure, carried-code]
+repo:
+  initial_files:
+    .diffctx/ignore: |
+      fixtures/
+    src/a.py: |
+      def compute_total(x):
+          return x
+    src/b.py: |
+      from src.a import compute_total
+
+
+      def use():
+          return compute_total(1)
+    fixtures/job.yaml: |
+      run: python -c "compute_total(1)"
+  commit_message: "init"
+query:
+  symbol: compute_total
+# `fixtures/job.yaml` is withheld by `.diffctx/ignore` and spells
+# `compute_total`, so the lookup discloses the withheld file and its call
+# coverage stays partial.
+expect:
+  definitions: [src/a.py::compute_total]
+  callers:
+    compute_total: [src/b.py::use]
+  discloses: true
+  coverage:
+    src/a.py::compute_total:
+      calls: partial

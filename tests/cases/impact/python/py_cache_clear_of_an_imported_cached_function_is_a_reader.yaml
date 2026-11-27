@@ -1,0 +1,34 @@
+name: py_cache_clear_of_an_imported_cached_function_is_a_reader
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [python, decorator, member]
+repo:
+  initial_files:
+    app/__init__.py: ""
+    app/config.py: |
+      import functools
+
+
+      @functools.lru_cache
+      def get_settings():
+          return {"debug": False}
+    app/reset.py: |
+      from app.config import get_settings
+
+
+      def reset():
+          get_settings.cache_clear()
+  changed_files:
+    app/config.py: |
+      import functools
+
+
+      @functools.lru_cache
+      def get_settings():
+          return {"debug": True}
+  commit_message: change
+expect:
+  changed: ['app/config.py::get_settings']
+  relations:
+  - {from: 'app/reset.py::reset', to: 'app/config.py::get_settings', kind: reads, resolution: resolved, site: 5}

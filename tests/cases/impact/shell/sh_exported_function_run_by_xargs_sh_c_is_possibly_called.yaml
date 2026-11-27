@@ -1,0 +1,26 @@
+name: sh_exported_function_run_by_xargs_sh_c_is_possibly_called
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [shell, child-shell, gap]
+repo:
+  initial_files:
+    lib.sh: |
+      check() {
+        return 0
+      }
+    run.sh: |
+      #!/bin/sh
+      . ./lib.sh
+      export -f check 2>/dev/null
+      echo a | xargs -I{} sh -c 'check {}'
+  changed_files:
+    lib.sh: |
+      check() {
+        return 1
+      }
+  commit_message: change
+expect:
+  changed: ['lib.sh::check']
+  partial:
+    lib.sh::check: {calls: unlanded, reads: unlanded}

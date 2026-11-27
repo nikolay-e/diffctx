@@ -1,0 +1,37 @@
+name: py_module_qualified_call_inside_a_same_named_function
+mode: symbol
+source: gh#677
+issue_state: open
+tags: [python, module-qualified-call, same-name, wrapper]
+repo:
+  initial_files:
+    pkg/__init__.py: ""
+    pkg/store.py: |
+      def reviews(conn):
+          return conn.fetch()
+    pkg/api.py: |
+      from pkg import store
+
+
+      def reviews(conn):
+          return {"reviews": store.reviews(conn)}
+
+
+      def today(conn):
+          return store.reviews(conn)[0]
+    pkg/tools.py: |
+      from pkg import store
+
+
+      def listing(conn):
+          return store.reviews(conn)
+query:
+  symbol: reviews
+expect:
+  definitions: [pkg/store.py::reviews, pkg/api.py::reviews]
+  relations:
+    - {from: "pkg/api.py::reviews", to: "pkg/store.py::reviews", kind: calls, resolution: resolved, site: 5}
+    - {from: "pkg/api.py::today", to: "pkg/store.py::reviews", kind: calls, resolution: resolved, site: 9}
+    - {from: "pkg/tools.py::listing", to: "pkg/store.py::reviews", kind: calls, resolution: resolved, site: 5}
+  callers:
+    "pkg/api.py::reviews": []

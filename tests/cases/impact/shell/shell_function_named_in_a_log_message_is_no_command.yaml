@@ -1,0 +1,26 @@
+name: shell_function_named_in_a_log_message_is_no_command
+mode: impact
+source: synthetic
+tags: [shell, literal-name, decoy, python]
+repo:
+  initial_files:
+    lib/strings.sh: |
+      #!/usr/bin/env bash
+      slugify() {
+        echo "${1,,}"
+      }
+    app.py: |
+      def main(log):
+          log("ran slugify")
+  changed_files:
+    lib/strings.sh: |
+      #!/usr/bin/env bash
+      slugify() {
+        printf '%s\n' "${1,,}"
+      }
+  commit_message: "strings: slugify prints through printf"
+expect:
+  exact: true
+  callers: {slugify: []}
+  decoys:
+    lib/strings.sh::slugify: [app.py]

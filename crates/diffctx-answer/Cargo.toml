@@ -1,0 +1,36 @@
+[package]
+name = "diffctx-answer"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "What a diffctx run says: the Answer document and its renderings, the impact and locate answers, what an answer may claim about uses and coverage, and what reproduces a run"
+license-file.workspace = true
+repository.workspace = true
+homepage = "https://diffctx.com/"
+readme = "../../README.md"
+keywords = ["git", "diff", "llm", "context"]
+categories = ["development-tools"]
+
+[dependencies]
+anyhow.workspace = true
+diffctx-base.workspace = true
+diffctx-config.workspace = true
+diffctx-facts.workspace = true
+diffctx-graph.workspace = true
+diffctx-occurrence.workspace = true
+diffctx-resolve.workspace = true
+diffctx-select.workspace = true
+diffctx-snapshot.workspace = true
+dunce.workspace = true
+memchr.workspace = true
+once_cell.workspace = true
+regex.workspace = true
+rustc-hash.workspace = true
+schemars.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+toml.workspace = true
+tracing.workspace = true
+
+[lints]
+workspace = true

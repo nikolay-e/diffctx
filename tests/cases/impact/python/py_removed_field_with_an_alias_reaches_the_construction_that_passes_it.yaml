@@ -1,0 +1,35 @@
+name: py_removed_field_with_an_alias_reaches_the_construction_that_passes_it
+mode: impact
+source: gh#400
+issue_state: closed
+tags: [python, removed-field, construction, control]
+repo:
+  initial_files:
+    svc/__init__.py: ""
+    svc/model.py: |
+      from pydantic import BaseModel, Field
+
+
+      class Payload(BaseModel):
+          name: str = ""
+          kind: str = Field(default="", alias="type")
+    svc/make.py: |
+      from svc.model import Payload
+
+
+      def build():
+          return Payload(type="x")
+  changed_files:
+    svc/model.py: |
+      from pydantic import BaseModel, Field
+
+
+      class Payload(BaseModel):
+          name: str = ""
+  commit_message: "model: drop the kind field"
+expect:
+  removed: [kind]
+  # A construction passes a field by its alias, not its name: the keyword of
+  # the call does not say whether it reaches the removed field.
+  relations:
+    - {from: "svc/make.py::build", to: "svc/model.py::Payload", kind: instantiates, resolution: resolved, site: 5}

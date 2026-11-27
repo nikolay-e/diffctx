@@ -1,0 +1,128 @@
+# Seed set 3 (holdout: its rows are never read, only counters).
+# Drawn by `seeds.py draw` from seeds/pool.json (read 2026-11-27) under the rule at the top of seeds.py, with seed 1895105833
+# (one draw of the operating system's CSPRNG on 2026-11-27). Pins read with `git ls-remote <url> HEAD` on 2026-11-27;
+# licences from the hosting API. Counts, thresholds and pinned tools are corpus.toml's.
+
+extends = "../corpus.toml"
+holdout = true
+
+[sampling]
+seed = 1895105833
+
+[[repo]]
+name = "hiyouga--LlamaFactory"
+url = "https://github.com/hiyouga/LlamaFactory.git"
+language = "python"
+license = "Apache-2.0"
+sha = "aef9c06ff4e24839a282e70e1c8cac211a609814"  # pragma: allowlist secret gitleaks:allow
+fast = true
+
+[[repo]]
+name = "D4Vinci--Scrapling"
+url = "https://github.com/D4Vinci/Scrapling.git"
+language = "python"
+license = "BSD-3-Clause"
+sha = "938867232230fb7b164fa97211497c204fa2e167"  # pragma: allowlist secret gitleaks:allow
+
+[[repo]]
+name = "mem0ai--mem0"
+url = "https://github.com/mem0ai/mem0.git"
+language = "python"
+license = "Apache-2.0"
+sha = "a330119bda245ad05bf1d5e6779fc588b5f19443"  # pragma: allowlist secret gitleaks:allow
+
+[[repo]]
+name = "nolimits4web--swiper"
+url = "https://github.com/nolimits4web/swiper.git"
+language = "typescript"
+license = "MIT"
+sha = "82cb393aaf3793c92bd31ae23006215c813ab984"  # pragma: allowlist secret gitleaks:allow
+fast = true
+
+[[repo]]
+name = "Yeachan-Heo--oh-my-codex"
+url = "https://github.com/Yeachan-Heo/oh-my-codex.git"
+language = "typescript"
+license = "MIT"
+sha = "cfe486210749386678b564fbd696cce2cae72ad9"  # pragma: allowlist secret gitleaks:allow
+
+[[repo]]
+name = "lissy93--web-check"
+url = "https://github.com/lissy93/web-check.git"
+language = "typescript"
+license = "MIT"
+sha = "3f5ae962105b7327500ec89478553f50c926f4d0"  # pragma: allowlist secret gitleaks:allow
+
+[[repo]]
+name = "nushell--nushell"
+url = "https://github.com/nushell/nushell.git"
+language = "rust"
+license = "MIT"
+sha = "86b9c8db4b293177f52c78618acea19f476e6502"  # pragma: allowlist secret gitleaks:allow
+fast = true
+
+[[repo]]
+name = "qdrant--qdrant"
+url = "https://github.com/qdrant/qdrant.git"
+language = "rust"
+license = "Apache-2.0"
+sha = "23065a0bf6857c3e5da45f6c8939cc746cc0580e"  # pragma: allowlist secret gitleaks:allow
+
+[[repo]]
+name = "Kotlin--kotlinx-io"
+url = "https://github.com/Kotlin/kotlinx-io.git"
+language = "kotlin"
+license = "Apache-2.0"
+sha = "6dd18cd2725ae89607f81ae315a6b3d6d50f6bf8"  # pragma: allowlist secret gitleaks:allow
+fast = true
+
+[[repo]]
+name = "ktlint--ktlint"
+url = "https://github.com/ktlint/ktlint.git"
+language = "kotlin"
+license = "MIT"
+sha = "ee21842be947e855e1f40ddff8ce752b33c98745"  # pragma: allowlist secret gitleaks:allow
+
+[[repo]]
+name = "go-gorm--gorm"
+url = "https://github.com/go-gorm/gorm.git"
+language = "go"
+license = "MIT"
+sha = "ead4e04ba7c6a49654649131e587133b1d9f3eca"  # pragma: allowlist secret gitleaks:allow
+fast = true
+
+[[repo]]
+name = "sirupsen--logrus"
+url = "https://github.com/sirupsen/logrus.git"
+language = "go"
+license = "MIT"
+sha = "954b418844d9dd2b6321f3fa09f8aad97e3015de"  # pragma: allowlist secret gitleaks:allow
+
+[[repo]]
+name = "stretchr--testify"
+url = "https://github.com/stretchr/testify.git"
+language = "go"
+license = "MIT"
+sha = "87a7b9d57689f6579db2da795ab8deeab29cb724"  # pragma: allowlist secret gitleaks:allow
+
+[[repo]]
+name = "alibaba--druid"
+url = "https://github.com/alibaba/druid.git"
+language = "java"
+license = "Apache-2.0"
+sha = "fa8dc9912637a2f729eef9f55356621fec18d40e"  # pragma: allowlist secret gitleaks:allow
+fast = true
+
+[[repo]]
+name = "baomidou--mybatis-plus"
+url = "https://github.com/baomidou/mybatis-plus.git"
+language = "java"
+license = "Apache-2.0"
+sha = "bcdf6236b0fb11fde273f64d30f4a79c9a31fcd0"  # pragma: allowlist secret gitleaks:allow
+
+[[repo]]
+name = "antlr--antlr4"
+url = "https://github.com/antlr/antlr4.git"
+language = "java"
+license = "BSD-3-Clause"
+sha = "45be27daf036f79eced0e3e215fdfee78b4b38d2"  # pragma: allowlist secret gitleaks:allow

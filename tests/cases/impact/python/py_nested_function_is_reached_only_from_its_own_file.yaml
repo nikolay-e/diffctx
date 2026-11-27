@@ -1,0 +1,33 @@
+name: py_nested_function_is_reached_only_from_its_own_file
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [python, nested-function, coverage, decoy]
+repo:
+  initial_files:
+    lib.py: |
+      def make(prefix):
+          def inner(m):
+              return prefix + m
+
+          return inner
+    app.py: |
+      def go(o):
+          return o.inner(1)
+  changed_files:
+    lib.py: |
+      def make(prefix):
+          def inner(m):
+              return prefix + m.strip()
+
+          return inner
+  commit_message: "lib: inner strips"
+expect:
+  exact: false
+  changed: [lib.py::inner]
+  # `inner` exists only while `make` runs: another file's `o.inner(1)` is another name.
+  # Only the return of `inner` in its own file is a use that lands nowhere.
+  partial:
+    lib.py::inner: {calls: unlanded}
+  decoys:
+    lib.py::inner: [app.py]

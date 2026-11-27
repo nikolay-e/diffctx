@@ -1,0 +1,57 @@
+name: rust_rstest_in_an_inline_test_module_names_its_test
+mode: impact
+source: synthetic
+issue_state: open
+tags:
+- rust
+- tests-reach
+- test-attribute
+- rstest
+repo:
+  initial_files:
+    Cargo.toml: |
+      [package]
+      name = "fixture"
+      version = "0.1.0"
+      edition = "2021"
+    src/lib.rs: |
+      pub mod core;
+      pub mod b;
+    src/core.rs: |
+      pub fn fb(x: i32) -> i32 {
+          x + 1
+      }
+    src/b.rs: |
+      pub fn use_b() -> i32 {
+          crate::core::fb(1)
+      }
+
+      #[cfg(test)]
+      mod tests {
+          use rstest::rstest;
+
+          #[rstest]
+          #[case(1)]
+          fn tb(#[case] _n: i32) {
+              assert_eq!(super::use_b(), 2);
+          }
+      }
+    tests/other.rs: |
+      #[test]
+      fn unrelated() {
+          assert!(true);
+      }
+  changed_files:
+    src/core.rs: |
+      pub fn fb(x: i32) -> i32 {
+          x + 2
+      }
+  commit_message: change fb
+expect:
+  changed:
+  - src/core.rs::fb
+  exact: false
+  tested_by:
+    src/b.rs: src/b.rs
+  not_untested:
+  - fb

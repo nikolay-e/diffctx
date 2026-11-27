@@ -1,0 +1,32 @@
+name: swift_method_in_an_extension_answering_a_protocol_requirement_is_an_implementation
+mode: impact
+source: synthetic
+tags: [swift, protocol, extension, implementation]
+repo:
+  initial_files:
+    Sources/Demo/Shape.swift: |
+      protocol Shape {
+          func area() -> Double
+      }
+    Sources/Demo/Square.swift: |
+      struct Square: Shape {
+      }
+    Sources/Demo/Area.swift: |
+      extension Square {
+          func area() -> Double { return 1.0 }
+      }
+  changed_files:
+    Sources/Demo/Shape.swift: |
+      protocol Shape {
+          func area() throws -> Double
+      }
+  commit_message: "shape: area may throw"
+expect:
+  exact: false
+  relations:
+    # The conformance is declared on the struct; the method that answers it sits in an extension of the struct.
+    - from: Sources/Demo/Area.swift::Square.area
+      to: Sources/Demo/Shape.swift::Shape.area
+      kind: overrides
+      resolution: resolved
+      site: 2

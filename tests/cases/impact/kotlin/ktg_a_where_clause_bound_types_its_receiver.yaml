@@ -1,0 +1,56 @@
+name: ktg_a_where_clause_bound_types_its_receiver
+mode: impact
+source: synthetic
+issue_state: closed
+tags:
+- kotlin
+- generics
+repo:
+  initial_files:
+    build.gradle.kts: |
+      plugins { kotlin("jvm") version "2.0.0" }
+    src/main/kotlin/com/acme/core/Repo.kt: |
+      package com.acme.core
+
+      open class Repo {
+          fun load(x: Int): Int {
+              return x + 1
+          }
+      }
+    src/main/kotlin/com/acme/app/Use.kt: |
+      package com.acme.app
+
+      import com.acme.core.Repo
+
+      fun <T> use(t: T): Int where T : Repo, T : Any = t.load(1)
+    src/test/kotlin/com/acme/app/UseTest.kt: |
+      package com.acme.app
+
+      import com.acme.core.Repo
+      import org.junit.jupiter.api.Test
+
+      class UseTest {
+          @Test
+          fun works() { check(use(Repo()) == 3) }
+      }
+  changed_files:
+    src/main/kotlin/com/acme/core/Repo.kt: |
+      package com.acme.core
+
+      open class Repo {
+          fun load(x: Int): Int {
+              return x + 2
+          }
+      }
+  commit_message: "repo: load adds two"
+expect:
+  changed:
+  - src/main/kotlin/com/acme/core/Repo.kt::Repo.load
+  relations:
+  - from: src/main/kotlin/com/acme/app/Use.kt::use
+    to: src/main/kotlin/com/acme/core/Repo.kt::Repo.load
+    kind: calls
+    resolution: resolved
+    site: 5
+  not_untested:
+  - load

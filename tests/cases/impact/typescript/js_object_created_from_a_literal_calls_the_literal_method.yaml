@@ -1,0 +1,31 @@
+name: js_object_created_from_a_literal_calls_the_literal_method
+mode: impact
+source: synthetic
+issue_state: open
+tags: [javascript, prototype-chain, object-create]
+repo:
+  initial_files:
+    prototypes/P4.js: |
+      var obj = {
+          foo() {
+              return 'bar';
+          }
+      };
+
+      var obj2 = Object.create(obj);
+      obj2.foo();
+  changed_files:
+    prototypes/P4.js: |
+      var obj = {
+          foo() {
+              return 'baz';
+          }
+      };
+
+      var obj2 = Object.create(obj);
+      obj2.foo();
+  commit_message: change
+expect:
+  changed: [prototypes/P4.js::foo]
+  relations:
+    - {from: prototypes/P4.js, to: prototypes/P4.js::foo, kind: calls, resolution: resolved, site: 8}

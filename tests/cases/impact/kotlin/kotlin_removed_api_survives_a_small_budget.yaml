@@ -1,0 +1,251 @@
+name: kotlin_removed_api_survives_a_small_budget
+mode: impact
+source: gh#663
+issue_state: open
+# The hook's 600-token cap is approximated by --budget 600: shedding to it left
+# "Contracts changed: and 14 more" and lost the removed API.
+tags: [kotlin, budget, removed-api, contracts]
+repo:
+  initial_files:
+    src/main/kotlin/shop/Coupon.kt: |
+      package shop
+
+      class Coupon {
+          fun applies(total: Int): Boolean = total > 0
+      }
+    src/main/kotlin/shop/Cart.kt: |
+      package shop
+
+      class Cart {
+          fun discounted(total: Int): Boolean = Coupon().applies(total)
+      }
+    src/main/kotlin/shop/Price0.kt: |
+      package shop
+
+      class Price0 {
+          fun price(x: Int): Int = x + 0
+      }
+    src/main/kotlin/shop/Use0.kt: |
+      package shop
+
+      class Use0 {
+          fun run(): Int = Price0().price(1)
+      }
+    src/main/kotlin/shop/Price1.kt: |
+      package shop
+
+      class Price1 {
+          fun price(x: Int): Int = x + 1
+      }
+    src/main/kotlin/shop/Use1.kt: |
+      package shop
+
+      class Use1 {
+          fun run(): Int = Price1().price(1)
+      }
+    src/main/kotlin/shop/Price2.kt: |
+      package shop
+
+      class Price2 {
+          fun price(x: Int): Int = x + 2
+      }
+    src/main/kotlin/shop/Use2.kt: |
+      package shop
+
+      class Use2 {
+          fun run(): Int = Price2().price(1)
+      }
+    src/main/kotlin/shop/Price3.kt: |
+      package shop
+
+      class Price3 {
+          fun price(x: Int): Int = x + 3
+      }
+    src/main/kotlin/shop/Use3.kt: |
+      package shop
+
+      class Use3 {
+          fun run(): Int = Price3().price(1)
+      }
+    src/main/kotlin/shop/Price4.kt: |
+      package shop
+
+      class Price4 {
+          fun price(x: Int): Int = x + 4
+      }
+    src/main/kotlin/shop/Use4.kt: |
+      package shop
+
+      class Use4 {
+          fun run(): Int = Price4().price(1)
+      }
+    src/main/kotlin/shop/Price5.kt: |
+      package shop
+
+      class Price5 {
+          fun price(x: Int): Int = x + 5
+      }
+    src/main/kotlin/shop/Use5.kt: |
+      package shop
+
+      class Use5 {
+          fun run(): Int = Price5().price(1)
+      }
+    src/main/kotlin/shop/Price6.kt: |
+      package shop
+
+      class Price6 {
+          fun price(x: Int): Int = x + 6
+      }
+    src/main/kotlin/shop/Use6.kt: |
+      package shop
+
+      class Use6 {
+          fun run(): Int = Price6().price(1)
+      }
+    src/main/kotlin/shop/Price7.kt: |
+      package shop
+
+      class Price7 {
+          fun price(x: Int): Int = x + 7
+      }
+    src/main/kotlin/shop/Use7.kt: |
+      package shop
+
+      class Use7 {
+          fun run(): Int = Price7().price(1)
+      }
+    src/main/kotlin/shop/Price8.kt: |
+      package shop
+
+      class Price8 {
+          fun price(x: Int): Int = x + 8
+      }
+    src/main/kotlin/shop/Use8.kt: |
+      package shop
+
+      class Use8 {
+          fun run(): Int = Price8().price(1)
+      }
+    src/main/kotlin/shop/Price9.kt: |
+      package shop
+
+      class Price9 {
+          fun price(x: Int): Int = x + 9
+      }
+    src/main/kotlin/shop/Use9.kt: |
+      package shop
+
+      class Use9 {
+          fun run(): Int = Price9().price(1)
+      }
+    src/main/kotlin/shop/Price10.kt: |
+      package shop
+
+      class Price10 {
+          fun price(x: Int): Int = x + 10
+      }
+    src/main/kotlin/shop/Use10.kt: |
+      package shop
+
+      class Use10 {
+          fun run(): Int = Price10().price(1)
+      }
+    src/main/kotlin/shop/Price11.kt: |
+      package shop
+
+      class Price11 {
+          fun price(x: Int): Int = x + 11
+      }
+    src/main/kotlin/shop/Use11.kt: |
+      package shop
+
+      class Use11 {
+          fun run(): Int = Price11().price(1)
+      }
+  deleted_files: [src/main/kotlin/shop/Coupon.kt]
+  changed_files:
+    src/main/kotlin/shop/Cart.kt: |
+      package shop
+
+      class Cart {
+          fun discounted(total: Int): Boolean = total > 10
+      }
+    src/main/kotlin/shop/Price0.kt: |
+      package shop
+
+      class Price0 {
+          fun price(x: Int, rate: Int = 1): Int = (x + 0) * rate
+      }
+    src/main/kotlin/shop/Price1.kt: |
+      package shop
+
+      class Price1 {
+          fun price(x: Int, rate: Int = 1): Int = (x + 1) * rate
+      }
+    src/main/kotlin/shop/Price2.kt: |
+      package shop
+
+      class Price2 {
+          fun price(x: Int, rate: Int = 1): Int = (x + 2) * rate
+      }
+    src/main/kotlin/shop/Price3.kt: |
+      package shop
+
+      class Price3 {
+          fun price(x: Int, rate: Int = 1): Int = (x + 3) * rate
+      }
+    src/main/kotlin/shop/Price4.kt: |
+      package shop
+
+      class Price4 {
+          fun price(x: Int, rate: Int = 1): Int = (x + 4) * rate
+      }
+    src/main/kotlin/shop/Price5.kt: |
+      package shop
+
+      class Price5 {
+          fun price(x: Int, rate: Int = 1): Int = (x + 5) * rate
+      }
+    src/main/kotlin/shop/Price6.kt: |
+      package shop
+
+      class Price6 {
+          fun price(x: Int, rate: Int = 1): Int = (x + 6) * rate
+      }
+    src/main/kotlin/shop/Price7.kt: |
+      package shop
+
+      class Price7 {
+          fun price(x: Int, rate: Int = 1): Int = (x + 7) * rate
+      }
+    src/main/kotlin/shop/Price8.kt: |
+      package shop
+
+      class Price8 {
+          fun price(x: Int, rate: Int = 1): Int = (x + 8) * rate
+      }
+    src/main/kotlin/shop/Price9.kt: |
+      package shop
+
+      class Price9 {
+          fun price(x: Int, rate: Int = 1): Int = (x + 9) * rate
+      }
+    src/main/kotlin/shop/Price10.kt: |
+      package shop
+
+      class Price10 {
+          fun price(x: Int, rate: Int = 1): Int = (x + 10) * rate
+      }
+    src/main/kotlin/shop/Price11.kt: |
+      package shop
+
+      class Price11 {
+          fun price(x: Int, rate: Int = 1): Int = (x + 11) * rate
+      }
+query:
+  args: ["--budget", "600"]
+expect:
+  exact: false
+  removed: [Coupon, applies]
+  contracts: [src/main/kotlin/shop/Coupon.kt]

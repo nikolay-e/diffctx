@@ -177,22 +177,6 @@ then aggregates into one curve.
 
 **Output**: stdout — per-seed line + cross-seed `mean ± stdev` row.
 
-### `analysis/compare_runs.py` — paired A/B test
-
-**Purpose**: statistical test between two result sets (e.g. before/after
-a tuning change).
-
-**Invocation**: `python -m eval compare <after.json> <before.json>`
-
-**Statistics**:
-
-- Bootstrap 95% CI per metric per group (n_iter=10000).
-- Paired bootstrap delta with p-value.
-- Wilcoxon signed-rank test (`scipy.stats.wilcoxon`).
-
-**Output**: stdout table —
-`metric | before CI | after CI | delta CI | p_boot | p_wilc`.
-
 Statistics helpers live in `harness/stats.py`, shared utilities (repo cache,
 patch↔commit cycle, thread pool, `BENCH_WORKERS` default 11) in
 `harness/common.py` — both are libraries whose docstrings are the reference.

@@ -1,0 +1,369 @@
+# Every pub item of diffctx-config, as tests/public_api.rs reads it from the crate's src/.
+# A new item is red; so is a line the code no longer has: delete it. The count is capped by
+# public_items.diffctx-config in budget.toml, which only goes down.
+config mod
+config::analytics mod
+config::analytics::ANALYTICS static Lazy<AnalyticsConfig>
+config::analytics::AnalyticsConfig impl Default for AnalyticsConfig
+config::analytics::AnalyticsConfig struct
+config::analytics::AnalyticsConfig.hotspot_degree_weight field f64
+config::bm25 mod
+config::bm25::BM25 static Lazy<Bm25Config>
+config::bm25::Bm25Config impl Default for Bm25Config
+config::bm25::Bm25Config struct
+config::bm25::Bm25Config.b field f64
+config::bm25::Bm25Config.idf_smoothing field f64
+config::bm25::Bm25Config.k1 field f64
+config::bm25::Bm25Config.min_query_token_length field usize
+config::budget mod
+config::budget::BUDGET static Lazy<BudgetConfig>
+config::budget::BudgetConfig impl Default for BudgetConfig
+config::budget::BudgetConfig struct
+config::budget::BudgetConfig.auto_max field u32
+config::budget::BudgetConfig.auto_min field u32
+config::budget::BudgetConfig.auto_multiplier field f64
+config::budget::BudgetConfig.core_token_cap_per_fragment field u32
+config::budget::BudgetConfig.envelope_overhead field u32
+config::budget::BudgetConfig.envelope_overhead_per_entry field u32
+config::budget::BudgetConfig.unlimited field u32
+config::category_weights mod
+config::category_weights::CATEGORY_WEIGHTS static Lazy<CategoryWeights>
+config::category_weights::CategoryWeights impl Default for CategoryWeights
+config::category_weights::CategoryWeights struct derive(Clone, Copy, Debug)
+config::category_weights::CategoryWeights.config field f64
+config::category_weights::CategoryWeights.document field f64
+config::category_weights::CategoryWeights.generic field f64
+config::category_weights::CategoryWeights.history field f64
+config::category_weights::CategoryWeights.key_match field f64
+config::category_weights::CategoryWeights.semantic field f64
+config::category_weights::CategoryWeights.sibling field f64
+config::category_weights::CategoryWeights.similarity field f64
+config::category_weights::CategoryWeights.structural field f64
+config::category_weights::CategoryWeights.test_edge field f64
+config::category_weights::CategoryWeights::multiplier fn (&self, category: EdgeCategory) -> f64
+config::edge_weights mod
+config::edge_weights::ANSIBLE_SEMANTIC const AnsibleSemanticWeights
+config::edge_weights::AnsibleSemanticWeights struct
+config::edge_weights::AnsibleSemanticWeights.sibling_modifier field f64
+config::edge_weights::BUILD_SYSTEM const BuildSystemWeights
+config::edge_weights::BuildSystemWeights struct
+config::edge_weights::BuildSystemWeights.file_ref_weight field f64
+config::edge_weights::BuildSystemWeights.reverse_factor field f64
+config::edge_weights::CFamilySemanticWeights struct
+config::edge_weights::CFamilySemanticWeights.base_weight field f64
+config::edge_weights::CFamilySemanticWeights.max_files_per_name field usize
+config::edge_weights::CICD const CicdWeights
+config::edge_weights::C_FAMILY_SEMANTIC const CFamilySemanticWeights
+config::edge_weights::CicdWeights struct
+config::edge_weights::CicdWeights.reverse_factor field f64
+config::edge_weights::CicdWeights.script_modifier field f64
+config::edge_weights::CicdWeights.script_weight field f64
+config::edge_weights::CicdWeights.weight field f64
+config::edge_weights::DOCKER const DockerWeights
+config::edge_weights::DockerWeights struct
+config::edge_weights::DockerWeights.compose_context_modifier field f64
+config::edge_weights::DockerWeights.compose_volume_modifier field f64
+config::edge_weights::DockerWeights.compose_weight field f64
+config::edge_weights::DockerWeights.copy_weight field f64
+config::edge_weights::DockerWeights.reverse_factor field f64
+config::edge_weights::GO_SEMANTIC const GoSemanticWeights
+config::edge_weights::GoSemanticWeights struct
+config::edge_weights::GoSemanticWeights.init_same_package_weight field f64
+config::edge_weights::HELM const HelmWeights
+config::edge_weights::HelmWeights struct
+config::edge_weights::HelmWeights.configmap_modifier field f64
+config::edge_weights::HelmWeights.definition_modifier field f64
+config::edge_weights::HelmWeights.reverse_factor field f64
+config::edge_weights::HelmWeights.value_modifier field f64
+config::edge_weights::HelmWeights.weight field f64
+config::edge_weights::JAVASCRIPT_SEMANTIC const JavascriptSemanticWeights
+config::edge_weights::JavascriptSemanticWeights struct
+config::edge_weights::JavascriptSemanticWeights.import_weight field f64
+config::edge_weights::JavascriptSemanticWeights.reverse_factor field f64
+config::edge_weights::KUBERNETES const KubernetesWeights
+config::edge_weights::KubernetesWeights struct
+config::edge_weights::KubernetesWeights.configmap_secret_weight field f64
+config::edge_weights::KubernetesWeights.reverse_factor field f64
+config::edge_weights::KubernetesWeights.selector_weight field f64
+config::edge_weights::KubernetesWeights.service_weight field f64
+config::edge_weights::KubernetesWeights.weight field f64
+config::edge_weights::OPENAPI_SEMANTIC const OpenapiSemanticWeights
+config::edge_weights::OpenapiSemanticWeights struct
+config::edge_weights::OpenapiSemanticWeights.marker_scan_lines field usize
+config::edge_weights::PYTHON_SEMANTIC const PythonSemanticWeights
+config::edge_weights::PythonSemanticWeights struct
+config::edge_weights::PythonSemanticWeights.import_confirmed_boost field f64
+config::edge_weights::PythonSemanticWeights.import_unconfirmed_penalty field f64
+config::edge_weights::PythonSemanticWeights.import_weight field f64
+config::edge_weights::PythonSemanticWeights.reverse_factor field f64
+config::edge_weights::SEMANTIC_DISCOVERY const SemanticDiscoveryConfig
+config::edge_weights::SemanticDiscoveryConfig struct
+config::edge_weights::SemanticDiscoveryConfig.max_depth field usize
+config::edge_weights::SemanticDiscoveryConfig.min_identifier_length field usize
+config::edge_weights::SemanticDiscoveryConfig.min_ref_length_for_path_match field usize
+config::edge_weights::TAGS_SEMANTIC const TagsSemanticWeights
+config::edge_weights::TERRAFORM_SEMANTIC const TerraformSemanticWeights
+config::edge_weights::TagsSemanticWeights struct
+config::edge_weights::TagsSemanticWeights.max_fragments_per_ident field usize
+config::edge_weights::TagsSemanticWeights.min_ident_len field usize
+config::edge_weights::TagsSemanticWeights.reverse_factor field f64
+config::edge_weights::TagsSemanticWeights.weight field f64
+config::edge_weights::TerraformSemanticWeights struct
+config::edge_weights::TerraformSemanticWeights.module_source_modifier field f64
+config::edge_weights::TerraformSemanticWeights.reverse_factor field f64
+config::edge_weights::TerraformSemanticWeights.weight field f64
+config::env_overrides mod
+config::env_overrides::parse_f64_or_default fn (raw: Option<String>, default: f64) -> f64
+config::env_overrides::parse_fraction_or_default fn (raw: Option<String>, default: f64) -> f64
+config::env_overrides::parse_open_fraction_or_default fn (raw: Option<String>, default: f64) -> f64
+config::env_overrides::parse_u32_or_default fn (raw: Option<String>, default: u32) -> u32
+config::env_overrides::parse_usize_or_default fn (raw: Option<String>, default: usize) -> usize
+config::env_overrides::read_env_f64 fn (name: &str, default: f64) -> f64
+config::env_overrides::read_env_fraction fn (name: &str, default: f64) -> f64
+config::env_overrides::read_env_open_fraction fn (name: &str, default: f64) -> f64
+config::env_overrides::read_env_u32 fn (name: &str, default: u32) -> u32
+config::env_overrides::read_env_usize fn (name: &str, default: usize) -> usize
+config::extensions mod
+config::extensions::CODE_EXTENSIONS static Lazy<FxHashSet<&'static str>>
+config::extensions::CONFIG_EXTENSIONS static Lazy<FxHashSet<&'static str>>
+config::extensions::CPP_EXTENSIONS static Lazy<FxHashSet<&'static str>>
+config::extensions::CSHARP_EXTENSIONS static Lazy<FxHashSet<&'static str>>
+config::extensions::C_EXTENSIONS static Lazy<FxHashSet<&'static str>>
+config::extensions::C_FAMILY_EXTENSIONS static Lazy<FxHashSet<&'static str>>
+config::extensions::DOC_EXTENSIONS static Lazy<FxHashSet<&'static str>>
+config::extensions::DOTNET_EXTENSIONS static Lazy<FxHashSet<&'static str>>
+config::extensions::FSHARP_EXTENSIONS static Lazy<FxHashSet<&'static str>>
+config::extensions::GO_EXTENSIONS static Lazy<FxHashSet<&'static str>>
+config::extensions::JAVASCRIPT_EXTENSIONS static Lazy<FxHashSet<&'static str>>
+config::extensions::JAVA_EXTENSIONS static Lazy<FxHashSet<&'static str>>
+config::extensions::JS_TS_EXTENSIONS static Lazy<FxHashSet<&'static str>>
+config::extensions::JVM_EXTENSIONS static Lazy<FxHashSet<&'static str>>
+config::extensions::KOTLIN_EXTENSIONS static Lazy<FxHashSet<&'static str>>
+config::extensions::OTHER_CODE_EXTENSIONS static Lazy<FxHashSet<&'static str>>
+config::extensions::PHP_EXTENSIONS static Lazy<FxHashSet<&'static str>>
+config::extensions::PYTHON_EXTENSIONS static Lazy<FxHashSet<&'static str>>
+config::extensions::RUBY_EXTENSIONS static Lazy<FxHashSet<&'static str>>
+config::extensions::RUST_EXTENSIONS static Lazy<FxHashSet<&'static str>>
+config::extensions::SCALA_EXTENSIONS static Lazy<FxHashSet<&'static str>>
+config::extensions::SHELL_EXTENSIONS static Lazy<FxHashSet<&'static str>>
+config::extensions::SWIFT_EXTENSIONS static Lazy<FxHashSet<&'static str>>
+config::extensions::TYPESCRIPT_EXTENSIONS static Lazy<FxHashSet<&'static str>>
+config::filtering mod
+config::filtering::FILTERING static Lazy<FilteringConfig>
+config::filtering::FilteringConfig impl Default for FilteringConfig
+config::filtering::FilteringConfig struct
+config::filtering::FilteringConfig.definition_proximity_half_decay field f64
+config::filtering::FilteringConfig.hub_reverse_threshold field usize
+config::filtering::FilteringConfig.max_context_fragments_per_file field usize
+config::filtering::FilteringConfig.proximity_floor_max field f64
+config::filtering::FilteringConfig.proximity_half_decay field f64
+config::fragmentation mod
+config::fragmentation::FRAGMENTATION static Lazy<FragmentationConfig>
+config::fragmentation::FragmentationConfig impl Default for FragmentationConfig
+config::fragmentation::FragmentationConfig struct
+config::fragmentation::FragmentationConfig.binary_detection_buffer_size field usize
+config::fragmentation::FragmentationConfig.generated_marker_header_lines field usize
+config::graph_filtering mod
+config::graph_filtering::GRAPH_FILTERING static Lazy<GraphFilteringConfig>
+config::graph_filtering::GraphFilteringConfig impl Default for GraphFilteringConfig
+config::graph_filtering::GraphFilteringConfig struct
+config::graph_filtering::GraphFilteringConfig.hub_out_degree_threshold field usize
+config::graph_filtering::GraphFilteringConfig.max_cache_bytes field usize
+config::graph_filtering::GraphFilteringConfig.min_lines_for_signature field u32
+config::importance mod
+config::importance::DEFAULT_IMPORTANCE const f64
+config::importance::GENERATED_CAP const f64
+config::importance::GENERATED_DIRS const &[&str]
+config::importance::PERIPHERAL_CAP const f64
+config::importance::PERIPHERAL_DIRS const &[&str]
+config::importance::PERIPHERAL_STEMS const &[&str]
+config::importance::PERIPHERAL_SUFFIXES const &[&str]
+config::limits mod
+config::limits::AlgorithmLimits impl Default for AlgorithmLimits
+config::limits::AlgorithmLimits struct
+config::limits::AlgorithmLimits.max_changed_file_size field usize
+config::limits::AlgorithmLimits.max_file_size field usize
+config::limits::AlgorithmLimits.max_fragments field usize
+config::limits::AlgorithmLimits.max_generated_fragments field usize
+config::limits::AlgorithmLimits.max_generated_lines field usize
+config::limits::AlgorithmLimits.overhead_per_fragment field u32
+config::limits::AlgorithmLimits.rare_identifier_threshold field usize
+config::limits::AlgorithmLimits.skip_expensive_threshold field usize
+config::limits::COCHANGE static Lazy<CochangeConfig>
+config::limits::CochangeConfig impl Default for CochangeConfig
+config::limits::CochangeConfig struct
+config::limits::CochangeConfig.commits_limit field usize
+config::limits::CochangeConfig.log_scale_factor field f64
+config::limits::CochangeConfig.max_files_per_commit field usize
+config::limits::CochangeConfig.min_count field usize
+config::limits::DEFAULT_MAX_OUT_EDGES_PER_NODE const usize
+config::limits::DEFAULT_PIPELINE_TIMEOUT_SECONDS const u64
+config::limits::DEFAULT_PPR_ALPHA const f64
+config::limits::DEFAULT_SCORING const &str
+config::limits::DEFAULT_STOPPING_THRESHOLD const f64
+config::limits::LEXICAL static Lazy<LexicalConfig>
+config::limits::LIMITS static Lazy<AlgorithmLimits>
+config::limits::LexicalConfig impl Default for LexicalConfig
+config::limits::LexicalConfig struct
+config::limits::LexicalConfig.backward_factor field f64
+config::limits::LexicalConfig.max_df_ratio field f64
+config::limits::LexicalConfig.max_postings field usize
+config::limits::LexicalConfig.min_idf field f64
+config::limits::LexicalConfig.min_similarity field f64
+config::limits::LexicalConfig.top_k_neighbors field usize
+config::limits::LexicalConfig.weight_max field f64
+config::limits::LexicalConfig.weight_min field f64
+config::limits::PPR static Lazy<PPRConfig>
+config::limits::PPRConfig impl Default for PPRConfig
+config::limits::PPRConfig struct
+config::limits::PPRConfig.alpha field f64
+config::limits::PPRConfig.convergence_tolerance field f64
+config::limits::PPRConfig.default_seed_epsilon field f64
+config::limits::PPRConfig.forward_blend field f64
+config::limits::PPRConfig.max_pushes_cap field usize
+config::limits::PPRConfig.push_scale_factor field usize
+config::limits::SIBLING static Lazy<SiblingConfig>
+config::limits::SiblingConfig impl Default for SiblingConfig
+config::limits::SiblingConfig struct
+config::limits::SiblingConfig.max_files_per_dir field usize
+config::limits::UNGATED_STOPPING_THRESHOLD const f64
+config::limits::UTILITY static Lazy<UtilityConfig>
+config::limits::UtilityConfig struct
+config::limits::UtilityConfig.eta field f64
+config::limits::UtilityConfig.proximity_decay field f64
+config::limits::UtilityConfig.r_cap_sigma field f64
+config::limits::UtilityConfig.structural_bonus_weight field f64
+config::limits::read_max_out_edges_per_node fn () -> usize
+config::mode mod
+config::mode::ModeConfig impl Default for ModeConfig
+config::mode::ModeConfig struct
+config::mode::ModeConfig.bm25_top_k_off field usize
+config::mode::ModeConfig.bm25_top_k_primary field usize
+config::mode::ModeConfig.ego_depth_default field usize
+config::mode::ModeConfig.ego_depth_extended field usize
+config::mode::mode fn () -> ModeConfig
+config::needs mod
+config::needs::NEEDS static Lazy<NeedsConfig>
+config::needs::NeedsConfig impl Default for NeedsConfig
+config::needs::NeedsConfig struct
+config::needs::NeedsConfig.background_min_ident_length field usize
+config::needs::NeedsConfig.background_priority field f64
+config::needs::NeedsConfig.call_definition_priority field f64
+config::needs::NeedsConfig.concept_background_priority field f64
+config::needs::NeedsConfig.defines_no_scope field f64
+config::needs::NeedsConfig.defines_other_scope field f64
+config::needs::NeedsConfig.defines_scope_match field f64
+config::needs::NeedsConfig.definition_priority field f64
+config::needs::NeedsConfig.fallback_priority field f64
+config::needs::NeedsConfig.identifier_default_priority field f64
+config::needs::NeedsConfig.impact_mentions field f64
+config::needs::NeedsConfig.impact_priority field f64
+config::needs::NeedsConfig.impact_scope_match field f64
+config::needs::NeedsConfig.invariant_priority field f64
+config::needs::NeedsConfig.mentions_fallback field f64
+config::needs::NeedsConfig.min_rel_for_bonus field f64
+config::needs::NeedsConfig.min_symbol_length field usize
+config::needs::NeedsConfig.relatedness_bonus field f64
+config::needs::NeedsConfig.signature_defines field f64
+config::needs::NeedsConfig.signature_priority field f64
+config::needs::NeedsConfig.test_mentions field f64
+config::needs::NeedsConfig.test_priority field f64
+config::parsers mod
+config::parsers::PARSERS static Lazy<ParsersConfig>
+config::parsers::ParsersConfig impl Default for ParsersConfig
+config::parsers::ParsersConfig struct
+config::parsers::ParsersConfig.container_search_max_depth field u32
+config::parsers::ParsersConfig.generic_max_lines field usize
+config::parsers::ParsersConfig.max_recursion_depth field u32
+config::parsers::ParsersConfig.max_sub_depth field u32
+config::parsers::ParsersConfig.min_fragment_lines field u32
+config::parsers::ParsersConfig.sub_fragment_target_lines field u32
+config::parsers::ParsersConfig.sub_fragment_threshold_lines field u32
+config::render mod
+config::render::RENDER static Lazy<RenderConfig>
+config::render::RenderConfig impl Default for RenderConfig
+config::render::RenderConfig struct
+config::render::RenderConfig.section_symbol_max_chars field usize
+config::scoring mod
+config::scoring::EGO static Lazy<EgoScoringConfig>
+config::scoring::EgoScoringConfig impl Default for EgoScoringConfig
+config::scoring::EgoScoringConfig struct
+config::scoring::EgoScoringConfig.identifier_overlap_cap field usize
+config::scoring::EgoScoringConfig.identifier_overlap_epsilon field f64
+config::scoring::EgoScoringConfig.per_hop_decay field f64
+config::scoring::PIT static Lazy<PitConfig>
+config::scoring::PitConfig impl Default for PitConfig
+config::scoring::PitConfig struct
+config::scoring::PitConfig.agreement_bonus field f64
+config::scoring::PitConfig.agreement_top_k field usize
+config::scoring::PitConfig.blend field f64
+config::scoring::RRF static Lazy<RrfConfig>
+config::scoring::RrfConfig impl Default for RrfConfig
+config::scoring::RrfConfig struct
+config::scoring::RrfConfig.k field f64
+config::selection mod
+config::selection::BoltzmannConfig impl Default for BoltzmannConfig
+config::selection::BoltzmannConfig struct derive(Clone)
+config::selection::BoltzmannConfig.beta_hi field f64
+config::selection::BoltzmannConfig.beta_lo field f64
+config::selection::BoltzmannConfig.bisect_iters field u32
+config::selection::BoltzmannConfig.calibration_tolerance field f64
+config::selection::DEFAULT_CORE_BUDGET_FRACTION const f64
+config::selection::RescueConfig struct derive(Clone)
+config::selection::RescueConfig.budget_fraction field f64
+config::selection::RescueConfig.min_score_percentile field f64
+config::selection::SelectionConfig struct derive(Clone)
+config::selection::SelectionConfig.core_budget_fraction field f64
+config::selection::SelectionConfig.per_file_budget_fraction field f64
+config::selection::SelectionConfig.r_cap_min field f64
+config::selection::boltzmann fn () -> BoltzmannConfig
+config::selection::rescue fn () -> RescueConfig
+config::selection::selection fn () -> SelectionConfig
+config::tokenization mod
+config::tokenization::TOKENIZATION static Lazy<TokenizationConfig>
+config::tokenization::TokenizationConfig impl Default for TokenizationConfig
+config::tokenization::TokenizationConfig struct
+config::tokenization::TokenizationConfig.diff_context_radius field usize
+config::tokenization::TokenizationConfig.fragment_min_identifier_length field usize
+config::tokenization::TokenizationConfig.query_min_identifier_length field usize
+config::weights mod
+config::weights::DEFAULT_LANG_WEIGHTS static LangWeights
+config::weights::EDGE_WEIGHTS static Lazy<FxHashMap<&'static str, EdgeWeightConfig>>
+config::weights::EdgeWeightConfig struct derive(Clone, Copy, Debug)
+config::weights::EdgeWeightConfig.forward field f64
+config::weights::EdgeWeightConfig.reverse_factor field f64
+config::weights::EdgeWeightConfig::new fn (forward: f64, reverse_factor: f64) -> Self
+config::weights::LANG_WEIGHTS static Lazy<FxHashMap<&'static str, LangWeights>>
+config::weights::LangWeights struct derive(Clone, Copy, Debug)
+config::weights::LangWeights.call field f64
+config::weights::LangWeights.lexical_max field f64
+config::weights::LangWeights.lexical_min field f64
+config::weights::LangWeights.symbol_ref field f64
+config::weights::LangWeights.type_ref field f64
+config::weights::LangWeights::new fn ( call: f64, symbol_ref: f64, type_ref: f64, lexical_min: f64, lexical_max: f64, ) -> Self
+mode mod
+mode::ObjectiveMode enum derive(Clone, Copy, Debug, Eq, PartialEq)
+mode::ObjectiveMode::BoltzmannModular variant BoltzmannModular
+mode::ObjectiveMode::Submodular variant Submodular
+mode::ObjectiveMode::from_str fn (s: &str) -> Self
+mode::PipelineConfig struct derive(Clone, Debug)
+mode::PipelineConfig.bm25_top_k field usize
+mode::PipelineConfig.ego_depth field usize
+mode::PipelineConfig.objective field ObjectiveMode
+mode::PipelineConfig.ppr_alpha field f64
+mode::PipelineConfig.scoring field ScoringMode
+mode::PipelineConfig::from_mode fn (mode: ScoringMode) -> Self
+mode::SCORING_MODE_NAMES const &[&str]
+mode::ScoringMode enum derive(Clone, Copy, Debug, Eq, PartialEq)
+mode::ScoringMode::Bm25 variant Bm25
+mode::ScoringMode::Ego variant Ego
+mode::ScoringMode::Pit variant Pit
+mode::ScoringMode::Ppr variant Ppr
+mode::ScoringMode::Rrf variant Rrf
+mode::ScoringMode::from_str fn (s: &str) -> Result<Self, String>
+signatures mod
+signatures::generate_signature_variants fn (fragments: &[Fragment]) -> Vec<Fragment>
+stopwords mod
+stopwords::CODE_STOPWORDS static Lazy<FxHashSet<String>>
+stopwords::filter_idents fn (idents: &[String], min_len: usize, profile: &str) -> Vec<String>
+stopwords::profile_from_path fn (path: &str) -> &'static str

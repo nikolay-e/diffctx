@@ -1,0 +1,44 @@
+name: c_asm_label_function_is_reached_by_its_label_from_outside
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [c, export, gap, absence-claim, gnu-attribute]
+repo:
+  initial_files:
+    include/api.h: |
+      int header_labelled(int x) __asm__("header_public_name");
+    src/impl.c: |
+      int asm_label_impl(int x) __asm__("asm_public_name");
+
+      int asm_label_impl(int x) { return x + 1; }
+    src/hdr.c: |
+      #include "../include/api.h"
+
+      int header_labelled(int x) { return x + 1; }
+    src/user.c: |
+      extern int asm_public_name(int);
+      extern int header_public_name(int);
+
+      int run(void) { return asm_public_name(1) + header_public_name(2); }
+  changed_files:
+    src/impl.c: |
+      int asm_label_impl(int x) __asm__("asm_public_name");
+
+      int asm_label_impl(int x) { return x + 2; }
+    src/hdr.c: |
+      #include "../include/api.h"
+
+      int header_labelled(int x) { return x + 2; }
+  commit_message: "labelled symbols add two"
+expect:
+  changed:
+    - src/impl.c::asm_label_impl
+    - src/hdr.c::header_labelled
+  callers:
+    asm_label_impl: []
+    header_labelled: []
+  no_negative_claims: true
+  never_empty: true
+  partial:
+    src/impl.c::asm_label_impl: {calls: not_traced}
+    src/hdr.c::header_labelled: {calls: not_traced}

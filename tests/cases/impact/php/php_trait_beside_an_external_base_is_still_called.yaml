@@ -1,0 +1,53 @@
+name: php_trait_beside_an_external_base_is_still_called
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [php, external-base, inheritance]
+repo:
+  initial_files:
+    composer.json: |
+      {"autoload":{"psr-4":{"App\\":"src/"}}}
+    src/Audits.php: |
+      <?php
+      namespace App;
+
+      trait Audits {
+          public function audit($x) {
+              return $x;
+          }
+      }
+    src/Client.php: |
+      <?php
+      namespace App;
+
+      use Vendor\Lib\Base;
+
+      class Client extends Base {
+          use Audits;
+      }
+    src/Use.php: |
+      <?php
+      namespace App;
+
+      class UseIt {
+          public function go() {
+              $c = new Client();
+              return $c->audit(1);
+          }
+      }
+  changed_files:
+    src/Audits.php: |
+      <?php
+      namespace App;
+
+      trait Audits {
+          public function audit($x) {
+              return $x + 1;
+          }
+      }
+  commit_message: change
+expect:
+  changed: ['src/Audits.php::audit']
+  relations:
+  - {from: 'src/Use.php::go', to: 'src/Audits.php::audit', kind: calls, resolution: resolved}
+  exact: false

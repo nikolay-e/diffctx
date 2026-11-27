@@ -1,0 +1,27 @@
+name: py_import_root_in_a_subdirectory_run_from_there_is_a_caller
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [python, manifests, import-root]
+repo:
+  initial_files:
+    backend/app/__init__.py: |2+
+
+    backend/app/money.py: |
+      def total(x):
+          return x
+    backend/main.py: |
+      from app.money import total
+
+
+      def show(x):
+          return total(x)
+  changed_files:
+    backend/app/money.py: |
+      def total(x):
+          return x + 0
+  commit_message: change
+expect:
+  changed: ['backend/app/money.py::total']
+  relations:
+  - {from: 'backend/main.py::show', to: 'backend/app/money.py::total', kind: calls, resolution: resolved}

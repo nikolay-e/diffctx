@@ -1,0 +1,39 @@
+name: js_object_created_from_an_expression_is_no_literal_receiver
+mode: impact
+source: synthetic
+issue_state: open
+tags: [javascript, prototype-chain, object-create]
+repo:
+  initial_files:
+    prototypes/expression.js: |
+      var obj = {
+          foo() {
+              return 'bar';
+          }
+      };
+
+      function make(base) {
+          return base;
+      }
+
+      var obj2 = Object.create(make(obj));
+      obj2.foo();
+  changed_files:
+    prototypes/expression.js: |
+      var obj = {
+          foo() {
+              return 'baz';
+          }
+      };
+
+      function make(base) {
+          return base;
+      }
+
+      var obj2 = Object.create(make(obj));
+      obj2.foo();
+  commit_message: change
+expect:
+  changed: [prototypes/expression.js::foo]
+  relations:
+    - {from: prototypes/expression.js, to: prototypes/expression.js::foo, kind: calls, resolution: candidate, site: 12}

@@ -72,7 +72,7 @@ def ancient_repo(tmp_path):
 
 
 def _changed_files(result):
-    return yaml.safe_load(result.stdout).get("changed_files") or []
+    return yaml.safe_load(result.stdout).get("inventory", {}).get("changed", {}).get("items") or []
 
 
 class TestDurationWindows:

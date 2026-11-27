@@ -1,0 +1,40 @@
+name: php_callable_string_in_a_constant_names_the_function
+mode: impact
+source: synthetic
+tags: [php, literal-name, callable-string, constant]
+repo:
+  initial_files:
+    src/handlers.php: |
+      <?php
+
+      function acme_sanitize(string $v): string
+      {
+          return trim($v);
+      }
+    src/Settings.php: |
+      <?php
+
+      class Settings
+      {
+          const SANITIZER = 'acme_sanitize';
+
+          public function sanitizer(): string
+          {
+              return self::SANITIZER;
+          }
+      }
+  changed_files:
+    src/handlers.php: |
+      <?php
+
+      function acme_sanitize(string $v): string
+      {
+          return strtolower(trim($v));
+      }
+  commit_message: "handlers: sanitize lower-cases"
+expect:
+  exact: false
+  discloses: true
+  no_negative_claims: true
+  relations:
+    - {from: src/Settings.php, to: src/handlers.php::acme_sanitize, kind: calls, resolution: unresolved}

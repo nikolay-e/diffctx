@@ -1,0 +1,128 @@
+# Seed set 4 (holdout: its rows are never read, only counters).
+# Drawn by `seeds.py draw` from seeds/pool.json (read 2026-11-27) under the rule at the top of seeds.py, with seed 1552430194
+# (one draw of the operating system's CSPRNG on 2026-11-27). Pins read with `git ls-remote <url> HEAD` on 2026-11-27;
+# licences from the hosting API. Counts, thresholds and pinned tools are corpus.toml's.
+
+extends = "../corpus.toml"
+holdout = true
+
+[sampling]
+seed = 1552430194
+
+[[repo]]
+name = "hpcaitech--ColossalAI"
+url = "https://github.com/hpcaitech/ColossalAI.git"
+language = "python"
+license = "Apache-2.0"
+sha = "da3df39e66ed7053cc9e7dc89f4f1b3990acbfe0"  # pragma: allowlist secret gitleaks:allow
+fast = true
+
+[[repo]]
+name = "psf--requests"
+url = "https://github.com/psf/requests.git"
+language = "python"
+license = "Apache-2.0"
+sha = "3c7baaa05ab4aa49cc819ce3a819d260de19c157"  # pragma: allowlist secret gitleaks:allow
+
+[[repo]]
+name = "ytdl-org--youtube-dl"
+url = "https://github.com/ytdl-org/youtube-dl.git"
+language = "python"
+license = "Unlicense"
+sha = "bc069d2bb40bcbc5bdfdf352ca15bf586c7792cb"  # pragma: allowlist secret gitleaks:allow
+
+[[repo]]
+name = "hexojs--hexo"
+url = "https://github.com/hexojs/hexo.git"
+language = "typescript"
+license = "MIT"
+sha = "36e6a73058cef7502291a69171f052b83eae42dd"  # pragma: allowlist secret gitleaks:allow
+fast = true
+
+[[repo]]
+name = "ChatGPTNextWeb--NextChat"
+url = "https://github.com/ChatGPTNextWeb/NextChat.git"
+language = "typescript"
+license = "MIT"
+sha = "1d3dc331512929a4b1d3e82354e72acce33b5c7a"  # pragma: allowlist secret gitleaks:allow
+
+[[repo]]
+name = "tashfeenahmed--freellmapi"
+url = "https://github.com/tashfeenahmed/freellmapi.git"
+language = "typescript"
+license = "MIT"
+sha = "52552414db81616ecd7210dbe3892b6cafd44131"  # pragma: allowlist secret gitleaks:allow
+
+[[repo]]
+name = "neondatabase--neon"
+url = "https://github.com/neondatabase/neon.git"
+language = "rust"
+license = "Apache-2.0"
+sha = "fa504217c61bbcaf5c512d75830564541f917f8f"  # pragma: allowlist secret gitleaks:allow
+fast = true
+
+[[repo]]
+name = "ayangweb--BongoCat"
+url = "https://github.com/ayangweb/BongoCat.git"
+language = "rust"
+license = "Apache-2.0"
+sha = "47a73ed1765b13fdd674ec356d51b5b16a6b5a5b"  # pragma: allowlist secret gitleaks:allow
+
+[[repo]]
+name = "gotson--komga"
+url = "https://github.com/gotson/komga.git"
+language = "kotlin"
+license = "MIT"
+sha = "19cb01b005af7f8299bc08adc2f09c339cbeb924"  # pragma: allowlist secret gitleaks:allow
+fast = true
+
+[[repo]]
+name = "Netflix--dgs-framework"
+url = "https://github.com/Netflix/dgs-framework.git"
+language = "kotlin"
+license = "Apache-2.0"
+sha = "9018a345e01883cb6b719ff9a935dc670c44961c"  # pragma: allowlist secret gitleaks:allow
+
+[[repo]]
+name = "jesseduffield--lazydocker"
+url = "https://github.com/jesseduffield/lazydocker.git"
+language = "go"
+license = "MIT"
+sha = "596fd59df6b088bb1e38c5bb08cd4fbf28b3ebfb"  # pragma: allowlist secret gitleaks:allow
+fast = true
+
+[[repo]]
+name = "v2ray--v2ray-core"
+url = "https://github.com/v2ray/v2ray-core.git"
+language = "go"
+license = "MIT"
+sha = "d80440f3d57b45c829dbf513306f7adf9a0f3f76"  # pragma: allowlist secret gitleaks:allow
+
+[[repo]]
+name = "gitleaks--gitleaks"
+url = "https://github.com/gitleaks/gitleaks.git"
+language = "go"
+license = "MIT"
+sha = "5f6ec56cfa6f8c67648d863582c7ae2f206d5c1c"  # pragma: allowlist secret gitleaks:allow
+
+[[repo]]
+name = "xpipe-io--xpipe"
+url = "https://github.com/xpipe-io/xpipe.git"
+language = "java"
+license = "Apache-2.0"
+sha = "ab740118cc072498488ff6c05be7a1450b796359"  # pragma: allowlist secret gitleaks:allow
+fast = true
+
+[[repo]]
+name = "macrozheng--mall"
+url = "https://github.com/macrozheng/mall.git"
+language = "java"
+license = "Apache-2.0"
+sha = "dcaa93b3150352e5044708d7211b5bed0af4509f"  # pragma: allowlist secret gitleaks:allow
+
+[[repo]]
+name = "binarywang--WxJava"
+url = "https://github.com/binarywang/WxJava.git"
+language = "java"
+license = "Apache-2.0"
+sha = "944e5d7ecd7a75d123e92597da73a625cb2bca27"  # pragma: allowlist secret gitleaks:allow

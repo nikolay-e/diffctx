@@ -1,0 +1,36 @@
+name: dockerfile_arg_of_a_stage_is_read_by_the_stage_built_from_it
+mode: impact
+source: synthetic
+issue_state: closed
+tags:
+- dockerfile
+- arg
+- inherit
+repo:
+  initial_files:
+    Dockerfile: |
+      FROM alpine:3.20 AS base
+      ARG LEVEL=1
+      ENV KEEP=1
+
+      FROM base AS app
+      COPY a.txt /data/$LEVEL/a.txt
+  changed_files:
+    Dockerfile: |
+      FROM alpine:3.20 AS base
+      ARG LEVEL=2
+      ENV KEEP=1
+
+      FROM base AS app
+      COPY a.txt /data/$LEVEL/a.txt
+  commit_message: Change arg of a stage is read by the stage built from it
+expect:
+  changed:
+  - Dockerfile::base
+  - Dockerfile::base.LEVEL
+  relations:
+  - from: Dockerfile::app
+    to: Dockerfile::LEVEL
+    kind: reads
+    resolution: resolved
+    site: 6

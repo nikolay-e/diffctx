@@ -2,9 +2,9 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use _diffctx::mode::ScoringMode;
-use _diffctx::pipeline::build_diff_context;
-use _diffctx::render::DiffContextOutput;
+use _diffctx::pipeline::build_diff_context_in;
+use diffctx_answer::render::DiffContextOutput;
+use diffctx_config::mode::ScoringMode;
 use libtest_mimic::{Arguments, Failed, Trial};
 use tempfile::TempDir;
 use walkdir::WalkDir;
@@ -12,7 +12,19 @@ use walkdir::WalkDir;
 mod common;
 use common::{TestCase, XFail, calculate_budget, evaluate_oracle, garbage_files};
 
-fn cases_dir() -> PathBuf {
+// The impact and symbol corpus runs the shipped binary, which `support` finds.
+#[path = "common/oracle/mod.rs"]
+mod oracle;
+mod support;
+// Every impact and symbol answer the corpus builds is checked against it.
+#[path = "support/fact_keys.rs"]
+mod fact_keys;
+// ... and every one names each changed definition the engine took up.
+#[path = "support/accounting.rs"]
+mod accounting;
+use oracle::case::Mode;
+
+fn cases_root() -> PathBuf {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     manifest_dir
         .parent()
@@ -20,21 +32,46 @@ fn cases_dir() -> PathBuf {
         .expect("repository root")
         .join("tests")
         .join("cases")
-        .join("diff")
+}
+
+fn cases_dir() -> PathBuf {
+    cases_root().join("diff")
+}
+
+/// Which corpus a case belongs to: `diff` cases select context through the
+/// library; `impact` and `symbol` cases run the shipped binary.
+#[derive(Clone, Copy)]
+enum Corpus {
+    Diff,
+    Oracle(Mode),
 }
 
 #[derive(Clone)]
 struct DiscoveredCase {
     name: String,
     path: PathBuf,
+    stratum: String,
+    corpus: Corpus,
+    /// The language directory of an impact or symbol case.
+    language: String,
 }
 
 fn discover_cases() -> Vec<DiscoveredCase> {
-    let dir = cases_dir();
+    let mut cases = discover_in(&cases_dir(), Corpus::Diff);
+    for mode in [Mode::Impact, Mode::Symbol] {
+        cases.extend(discover_in(
+            &cases_root().join(mode.name()),
+            Corpus::Oracle(mode),
+        ));
+    }
+    cases
+}
+
+fn discover_in(dir: &Path, corpus: Corpus) -> Vec<DiscoveredCase> {
     if !dir.exists() {
         return Vec::new();
     }
-    let mut entries: Vec<_> = WalkDir::new(&dir)
+    let mut entries: Vec<_> = WalkDir::new(dir)
         .follow_links(false)
         .into_iter()
         .filter_map(Result::ok)
@@ -60,24 +97,42 @@ fn discover_cases() -> Vec<DiscoveredCase> {
             // so `cargo test --test yaml_cases -- languages/rust/` can filter
             // a single stratum by substring — this is what the nightly
             // per-directory gate and local debugging rely on.
-            let rel = path.strip_prefix(&dir).unwrap_or(&path);
-            let name = rel
+            let rel = path.strip_prefix(dir).unwrap_or(&path);
+            let relative_name = rel
                 .with_extension("")
                 .components()
                 .filter_map(|c| c.as_os_str().to_str())
                 .collect::<Vec<_>>()
                 .join("/");
-            DiscoveredCase { name, path }
+            match corpus {
+                Corpus::Diff => DiscoveredCase {
+                    name: relative_name,
+                    stratum: stratum_of(dir, &path),
+                    corpus,
+                    language: String::new(),
+                    path,
+                },
+                Corpus::Oracle(mode) => {
+                    let language = relative_name.split('/').next().unwrap_or("").to_string();
+                    DiscoveredCase {
+                        name: format!("{}/{relative_name}", mode.name()),
+                        stratum: format!("{}/{language}", mode.name()),
+                        corpus,
+                        language,
+                        path,
+                    }
+                }
+            }
         })
         .collect();
     entries.sort_by(|a, b| a.path.cmp(&b.path));
     entries
 }
 
-/// Groups a case by top-level category, splitting `languages/*` one level
-/// deeper so each language gets its own stratum (`languages/rust`,
+/// Groups a `diff` case by top-level category, splitting `languages/*` one
+/// level deeper so each language gets its own stratum (`languages/rust`,
 /// `languages/python`, ...) instead of being lumped under one `languages`
-/// bucket.
+/// bucket. An impact or symbol case's stratum is `<mode>/<language>`.
 fn stratum_of(cases_dir: &Path, path: &Path) -> String {
     let rel = path.strip_prefix(cases_dir).unwrap_or(path);
     let mut components = rel.components();
@@ -115,13 +170,9 @@ const ALGORITHM_FLOOR: usize = 20;
 /// in stratum-name order, so growing the limit broadens coverage evenly
 /// instead of piling more cases into one directory.
 fn stratified_sample(cases: Vec<DiscoveredCase>, target: usize) -> Vec<DiscoveredCase> {
-    let dir = cases_dir();
     let mut groups: BTreeMap<String, Vec<DiscoveredCase>> = BTreeMap::new();
     for case in cases {
-        groups
-            .entry(stratum_of(&dir, &case.path))
-            .or_default()
-            .push(case);
+        groups.entry(case.stratum.clone()).or_default().push(case);
     }
 
     let mut cursor: BTreeMap<String, usize> = groups.keys().cloned().map(|k| (k, 0usize)).collect();
@@ -175,7 +226,7 @@ fn stratified_sample(cases: Vec<DiscoveredCase>, target: usize) -> Vec<Discovere
 }
 
 fn run_git(repo: &Path, args: &[&str]) -> Result<(), String> {
-    let out = _diffctx::git::git_command(repo)
+    let out = diffctx_snapshot::snapshot::git_command(repo)
         .args(args)
         .env("GIT_AUTHOR_NAME", "test")
         .env("GIT_AUTHOR_EMAIL", "test@example.com")
@@ -205,7 +256,7 @@ fn write_files(repo: &Path, files: &BTreeMap<String, String>) -> Result<(), Stri
 }
 
 fn rev_parse_head(repo: &Path) -> Result<String, String> {
-    let out = _diffctx::git::git_command(repo)
+    let out = diffctx_snapshot::snapshot::git_command(repo)
         .args(["rev-parse", "HEAD"])
         .output()
         .map_err(|e| format!("spawn git: {e}"))?;
@@ -329,8 +380,31 @@ fn known_below_threshold() -> &'static std::collections::BTreeSet<String> {
             .join("known_below_threshold.txt");
         let raw = fs::read_to_string(&path).unwrap_or_default();
         raw.lines()
-            .map(str::trim)
-            .filter(|l| !l.is_empty() && !l.starts_with('#'))
+            .map(|line| line.split_once('#').map_or(line, |(name, _)| name).trim())
+            .filter(|name| !name.is_empty())
+            .map(str::to_string)
+            .collect()
+    })
+}
+
+/// `known_false_hedges.txt`: cases whose coverage answer disagrees with the
+/// case's declaration (the coverage gate): a hedge on a definition the case
+/// proves resolved, or a declared gap the answer calls complete. Bidirectional
+/// like the baseline above, a binary named by `DIFFCTX_BIN` included.
+fn known_false_hedges() -> &'static std::collections::BTreeSet<String> {
+    static LIST: std::sync::OnceLock<std::collections::BTreeSet<String>> =
+        std::sync::OnceLock::new();
+    LIST.get_or_init(|| {
+        if std::env::var("DIFFCTX_YAML_IGNORE_BASELINE").is_ok() {
+            return std::collections::BTreeSet::new();
+        }
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("tests")
+            .join("known_false_hedges.txt");
+        let raw = fs::read_to_string(&path).unwrap_or_default();
+        raw.lines()
+            .map(|line| line.split_once('#').map_or(line, |(name, _)| name).trim())
+            .filter(|name| !name.is_empty())
             .map(str::to_string)
             .collect()
     })
@@ -371,7 +445,7 @@ fn run_case_with_scoring(
 ) -> Result<(), Failed> {
     let raw = fs::read_to_string(case_path).map_err(|e| Failed::from(format!("read: {e}")))?;
     let case: TestCase =
-        serde_yaml::from_str(&raw).map_err(|e| Failed::from(format!("parse YAML: {e}")))?;
+        diffctx_base::yaml::from_str(&raw).map_err(|e| Failed::from(format!("parse YAML: {e}")))?;
 
     if case.repo.initial_files.is_empty()
         && case.repo.changed_files.is_empty()
@@ -454,11 +528,12 @@ fn run_case_with_scoring(
     let tau = std::env::var("DIFFCTX_PROBE_TAU")
         .ok()
         .and_then(|s| s.parse::<f64>().ok());
-    let output = build_diff_context(
+    let output = build_diff_context_in(
         repo,
         Some(&diff_range),
+        &[],
         Some(budget),
-        _diffctx::config::limits::DEFAULT_PPR_ALPHA,
+        diffctx_config::config::limits::DEFAULT_PPR_ALPHA,
         tau,
         false,
         false,
@@ -470,11 +545,11 @@ fn run_case_with_scoring(
     // full `cargo test` that is a timing failure, and it says so instead of
     // failing on a score with nothing to read (#390).
     if let Some(stop) = output.coverage.as_ref().and_then(|c| {
-        c.limit_reasons.iter().find(|r| {
+        c.limits.iter().find(|r| {
             matches!(
                 r,
-                _diffctx::resource::LimitReason::Deadline
-                    | _diffctx::resource::LimitReason::Cancelled
+                diffctx_snapshot::resource::LimitReason::Deadline
+                    | diffctx_snapshot::resource::LimitReason::Cancelled
             )
         })
     }) {
@@ -515,7 +590,7 @@ fn run_case_with_scoring(
             .map(|f| f.path.clone())
             .collect();
         if !leaked.is_empty() {
-            return Err(Failed::from(format!(
+            return Err(oracle::assertion_failed(format!(
                 "auto_garbage leaked into the output: {}",
                 leaked.join(", ")
             )));
@@ -549,13 +624,15 @@ fn run_case_with_scoring(
     match (passing, baselined) {
         (true, false) => Ok(()),
         (false, true) => Ok(()),
-        (true, true) => Err(Failed::from(format!(
+        (true, true) => Err(oracle::assertion_failed(format!(
             "case now scores {:.1}% >= min {min_score:.1}% but is still listed in \
              tests/known_below_threshold.txt — remove it from that file, otherwise a \
              future regression here would be silently absorbed",
             oracle.score
         ))),
-        (false, false) => Err(Failed::from(format_failure(&oracle, &output, min_score))),
+        (false, false) => Err(oracle::assertion_failed(format_failure(
+            &oracle, &output, min_score,
+        ))),
     }
 }
 
@@ -573,7 +650,7 @@ fn supervised(name: &str, work: impl FnOnce() -> Result<(), Failed>) -> Result<(
         .lock()
         .unwrap()
         .insert(name.to_string(), std::time::Instant::now());
-    let result = _diffctx::profile::tagged(&format!("yaml_cases::{name}"), work);
+    let result = diffctx_base::profile::tagged(&format!("yaml_cases::{name}"), work);
     IN_FLIGHT.lock().unwrap().remove(name);
     result
 }
@@ -656,6 +733,153 @@ fn allow_a_debugger_to_attach() {
 #[cfg(not(target_os = "linux"))]
 const fn allow_a_debugger_to_attach() {}
 
+/// An impact or symbol case: the shipped binary on a real repository, judged
+/// against the case's relations, under the same bidirectional baseline as the
+/// `diff` corpus. A case that fails to parse or build is an error whatever
+/// the baseline says; only a wrong answer is baselined.
+fn run_oracle_case(
+    case_name: &str,
+    case_path: &Path,
+    mode: Mode,
+    language: &str,
+) -> Result<(), Failed> {
+    let mut outcome =
+        oracle::evaluate(case_name, case_path, mode, language).map_err(Failed::from)?;
+    if outcome.disputed {
+        outcome.report.state = "disputed";
+        oracle::report::record(outcome.report);
+        return Ok(());
+    }
+    let red = !outcome.failures.is_empty();
+    let baselined = known_below_threshold().contains(case_name);
+    let hedged = !outcome.hedges.is_empty();
+    let listed_hedge = known_false_hedges().contains(case_name);
+    // Every list the case is stale in is named in one run, so a row stale in
+    // both lists does not hide its second staleness until the next run.
+    let mut problems: Vec<&str> = Vec::new();
+    let mut state = match (red, baselined) {
+        (false, false) => "pass",
+        (true, true) => "baselined_red",
+        (false, true) => {
+            problems.push(
+                "case now passes but is still listed in tests/known_below_threshold.txt — \
+                 remove it from that file, otherwise a future regression here would be \
+                 silently absorbed",
+            );
+            "stale_baseline"
+        }
+        (true, false) => {
+            outcome.report.state = "fail";
+            oracle::report::record(outcome.report);
+            return Err(oracle::assertion_failed(outcome.failures.join("\n\n")));
+        }
+    };
+    match (hedged, listed_hedge) {
+        (true, true) if problems.is_empty() => state = "false_hedge",
+        (false, false) | (true, true) => {}
+        (false, true) => {
+            if problems.is_empty() {
+                state = "stale_false_hedge";
+            }
+            problems.push(
+                "case's coverage now matches its declaration but it is still listed in \
+                 tests/known_false_hedges.txt — remove it from that file, otherwise a \
+                 future coverage mismatch here would be silently absorbed",
+            );
+        }
+        (true, false) => {
+            let hedges = outcome.hedges.join("\n\n");
+            problems.push(&hedges);
+            outcome.report.state = "fail";
+            oracle::report::record(outcome.report);
+            return Err(oracle::assertion_failed(problems.join("\n\n")));
+        }
+    }
+    outcome.report.state = state;
+    oracle::report::record(outcome.report);
+    if problems.is_empty() {
+        Ok(())
+    } else {
+        Err(oracle::assertion_failed(problems.join("\n\n")))
+    }
+}
+
+/// The modes the binary ships, read from `src/main.rs`: the `--mode` values
+/// and the `--symbol` lookup.
+fn shipped_modes() -> Result<Vec<String>, String> {
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("src")
+        .join("main.rs");
+    let source = fs::read_to_string(&path).map_err(|e| format!("read {path:?}: {e}"))?;
+    let field = source
+        .find("mode: Option<String>")
+        .ok_or("main.rs no longer declares `mode: Option<String>`")?;
+    let attribute = "value_parser = [";
+    let start = source[..field]
+        .rfind(attribute)
+        .ok_or("the `--mode` option no longer lists its values in `value_parser = [..]`")?;
+    let list = &source[start + attribute.len()..field];
+    let end = list
+        .find(']')
+        .ok_or("the `--mode` value list does not close")?;
+    let mut modes: Vec<String> = list[..end]
+        .split('"')
+        .skip(1)
+        .step_by(2)
+        .map(str::to_string)
+        .collect();
+    if source.contains("symbol: Option<String>") {
+        modes.push("symbol".to_string());
+    }
+    Ok(modes)
+}
+
+fn yaml_cases_under(dir: &Path) -> usize {
+    WalkDir::new(dir)
+        .follow_links(false)
+        .into_iter()
+        .filter_map(Result::ok)
+        .filter(|e| {
+            e.file_type().is_file()
+                && e.path()
+                    .extension()
+                    .and_then(|x| x.to_str())
+                    .is_some_and(|x| x == "yaml" || x == "yml")
+        })
+        .count()
+}
+
+/// Every mode the binary ships has a corpus with at least one case. `locate`
+/// ranks the selection `pack` prints, so the selection corpus is its corpus
+/// until locate gets cases of its own.
+fn modes_shipped_have_cases() -> Result<(), Failed> {
+    let mut missing = Vec::new();
+    for mode in shipped_modes().map_err(Failed::from)? {
+        let corpus = match mode.as_str() {
+            "pack" | "locate" => "diff",
+            "impact" => "impact",
+            "symbol" => "symbol",
+            other => {
+                return Err(Failed::from(format!(
+                    "the binary ships the mode `{other}` and the harness knows no corpus for it: \
+                     add its cases under tests/cases and name them in modes_shipped_have_cases"
+                )));
+            }
+        };
+        if yaml_cases_under(&cases_root().join(corpus)) == 0 {
+            missing.push(format!("{mode} (tests/cases/{corpus})"));
+        }
+    }
+    if missing.is_empty() {
+        Ok(())
+    } else {
+        Err(Failed::from(format!(
+            "shipped modes with no case: {}",
+            missing.join(", ")
+        )))
+    }
+}
+
 fn main() {
     let args = Arguments::from_args();
     start_supervisor();
@@ -665,20 +889,52 @@ fn main() {
         .and_then(|s| s.parse().ok());
 
     let mut cases = discover_cases();
+    // DIFFCTX_CASE_TAG=<tag>: only the impact and symbol cases carrying the tag
+    // run, against the binary DIFFCTX_BIN names; the in-process corpus is skipped.
+    let tag = std::env::var("DIFFCTX_CASE_TAG")
+        .ok()
+        .filter(|t| !t.is_empty());
+    if let Some(tag) = &tag {
+        cases.retain(|c| {
+            matches!(c.corpus, Corpus::Oracle(_)) && oracle::case::has_tag(&c.path, tag)
+        });
+    }
+    // The limit samples the selection corpus. The impact and symbol corpora
+    // are small, run the shipped binary and gate the answer's contract: they
+    // always run whole, so a red case cannot land behind a sample.
     if let Some(n) = limit {
-        cases = stratified_sample(cases, n);
+        let (whole, selection): (Vec<_>, Vec<_>) = cases
+            .into_iter()
+            .partition(|c| matches!(c.corpus, Corpus::Oracle(_)));
+        cases = stratified_sample(selection, n);
+        cases.extend(whole);
     }
 
     let mut trials: Vec<Trial> = cases
         .iter()
         .map(|c| {
             let (name, path) = (c.name.clone(), c.path.clone());
-            Trial::test(c.name.clone(), move || {
-                supervised(&name, || run_case(&name, &path))
-            })
-            .with_kind("yaml")
+            match c.corpus {
+                Corpus::Diff => Trial::test(c.name.clone(), move || {
+                    supervised(&name, || run_case(&name, &path))
+                })
+                .with_kind("yaml"),
+                Corpus::Oracle(mode) => {
+                    let language = c.language.clone();
+                    Trial::test(c.name.clone(), move || {
+                        supervised(&name, || run_oracle_case(&name, &path, mode, &language))
+                    })
+                    .with_kind("yaml")
+                }
+            }
         })
         .collect();
+    if tag.is_none() {
+        trials.push(
+            Trial::test("modes_shipped_have_cases", modes_shipped_have_cases).with_kind("oracle"),
+        );
+        trials.extend(oracle::negative::trials());
+    }
 
     // Every oracle case above runs Ego. `--scoring ppr`, `bm25` and `rrf` are
     // documented, user-selectable modes whose only other coverage asserts an
@@ -698,5 +954,9 @@ fn main() {
         }
     }
 
-    libtest_mimic::run(&args, trials).exit();
+    let conclusion = libtest_mimic::run(&args, trials);
+    if let Err(e) = oracle::report::write_if_requested() {
+        eprintln!("yaml_cases: could not write DIFFCTX_ORACLE_REPORT: {e}");
+    }
+    conclusion.exit();
 }

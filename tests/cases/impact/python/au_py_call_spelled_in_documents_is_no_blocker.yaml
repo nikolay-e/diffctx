@@ -1,0 +1,25 @@
+name: au_py_call_spelled_in_documents_is_no_blocker
+mode: impact
+source: synthetic
+tags: [python, au-unread, unread-file, documentation]
+repo:
+  initial_files:
+    shop/pricing.py: |
+      def total(items):
+          return sum(items)
+    docs/notes.md: |
+      before shipping run total(x) by hand
+    notes.txt: |
+      before shipping run total(x) by hand
+    notes.rst: |
+      before shipping run total(x) by hand
+  changed_files:
+    shop/pricing.py: |
+      def total(items):
+          return sum(items) + 1
+  commit_message: "pricing: total adds one"
+expect:
+  exact: true
+  callers: {total: []}
+  decoys:
+    shop/pricing.py::total: [docs/notes.md, notes.txt, notes.rst]

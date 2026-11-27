@@ -1,0 +1,52 @@
+name: fj264_retyped_field_read_by_modules_nothing_imports_is_not_absent
+mode: impact
+source: fj#264
+issue_state: open
+tags: [python, dataclass, untyped-receiver, unimported-module, absence-claim]
+repo:
+  initial_files:
+    model.py: |
+      from dataclasses import dataclass
+
+
+      @dataclass
+      class Reading:
+          date: str
+          value: float
+    use.py: |
+      from model import Reading
+
+
+      def latest(r: Reading):
+          return r.date
+    mod0.py: |
+      def f0(row, other):
+          return row.date, other.value, row.value
+    mod1.py: |
+      def f1(row, other):
+          return row.date, other.value, row.value
+  changed_files:
+    model.py: |
+      from dataclasses import dataclass
+
+
+      @dataclass
+      class Reading:
+          date: int
+          value: int
+  commit_message: "model: date and value are integers"
+# No analysed file imports mod0 or mod1, but each is a module a script, a test
+# or a notebook outside the snapshot may import: `row` and `other` are
+# parameters of functions nothing in the code calls, so they may hold a
+# `Reading`. The reads of `date` and `value` are named as reads the binding
+# model cannot place, never "nothing calls them".
+expect:
+  changed: [model.py::date, model.py::value]
+  relations:
+    - {from: "use.py::latest", to: "model.py::date", kind: reads, resolution: resolved, site: 5}
+  partial:
+    model.py::date:
+      reads: unlanded
+    model.py::value:
+      reads: unlanded
+  never_empty: true

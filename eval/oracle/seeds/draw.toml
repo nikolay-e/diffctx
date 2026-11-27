@@ -1,0 +1,23 @@
+# The set seeds: each one draw of the operating system's CSPRNG (`secrets.randbelow(2**31)`), made after
+# seeds/pool.json was frozen and before any set was drawn. Sets are drawn in this order, each from what the
+# earlier ones left. A holdout's rows are never read: only counters leave its measure rounds.
+# A set's `replaced = [{ name, reason }]` names a drawn repository the indexers cannot index (the rule at the top of
+# seeds.py) and why.
+
+[[set]]
+number = 2
+seed = 443519581
+drawn = "2026-11-27"
+holdout = false
+
+[[set]]
+number = 3
+seed = 1895105833
+drawn = "2026-11-27"
+holdout = true
+
+[[set]]
+number = 4
+seed = 1552430194
+drawn = "2026-11-27"
+holdout = true

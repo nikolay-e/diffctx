@@ -1,0 +1,30 @@
+name: config_renamed_nested_compose_key_is_no_service_name_a_script_could_spell
+mode: impact
+source: synthetic
+tags: [config, key-search, decoy]
+repo:
+  initial_files:
+    docker-compose.yml: |
+      services:
+        app:
+          image: busybox
+          environment:
+            db: primary
+        web:
+          image: nginx
+    scripts/shell.sh: |
+      #!/usr/bin/env bash
+      docker compose exec db psql
+  changed_files:
+    docker-compose.yml: |
+      services:
+        app:
+          image: busybox
+          environment:
+            database: primary
+        web:
+          image: nginx
+  commit_message: "compose: the environment key gets a longer name"
+expect:
+  exact: false
+  not_named_by: [scripts/shell.sh]

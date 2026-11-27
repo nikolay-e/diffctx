@@ -1,0 +1,24 @@
+name: k7_svg_inline_handler_names_the_script_function
+mode: impact
+source: synthetic
+tags: [web, svg, inline-handler, false-absence]
+repo:
+  initial_files:
+    public/js/forms.js: |
+      function validateCheckoutForm(f) {
+        return f.elements.length > 0;
+      }
+    views/icon.svg: |
+      <svg xmlns="http://www.w3.org/2000/svg"><rect onclick="validateCheckoutForm(this)"/></svg>
+  changed_files:
+    public/js/forms.js: |
+      function validateCheckoutForm(f) {
+        return f.elements.length > 1;
+      }
+  commit_message: "forms: a checkout needs two fields"
+expect:
+  exact: false
+  discloses: true
+  no_negative_claims: true
+  relations:
+    - {from: views/icon.svg, to: public/js/forms.js::validateCheckoutForm, kind: calls, resolution: unresolved}

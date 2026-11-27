@@ -1,0 +1,26 @@
+name: sh_function_in_backticks_after_printf_is_a_caller
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [shell, builtin, command-word]
+repo:
+  initial_files:
+    lib.sh: |
+      check() {
+        return 0
+      }
+    run.sh: |
+      #!/bin/sh
+      . ./lib.sh
+      printf '%s\n' `check`
+  changed_files:
+    lib.sh: |
+      check() {
+        return 1
+      }
+  commit_message: change
+expect:
+  changed: ['lib.sh::check']
+  relations:
+  - {from: run.sh, to: 'lib.sh::check', kind: calls, resolution: resolved}
+  exact: false

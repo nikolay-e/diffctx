@@ -1,0 +1,33 @@
+name: ts_array_subclass_override_called_through_the_builtin_type_is_a_gap
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [typescript, builtin, gap]
+repo:
+  initial_files:
+    package.json: |
+      {"name":"app","version":"1.0.0"}
+    tsconfig.json: |
+      {"compilerOptions":{"strict":true}}
+    src/bag.ts: |
+      export class Bag<T> extends Array<T> {
+        push(...items: T[]): number {
+          return super.push(...items, ...items);
+        }
+      }
+    src/use.ts: |
+      export function fill(xs: number[]): void {
+        xs.push(1);
+      }
+  changed_files:
+    src/bag.ts: |
+      export class Bag<T> extends Array<T> {
+        push(...items: T[]): number {
+          return super.push(...items);
+        }
+      }
+  commit_message: change
+expect:
+  changed: ['src/bag.ts::push']
+  partial:
+    src/bag.ts::push: {calls: unlanded}

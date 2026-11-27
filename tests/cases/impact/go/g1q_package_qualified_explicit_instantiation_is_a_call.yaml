@@ -1,0 +1,48 @@
+name: g1q_package_qualified_explicit_instantiation_is_a_call
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [go, generics, call, blackbox2]
+repo:
+  initial_files:
+    go.mod: |
+      module example.com/app
+
+      go 1.22
+    conv/conv.go: |
+      package conv
+
+      func Parse[T any](s string) T {
+          var z T
+          return z
+      }
+    app/app.go: |
+      package app
+
+      import "example.com/app/conv"
+
+      func Run() any { return conv.Parse[int]("1") }
+    app/app_test.go: |
+      package app
+
+      import "testing"
+
+      func TestRun(t *testing.T) { _ = Run() }
+  changed_files:
+    conv/conv.go: |
+      package conv
+
+      func Parse[T any](s string) T {
+          var z T
+          if s == "" {
+              panic("empty")
+          }
+          return z
+      }
+  commit_message: "conv: refuse an empty string"
+expect:
+  changed: [conv/conv.go::Parse]
+  relations:
+    - {from: app/app.go::Run, to: conv/conv.go::Parse, kind: calls, resolution: resolved, site: 5}
+  not_untested: [Parse]
+  never_empty: true

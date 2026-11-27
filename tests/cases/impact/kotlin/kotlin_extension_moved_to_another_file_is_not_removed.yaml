@@ -1,0 +1,38 @@
+name: kotlin_extension_moved_to_another_file_is_not_removed
+mode: impact
+source: synthetic
+tags: [kotlin, move, removed]
+repo:
+  initial_files:
+    Use.kt: |
+      fun go(f: Foo): Int {
+          return f.b()
+      }
+    Foo.kt: |
+      class Foo {
+          fun a(): Int = 1
+      }
+
+      fun Foo.b(): Int {
+          return 2
+      }
+    More.kt: |
+      fun Foo.c(): Int {
+          return 3
+      }
+  changed_files:
+    Foo.kt: |
+      class Foo {
+          fun a(): Int = 1
+      }
+    More.kt: |
+      fun Foo.c(): Int {
+          return 3
+      }
+
+      fun Foo.b(): Int {
+          return 2
+      }
+  commit_message: Move Foo.b to another file
+expect:
+  removed: []

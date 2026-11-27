@@ -1,0 +1,26 @@
+name: py_attribute_call_on_a_dunder_import_result_names_its_site
+mode: impact
+source: synthetic
+issue_state: open
+tags: [python, dunder-import, dynamic-name, coverage]
+repo:
+  initial_files:
+    modules/M8.py: |
+      def foo(x):
+          return x + 1
+    modules/Main.py: |
+      mod = __import__('M8')
+      mod.foo(1)
+  changed_files:
+    modules/M8.py: |
+      def foo(x):
+          return x + 2
+  commit_message: "M8: foo adds two"
+expect:
+  changed: [modules/M8.py::foo]
+  discloses: true
+  never_empty: true
+  no_negative_claims: true
+  partial:
+    modules/M8.py::foo:
+      calls: unlanded

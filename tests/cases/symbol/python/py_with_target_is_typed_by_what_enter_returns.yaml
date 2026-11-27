@@ -1,0 +1,38 @@
+name: py_with_target_is_typed_by_what_enter_returns
+mode: symbol
+source: synthetic
+issue_state: open
+tags: [python, symbol, context-manager, receiver]
+# The `as` target is what `__enter__` returns: here a `Connection`, so `conn.execute()`
+# is a call of `Connection.execute` and never of `Pool.execute`.
+repo:
+  initial_files:
+    shop/conn.py: |
+      class Connection:
+          def execute(self):
+              pass
+    shop/pool.py: |
+      from shop.conn import Connection
+
+
+      class Pool:
+          def __enter__(self):
+              return Connection()
+
+          def __exit__(self, *args):
+              pass
+
+          def execute(self):
+              pass
+    shop/app.py: |
+      from shop.pool import Pool
+
+      with Pool() as conn:
+          conn.execute()
+  commit_message: init
+query:
+  symbol: execute
+expect:
+  definitions: [shop/conn.py::Connection.execute, shop/pool.py::Pool.execute]
+  relations:
+    - {from: shop/app.py, to: shop/conn.py::Connection.execute, kind: calls, resolution: resolved, site: 4}

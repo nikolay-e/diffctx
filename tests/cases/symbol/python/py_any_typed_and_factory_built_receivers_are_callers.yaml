@@ -1,0 +1,46 @@
+name: py_any_typed_and_factory_built_receivers_are_callers
+mode: symbol
+source: gh#425
+issue_state: closed
+tags: [python, receiver-typing, async-factory, any]
+repo:
+  initial_files:
+    models/__init__.py: ""
+    models/model.py: |
+      class Model:
+          @classmethod
+          async def from_config(cls, cfg) -> "Model":
+              return cls()
+
+          async def generate_with_web_search(self, prompt):
+              return prompt
+    workflow/__init__.py: ""
+    workflow/nodes.py: |
+      from typing import Any
+
+
+      class Research:
+          async def _research(self, key: str, model: Any, prompt: str):
+              return await model.generate_with_web_search(prompt)
+    tests/test_model.py: |
+      from models.model import Model
+
+
+      async def test_search():
+          model = await Model.from_config({})
+          assert await model.generate_with_web_search("q")
+query:
+  symbol: generate_with_web_search
+expect:
+  definitions: [models/model.py::generate_with_web_search]
+  relations:
+    - from: "workflow/nodes.py::_research"
+      to: "models/model.py::generate_with_web_search"
+      kind: "calls"
+      resolution: "candidate"
+      site: 6
+    - from: "tests/test_model.py::test_search"
+      to: "models/model.py::generate_with_web_search"
+      kind: "calls"
+      resolution: "resolved"
+      site: 6

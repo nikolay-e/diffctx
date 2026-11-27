@@ -1,0 +1,33 @@
+name: swift_method_answering_a_protocol_requirement_in_the_same_file_is_an_implementation
+mode: impact
+source: synthetic
+tags: [swift, protocol, implementation]
+repo:
+  initial_files:
+    Sources/Demo/Shape.swift: |
+      protocol Shape {
+          func area() -> Double
+      }
+
+      struct Square: Shape {
+          func area() -> Double { return 1.0 }
+      }
+  changed_files:
+    Sources/Demo/Shape.swift: |
+      protocol Shape {
+          func area() throws -> Double
+      }
+
+      struct Square: Shape {
+          func area() -> Double { return 1.0 }
+      }
+  commit_message: "shape: area may throw"
+expect:
+  exact: false
+  relations:
+    # Square sits in the protocol's file, on lines the range leaves alone.
+    - from: Sources/Demo/Shape.swift::Square.area
+      to: Sources/Demo/Shape.swift::Shape.area
+      kind: overrides
+      resolution: resolved
+      site: 6

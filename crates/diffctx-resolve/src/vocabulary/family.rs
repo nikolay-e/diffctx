@@ -1,0 +1,461 @@
+//! The languages one resolver reads, and the resolver behind each: the layer the
+//! impact answer's cells share.
+
+#![deny(clippy::disallowed_methods)]
+
+use std::sync::Arc;
+
+use anyhow::Result;
+
+use crate::resolve::{
+    Binding, CResolver, ConfigResolver, Definition, DockerfileResolver, GoResolver, JavaResolver,
+    KotlinResolver, PhpResolver, PythonResolver, RustResolver, ShellResolver, SqlResolver,
+    SwiftResolver, TerraformResolver, TypeScriptResolver,
+};
+use diffctx_facts::facts::{DefKey, FactsCache, Language};
+use diffctx_snapshot::snapshot::{
+    self, Admission, AdmissionPolicy, AnalysisContext, Loss, RangeSpec, RepoPath, RunBudget, Side,
+    SideTag, WorkspaceModel,
+};
+
+/// The languages one resolver reads: a cell answers for one family.
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub enum Family {
+    Python,
+    TypeScript,
+    Rust,
+    Kotlin,
+    Java,
+    Go,
+    Php,
+    C,
+    /// YAML files read as configuration objects: what an object's fields name,
+    /// by the table of the facts layer.
+    Config,
+    /// Terraform files: a module is a directory, and a name is a traversal's
+    /// root and its attributes.
+    Terraform,
+    /// A Dockerfile: its stages, the variables and places its instructions name.
+    Dockerfile,
+    /// Shell scripts: functions and variables, the files a script sources.
+    Shell,
+    /// Swift: the Kotlin engine in its Swift dialect, a module being a target.
+    Swift,
+    /// SQL files: the routines and views they define, and the calls and reads of them.
+    Sql,
+}
+
+impl Family {
+    pub const ALL: [Self; 14] = [
+        Self::Python,
+        Self::TypeScript,
+        Self::Rust,
+        Self::Kotlin,
+        Self::Java,
+        Self::Go,
+        Self::Php,
+        Self::C,
+        Self::Config,
+        Self::Terraform,
+        Self::Dockerfile,
+        Self::Shell,
+        Self::Swift,
+        Self::Sql,
+    ];
+
+    pub fn has(self, language: Language) -> bool {
+        match self {
+            Self::Python => language == Language::Python,
+            Self::TypeScript => matches!(
+                language,
+                Language::JavaScript | Language::TypeScript | Language::Html | Language::Astro
+            ),
+            Self::Rust => language == Language::Rust,
+            Self::Kotlin => language == Language::Kotlin,
+            Self::Java => language == Language::Java,
+            Self::Go => language == Language::Go,
+            Self::Php => language == Language::Php,
+            Self::C => matches!(language, Language::C | Language::Cpp),
+            Self::Config => language.is_config_family(),
+            Self::Terraform => language == Language::Terraform,
+            Self::Dockerfile => language == Language::Dockerfile,
+            Self::Shell => matches!(language, Language::Shell | Language::ShellUnread),
+            Self::Swift => language == Language::Swift,
+            Self::Sql => language == Language::Sql,
+        }
+    }
+
+    /// Whether the family runs a definition by its name wherever its file was
+    /// loaded, not through an import of that file: a shell function is global once
+    /// sourced, so a script that sources nothing may still call one a deleted file
+    /// defined, and a name the head no longer defines is no proof it is not that one.
+    pub const fn names_are_global(self) -> bool {
+        matches!(self, Self::Shell)
+    }
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Python => "Python",
+            Self::TypeScript => "TypeScript/JavaScript",
+            Self::Rust => "Rust",
+            Self::Kotlin => "Kotlin",
+            Self::Java => "Java",
+            Self::Go => "Go",
+            Self::Php => "PHP",
+            Self::C => "C",
+            Self::Config => "configuration",
+            Self::Terraform => "Terraform",
+            Self::Dockerfile => "Dockerfile",
+            Self::Shell => "shell",
+            Self::Swift => "Swift",
+            Self::Sql => "SQL",
+        }
+    }
+
+    /// Whether a file of this extension is read by the family's resolver.
+    pub fn has_path(self, path: &str) -> bool {
+        // A YAML file is the configuration cell's only where it holds objects
+        // (`Cell::owns` reads that off the resolver): the rest of the YAML of a
+        // repository (workflows, compose files, values) is read by other paths.
+        self != Self::Config && self.by_extension(path)
+    }
+
+    fn by_extension(self, path: &str) -> bool {
+        RepoPath::new(path)
+            .is_ok_and(|p| Language::from_path(&p).is_some_and(|language| self.has(language)))
+    }
+
+    /// The files that can name this family's definitions: the languages that
+    /// call into each other share a group (Kotlin and Java, C and C++, the web's
+    /// scripts and the markup that embeds them), any other family stands alone.
+    pub const fn group(self) -> Group {
+        match self {
+            Self::Kotlin | Self::Java => Group::Jvm,
+            Self::C => Group::Native,
+            Self::TypeScript => Group::Web,
+            Self::Python
+            | Self::Rust
+            | Self::Go
+            | Self::Php
+            | Self::Config
+            | Self::Terraform
+            | Self::Dockerfile
+            | Self::Shell
+            | Self::Swift
+            | Self::Sql => Group::Family(self),
+        }
+    }
+}
+
+/// The files whose uses can name a definition: its interaction group. Membership
+/// is by extension, so the languages no cell reads (Scala, Groovy, Objective-C,
+/// Vue, Svelte, HTML, Astro, Swift, SQL, ...) are in their group and are
+/// accounted for like any file of it, never left out of scope.
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub enum Group {
+    Family(Family),
+    /// Java, Kotlin, Scala and Groovy: they call each other.
+    Jvm,
+    /// C, C++ and Objective-C: they bridge and link.
+    Native,
+    /// The scripts of the web and the markup and components that embed them.
+    Web,
+    /// A language no family reads, alone in its group (its name as the language
+    /// table spells it).
+    Language(&'static str),
+}
+
+impl Group {
+    /// The group a file belongs to by its extension; none for a file of no known
+    /// language.
+    pub fn of_path(path: &RepoPath) -> Option<Self> {
+        if let Some(language) = Language::from_path(path) {
+            return Family::ALL
+                .into_iter()
+                .find(|family| family.has(language))
+                .map(Family::group);
+        }
+        if path.as_str().to_ascii_lowercase().ends_with(".astro") {
+            return Some(Self::Web);
+        }
+        diffctx_base::languages::get_language_for_file(path.as_str()).map(|language| match language
+        {
+            "java" | "kotlin" | "scala" | "groovy" => Self::Jvm,
+            "c" | "cpp" | "objectivec" => Self::Native,
+            "typescript" | "tsx" | "javascript" | "jsx" | "html" | "vue" | "svelte" => Self::Web,
+            other => Self::Language(other),
+        })
+    }
+
+    /// `of_path` for a name a layer holds as text, an answer's printed path: none
+    /// when the text is no repository path (an absolute one, a Windows drive), so
+    /// a place on the disk is never given the group its extension suggests.
+    pub fn of_name(name: &str) -> Option<Self> {
+        match RepoPath::new(name) {
+            Ok(path) => Self::of_path(&path),
+            Err(_) => None,
+        }
+    }
+
+    pub fn has_path(self, name: &str) -> bool {
+        Self::of_name(name) == Some(self)
+    }
+}
+
+/// The resolver of a family, behind the one set of questions a cell asks.
+pub enum Resolver {
+    Python(PythonResolver),
+    TypeScript(TypeScriptResolver),
+    Rust(RustResolver),
+    Kotlin(KotlinResolver),
+    Java(JavaResolver),
+    Go(GoResolver),
+    Php(PhpResolver),
+    C(CResolver),
+    Config(ConfigResolver),
+    Terraform(TerraformResolver),
+    Dockerfile(DockerfileResolver),
+    Shell(ShellResolver),
+    Sql(SqlResolver),
+    Swift(SwiftResolver),
+}
+
+impl Resolver {
+    pub fn open(
+        family: Family,
+        ctx: &AnalysisContext,
+        side: SideTag,
+        cache: &FactsCache,
+    ) -> Result<Self> {
+        let _open = diffctx_base::profile::detail(
+            match side {
+                SideTag::Head => "resolver.open.head",
+                SideTag::Base => "resolver.open.base",
+            },
+            family.name(),
+        );
+        Ok(match family {
+            Family::Python => Self::Python(PythonResolver::open(ctx, side, cache)?),
+            Family::TypeScript => Self::TypeScript(TypeScriptResolver::open(ctx, side, cache)?),
+            Family::Rust => Self::Rust(RustResolver::open(ctx, side, cache)?),
+            Family::Kotlin => Self::Kotlin(KotlinResolver::open(ctx, side, cache)?),
+            Family::Java => Self::Java(JavaResolver::open(ctx, side, cache)?),
+            Family::Go => Self::Go(GoResolver::open(ctx, side, cache)?),
+            Family::Php => Self::Php(PhpResolver::open(ctx, side, cache)?),
+            Family::C => Self::C(CResolver::open(ctx, side, cache)?),
+            Family::Config => Self::Config(ConfigResolver::open(ctx, side, cache)?),
+            Family::Terraform => Self::Terraform(TerraformResolver::open(ctx, side, cache)?),
+            Family::Dockerfile => Self::Dockerfile(DockerfileResolver::open(ctx, side, cache)?),
+            Family::Shell => Self::Shell(ShellResolver::open(ctx, side, cache)?),
+            Family::Swift => Self::Swift(SwiftResolver::open(ctx, side, cache)?),
+            Family::Sql => Self::Sql(SqlResolver::open(ctx, side, cache)?),
+        })
+    }
+
+    pub fn bindings(&self) -> &[Binding] {
+        match self {
+            Self::Python(r) => r.bindings(),
+            Self::TypeScript(r) => r.bindings(),
+            Self::Rust(r) => r.bindings(),
+            Self::Kotlin(r) => r.bindings(),
+            Self::Java(r) => r.bindings(),
+            Self::Go(r) => r.bindings(),
+            Self::Php(r) => r.bindings(),
+            Self::C(r) => r.bindings(),
+            Self::Config(r) => r.bindings(),
+            Self::Terraform(r) => r.bindings(),
+            Self::Dockerfile(r) => r.bindings(),
+            Self::Shell(r) => r.bindings(),
+            Self::Sql(r) => r.bindings(),
+            Self::Swift(r) => r.bindings(),
+        }
+    }
+
+    /// The modules a name names, for the families that import modules by name.
+    pub fn modules_named(&self, dotted: &str) -> Vec<RepoPath> {
+        match self {
+            Self::Python(r) => r.modules_named(dotted),
+            _ => Vec::new(),
+        }
+    }
+
+    /// How many files that `may_reach` compute a name that could be a definition's
+    /// (`getattr(obj, name)`, `Lib.class.getMethod(name)`), for the families whose
+    /// facts say so.
+    pub fn name_computers(
+        &self,
+        builds: bool,
+        subjects: &[&DefKey],
+        may_reach: impl Fn(&str) -> bool,
+    ) -> usize {
+        match self {
+            Self::Python(r) => r.name_computers(builds, subjects, may_reach),
+            Self::Kotlin(r) => r.name_computers(builds, subjects, may_reach),
+            Self::Java(r) => r.name_computers(builds, subjects, may_reach),
+            _ => 0,
+        }
+    }
+
+    /// Whether Jackson calls the Java getter the key names.
+    pub fn serialized(&self, key: &DefKey) -> bool {
+        matches!(self, Self::Java(r) if r.serialized(key))
+    }
+
+    pub fn definitions(&self) -> &[Definition] {
+        match self {
+            Self::Python(r) => r.definitions(),
+            Self::TypeScript(r) => r.definitions(),
+            Self::Rust(r) => r.definitions(),
+            Self::Kotlin(r) => r.definitions(),
+            Self::Java(r) => r.definitions(),
+            Self::Go(r) => r.definitions(),
+            Self::Php(r) => r.definitions(),
+            Self::C(r) => r.definitions(),
+            Self::Config(r) => r.definitions(),
+            Self::Terraform(r) => r.definitions(),
+            Self::Dockerfile(r) => r.definitions(),
+            Self::Shell(r) => r.definitions(),
+            Self::Sql(r) => r.definitions(),
+            Self::Swift(r) => r.definitions(),
+        }
+    }
+
+    pub fn references_to(&self, key: &DefKey) -> Vec<&Binding> {
+        match self {
+            Self::Python(r) => r.references_to(key),
+            Self::TypeScript(r) => r.references_to(key),
+            Self::Rust(r) => r.references_to(key),
+            Self::Kotlin(r) => r.references_to(key),
+            Self::Java(r) => r.references_to(key),
+            Self::Go(r) => r.references_to(key),
+            Self::Php(r) => r.references_to(key),
+            Self::C(r) => r.references_to(key),
+            Self::Config(r) => r.references_to(key),
+            Self::Terraform(r) => r.references_to(key),
+            Self::Dockerfile(r) => r.references_to(key),
+            Self::Shell(r) => r.references_to(key),
+            Self::Sql(r) => r.references_to(key),
+            Self::Swift(r) => r.references_to(key),
+        }
+    }
+
+    /// Whether a removal in `file` is a change of what the project exports. Rust
+    /// exports only through modules declared `pub` from a library root, Go through
+    /// packages other than `main` and those under `internal/`; a file
+    /// outside every crate (no manifest names it) and one the head no longer
+    /// holds are taken to have exported.
+    pub fn exports(&self, file: &str, workspace: &WorkspaceModel) -> bool {
+        match self {
+            Self::Rust(r) => {
+                r.is_public_module(file)
+                    || workspace.rust_module(file).is_none()
+                    || !r.definitions().iter().any(|d| d.file.as_str() == file)
+            }
+            Self::Go(r) => {
+                r.is_public_package(file)
+                    || !r.definitions().iter().any(|d| d.file.as_str() == file)
+            }
+            _ => true,
+        }
+    }
+
+    /// The files the resolver read.
+    pub fn read_paths(&self) -> &[RepoPath] {
+        match self {
+            Self::Python(r) => r.read_paths(),
+            Self::TypeScript(r) => r.read_paths(),
+            Self::Rust(r) => r.read_paths(),
+            Self::Kotlin(r) => r.read_paths(),
+            Self::Java(r) => r.read_paths(),
+            Self::Go(r) => r.read_paths(),
+            Self::Php(r) => r.read_paths(),
+            Self::C(r) => r.read_paths(),
+            Self::Config(r) => r.read_paths(),
+            Self::Terraform(r) => r.read_paths(),
+            Self::Dockerfile(r) => r.read_paths(),
+            Self::Shell(r) => r.read_paths(),
+            Self::Sql(r) => r.read_paths(),
+            Self::Swift(r) => r.read_paths(),
+        }
+    }
+
+    pub fn losses(&self) -> &[Loss] {
+        match self {
+            Self::Python(r) => r.losses(),
+            Self::TypeScript(r) => r.losses(),
+            Self::Rust(r) => r.losses(),
+            Self::Kotlin(r) => r.losses(),
+            Self::Java(r) => r.losses(),
+            Self::Go(r) => r.losses(),
+            Self::Php(r) => r.losses(),
+            Self::C(r) => r.losses(),
+            Self::Config(r) => r.losses(),
+            Self::Terraform(r) => r.losses(),
+            Self::Dockerfile(r) => r.losses(),
+            Self::Shell(r) => r.losses(),
+            Self::Sql(r) => r.losses(),
+            Self::Swift(r) => r.losses(),
+        }
+    }
+
+    /// The module calls that name a source outside the repository.
+    pub fn external_sources(&self) -> usize {
+        match self {
+            Self::Terraform(r) => r.external_sources(),
+            _ => 0,
+        }
+    }
+
+    /// Whether the module `file` is in is entered from outside, applied or called
+    /// by another repository, so that what sets its variables and reads its
+    /// outputs is not in the snapshot.
+    pub fn root_module(&self, file: &str) -> bool {
+        match self {
+            Self::Terraform(r) => r.is_root(file),
+            _ => false,
+        }
+    }
+}
+
+/// `context` for a reader that holds no `ScoredState`: the root and the run's
+/// I/O limits.
+pub fn context_in(
+    root: &std::path::Path,
+    limits: (
+        Option<std::time::Instant>,
+        Arc<std::sync::atomic::AtomicBool>,
+    ),
+    range: Option<&str>,
+    symbol: bool,
+) -> Result<AnalysisContext> {
+    let repo = snapshot::open(root)?;
+    let spec = if symbol {
+        RangeSpec::At(Side::WorkingTree)
+    } else {
+        match snapshot::resolve(&repo, range.map_or("HEAD", str::trim))? {
+            RangeSpec::Staged { base } => RangeSpec::Review {
+                base,
+                head: snapshot::index_tree(&repo)?,
+            },
+            other => other,
+        }
+    };
+    let (deadline, cancel) = limits;
+    let budget = RunBudget {
+        deadline,
+        cancel: Some(cancel),
+        read_fault: diffctx_snapshot::resource::test_read_fault(),
+    };
+    // The cap the engine reads a changed file under: a file past it is listed,
+    // not read, here as in the fragments.
+    let admission = Admission::new(AdmissionPolicy {
+        size_cap: diffctx_config::config::limits::LIMITS.max_changed_file_size as u64,
+        ..AdmissionPolicy::default()
+    });
+    Ok(AnalysisContext::with_admission(
+        repo,
+        spec,
+        budget,
+        Arc::new(admission),
+    )?)
+}

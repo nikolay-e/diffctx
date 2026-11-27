@@ -1,0 +1,36 @@
+name: config_prose_values_of_a_data_json_are_not_searched_as_contract_literals
+mode: impact
+source: gh#700
+issue_state: open
+tags:
+- config
+- json
+- named-by
+- decoy
+- data
+repo:
+  initial_files:
+    README.md: |
+      # notes
+    docs/notes.md: |
+      The token-budgeted BM25-only baseline is described here.
+    src/engine.py: |
+      def baseline():
+          """The BM25-only baseline, token-budgeted."""
+          return 0
+    reports/history.json: |
+      {
+        "final_answer": "The BM25-only baseline, 0.85]\n\nSWE-bench shows token-budgeted recall",
+        "scores": {"a": 7.5, "b": "8.0\n(Model A)"}
+      }
+  changed_files:
+    reports/big.json: |
+      {
+        "answers": ["the token-budgeted BM25-only baseline, more prose"]
+      }
+  commit_message: Add a second report
+expect:
+  not_named_by:
+  - reports/history.json
+  - docs/notes.md
+  - src/engine.py

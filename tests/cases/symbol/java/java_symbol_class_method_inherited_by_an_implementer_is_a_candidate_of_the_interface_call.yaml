@@ -1,0 +1,49 @@
+name: java_symbol_class_method_inherited_by_an_implementer_is_a_candidate_of_the_interface_call
+mode: symbol
+source: synthetic
+issue_state: open
+tags: [java, dispatch, default-method, inheritance]
+repo:
+  initial_files:
+    pom.xml: |
+      <project><modelVersion>4.0.0</modelVersion><groupId>a</groupId><artifactId>a</artifactId><version>1</version></project>
+    src/main/java/j8dim/SuperClass.java: |
+      package j8dim;
+
+      class SuperClass {
+          public void method() {
+              // do something
+          }
+
+          public static void main(String[] args) {
+              Interface i = new SubClass();
+              i.method();
+          }
+      }
+
+      interface Interface {
+          default void method() {
+              // do something
+          }
+      }
+
+      class SubClass extends SuperClass implements Interface {
+      }
+query:
+  symbol: method
+expect:
+  exact: false
+  definitions:
+    - src/main/java/j8dim/SuperClass.java::SuperClass.method
+    - src/main/java/j8dim/SuperClass.java::Interface.method
+  relations:
+    - from: src/main/java/j8dim/SuperClass.java::SuperClass.main
+      to: src/main/java/j8dim/SuperClass.java::SuperClass.method
+      kind: calls
+      resolution: candidate
+      site: 10
+    - from: src/main/java/j8dim/SuperClass.java::SuperClass.main
+      to: src/main/java/j8dim/SuperClass.java::Interface.method
+      kind: calls
+      resolution: candidate
+      site: 10

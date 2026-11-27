@@ -3,9 +3,11 @@ use std::fmt::Write;
 use std::fs;
 use std::path::PathBuf;
 
-use _diffctx::in_memory_harness::fragment_rows;
 use serde::Deserialize;
 use walkdir::WalkDir;
+
+mod support;
+use support::memory::fragment_rows;
 
 #[derive(Deserialize, Default)]
 struct Case {
@@ -73,7 +75,8 @@ fn current_snapshot() -> BTreeMap<String, String> {
             .collect::<Vec<_>>()
             .join("/");
         let raw = fs::read_to_string(path).unwrap();
-        let case: Case = serde_yaml::from_str(&raw).unwrap_or_else(|e| panic!("{case_name}: {e}"));
+        let case: Case =
+            diffctx_base::yaml::from_str(&raw).unwrap_or_else(|e| panic!("{case_name}: {e}"));
         let rows: String = case
             .repo
             .initial_files

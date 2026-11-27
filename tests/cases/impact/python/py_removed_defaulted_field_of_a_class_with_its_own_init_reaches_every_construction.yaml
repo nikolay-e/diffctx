@@ -1,0 +1,47 @@
+name: py_removed_defaulted_field_of_a_class_with_its_own_init_reaches_every_construction
+mode: impact
+source: gh#400
+issue_state: closed
+tags: [python, removed-field, construction, control, dataclass]
+repo:
+  initial_files:
+    svc/__init__.py: ""
+    svc/model.py: |
+      from dataclasses import dataclass
+
+
+      @dataclass
+      class Item:
+          id: int
+          size: int = 0
+          note: str = ""
+
+          def __init__(self, id, note=""):
+              self.id = id
+              self.note = note
+    svc/by_name.py: |
+      from svc.model import Item
+
+
+      def build():
+          return Item(id=1, note="n")
+  changed_files:
+    svc/model.py: |
+      from dataclasses import dataclass
+
+
+      @dataclass
+      class Item:
+          id: int
+          note: str = ""
+
+          def __init__(self, id, note=""):
+              self.id = id
+              self.note = note
+  commit_message: "model: drop the size field"
+expect:
+  removed: [size]
+  # The class builds itself: what its own `__init__` reads of the removed
+  # field is not in the argument list, so no construction is left out.
+  relations:
+    - {from: "svc/by_name.py::build", to: "svc/model.py::Item", kind: instantiates, resolution: resolved, site: 5}

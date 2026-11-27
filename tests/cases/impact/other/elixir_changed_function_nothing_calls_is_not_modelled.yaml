@@ -1,0 +1,27 @@
+name: elixir_changed_function_nothing_calls_is_not_modelled
+mode: impact
+source: synthetic
+issue_state: closed
+tags:
+- tier3
+- no-grammar
+- elixir
+repo:
+  initial_files:
+    lib/greeter.ex: |
+      defmodule Greeter do
+        def hello(name) do
+          "hi " <> name
+        end
+      end
+  changed_files:
+    lib/greeter.ex: |
+      defmodule Greeter do
+        def hello(name) do
+          "hello " <> name
+        end
+      end
+  commit_message: Change elixir changed function nothing calls is not modelled
+expect:
+  discloses: true
+  no_negative_claims: true

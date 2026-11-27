@@ -1,0 +1,33 @@
+name: shell_function_named_in_a_go_raw_string_over_lines_is_no_command
+mode: impact
+source: synthetic
+tags: [shell, literal-name, decoy, go, layout]
+repo:
+  initial_files:
+    lib/strings.sh: |
+      #!/usr/bin/env bash
+      slugify() {
+        echo "${1,,}"
+      }
+    cmd/main.go: |
+      package main
+
+      func note() string {
+      	return `
+      first
+      ran slugify abc
+      last
+      `
+      }
+  changed_files:
+    lib/strings.sh: |
+      #!/usr/bin/env bash
+      slugify() {
+        printf '%s\n' "${1,,}"
+      }
+  commit_message: "strings: slugify prints through printf"
+expect:
+  exact: true
+  callers: {slugify: []}
+  decoys:
+    lib/strings.sh::slugify: [cmd/main.go]

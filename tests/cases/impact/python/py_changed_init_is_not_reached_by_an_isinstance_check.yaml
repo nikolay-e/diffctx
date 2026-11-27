@@ -1,0 +1,39 @@
+name: py_changed_init_is_not_reached_by_an_isinstance_check
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [python, oracle, init-reach, decoy, isinstance]
+repo:
+  initial_files:
+    shapes/__init__.py: ""
+    shapes/box.py: |
+      class Box:
+          def __init__(self, size):
+              self.size = size
+    shapes/make.py: |
+      from shapes.box import Box
+
+
+      def make(size):
+          return Box(size)
+    shapes/check.py: |
+      from shapes.box import Box
+
+
+      def is_box(value):
+          return isinstance(value, Box) or isinstance(value, (Box, list))
+  changed_files:
+    shapes/box.py: |
+      class Box:
+          def __init__(self, size):
+              self.size = int(size)
+  commit_message: "box: size is an int"
+expect:
+  relations:
+    - from: "shapes/make.py::make"
+      to: "shapes/box.py::Box"
+      kind: instantiates
+      resolution: resolved
+      site: 5
+  decoys:
+    shapes/box.py::Box: [shapes/check.py]

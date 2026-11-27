@@ -1,0 +1,47 @@
+name: py_getattr_with_a_computed_name_hedges_the_methods_it_can_reach
+mode: impact
+source: synthetic
+issue_state: open
+tags: [python, getattr, dynamic-name, coverage]
+repo:
+  initial_files:
+    main.py: |
+      import sys
+
+
+      class Service:
+          def start_workers(self):
+              pass
+
+          def drain_queue(self):
+              pass
+
+
+      name = sys.argv[1]
+      service = Service()
+      getattr(service, name)()
+  changed_files:
+    main.py: |
+      import sys
+
+
+      class Service:
+          def start_workers(self):
+              pass
+
+          def drain_queue(self):
+              return 1
+
+
+      name = sys.argv[1]
+      service = Service()
+      getattr(service, name)()
+  commit_message: "service: drain_queue returns one"
+expect:
+  changed: [main.py::drain_queue]
+  discloses: true
+  no_negative_claims: true
+  partial:
+    main.py::drain_queue:
+      calls: not_traced
+      reads: not_traced

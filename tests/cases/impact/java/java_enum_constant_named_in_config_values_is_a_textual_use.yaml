@@ -1,0 +1,66 @@
+name: java_enum_constant_named_in_config_values_is_a_textual_use
+mode: impact
+source: synthetic
+tags: [java, enum, literal-name, config]
+repo:
+  initial_files:
+    src/main/java/com/acme/lib/Color.java: |
+      package com.acme.lib;
+
+      public enum Color {
+          RED("f00"),
+          TAN("d2b"),
+          SKY("8cf");
+
+          private final String hex;
+
+          Color(String hex) {
+              this.hex = hex;
+          }
+      }
+    src/main/resources/application.yml: |
+      app:
+        color: RED
+    src/main/resources/application.properties: |
+      app.fallback=TAN
+    src/main/resources/palette.json: |
+      {"color": "SKY"}
+    package-lock.json: |
+      {"packages": {"node_modules/sky": {"integrity": "SKY"}}}
+    .gitignore: |
+      SKY
+  changed_files:
+    src/main/java/com/acme/lib/Color.java: |
+      package com.acme.lib;
+
+      public enum Color {
+          RED("ff0000"),
+          TAN("ddbb22"),
+          SKY("88ccff");
+
+          private final String hex;
+
+          Color(String hex) {
+              this.hex = hex;
+          }
+      }
+  commit_message: "color: six-digit hex"
+expect:
+  exact: false
+  discloses: true
+  no_negative_claims: true
+  relations:
+    - from: src/main/resources/application.yml
+      to: src/main/java/com/acme/lib/Color.java::RED
+      kind: calls
+      resolution: unresolved
+    - from: src/main/resources/application.properties
+      to: src/main/java/com/acme/lib/Color.java::TAN
+      kind: calls
+      resolution: unresolved
+    - from: src/main/resources/palette.json
+      to: src/main/java/com/acme/lib/Color.java::SKY
+      kind: calls
+      resolution: unresolved
+  decoys:
+    src/main/java/com/acme/lib/Color.java::SKY: [package-lock.json, .gitignore]

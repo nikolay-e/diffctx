@@ -1,0 +1,61 @@
+name: web_astro_collection_entry_is_read_by_its_page
+mode: impact
+source: gh#432
+issue_state: closed
+tags:
+- web
+- astro
+- content-collection
+- reads
+- smoke
+repo:
+  initial_files:
+    astro.config.mjs: |
+      import { defineConfig } from 'astro/config';
+
+      export default defineConfig({});
+    src/content/projects/a.md: |
+      ---
+      title: A
+      order: 2
+      featured: false
+      ---
+      Body
+    src/content/blog/x.md: |
+      ---
+      title: X
+      ---
+      Post
+    src/pages/projects/[slug].astro: |
+      ---
+      import { getCollection } from "astro:content";
+      const projects = await getCollection("projects");
+      const sorted = projects.sort((a, b) => a.data.order - b.data.order);
+      ---
+      <ul>{sorted.map((p) => <li>{p.data.title}</li>)}</ul>
+    src/pages/blog.astro: |
+      ---
+      import { getCollection } from "astro:content";
+      const posts = await getCollection("blog");
+      ---
+      <ul>{posts.map((p) => <li>{p.data.title}</li>)}</ul>
+  changed_files:
+    src/content/projects/a.md: |
+      ---
+      title: A
+      order: 1
+      featured: false
+      ---
+      Body
+  commit_message: Change web astro collection entry is read by its page
+expect:
+  relations:
+  - from: src/pages/projects/[slug].astro
+    to: src/content/projects/a.md
+    kind: reads
+    resolution: resolved
+    site: 3
+  exact: true
+  decoys:
+    src/content/projects/a.md:
+    - src/pages/blog.astro

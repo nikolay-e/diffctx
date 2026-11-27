@@ -7,6 +7,15 @@ FROM dhi.io/rust:1.99.1-debian13-dev@sha256:be6c6ec91c61ae15b80521052df1c7f60fef
 WORKDIR /build
 COPY LICENSE.md README.md ./
 COPY Cargo.toml Cargo.lock ./
+COPY crates/diffctx-base ./crates/diffctx-base
+COPY crates/diffctx-snapshot ./crates/diffctx-snapshot
+COPY crates/diffctx-facts ./crates/diffctx-facts
+COPY crates/diffctx-resolve ./crates/diffctx-resolve
+COPY crates/diffctx-occurrence ./crates/diffctx-occurrence
+COPY crates/diffctx-graph ./crates/diffctx-graph
+COPY crates/diffctx-select ./crates/diffctx-select
+COPY crates/diffctx-answer ./crates/diffctx-answer
+COPY crates/diffctx-config ./crates/diffctx-config
 COPY crates/diffctx-native/Cargo.toml ./crates/diffctx-native/
 COPY crates/diffctx-native/src ./crates/diffctx-native/src
 COPY crates/diffctx-native/tests ./crates/diffctx-native/tests

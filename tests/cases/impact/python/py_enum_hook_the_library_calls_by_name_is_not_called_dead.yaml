@@ -1,0 +1,64 @@
+name: py_enum_hook_the_library_calls_by_name_is_not_called_dead
+mode: impact
+source: synthetic
+issue_state: open
+tags: [python, enum, protocol, gap, no-negative-claim]
+# `_missing_` and `_generate_next_value_` are run by the `enum` library, never by a call
+# in the project: an edit to either is no change "nothing calls".
+repo:
+  initial_files:
+    main.py: |
+      from enum import Enum, auto
+
+
+      class Status(Enum):
+          ACTIVE = "active"
+          UNKNOWN = "unknown"
+
+          @classmethod
+          def _missing_(cls, value):
+              return cls.UNKNOWN
+
+
+      class Color(Enum):
+          @staticmethod
+          def _generate_next_value_(name, start, count, last_values):
+              return name.lower()
+
+          RED = auto()
+          GREEN = auto()
+
+
+      def parse(value):
+          return Status(value)
+  changed_files:
+    main.py: |
+      from enum import Enum, auto
+
+
+      class Status(Enum):
+          ACTIVE = "active"
+          UNKNOWN = "unknown"
+
+          @classmethod
+          def _missing_(cls, value):
+              return cls.UNKNOWN if value else cls.ACTIVE
+
+
+      class Color(Enum):
+          @staticmethod
+          def _generate_next_value_(name, start, count, last_values):
+              return name.upper()
+
+          RED = auto()
+          GREEN = auto()
+
+
+      def parse(value):
+          return Status(value)
+  commit_message: change
+expect:
+  exact: false
+  changed: [main.py::_missing_, main.py::_generate_next_value_]
+  unknowns: {_missing_: overridable, _generate_next_value_: overridable}
+  no_negative_claims: true

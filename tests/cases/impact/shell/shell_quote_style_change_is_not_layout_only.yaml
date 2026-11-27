@@ -1,0 +1,33 @@
+name: shell_quote_style_change_is_not_layout_only
+mode: impact
+source: gh#424
+issue_state: open
+tags:
+- shell
+- layout
+- false-clean
+repo:
+  initial_files:
+    bin/greet.sh: |
+      greet() {
+        echo '$HOME'
+      }
+    bin/main.sh: |
+      . ./greet.sh
+      greet
+  changed_files:
+    bin/greet.sh: |
+      greet() {
+        echo "$HOME"
+      }
+  commit_message: Change shell quote style change is not layout only
+expect:
+  changed:
+  - bin/greet.sh::greet
+  relations:
+  - from: bin/main.sh
+    to: bin/greet.sh::greet
+    kind: calls
+    resolution: resolved
+    site: 2
+  exact: true

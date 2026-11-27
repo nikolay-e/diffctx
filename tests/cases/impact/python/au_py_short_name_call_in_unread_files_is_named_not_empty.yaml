@@ -1,0 +1,27 @@
+name: au_py_short_name_call_in_unread_files_is_named_not_empty
+mode: impact
+source: synthetic
+tags: [python, au-unread, unread-file, short-name]
+repo:
+  initial_files:
+    shop/jobs.py: |
+      def run(items):
+          return sum(items)
+    notes.xyz: |
+      before shipping run run(x) by hand
+    runner: |
+      run(x)
+  changed_files:
+    shop/jobs.py: |
+      def run(items):
+          return sum(items) + 1
+  commit_message: "jobs: run adds one"
+expect:
+  exact: false
+  discloses: true
+  never_empty: true
+  no_negative_claims: true
+  coverage: {run: {calls: partial}}
+  relations:
+    - {from: notes.xyz, to: shop/jobs.py::run, kind: calls, resolution: unresolved}
+    - {from: runner, to: shop/jobs.py::run, kind: calls, resolution: unresolved}

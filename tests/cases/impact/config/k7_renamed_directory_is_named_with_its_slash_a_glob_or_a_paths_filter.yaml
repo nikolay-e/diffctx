@@ -1,0 +1,34 @@
+name: k7_renamed_directory_is_named_with_its_slash_a_glob_or_a_paths_filter
+mode: impact
+source: synthetic
+tags: [config, directory-rename, stale, false-absence]
+repo:
+  initial_files:
+    apps/pricing/deployment.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: pricing
+    Dockerfile: |
+      FROM alpine
+      COPY apps/pricing/ /manifests/
+    docker/dev.Dockerfile: |
+      FROM alpine
+      COPY ./apps/pricing/ /manifests/
+    docker/glob.Dockerfile: |
+      FROM alpine
+      COPY apps/pricing/*.yaml /manifests/
+    .github/workflows/pricing.yml: |
+      on:
+        push:
+          paths:
+            - "apps/pricing/**"
+      jobs: {}
+  renamed_files:
+    apps/pricing: apps/pricing-svc
+  commit_message: "move the pricing app"
+expect:
+  exact: true
+  changed: []
+  no_negative_claims: true
+  stale: [Dockerfile, docker/dev.Dockerfile, docker/glob.Dockerfile, .github/workflows/pricing.yml]

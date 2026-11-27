@@ -1,0 +1,39 @@
+name: config_renamed_workflow_is_named_by_the_workflow_that_runs_after_it
+mode: impact
+source: synthetic
+tags: [config, key-search, generic-name, false-absence]
+repo:
+  initial_files:
+    .github/workflows/ci.yml: |
+      name: build
+      on: push
+      jobs:
+        compile:
+          runs-on: ubuntu-latest
+          steps:
+            - run: make
+    .github/workflows/deploy.yml: |
+      name: deploy
+      on:
+        workflow_run:
+          workflows: [build]
+          types: [completed]
+      jobs:
+        ship:
+          runs-on: ubuntu-latest
+          steps:
+            - run: make ship
+  changed_files:
+    .github/workflows/ci.yml: |
+      name: continuous-integration
+      on: push
+      jobs:
+        compile:
+          runs-on: ubuntu-latest
+          steps:
+            - run: make
+  commit_message: "ci: rename the build workflow"
+expect:
+  exact: false
+  no_negative_claims: true
+  named_by: [.github/workflows/deploy.yml]

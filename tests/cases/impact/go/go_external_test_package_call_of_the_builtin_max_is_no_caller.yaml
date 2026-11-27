@@ -1,0 +1,43 @@
+name: go_external_test_package_call_of_the_builtin_max_is_no_caller
+mode: impact
+source: fj#234
+issue_state: closed
+tags: [go, builtin, test-package]
+repo:
+  initial_files:
+    go.mod: |
+      module example.com/app
+
+      go 1.21
+    util/max.go: |
+      package util
+
+      func max(a, b int) int {
+          if a > b {
+              return a
+          }
+          return b
+      }
+    util/use_test.go: |
+      package util_test
+
+      import "testing"
+
+      func TestTop(t *testing.T) {
+          _ = max(1, 2)
+      }
+  changed_files:
+    util/max.go: |
+      package util
+
+      func max(a, b int) int {
+          if a >= b {
+              return a
+          }
+          return b
+      }
+  commit_message: change
+expect:
+  changed: ['util/max.go::max']
+  callers:
+    max: []

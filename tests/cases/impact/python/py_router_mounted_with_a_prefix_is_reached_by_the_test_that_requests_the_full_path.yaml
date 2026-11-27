@@ -1,0 +1,59 @@
+name: py_router_mounted_with_a_prefix_is_reached_by_the_test_that_requests_the_full_path
+mode: impact
+source: fj#108
+issue_state: open
+tags: [python, fastapi, route, router-prefix, tests-reach, decoy]
+repo:
+  initial_files:
+    app/__init__.py: ""
+    app/api/__init__.py: ""
+    app/api/reviews.py: |
+      from fastapi import APIRouter
+
+      router = APIRouter()
+
+
+      @router.get("/reviews")
+      def list_reviews():
+          return []
+
+
+      @router.get("/archive")
+      def archive():
+          return []
+    app/main.py: |
+      from fastapi import FastAPI
+
+      from app.api import reviews
+
+      app = FastAPI()
+      app.include_router(reviews.router, prefix="/api/shop")
+    tests/test_api.py: |
+      from fastapi.testclient import TestClient
+
+      from app.main import app
+
+      client = TestClient(app)
+
+
+      def test_reviews():
+          assert client.get("/api/shop/reviews").status_code == 200
+  changed_files:
+    app/api/reviews.py: |
+      from fastapi import APIRouter
+
+      router = APIRouter()
+
+
+      @router.get("/reviews")
+      def list_reviews():
+          return [1]
+
+
+      @router.get("/archive")
+      def archive():
+          return [2]
+  commit_message: "reviews: return a row"
+expect:
+  entry_tested: [list_reviews]
+  entry_not_tested: [archive]

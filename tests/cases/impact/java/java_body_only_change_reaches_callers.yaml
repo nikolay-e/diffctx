@@ -1,0 +1,118 @@
+name: java_body_only_change_reaches_callers
+mode: impact
+source: synthetic
+issue_state: closed
+tags:
+- java
+- body-only
+repo:
+  initial_files:
+    src/main/java/shop/Pricing.java: |
+      package shop;
+
+      public class Pricing {
+          public static int total(int[] items) {
+              int sum = 0;
+              for (int n : items) sum += n;
+              return sum;
+          }
+      }
+    src/main/java/shop/Checkout.java: |
+      package shop;
+
+      public class Checkout {
+          public int charge(int[] items) {
+              return Pricing.total(items) + 1;
+          }
+      }
+    src/main/java/shop/Report.java: |
+      package shop;
+
+      public class Report {
+          public String build(int[] items) {
+              return "total=" + Pricing.total(items);
+          }
+      }
+    src/main/java/legacy/Pricing.java: |
+      package legacy;
+
+      public class Pricing {
+          public static int total(int[] items) {
+              return items.length;
+          }
+
+          public static int legacySum(int[] items) {
+              return total(items);
+          }
+      }
+    src/main/java/shop/Notes.java: |
+      package shop;
+
+      // Pricing.total(items) is documented here
+      class Notes {
+          static final String NOTE = "Pricing.total(items)";
+      }
+    other/src/main/java/other/Pricing.java: |
+      package other;
+
+      public class Pricing {
+          public static int total(int[] items) {
+              return items.length;
+          }
+
+          public static int caller() {
+              return total(new int[] {1});
+          }
+      }
+    src/test/java/shop/CheckoutTest.java: |
+      package shop;
+
+      import org.junit.jupiter.api.Test;
+
+      class CheckoutTest {
+          @Test
+          void chargeAddsOne() {
+              new Checkout().charge(new int[] {1, 2});
+          }
+      }
+  changed_files:
+    src/main/java/shop/Pricing.java: |
+      package shop;
+
+      public class Pricing {
+          public static int total(int[] items) {
+              int sum = 0;
+              for (int n : items) {
+                  sum += n;
+              }
+              return sum;
+          }
+      }
+  commit_message: Change java body only change reaches callers
+expect:
+  changed:
+  - src/main/java/shop/Pricing.java::Pricing.total
+  relations:
+  - from: src/main/java/shop/Checkout.java::Checkout.charge
+    to: src/main/java/shop/Pricing.java::Pricing.total
+    kind: calls
+    resolution: resolved
+    site: 5
+  - from: src/main/java/shop/Report.java::Report.build
+    to: src/main/java/shop/Pricing.java::Pricing.total
+    kind: calls
+    resolution: resolved
+    site: 5
+  - from: src/test/java/shop/CheckoutTest.java::CheckoutTest.chargeAddsOne
+    to: src/main/java/shop/Checkout.java::Checkout.charge
+    kind: tests_reach
+    resolution: resolved
+    site: 8
+  exact: true
+  decoys:
+    src/main/java/shop/Pricing.java::Pricing.total:
+    - src/main/java/legacy/Pricing.java
+    - src/main/java/shop/Notes.java
+    - other/src/main/java/other/Pricing.java
+  not_untested:
+  - total

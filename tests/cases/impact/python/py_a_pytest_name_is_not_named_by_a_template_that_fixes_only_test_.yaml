@@ -1,0 +1,64 @@
+name: py_a_pytest_name_is_not_named_by_a_template_that_fixes_only_test_
+mode: impact
+source: synthetic
+tags: [python, textual-match, template, decoy]
+repo:
+  initial_files:
+    tests/test_price.py: |
+      from shop.price import total
+
+
+      def test_total():
+          assert total([1, 2]) == 3
+    shop/price.py: |
+      def total(items):
+          return sum(items)
+    tools/scaffold.py: |
+      def stub(name):
+          return f"def test_{name}():\n    pass\n"
+
+
+      def path_of(name):
+          return f"tests/test_{name}.py"
+    tools/scaffold.rs: |
+      pub fn stub(n: &str) -> String {
+          format!("def test_{n}():\n    pass\n")
+      }
+    tools/run.sh: |
+      #!/usr/bin/env bash
+      pytest -k "test_$1"
+    tools/format.py: |
+      def name_of(kind):
+          return "test_%s" % kind
+    .github/workflows/sweep.yml: |
+      on: push
+      jobs:
+        sweep:
+          runs-on: ubuntu-latest
+          steps:
+            - run: cat test_${{ matrix.test_set }}.txt
+  changed_files:
+    tests/test_price.py: |
+      from shop.price import total
+
+
+      def test_total():
+          assert total([1, 2]) == 3
+
+
+      def test_a_type_satisfying_a_changed_interface_is_a_weak_caller_not_a_missing_one():
+          assert total([]) == 0
+  commit_message: "price: pin the empty total"
+expect:
+  # `test_` followed by a placeholder pins none of the fifteen words of this name:
+  # no line that builds a `test_*` name from a variable names this test.
+  changed:
+  - tests/test_price.py::test_a_type_satisfying_a_changed_interface_is_a_weak_caller_not_a_missing_one
+  exact: false
+  decoys:
+    tests/test_price.py::test_a_type_satisfying_a_changed_interface_is_a_weak_caller_not_a_missing_one:
+    - tools/scaffold.py
+    - tools/scaffold.rs
+    - tools/run.sh
+    - tools/format.py
+    - .github/workflows/sweep.yml

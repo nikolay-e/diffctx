@@ -1,0 +1,50 @@
+name: py_framework_dispatched_handler_has_a_test_link
+mode: impact
+source: gh#578
+issue_state: closed
+tags: [python, framework-dispatch, tests-reach]
+repo:
+  initial_files:
+    server.py: |
+      from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+
+      class Handler(BaseHTTPRequestHandler):
+          def do_GET(self):
+              self.send_response(200)
+              self.end_headers()
+
+
+      def serve(port):
+          return ThreadingHTTPServer(("127.0.0.1", port), Handler)
+    tests/test_server.py: |
+      import http.client
+      import threading
+
+      import server
+
+
+      def test_get():
+          srv = server.serve(8999)
+          threading.Thread(target=srv.serve_forever, daemon=True).start()
+          conn = http.client.HTTPConnection("127.0.0.1", 8999)
+          conn.request("GET", "/")
+          assert conn.getresponse().status == 200
+  worktree: true
+  changed_files:
+    server.py: |
+      from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+
+      class Handler(BaseHTTPRequestHandler):
+          def do_GET(self):
+              self.send_response(200)
+              self.send_header("Content-Length", "0")
+              self.end_headers()
+
+
+      def serve(port):
+          return ThreadingHTTPServer(("127.0.0.1", port), Handler)
+expect:
+  changed: [server.py::do_GET]
+  not_untested: [do_GET]

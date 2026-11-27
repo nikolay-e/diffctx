@@ -1,0 +1,34 @@
+name: py_removed_function_holding_a_route_is_no_route_handler
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [python, flask, route, removed, coverage]
+repo:
+  initial_files:
+    app.py: |
+      from flask import Flask
+
+
+      def create_app():
+          app = Flask(__name__)
+
+          @app.route("/x")
+          def x():
+              return "x"
+
+          return app
+  changed_files:
+    app.py: |
+      from flask import Flask
+
+
+      def other():
+          return None
+  commit_message: "app: replace the factory"
+expect:
+  removed: [create_app]
+  # The route inside the factory is the factory's own statement, not the factory: no client
+  # reaches `create_app` over HTTP.
+  coverage:
+    app.py::create_app:
+      calls: complete

@@ -1,0 +1,62 @@
+name: cpp_extern_c_function_is_reached_from_another_language
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [cpp, export, gap, absence-claim]
+repo:
+  initial_files:
+    include/w.hpp: |
+      extern "C" {
+      int c_header(int x);
+      }
+
+      int attributed(int x);
+    src/w.cpp: |
+      #include "../include/w.hpp"
+
+      extern "C" int c_api_for_py(int x) { return x; }
+
+      extern "C" {
+      int c_block(int x) { return x; }
+      }
+
+      int c_header(int x) { return x; }
+
+      __attribute__((noinline)) int attributed(int x) { return x; }
+    src/bind.py: |
+      import ctypes
+
+      lib = ctypes.CDLL("libw.so")
+      lib.c_api_for_py(1)
+      lib.c_block(2)
+      lib.c_header(3)
+  changed_files:
+    src/w.cpp: |
+      #include "../include/w.hpp"
+
+      extern "C" int c_api_for_py(int x) { return x + 1; }
+
+      extern "C" {
+      int c_block(int x) { return x + 1; }
+      }
+
+      int c_header(int x) { return x + 1; }
+
+      __attribute__((noinline)) int attributed(int x) { return x + 1; }
+  commit_message: "w: the C API adds one"
+expect:
+  changed:
+    - src/w.cpp::c_api_for_py
+    - src/w.cpp::c_block
+    - src/w.cpp::c_header
+    - src/w.cpp::attributed
+  callers:
+    c_api_for_py: []
+    c_block: []
+    c_header: []
+    attributed: []
+  never_empty: true
+  partial:
+    src/w.cpp::c_api_for_py: {calls: not_traced}
+    src/w.cpp::c_block: {calls: not_traced}
+    src/w.cpp::c_header: {calls: not_traced}

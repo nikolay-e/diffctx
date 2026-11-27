@@ -1,0 +1,51 @@
+name: py_removed_field_read_in_another_file_stays_a_reader_or_a_hedge
+mode: impact
+source: gh#400
+issue_state: closed
+tags: [python, removed-field, reads, control, dataclass]
+repo:
+  initial_files:
+    svc/__init__.py: ""
+    svc/model.py: |
+      from dataclasses import dataclass
+
+
+      @dataclass
+      class Item:
+          id: int
+          size: int = 0
+          note: str = ""
+    svc/use.py: |
+      import dataclasses
+
+      from svc.model import Item
+
+
+      def total(item: Item):
+          return item.size + 1
+
+
+      def bump(item: Item):
+          return dataclasses.replace(item, size=2)
+
+
+      def keep(item: Item):
+          return item.note
+  changed_files:
+    svc/model.py: |
+      from dataclasses import dataclass
+
+
+      @dataclass
+      class Item:
+          id: int
+          note: str = ""
+  commit_message: "model: drop the size field"
+expect:
+  removed: [size]
+  # The typed read is a row of the removed field. `replace(item, size=2)` names
+  # it by keyword through a call the model does not follow: a hedge, not silence.
+  relations:
+    - {from: "svc/use.py::total", to: "svc/model.py::Item.size", kind: reads, resolution: resolved, site: 7}
+  partial:
+    "svc/model.py::Item.size": {reads: unlanded}

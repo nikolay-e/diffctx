@@ -1,0 +1,31 @@
+name: ts_ambient_global_implemented_in_a_bundle_is_possibly_called
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [typescript, builtin, global, gap]
+repo:
+  initial_files:
+    package.json: |
+      {"name":"app","version":"1.0.0"}
+    tsconfig.json: |
+      {"compilerOptions":{"strict":true}}
+    src/globals.d.ts: |
+      declare function track(event: string): void;
+    src/impl.ts: |
+      (globalThis as any).track = function (event: string): void {
+        console.log(event);
+      };
+    src/app.ts: |
+      export function run(): void {
+        track('a');
+      }
+  changed_files:
+    src/impl.ts: |
+      (globalThis as any).track = function (event: string): void {
+        console.log(event, 1);
+      };
+  commit_message: change
+expect:
+  changed: ['src/impl.ts::track']
+  relations:
+  - {from: 'src/app.ts::run', to: 'src/impl.ts::track', kind: calls, resolution: candidate}

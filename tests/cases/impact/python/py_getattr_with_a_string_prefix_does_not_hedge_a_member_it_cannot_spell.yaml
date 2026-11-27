@@ -1,0 +1,46 @@
+name: py_getattr_with_a_string_prefix_does_not_hedge_a_member_it_cannot_spell
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [python, getattr, dynamic-name, coverage, decoy]
+# `getattr(handler, "on_" + event)` can only reach a member whose name starts with `on_`: `reset`
+# is spelled by no name it computes, so its one caller is the whole answer. `on_open` stays hedged
+# by the same lookup (the sibling cases hold that side).
+repo:
+  initial_files:
+    main.py: |
+      class Handler:
+          def on_open(self):
+              pass
+
+          def reset(self):
+              return 0
+
+
+      def dispatch(handler, event):
+          getattr(handler, "on_" + event)()
+
+
+      def restart():
+          return Handler().reset()
+  changed_files:
+    main.py: |
+      class Handler:
+          def on_open(self):
+              pass
+
+          def reset(self):
+              return 1
+
+
+      def dispatch(handler, event):
+          getattr(handler, "on_" + event)()
+
+
+      def restart():
+          return Handler().reset()
+  commit_message: "handler: reset returns one"
+expect:
+  changed: [main.py::reset]
+  relations:
+    - {from: main.py::restart, to: main.py::reset, kind: calls, resolution: resolved, site: 14}

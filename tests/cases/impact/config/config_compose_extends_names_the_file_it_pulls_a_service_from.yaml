@@ -1,0 +1,36 @@
+name: config_compose_extends_names_the_file_it_pulls_a_service_from
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [config, compose, absence-claim]
+repo:
+  initial_files:
+    compose.yaml: |
+      services:
+        web:
+          extends:
+            file: base.yaml
+            service: app
+          depends_on:
+            - db
+        db:
+          image: postgres
+    base.yaml: |
+      services:
+        app:
+          image: app
+          environment:
+            MODE: a
+  changed_files:
+    base.yaml: |
+      services:
+        app:
+          image: app
+          environment:
+            MODE: b
+  commit_message: change
+expect:
+  named_by: [compose.yaml]
+  mention_class: {compose.yaml: config}
+  discloses: true
+  no_negative_claims: true

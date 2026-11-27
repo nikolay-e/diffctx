@@ -1,0 +1,32 @@
+name: cpp_changed_method_nothing_calls_is_a_verified_zero
+mode: impact
+source: synthetic
+issue_state: closed
+tags:
+- cpp
+- absence-claim
+repo:
+  initial_files:
+    src/greeter.hpp: |
+      #include <iostream>
+
+      class Greeter {
+      public:
+          void hello(const std::string &name) { std::cout << "hi " << name; }
+      };
+    tests/other_test.cpp: |
+      int check() { return 1; }
+  changed_files:
+    src/greeter.hpp: |
+      #include <iostream>
+
+      class Greeter {
+      public:
+          void hello(const std::string &name) { std::cout << "hello " << name; }
+      };
+  commit_message: Change cpp changed method nothing calls is a verified zero
+expect:
+  changed:
+  - src/greeter.hpp::Greeter.hello
+  callers:
+    hello: []

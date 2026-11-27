@@ -1,0 +1,40 @@
+name: config_mention_classes_tell_a_path_in_code_from_a_command_a_source_file_runs
+mode: impact
+source: synthetic
+issue_state: open
+tags:
+- config
+- named-by
+- mention-class
+- decoy
+repo:
+  initial_files:
+    tools/gen.sh: |
+      #!/bin/sh
+      echo generating
+    build.py: |
+      ENTRY = "tools/gen.sh"
+    release.py: |
+      import subprocess
+
+      subprocess.run(["tools/gen.sh"], check=True)
+    notes.py: |
+      # tools/gen.sh is run by the release script
+      NOTE = 1
+    README.md: |
+      tools/gen.sh generates the files.
+  changed_files:
+    tools/gen.sh: |
+      #!/bin/sh
+      echo generated
+  commit_message: Change what the generator prints
+expect:
+  named_by:
+  - build.py
+  - release.py
+  not_named_by:
+  - notes.py
+  - README.md
+  mention_class:
+    build.py: code
+    release.py: command

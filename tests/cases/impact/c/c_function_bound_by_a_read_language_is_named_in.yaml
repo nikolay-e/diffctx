@@ -1,0 +1,76 @@
+name: c_function_bound_by_a_read_language_is_named_in
+mode: impact
+source: synthetic
+tags: [c, ffi, ctypes, cffi, cgo, jna, php-ffi, word-scan, false-absence]
+repo:
+  initial_files:
+    native/native.c: |
+      int nt_ctypes_cents(int a, int b) { return a + b; }
+      int nt_cffi_cents(int a, int b) { return a + b; }
+      int nt_cgo_cents(int a, int b) { return a + b; }
+      int nt_node_cents(int a, int b) { return a + b; }
+      int nt_jna_cents(int a, int b) { return a + b; }
+      int nt_php_cents(int a, int b) { return a + b; }
+    py/ctypes_native.py: |
+      import ctypes
+
+      lib = ctypes.CDLL("libnative.so")
+
+
+      def add(a, b):
+          return lib.nt_ctypes_cents(a, b)
+    py/cffi_native.py: |
+      from cffi import FFI
+
+      ffi = FFI()
+      ffi.cdef("int nt_cffi_cents(int a, int b);")
+      lib = ffi.dlopen("libnative.so")
+
+
+      def add(a, b):
+          return lib.nt_cffi_cents(a, b)
+    go/native.go: |
+      package native
+
+      // #include "../native/native.h"
+      import "C"
+
+      func Add(a, b int) int {
+          return int(C.nt_cgo_cents(C.int(a), C.int(b)))
+      }
+    js/native.js: |
+      const ffi = require("ffi-napi");
+      const lib = ffi.Library("libnative", { nt_node_cents: ["int", ["int", "int"]] });
+      module.exports = (a, b) => lib.nt_node_cents(a, b);
+    java/NativeLib.java: |
+      import com.sun.jna.Library;
+      import com.sun.jna.Native;
+
+      public interface NativeLib extends Library {
+          NativeLib INSTANCE = Native.load("native", NativeLib.class);
+          int nt_jna_cents(int a, int b);
+      }
+    php/native.php: |
+      <?php
+      $ffi = FFI::cdef("int nt_php_cents(int a, int b);", "libnative.so");
+      echo $ffi->nt_php_cents(1, 2);
+  changed_files:
+    native/native.c: |
+      int nt_ctypes_cents(int a, int b) { return a + b + 1; }
+      int nt_cffi_cents(int a, int b) { return a + b + 1; }
+      int nt_cgo_cents(int a, int b) { return a + b + 1; }
+      int nt_node_cents(int a, int b) { return a + b + 1; }
+      int nt_jna_cents(int a, int b) { return a + b + 1; }
+      int nt_php_cents(int a, int b) { return a + b + 1; }
+  commit_message: "native: every cents function adds one"
+expect:
+  exact: false
+  discloses: true
+  no_negative_claims: true
+  relations:
+    - {from: py/ctypes_native.py, to: native/native.c::nt_ctypes_cents, kind: calls, resolution: unresolved}
+    - {from: py/cffi_native.py, to: native/native.c::nt_cffi_cents, kind: calls, resolution: unresolved}
+    - {from: go/native.go, to: native/native.c::nt_cgo_cents, kind: calls, resolution: unresolved}
+    - {from: js/native.js, to: native/native.c::nt_node_cents, kind: calls, resolution: unresolved}
+    - {from: java/NativeLib.java, to: native/native.c::nt_jna_cents, kind: calls, resolution: unresolved}
+    - {from: php/native.php, to: native/native.c::nt_php_cents, kind: calls, resolution: unresolved}

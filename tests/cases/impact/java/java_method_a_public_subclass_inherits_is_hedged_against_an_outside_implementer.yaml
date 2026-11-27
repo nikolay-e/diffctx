@@ -1,0 +1,55 @@
+name: java_method_a_public_subclass_inherits_is_hedged_against_an_outside_implementer
+mode: impact
+source: synthetic
+issue_state: open
+tags: [java, dispatch, library, open-world, inheritance]
+repo:
+  initial_files:
+    pom.xml: |
+      <project><modelVersion>4.0.0</modelVersion><groupId>a</groupId><artifactId>a</artifactId><version>1</version></project>
+    src/main/java/lib5/collude/Demo.java: |
+      package lib5.collude;
+
+      public class Demo {
+          public static void interfaceCallSite(PotentialInterface pi) {
+              pi.method();
+          }
+      }
+
+      interface PotentialInterface {
+          void method();
+      }
+    src/main/java/lib5/internal/PotentialSuperclass.java: |
+      package lib5.internal;
+
+      public class PotentialSuperclass extends InternalClass {
+      }
+
+      class InternalClass {
+          public void method() {
+          }
+      }
+  changed_files:
+    src/main/java/lib5/internal/PotentialSuperclass.java: |
+      package lib5.internal;
+
+      public class PotentialSuperclass extends InternalClass {
+      }
+
+      class InternalClass {
+          public void method() {
+              System.out.println("changed");
+          }
+      }
+  commit_message: change
+expect:
+  changed: [src/main/java/lib5/internal/PotentialSuperclass.java::InternalClass.method]
+  unknowns:
+    method: overridable
+  callers:
+    src/main/java/lib5/internal/PotentialSuperclass.java::InternalClass.method: []
+  partial:
+    src/main/java/lib5/internal/PotentialSuperclass.java::InternalClass.method:
+      calls: not_traced
+      reads: not_traced
+  discloses: true

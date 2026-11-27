@@ -1,0 +1,63 @@
+name: shell_body_only_change_reaches_callers
+mode: impact
+source: synthetic
+issue_state: closed
+tags:
+- shell
+- body-only
+- smoke
+repo:
+  initial_files:
+    scripts/pricing.sh: |
+      total() {
+        local sum=0
+        for n in "$@"; do sum=$((sum + n)); done
+        echo "$sum"
+      }
+    scripts/checkout.sh: |
+      . ./pricing.sh
+
+      charge() {
+        local t
+        t=$(total "$@")
+        echo "$((t + 1))"
+      }
+    scripts/report.sh: |
+      . ./pricing.sh
+      total 1 2 3
+    scripts/legacy.sh: |
+      total() {
+        echo 0
+      }
+
+      total
+    scripts/notes.sh: |
+      # total 1 2 3 is documented here
+      echo "total 1 2 3"
+  changed_files:
+    scripts/pricing.sh: |
+      total() {
+        local sum=0
+        for n in "$@"; do sum=$((sum + n)); done
+        printf '%s\n' "$sum"
+      }
+  commit_message: Change shell body only change reaches callers
+expect:
+  changed:
+  - scripts/pricing.sh::total
+  relations:
+  - from: scripts/checkout.sh::charge
+    to: scripts/pricing.sh::total
+    kind: calls
+    resolution: resolved
+    site: 5
+  - from: scripts/report.sh
+    to: scripts/pricing.sh::total
+    kind: calls
+    resolution: resolved
+    site: 2
+  exact: true
+  decoys:
+    scripts/pricing.sh::total:
+    - scripts/legacy.sh
+    - scripts/notes.sh

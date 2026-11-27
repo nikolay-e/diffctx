@@ -1,0 +1,118 @@
+use std::path::Path;
+
+use once_cell::sync::Lazy;
+use regex::Regex;
+use rustc_hash::{FxHashMap, FxHashSet};
+
+use diffctx_base::types::Fragment;
+use diffctx_config::config::extensions::PHP_EXTENSIONS;
+use diffctx_config::config::weights::EDGE_WEIGHTS;
+
+use super::super::EdgeDict;
+use super::super::base::{self, EdgeBuilder, discover_by_refs};
+
+fn is_php_file(path: &Path) -> bool {
+    PHP_EXTENSIONS.contains(diffctx_base::languages::file_ext(path).as_str())
+}
+
+static USE_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?m)^\s*use\s+([\w\\]+)").unwrap());
+static NAMESPACE_RE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"(?m)^\s*namespace\s+([\w\\]+)").unwrap());
+static REQUIRE_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r#"(?m)^\s*(?:require_once|require|include_once|include)\s+['"]([^'"]+)['"]"#)
+        .unwrap()
+});
+static DEF_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"(?m)^\s*(?:abstract\s+)?(?:class|interface|trait|enum)\s+([A-Z]\w*)").unwrap()
+});
+static FUNC_DEF_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"(?m)^\s*(?:public|protected|private|static)?\s*function\s+([a-zA-Z_]\w*)").unwrap()
+});
+static EXTENDS_RE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"(?:extends|implements)\s+([\w\\,\s]+)").unwrap());
+static TYPE_REF_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"\b([A-Z]\w*)\b").unwrap());
+
+fn extract_uses(content: &str) -> FxHashSet<String> {
+    USE_RE
+        .captures_iter(content)
+        .map(|c| {
+            let full = &c[1];
+            full.split('\\').last().unwrap_or(full).to_string()
+        })
+        .collect()
+}
+
+fn extract_requires(content: &str) -> FxHashSet<String> {
+    base::captures1(&REQUIRE_RE, content).collect()
+}
+
+fn extract_namespace(content: &str) -> Option<String> {
+    NAMESPACE_RE.captures(content).map(|c| c[1].to_string())
+}
+
+fn extract_defs(content: &str) -> FxHashSet<String> {
+    let mut defs: FxHashSet<String> = base::captures1(&DEF_RE, content).collect();
+    defs.extend(base::captures1(&FUNC_DEF_RE, content));
+    defs
+}
+
+fn extract_inheritance(content: &str) -> FxHashSet<String> {
+    let mut refs = FxHashSet::default();
+    for cap in EXTENDS_RE.captures_iter(content) {
+        for part in cap[1].split(',') {
+            let name = part.trim().split('\\').last().unwrap_or("").trim();
+            if !name.is_empty() {
+                refs.insert(name.to_string());
+            }
+        }
+    }
+    refs
+}
+
+pub(crate) struct PhpEdgeBuilder;
+
+impl EdgeBuilder for PhpEdgeBuilder {
+    fn build(&self, fragments: &[Fragment], repo_root: Option<&Path>) -> EdgeDict {
+        let Some(frags) = base::frags_where(fragments, |f| is_php_file(Path::new(f.path()))) else {
+            return FxHashMap::default();
+        };
+
+        let use_w = EDGE_WEIGHTS["php_use"].forward;
+        let require_w = EDGE_WEIGHTS["php_require"].forward;
+        let inherit_w = EDGE_WEIGHTS["php_inheritance"].forward;
+        let type_w = EDGE_WEIGHTS["php_type"].forward;
+        let reverse_factor = EDGE_WEIGHTS["php_use"].reverse_factor;
+
+        let idx = base::FragmentIndex::new(fragments, repo_root);
+        let defs = base::DefIndex::new(&frags, reverse_factor, extract_defs);
+        let mut ns_to_frags: FxHashMap<String, Vec<_>> = FxHashMap::default();
+        for f in &frags {
+            if let Some(ns) = extract_namespace(&f.content) {
+                ns_to_frags.entry(ns).or_default().push(f.id.clone());
+            }
+        }
+
+        let mut edges: EdgeDict = FxHashMap::default();
+
+        for f in &frags {
+            let self_defs = extract_defs(&f.content);
+            for req in extract_requires(&f.content) {
+                base::link_by_name(&f.id, &req, &idx, &mut edges, require_w, reverse_factor);
+            }
+            defs.link(&mut edges, &f.id, extract_uses(&f.content), use_w);
+            defs.link(
+                &mut edges,
+                &f.id,
+                extract_inheritance(&f.content),
+                inherit_w,
+            );
+            let type_refs = base::captures1(&TYPE_REF_RE, &f.content);
+            defs.link_except(&mut edges, &f.id, type_refs, &self_defs, type_w);
+        }
+        edges
+    }
+
+    discover_by_refs!(|p| is_php_file(p), |c| extract_requires(c)
+        .into_iter()
+        .chain(extract_uses(c)));
+}

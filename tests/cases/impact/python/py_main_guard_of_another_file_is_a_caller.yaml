@@ -1,0 +1,24 @@
+name: py_main_guard_of_another_file_is_a_caller
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [python, main-guard, entry-point]
+repo:
+  initial_files:
+    lib.py: |
+      def run():
+          return 1
+    tools/go.py: |
+      from lib import run
+
+
+      if __name__ == "__main__":
+          run()
+  changed_files:
+    lib.py: |
+      def run():
+          return 2
+  commit_message: "lib: run returns 2"
+expect:
+  callers:
+    run: [tools/go.py]

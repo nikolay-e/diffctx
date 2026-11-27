@@ -1,0 +1,41 @@
+name: rs_patch_section_path_into_another_crate_is_a_caller
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [rust, manifests, cargo]
+repo:
+  initial_files:
+    core/Cargo.toml: |
+      [package]
+      name = "core"
+      version = "0.1.0"
+      edition = "2021"
+    core/src/lib.rs: |
+      pub fn total(x: i32) -> i32 {
+          x
+      }
+    web/Cargo.toml: |
+      [package]
+      name = "web"
+      version = "0.1.0"
+      edition = "2021"
+
+      [dependencies]
+      core = "0.1"
+
+      [patch.crates-io]
+      core = { path = "../core" }
+    web/src/lib.rs: |
+      pub fn show(x: i32) -> i32 {
+          core::total(x)
+      }
+  changed_files:
+    core/src/lib.rs: |
+      pub fn total(x: i32) -> i32 {
+          x + 0
+      }
+  commit_message: change
+expect:
+  changed: ['core/src/lib.rs::total']
+  relations:
+  - {from: 'web/src/lib.rs::show', to: 'core/src/lib.rs::total', kind: calls, resolution: resolved}

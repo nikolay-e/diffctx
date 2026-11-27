@@ -1,0 +1,49 @@
+name: py_property_of_a_class_beside_a_function_keeps_the_hedge_of_an_untyped_read
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [python, attribute-read, coverage]
+repo:
+  initial_files:
+    lib.py: |
+      class Widget:
+          @property
+          def title(self):
+              return "a"
+
+
+      class Other:
+          def Widget(self):
+              return 0
+
+
+      def helper():
+          return 2
+    app.py: |
+      from lib import Widget
+
+
+      def show(o):
+          return o.title
+  changed_files:
+    lib.py: |
+      class Widget:
+          @property
+          def title(self):
+              return "b"
+
+
+      class Other:
+          def Widget(self):
+              return 0
+
+
+      def helper():
+          return 2
+  commit_message: "lib: the title is b"
+expect:
+  exact: false
+  # `o` has no type: its `.title` may be the property, though a class and a function
+  # of the module stand beside it. A property is no local of a function.
+  coverage:
+    lib.py::title: {reads: partial}

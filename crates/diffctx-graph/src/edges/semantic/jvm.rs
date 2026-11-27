@@ -1,0 +1,1145 @@
+use std::path::{Path, PathBuf};
+
+use once_cell::sync::Lazy;
+use regex::Regex;
+use rustc_hash::{FxHashMap, FxHashSet};
+
+use diffctx_base::types::{Fragment, FragmentId, FragmentKind};
+use diffctx_config::config::edge_weights::SEMANTIC_DISCOVERY;
+use diffctx_config::config::extensions::{
+    JAVA_EXTENSIONS, JVM_EXTENSIONS, KOTLIN_EXTENSIONS, SCALA_EXTENSIONS,
+};
+use diffctx_config::config::weights::EDGE_WEIGHTS;
+
+use super::super::EdgeDict;
+use super::super::base::{self, EdgeBuilder, add_edge, add_edges_from_ids};
+
+/// Same ambiguity bar as `CFamilySemanticWeights::max_files_per_name`: a name
+/// resolving to more files than this names a vocabulary word, not a
+/// dependency, and is skipped outright rather than truncated.
+const MAX_FILES_PER_NAME: usize = 8;
+
+fn is_jvm_file(path: &Path) -> bool {
+    JVM_EXTENSIONS.contains(diffctx_base::languages::file_ext(path).as_str())
+}
+
+fn is_java(path: &Path) -> bool {
+    let ext = diffctx_base::languages::file_ext(path);
+    JAVA_EXTENSIONS.contains(ext.as_str())
+}
+
+fn is_kotlin(path: &Path) -> bool {
+    let ext = diffctx_base::languages::file_ext(path);
+    KOTLIN_EXTENSIONS.contains(ext.as_str())
+}
+
+fn is_scala(path: &Path) -> bool {
+    let ext = diffctx_base::languages::file_ext(path);
+    SCALA_EXTENSIONS.contains(ext.as_str())
+}
+
+static KOTLIN_IMPORT_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"(?m)^\s*import\s+([a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)*(?:\.[A-Z]\w*|\.\*)?)")
+        .unwrap()
+});
+static KOTLIN_CLASS_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"(?m)^\s*(?:\w+\s+)*(?:class|interface|object|enum)\s+([A-Z]\w*)").unwrap()
+});
+static JAVA_IMPORT_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"(?m)^\s*import\s+(?:static\s+)?([a-z][a-z0-9_.]*(?:\.\*)?)\s*;").unwrap()
+});
+static JAVA_PACKAGE_RE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"(?m)^\s*package\s+([a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)*)").unwrap());
+static JAVA_CLASS_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"(?m)^\s*(?:\w+\s+)*(?:class|interface|enum|@interface)\s+([A-Z]\w*)").unwrap()
+});
+static SCALA_IMPORT_LINE_RE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"(?m)^\s*import\s+(.+)$").unwrap());
+/// Scala 3 rename: `C as D`. Any whitespace, not the literal single space —
+/// `C  as  D` and a tab-separated form are legal and used to keep the whole
+/// text as the "original name".
+static SCALA_AS_RENAME_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"\s+as\s+").unwrap());
+
+fn strip_scala_rename(sel: &str) -> &str {
+    let original = sel.split("=>").next().unwrap_or("");
+    SCALA_AS_RENAME_RE.splitn(original, 2).next().unwrap_or("")
+}
+static SCALA_PACKAGE_RE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"(?m)^\s*package\s+([A-Za-z_][\w.]*)").unwrap());
+static SCALA_CLASS_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"(?m)^\s*(?:\w+\s+)*(?:class|trait|object|enum)\s+([A-Z]\w*)").unwrap()
+});
+static TYPE_REF_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"\b([A-Z]\w*)\b").unwrap());
+static ANNOTATION_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"@([A-Z]\w*)").unwrap());
+static MEMBER_USE_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"\.\s*([a-zA-Z_]\w{2,})").unwrap());
+/// A call with no receiver: `map(x)`, never `.map(x)` or `obj.map(x)`.
+static UNQUALIFIED_CALL_RE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"(?:^|[^.\w$])([a-zA-Z_]\w{2,})\s*\(").unwrap());
+/// `UI.DP`: a member too short for the bare channel, spelled with its owner.
+static QUALIFIED_SHORT_USE_RE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"\b([A-Z]\w*)\s*\.\s*([A-Za-z_]\w?)\b").unwrap());
+static KOTLIN_EXTENDS_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"(?:class|interface|object)\s+\w+(?:<[^>]*>)?(?:\([^)]*\))?\s*:\s*([^{]+)").unwrap()
+});
+static JAVA_EXTENDS_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"(?m)\b(?:extends|implements)\s+([A-Z]\w*(?:\s*,\s*[A-Z]\w*)*)").unwrap()
+});
+static SCALA_EXTENDS_RE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"(?m)\b(?:extends|with)\s+([A-Z]\w*)").unwrap());
+
+static JVM_STDLIB_TYPES: Lazy<FxHashSet<&str>> = Lazy::new(|| {
+    base::kw(concat!(
+        "String Integer Long Double Float Boolean Byte Short Character Object Class System Math ",
+        "Collections Arrays Optional HashMap ArrayList LinkedList Iterator Iterable Comparable ",
+        "Runnable Thread Exception RuntimeException IllegalArgumentException IllegalStateException ",
+        "NullPointerException IndexOutOfBoundsException IOException InputStream OutputStream ",
+        "StringBuilder StringBuffer Number Enum Void Override Unit Any AnyVal AnyRef Nothing Option ",
+        "Some Either Left Right Try Success Failure Future Promise Seq Vector Map Set Tuple ",
+        "Function Product Serializable Pair Triple Sequence ",
+    ))
+});
+struct ScalaImport {
+    prefix: String,
+    selectors: Vec<String>,
+    wildcard: bool,
+}
+
+fn split_top_level_commas(s: &str) -> Vec<&str> {
+    let mut parts = Vec::new();
+    let mut depth = 0usize;
+    let mut start = 0usize;
+    for (i, c) in s.char_indices() {
+        match c {
+            '{' => depth += 1,
+            '}' => depth = depth.saturating_sub(1),
+            ',' if depth == 0 => {
+                parts.push(&s[start..i]);
+                start = i + 1;
+            }
+            _ => {}
+        }
+    }
+    parts.push(&s[start..]);
+    parts
+}
+
+fn parse_scala_import_clause(clause: &str) -> Option<ScalaImport> {
+    let clause = clause.trim();
+    if clause.is_empty() {
+        return None;
+    }
+    if let Some(bpos) = clause.find('{') {
+        let prefix = clause[..bpos].trim().trim_end_matches('.').to_string();
+        let inner_end = match clause.rfind('}') {
+            Some(p) if p > bpos => p,
+            Some(_) => return None,
+            None => clause.len(),
+        };
+        let inner = &clause[bpos + 1..inner_end];
+        let mut selectors = Vec::new();
+        let mut wildcard = false;
+        for sel in inner.split(',') {
+            // A rename keeps the ORIGINAL name — that is what the target file
+            // defines. Scala 2 spells it `C => D`, Scala 3 `C as D`.
+            let name = strip_scala_rename(sel).trim().trim_matches('`');
+            match name {
+                "_" | "*" | "given" => wildcard = true,
+                "" => {}
+                n if n
+                    .chars()
+                    .all(|c| c.is_alphanumeric() || c == '_' || c == '$') =>
+                {
+                    selectors.push(n.to_string());
+                }
+                _ => {}
+            }
+        }
+        return Some(ScalaImport {
+            prefix,
+            selectors,
+            wildcard,
+        });
+    }
+    // Scala 3 top-level rename: `import a.b.c as d` imports `a.b.c`.
+    let clause = strip_scala_rename(clause).trim();
+    if let Some(p) = clause
+        .strip_suffix("._")
+        .or_else(|| clause.strip_suffix(".*"))
+        .or_else(|| clause.strip_suffix(".given"))
+    {
+        return Some(ScalaImport {
+            prefix: p.to_string(),
+            selectors: Vec::new(),
+            wildcard: true,
+        });
+    }
+    if !clause
+        .chars()
+        .all(|c| c.is_alphanumeric() || c == '_' || c == '$' || c == '.')
+    {
+        return None;
+    }
+    if let Some(pos) = clause.rfind('.') {
+        let sel = clause[pos + 1..].to_string();
+        if sel.is_empty() {
+            return None;
+        }
+        return Some(ScalaImport {
+            prefix: clause[..pos].to_string(),
+            selectors: vec![sel],
+            wildcard: false,
+        });
+    }
+    Some(ScalaImport {
+        prefix: String::new(),
+        selectors: vec![clause.to_string()],
+        wildcard: false,
+    })
+}
+
+/// The tree's view of a Scala fragment, computed once per distinct text: the
+/// three readers below (imports, package, inheritance) run in separate
+/// passes over the same fragments, and a parse per pass would triple the
+/// cost of the one seam that now parses inside an edge builder.
+fn scala_facts(content: &str) -> Option<diffctx_facts::parsers::scala::ScalaFacts> {
+    thread_local! {
+        static MEMO: std::cell::RefCell<FxHashMap<u64, Option<diffctx_facts::parsers::scala::ScalaFacts>>> =
+            std::cell::RefCell::new(FxHashMap::default());
+    }
+    let key = {
+        use std::hash::{Hash, Hasher};
+        let mut h = rustc_hash::FxHasher::default();
+        content.hash(&mut h);
+        h.finish()
+    };
+    MEMO.with(|memo| {
+        let mut memo = memo.borrow_mut();
+        if memo.len() > 4096 {
+            memo.clear();
+        }
+        memo.entry(key)
+            .or_insert_with(|| diffctx_facts::parsers::scala::facts(content))
+            .clone()
+    })
+}
+
+/// Imports off the parse tree when the text parses cleanly; the regex reader
+/// for what does not — a fragment cut mid-scope, a file mid-edit (#243).
+fn parse_scala_imports(content: &str) -> Vec<ScalaImport> {
+    if let Some(facts) = scala_facts(content) {
+        return facts
+            .imports
+            .into_iter()
+            .map(|i| ScalaImport {
+                prefix: i.prefix,
+                selectors: i.selectors,
+                wildcard: i.wildcard,
+            })
+            .collect();
+    }
+    parse_scala_imports_regex(content)
+}
+
+fn parse_scala_imports_regex(content: &str) -> Vec<ScalaImport> {
+    let mut out = Vec::new();
+    let lines: Vec<&str> = content.lines().collect();
+    let mut i = 0;
+    while i < lines.len() {
+        let line = lines[i];
+        i += 1;
+        let Some(cap) = SCALA_IMPORT_LINE_RE.captures(line) else {
+            continue;
+        };
+        let mut clause_text = cap[1].split("//").next().unwrap_or("").trim().to_string();
+        // A brace group may span lines; join until the braces balance so
+        // `import scala.collection.{\n mutable,\n immutable\n}` keeps its
+        // selectors instead of yielding an empty list.
+        let mut open = clause_text.matches('{').count();
+        let mut close = clause_text.matches('}').count();
+        let mut joined = 0;
+        // Bounded, and it stops at the next `import` line without consuming
+        // it: an unbalanced brace (a file mid-edit) used to pull up to 32
+        // lines out of the iterator, and every import inside that window was
+        // silently lost.
+        while open > close && joined < 32 && i < lines.len() {
+            if SCALA_IMPORT_LINE_RE.is_match(lines[i]) {
+                break;
+            }
+            let next = lines[i].split("//").next().unwrap_or("").trim();
+            i += 1;
+            joined += 1;
+            open += next.matches('{').count();
+            close += next.matches('}').count();
+            clause_text.push(' ');
+            clause_text.push_str(next);
+        }
+        for clause in split_top_level_commas(&clause_text) {
+            if let Some(imp) = parse_scala_import_clause(clause) {
+                out.push(imp);
+            }
+        }
+    }
+    out
+}
+
+fn extract_imports(content: &str, path: &Path) -> FxHashSet<String> {
+    if is_java(path) {
+        base::captures1(&JAVA_IMPORT_RE, content).collect()
+    } else if is_kotlin(path) {
+        base::captures1(&KOTLIN_IMPORT_RE, content).collect()
+    } else if is_scala(path) {
+        let mut refs = FxHashSet::default();
+        for imp in parse_scala_imports(content) {
+            for sel in &imp.selectors {
+                if imp.prefix.is_empty() {
+                    refs.insert(sel.clone());
+                } else {
+                    refs.insert(format!("{}.{}", imp.prefix, sel));
+                }
+            }
+            if imp.wildcard && !imp.prefix.is_empty() {
+                refs.insert(imp.prefix.clone());
+            }
+        }
+        refs
+    } else {
+        FxHashSet::default()
+    }
+}
+
+fn extract_classes(content: &str, path: &Path) -> FxHashSet<String> {
+    if is_java(path) {
+        base::captures1(&JAVA_CLASS_RE, content).collect()
+    } else if is_kotlin(path) {
+        base::captures1(&KOTLIN_CLASS_RE, content).collect()
+    } else if is_scala(path) {
+        base::captures1(&SCALA_CLASS_RE, content).collect()
+    } else {
+        FxHashSet::default()
+    }
+}
+
+fn extract_package(content: &str, path: &Path) -> Option<String> {
+    if is_scala(path) {
+        if let Some(facts) = scala_facts(content) {
+            return facts.package;
+        }
+        // Scala chains package clauses (`package com.acme` then `package svc`
+        // means com.acme.svc); `package object x` is a member of the enclosing
+        // package, not a chain segment. A block-form clause (`package util {`)
+        // opens a scope whose SIBLINGS are not chain segments — concatenating
+        // past it produced nonexistent packages (`com.example.util.data`), so
+        // the chain stops at the first block.
+        let mut parts: Vec<String> = Vec::new();
+        for cap in SCALA_PACKAGE_RE.captures_iter(content) {
+            let seg = &cap[1];
+            if seg == "object" {
+                continue;
+            }
+            parts.push(seg.to_string());
+            let after = content[cap.get(0).map_or(0, |m| m.end())..].trim_start();
+            if after.starts_with('{') {
+                break;
+            }
+        }
+        if parts.is_empty() {
+            None
+        } else {
+            Some(parts.join("."))
+        }
+    } else {
+        JAVA_PACKAGE_RE.captures(content).map(|c| c[1].to_string())
+    }
+}
+
+fn extract_inheritance(content: &str, path: &Path) -> FxHashSet<String> {
+    let mut refs = FxHashSet::default();
+    if is_kotlin(path) {
+        for cap in KOTLIN_EXTENDS_RE.captures_iter(content) {
+            for type_cap in TYPE_REF_RE.captures_iter(&cap[1]) {
+                refs.insert(type_cap[1].to_string());
+            }
+        }
+    } else if is_java(path) {
+        for cap in JAVA_EXTENDS_RE.captures_iter(content) {
+            for type_cap in TYPE_REF_RE.captures_iter(&cap[1]) {
+                refs.insert(type_cap[1].to_string());
+            }
+        }
+    } else if is_scala(path) {
+        match scala_facts(content) {
+            Some(facts) => refs.extend(facts.inherits),
+            None => {
+                for cap in SCALA_EXTENDS_RE.captures_iter(content) {
+                    refs.insert(cap[1].to_string());
+                }
+            }
+        }
+    }
+    refs
+}
+
+fn extract_type_refs(content: &str) -> FxHashSet<String> {
+    base::captures1(&TYPE_REF_RE, content).collect()
+}
+
+fn extract_annotations(content: &str) -> FxHashSet<String> {
+    base::captures1(&ANNOTATION_RE, content).collect()
+}
+
+fn extract_member_uses(content: &str) -> FxHashSet<String> {
+    MEMBER_USE_RE
+        .captures_iter(content)
+        .map(|c| c[1].to_lowercase())
+        .collect()
+}
+
+fn is_member_def(f: &Fragment) -> bool {
+    matches!(f.kind, FragmentKind::Function | FragmentKind::Property)
+}
+
+/// The container a member is declared in: the nearest container above it at
+/// a shallower indent, since a split class keeps only its header fragment.
+fn owner_of<'a>(member: &Fragment, frags: &[&'a Fragment]) -> Option<&'a str> {
+    let indent = |f: &Fragment| {
+        f.content
+            .lines()
+            .find(|l| !l.trim().is_empty() && !l.trim_start().starts_with('@'))
+            .map_or(0, |l| l.len() - l.trim_start().len())
+    };
+    let own = indent(member);
+    frags
+        .iter()
+        .filter(|c| {
+            c.kind.is_container()
+                && c.path() == member.path()
+                && c.start_line() < member.start_line()
+                && indent(c) < own
+        })
+        .max_by_key(|c| c.start_line())
+        .and_then(|c| c.symbol_name.as_deref())
+}
+
+struct FileRelations<'a> {
+    file_pkg: FxHashMap<&'a str, String>,
+    import_files: FxHashMap<&'a str, FxHashSet<&'a str>>,
+    import_pkgs: FxHashMap<&'a str, FxHashSet<String>>,
+    named_files: FxHashMap<&'a str, FxHashSet<&'a str>>,
+    inh_pairs: FxHashSet<(&'a str, &'a str)>,
+}
+
+#[allow(clippy::too_many_arguments)]
+fn link_class<'a>(
+    edges: &mut EdgeDict,
+    rel: &mut FileRelations<'a>,
+    src: &'a Fragment,
+    name_lower: &str,
+    weight: f64,
+    reverse_factor: f64,
+    record_import: bool,
+    class_to_frags: &'a FxHashMap<String, Vec<FragmentId>>,
+    class_files: &FxHashMap<String, FxHashSet<&'a str>>,
+) {
+    if class_files
+        .get(name_lower)
+        .is_some_and(|s| s.len() > MAX_FILES_PER_NAME)
+    {
+        return;
+    }
+    if let Some(fids) = class_to_frags.get(name_lower) {
+        for fid in fids {
+            if fid != &src.id {
+                add_edge(edges, &src.id, fid, weight, reverse_factor);
+                let bucket = if record_import {
+                    &mut rel.import_files
+                } else {
+                    &mut rel.named_files
+                };
+                bucket
+                    .entry(src.path())
+                    .or_default()
+                    .insert(fid.path.as_ref());
+            }
+        }
+    }
+}
+
+impl<'a> FileRelations<'a> {
+    /// A member-name match alone is tags-grade evidence; it only becomes an
+    /// edge when the using file already relates to the defining file through
+    /// something it wrote down: an import, a named type, or inheritance.
+    /// Same-package proximity is deliberately not enough — it links call
+    /// sites to every sibling implementation body (measured on
+    /// bal_hard_008: `sink.consume` endorsing ConsoleSink's body).
+    fn confirmed(&self, user: &str, definer: &str) -> bool {
+        self.import_files
+            .get(user)
+            .is_some_and(|s| s.contains(definer))
+            || self
+                .named_files
+                .get(user)
+                .is_some_and(|s| s.contains(definer))
+            || self
+                .import_pkgs
+                .get(user)
+                .zip(self.file_pkg.get(definer))
+                .is_some_and(|(pkgs, pkg)| pkgs.contains(pkg))
+            || self.inh_pairs.contains(&(user, definer))
+    }
+}
+
+pub(crate) struct JVMEdgeBuilder;
+
+impl EdgeBuilder for JVMEdgeBuilder {
+    fn build(&self, fragments: &[Fragment], repo_root: Option<&Path>) -> EdgeDict {
+        let Some(jvm_frags) = base::frags_where(fragments, |f| is_jvm_file(Path::new(f.path())))
+        else {
+            return FxHashMap::default();
+        };
+        let source = diffctx_snapshot::resource::current_source();
+
+        let import_weight = EDGE_WEIGHTS["jvm_import"].forward;
+        let inheritance_weight = EDGE_WEIGHTS["jvm_inheritance"].forward;
+        let type_weight = EDGE_WEIGHTS["jvm_type"].forward;
+        let member_weight = EDGE_WEIGHTS["jvm_member"].forward;
+        let same_package_weight = EDGE_WEIGHTS["jvm_same_package"].forward;
+        let annotation_weight = EDGE_WEIGHTS["jvm_annotation"].forward;
+        let reverse_factor = EDGE_WEIGHTS["jvm_import"].reverse_factor;
+
+        let mut file_pkg: FxHashMap<&str, String> = FxHashMap::default();
+        for f in &jvm_frags {
+            if let Some(pkg) = extract_package(&f.content, Path::new(f.path())) {
+                file_pkg.entry(f.path()).or_insert(pkg);
+            }
+        }
+
+        let mut package_to_frags: FxHashMap<String, Vec<FragmentId>> = FxHashMap::default();
+        let mut class_to_frags: FxHashMap<String, Vec<FragmentId>> = FxHashMap::default();
+        let mut class_files: FxHashMap<String, FxHashSet<&str>> = FxHashMap::default();
+        let mut fqn_to_frags: FxHashMap<String, Vec<FragmentId>> = FxHashMap::default();
+        let mut member_defs: FxHashMap<String, Vec<FragmentId>> = FxHashMap::default();
+        let mut member_def_files: FxHashMap<String, FxHashSet<&str>> = FxHashMap::default();
+        // Members whose name is too short to link by name alone, keyed by
+        // the container they are declared in: `object UI { const val DP }`.
+        let mut owned_short_members: FxHashMap<(String, String), Vec<FragmentId>> =
+            FxHashMap::default();
+
+        for f in &jvm_frags {
+            let path = Path::new(f.path());
+            if let Some(pkg) = extract_package(&f.content, path) {
+                package_to_frags.entry(pkg).or_default().push(f.id.clone());
+            }
+            for cls in extract_classes(&f.content, path) {
+                let lower = cls.to_lowercase();
+                class_files
+                    .entry(lower.clone())
+                    .or_default()
+                    .insert(f.path());
+                class_to_frags.entry(lower).or_default().push(f.id.clone());
+                if let Some(pkg) = file_pkg.get(f.path()) {
+                    fqn_to_frags
+                        .entry(format!("{}.{}", pkg, cls).to_lowercase())
+                        .or_default()
+                        .push(f.id.clone());
+                }
+            }
+            if is_member_def(f) {
+                if let Some(name) = f.symbol_name.as_deref() {
+                    if name.len() < 3 && !is_kotlin(path) {
+                        if let Some(owner) = owner_of(f, &jvm_frags) {
+                            owned_short_members
+                                .entry((owner.to_string(), name.to_string()))
+                                .or_default()
+                                .push(f.id.clone());
+                        }
+                    } else if name.len() >= 3 {
+                        let lower = name.to_lowercase();
+                        member_defs
+                            .entry(lower.clone())
+                            .or_default()
+                            .push(f.id.clone());
+                        member_def_files
+                            .entry(lower.clone())
+                            .or_default()
+                            .insert(f.path());
+                    }
+                }
+            }
+        }
+
+        let mut edges: EdgeDict = FxHashMap::default();
+        let mut rel = FileRelations {
+            file_pkg,
+            import_files: FxHashMap::default(),
+            import_pkgs: FxHashMap::default(),
+            named_files: FxHashMap::default(),
+            inh_pairs: FxHashSet::default(),
+        };
+
+        for jf in &jvm_frags {
+            let path = Path::new(jf.path());
+
+            if is_scala(path) {
+                for imp in parse_scala_imports(&jf.content) {
+                    for sel in &imp.selectors {
+                        let sel_lower = sel.to_lowercase();
+                        let mut hit_fqn = false;
+                        if !imp.prefix.is_empty() {
+                            let fqn = format!("{}.{}", imp.prefix, sel).to_lowercase();
+                            if let Some(fids) = fqn_to_frags.get(&fqn) {
+                                hit_fqn = true;
+                                for fid in fids {
+                                    if fid != &jf.id {
+                                        add_edge(
+                                            &mut edges,
+                                            &jf.id,
+                                            fid,
+                                            import_weight,
+                                            reverse_factor,
+                                        );
+                                        rel.import_files
+                                            .entry(jf.path())
+                                            .or_default()
+                                            .insert(fid.path.as_ref());
+                                    }
+                                }
+                            }
+                        }
+                        if !hit_fqn {
+                            link_class(
+                                &mut edges,
+                                &mut rel,
+                                jf,
+                                &sel_lower,
+                                import_weight,
+                                reverse_factor,
+                                true,
+                                &class_to_frags,
+                                &class_files,
+                            );
+                        }
+                    }
+                    if imp.wildcard && !imp.prefix.is_empty() {
+                        rel.import_pkgs
+                            .entry(jf.path())
+                            .or_default()
+                            .insert(imp.prefix.clone());
+                        add_edges_from_ids(
+                            &mut edges,
+                            &jf.id,
+                            package_to_frags.get(imp.prefix.as_str()).unwrap_or(&vec![]),
+                            import_weight,
+                            reverse_factor,
+                        );
+                        // `import Tables._` / `import pkg.Obj._` endorses an
+                        // object's members, not a package: the prefix leaf is
+                        // the object name.
+                        if let Some(leaf) = imp.prefix.rsplit('.').next() {
+                            if leaf.chars().next().is_some_and(|c| c.is_uppercase()) {
+                                link_class(
+                                    &mut edges,
+                                    &mut rel,
+                                    jf,
+                                    &leaf.to_lowercase(),
+                                    import_weight,
+                                    reverse_factor,
+                                    true,
+                                    &class_to_frags,
+                                    &class_files,
+                                );
+                            }
+                        }
+                    }
+                }
+            } else {
+                for imp in extract_imports(&jf.content, path) {
+                    if imp.ends_with(".*") {
+                        let pkg_prefix = &imp[..imp.len() - 2];
+                        rel.import_pkgs
+                            .entry(jf.path())
+                            .or_default()
+                            .insert(pkg_prefix.to_string());
+                        add_edges_from_ids(
+                            &mut edges,
+                            &jf.id,
+                            package_to_frags.get(pkg_prefix).unwrap_or(&vec![]),
+                            import_weight,
+                            reverse_factor,
+                        );
+                    } else {
+                        let mut hit_fqn = false;
+                        if let Some(fids) = fqn_to_frags.get(&imp.to_lowercase()) {
+                            hit_fqn = true;
+                            for fid in fids {
+                                if fid != &jf.id {
+                                    add_edge(
+                                        &mut edges,
+                                        &jf.id,
+                                        fid,
+                                        import_weight,
+                                        reverse_factor,
+                                    );
+                                    rel.import_files
+                                        .entry(jf.path())
+                                        .or_default()
+                                        .insert(fid.path.as_ref());
+                                }
+                            }
+                        }
+                        if !hit_fqn {
+                            if let Some(last) = imp.split('.').next_back() {
+                                link_class(
+                                    &mut edges,
+                                    &mut rel,
+                                    jf,
+                                    &last.to_lowercase(),
+                                    import_weight,
+                                    reverse_factor,
+                                    true,
+                                    &class_to_frags,
+                                    &class_files,
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+
+            for inh_ref in extract_inheritance(&jf.content, path) {
+                let lower = inh_ref.to_lowercase();
+                if class_files
+                    .get(&lower)
+                    .is_some_and(|s| s.len() > MAX_FILES_PER_NAME)
+                {
+                    continue;
+                }
+                if let Some(fids) = class_to_frags.get(&lower) {
+                    for fid in fids {
+                        if fid != &jf.id {
+                            add_edge(&mut edges, &jf.id, fid, inheritance_weight, reverse_factor);
+                            let a = jf.path();
+                            let b: &str = fid.path.as_ref();
+                            if a != b {
+                                rel.inh_pairs.insert((a, b));
+                                rel.inh_pairs.insert((b, a));
+                            }
+                        }
+                    }
+                }
+            }
+
+            for type_ref in extract_type_refs(&jf.content) {
+                if !JVM_STDLIB_TYPES.contains(type_ref.as_str()) {
+                    link_class(
+                        &mut edges,
+                        &mut rel,
+                        jf,
+                        &type_ref.to_lowercase(),
+                        type_weight,
+                        reverse_factor,
+                        false,
+                        &class_to_frags,
+                        &class_files,
+                    );
+                }
+            }
+
+            for ann_ref in extract_annotations(&jf.content) {
+                link_class(
+                    &mut edges,
+                    &mut rel,
+                    jf,
+                    &ann_ref.to_lowercase(),
+                    annotation_weight,
+                    reverse_factor,
+                    false,
+                    &class_to_frags,
+                    &class_files,
+                );
+            }
+
+            if let Some(current_pkg) = extract_package(&jf.content, path) {
+                add_edges_from_ids(
+                    &mut edges,
+                    &jf.id,
+                    package_to_frags.get(&current_pkg).unwrap_or(&vec![]),
+                    same_package_weight,
+                    reverse_factor,
+                );
+            }
+        }
+
+        // Kotlin users bind through their syntax facts: a member use links to
+        // the definitions the Kotlin binding model resolves it to, whatever
+        // the length of the name. A candidate (an untyped receiver, an
+        // overload) is no edge — a guess suggests, it does not link — and a
+        // spelling in a string or a comment links nothing.
+        let kotlin_defs: FxHashMap<&str, Vec<&Fragment>> = {
+            let mut m: FxHashMap<&str, Vec<&Fragment>> = FxHashMap::default();
+            for f in jvm_frags.iter().filter(|f| is_kotlin(Path::new(f.path()))) {
+                if let Some(name) = f
+                    .symbol_name
+                    .as_deref()
+                    .filter(|_| f.kind.is_definition_kind())
+                {
+                    m.entry(name).or_default().push(f);
+                }
+            }
+            m
+        };
+        if let Some(root) = repo_root.filter(|_| !kotlin_defs.is_empty()) {
+            let resolver = super::legacy::kotlin_bindings::KotlinResolver::new(root, &source);
+            let rel = |p: &str| {
+                Path::new(p)
+                    .strip_prefix(root)
+                    .map(|r| r.to_string_lossy().replace('\\', "/"))
+                    .unwrap_or_else(|_| p.to_string())
+            };
+            let mut defs_of: FxHashMap<&FragmentId, Option<super::legacy::kotlin_bindings::KDef>> =
+                FxHashMap::default();
+            for jf in jvm_frags.iter().filter(|f| is_kotlin(Path::new(f.path()))) {
+                // One user fragment can cost seconds on a large Kotlin
+                // repository: past the deadline the edges found so far are
+                // the graph, and the run says it is partial.
+                if !diffctx_snapshot::resource::current_check() {
+                    break;
+                }
+                let user = rel(jf.path());
+                let Some(facts) = resolver.facts(&user) else {
+                    continue;
+                };
+                let first = facts.uses.partition_point(|u| u.line < jf.start_line());
+                let mut names: Vec<&str> = facts.uses[first..]
+                    .iter()
+                    .take_while(|u| u.line <= jf.end_line())
+                    .map(|u| u.name.as_str())
+                    .collect();
+                names.sort_unstable();
+                names.dedup();
+                for name in names {
+                    let Some(defs) = kotlin_defs.get(name) else {
+                        continue;
+                    };
+                    let files: FxHashSet<&str> = defs.iter().map(|d| d.path()).collect();
+                    if files.len() > MAX_FILES_PER_NAME {
+                        continue;
+                    }
+                    for d in defs {
+                        if d.id == jf.id || diffctx_base::container::within(&jf.id, d) {
+                            continue;
+                        }
+                        let Some(def) = defs_of
+                            .entry(&d.id)
+                            .or_insert_with(|| {
+                                resolver.definition(&rel(d.path()), name, d.start_line())
+                            })
+                            .as_ref()
+                        else {
+                            continue;
+                        };
+                        if resolver
+                            .classify(&user, (jf.start_line(), jf.end_line()), def)
+                            .is_some_and(|f| {
+                                f.evidence == super::legacy::kotlin_bindings::Evidence::Resolved
+                            })
+                        {
+                            add_edge(&mut edges, &jf.id, &d.id, member_weight, reverse_factor);
+                        }
+                    }
+                }
+            }
+        }
+
+        for jf in &jvm_frags {
+            if is_kotlin(Path::new(jf.path())) {
+                continue;
+            }
+            let own = jf.symbol_name.as_deref().map(|s| s.to_lowercase());
+            for m in extract_member_uses(&jf.content) {
+                if own.as_deref() == Some(m.as_str()) {
+                    continue;
+                }
+                let Some(def_files) = member_def_files.get(&m) else {
+                    continue;
+                };
+                if def_files.len() > MAX_FILES_PER_NAME {
+                    continue;
+                }
+                let Some(defs) = member_defs.get(&m) else {
+                    continue;
+                };
+                for d in defs {
+                    let dst_path: &str = d.path.as_ref();
+                    if dst_path == jf.path() || d == &jf.id {
+                        continue;
+                    }
+                    if rel.confirmed(jf.path(), dst_path) {
+                        add_edge(&mut edges, &jf.id, d, member_weight, reverse_factor);
+                    }
+                }
+            }
+            // A Java method calls a sibling of its own file with no
+            // qualifier — `map(x)` in `toDto` — which the dotted member uses
+            // never see (#496). Scala's `apply` and paren-less calls make a
+            // bare name no such call.
+            let java = jf.path().ends_with(".java");
+            let code = diffctx_facts::parsers::code_only(jf.path(), &jf.content)
+                .filter(|_| java)
+                .unwrap_or_default();
+            for cap in UNQUALIFIED_CALL_RE.captures_iter(&code) {
+                let m = cap[1].to_lowercase();
+                if own.as_deref() == Some(m.as_str()) {
+                    continue;
+                }
+                for d in member_defs.get(&m).into_iter().flatten() {
+                    if d.path.as_ref() == jf.path()
+                        && d != &jf.id
+                        && !(d.start_line <= jf.id.start_line && d.end_line >= jf.id.end_line)
+                    {
+                        add_edge(&mut edges, &jf.id, d, member_weight, reverse_factor);
+                    }
+                }
+            }
+            for cap in QUALIFIED_SHORT_USE_RE.captures_iter(&jf.content) {
+                let key = (cap[1].to_string(), cap[2].to_string());
+                for d in owned_short_members.get(&key).into_iter().flatten() {
+                    if d.path.as_ref() != jf.path() && rel.confirmed(jf.path(), d.path.as_ref()) {
+                        add_edge(&mut edges, &jf.id, d, member_weight, reverse_factor);
+                    }
+                }
+            }
+        }
+
+        edges
+    }
+
+    fn discover_related_files(
+        &self,
+        changed: &[PathBuf],
+        candidates: &[PathBuf],
+        _repo_root: Option<&Path>,
+        file_cache: Option<&FxHashMap<PathBuf, String>>,
+    ) -> Vec<PathBuf> {
+        let jvm_changed: Vec<&PathBuf> = changed.iter().filter(|f| is_jvm_file(f)).collect();
+        if jvm_changed.is_empty() {
+            return vec![];
+        }
+
+        let changed_set: FxHashSet<PathBuf> = changed.iter().cloned().collect();
+        let jvm_candidates: Vec<PathBuf> = candidates
+            .iter()
+            .filter(|c| is_jvm_file(c) && !changed_set.contains(*c))
+            .cloned()
+            .collect();
+
+        let mut discovered: FxHashSet<PathBuf> = FxHashSet::default();
+        let mut frontier: Vec<PathBuf> = jvm_changed.iter().map(|f| (*f).clone()).collect();
+
+        for _ in 0..SEMANTIC_DISCOVERY.max_depth {
+            let mut type_refs: FxHashSet<String> = FxHashSet::default();
+            let mut frontier_classes: FxHashSet<String> = FxHashSet::default();
+
+            for f in &frontier {
+                if let Some(content) = base::read_file_cached(f, file_cache) {
+                    type_refs.extend(extract_type_refs(&content));
+                    frontier_classes.extend(extract_classes(&content, f));
+                }
+            }
+
+            let mut hop_found: Vec<PathBuf> = Vec::new();
+            for c in &jvm_candidates {
+                if discovered.contains(c) {
+                    continue;
+                }
+                if let Some(content) = base::read_file_cached(c, file_cache) {
+                    let cand_classes = extract_classes(&content, c);
+                    let cand_type_refs = extract_type_refs(&content);
+
+                    if !cand_classes.is_disjoint(&type_refs)
+                        || !cand_type_refs.is_disjoint(&frontier_classes)
+                    {
+                        hop_found.push(c.clone());
+                        continue;
+                    }
+                    let cand_imports = extract_imports(&content, c);
+                    for imp in &cand_imports {
+                        if let Some(last) = imp.rsplit('.').next() {
+                            if frontier_classes.contains(last) {
+                                hop_found.push(c.clone());
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+
+            let new_files: Vec<PathBuf> = hop_found
+                .into_iter()
+                .filter(|f| !discovered.contains(f))
+                .collect();
+            if new_files.is_empty() {
+                break;
+            }
+            discovered.extend(new_files.iter().cloned());
+            frontier = new_files;
+        }
+
+        let mut result: Vec<PathBuf> = discovered.into_iter().collect();
+        result.sort();
+        result
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Both readers must agree on every shape below: the tree is the primary
+    /// path, the regex the fallback for text that does not parse.
+    fn parse_one(s: &str) -> ScalaImport {
+        let src = format!("import {s}\n");
+        let mut tree = parse_scala_imports(&src);
+        let mut regex = parse_scala_imports_regex(&src);
+        assert_eq!(tree.len(), 1, "expected one import from {s:?} (tree)");
+        assert_eq!(regex.len(), 1, "expected one import from {s:?} (regex)");
+        let (t, r) = (tree.remove(0), regex.remove(0));
+        assert_eq!(
+            (&t.prefix, &t.selectors, t.wildcard),
+            (&r.prefix, &r.selectors, r.wildcard),
+            "tree and regex readers disagree on {s:?}"
+        );
+        t
+    }
+
+    /// What only the tree gets right: an import inside a block comment is
+    /// not an import, and the regex reader cannot know that.
+    #[test]
+    fn a_commented_out_import_is_not_an_import_on_the_tree_path() {
+        let src = "/*\nimport ghost.Gone\n*/\nimport real.Thing\n";
+        let tree: Vec<String> = parse_scala_imports(src)
+            .into_iter()
+            .map(|i| i.prefix)
+            .collect();
+        assert_eq!(tree, vec!["real".to_string()]);
+        let regex: Vec<String> = parse_scala_imports_regex(src)
+            .into_iter()
+            .map(|i| i.prefix)
+            .collect();
+        assert!(
+            regex.contains(&"ghost".to_string()),
+            "the fallback still sees it: {regex:?}"
+        );
+    }
+
+    #[test]
+    fn scala_import_with_brace_before_open_brace_is_rejected_not_a_panic() {
+        assert!(parse_scala_import_clause("a}.{B").is_none());
+        assert!(parse_scala_import_clause("}x{").is_none());
+        let open_only = parse_scala_import_clause("http.{Request").expect("still parses");
+        assert_eq!(open_only.prefix, "http");
+        assert_eq!(open_only.selectors, vec!["Request".to_string()]);
+    }
+
+    #[test]
+    fn scala_import_captures_the_class_not_a_truncated_prefix() {
+        let imp = parse_one("repo.UserRepository");
+        assert_eq!(imp.prefix, "repo");
+        assert_eq!(imp.selectors, vec!["UserRepository".to_string()]);
+        assert!(!imp.wildcard);
+    }
+
+    #[test]
+    fn scala_wildcard_and_brace_imports_resolve_selectors() {
+        let w = parse_one("com.foo._");
+        assert_eq!(w.prefix, "com.foo");
+        assert!(w.wildcard && w.selectors.is_empty());
+
+        let s3 = parse_one("com.foo.*");
+        assert!(s3.wildcard);
+
+        let braces = parse_one("http.{Request, Response}");
+        assert_eq!(braces.prefix, "http");
+        assert_eq!(
+            braces.selectors,
+            vec!["Request".to_string(), "Response".to_string()]
+        );
+
+        let rename = parse_one("a.b.{C => D, _}");
+        assert_eq!(rename.prefix, "a.b");
+        assert_eq!(rename.selectors, vec!["C".to_string()]);
+        assert!(rename.wildcard);
+
+        let object_rooted = parse_one("Tables._");
+        assert_eq!(object_rooted.prefix, "Tables");
+        assert!(object_rooted.wildcard);
+    }
+
+    #[test]
+    fn scala3_renames_keep_the_original_name() {
+        let top = parse_one("a.b.Conf as Config");
+        assert_eq!(top.prefix, "a.b");
+        assert_eq!(top.selectors, vec!["Conf".to_string()]);
+
+        let braced = parse_one("a.{B as C, D}");
+        assert_eq!(braced.prefix, "a");
+        assert_eq!(braced.selectors, vec!["B".to_string(), "D".to_string()]);
+    }
+
+    #[test]
+    fn an_unbalanced_brace_does_not_eat_the_next_import() {
+        let content = "import a.{\nimport b.C\nimport d.E\n";
+        let imports = parse_scala_imports(content);
+        let prefixes: Vec<&str> = imports.iter().map(|i| i.prefix.as_str()).collect();
+        assert!(
+            prefixes.contains(&"b"),
+            "import inside the join window was lost: {prefixes:?}"
+        );
+        assert!(prefixes.contains(&"d"), "{prefixes:?}");
+    }
+
+    #[test]
+    fn scala3_rename_splits_on_any_whitespace() {
+        let top = parse_one("a.b.Conf  as  Config");
+        assert_eq!(top.prefix, "a.b");
+        assert_eq!(top.selectors, vec!["Conf".to_string()]);
+        let braced = parse_one("a.{B\tas\tC, D}");
+        assert_eq!(braced.selectors, vec!["B".to_string(), "D".to_string()]);
+    }
+
+    #[test]
+    fn scala_multiline_brace_import_keeps_its_selectors() {
+        let content = "import scala.collection.{\n  mutable,\n  immutable\n}\nimport a.B\n";
+        let imports = parse_scala_imports(content);
+        assert_eq!(imports.len(), 2);
+        assert_eq!(imports[0].prefix, "scala.collection");
+        assert_eq!(
+            imports[0].selectors,
+            vec!["mutable".to_string(), "immutable".to_string()]
+        );
+        assert_eq!(imports[1].selectors, vec!["B".to_string()]);
+    }
+
+    #[test]
+    fn scala_nested_package_blocks_do_not_concatenate_siblings() {
+        let content =
+            "package com.example\npackage util {\n  class A\n}\npackage data {\n  class B\n}\n";
+        assert_eq!(
+            extract_package(content, Path::new("a.scala")),
+            Some("com.example.util".to_string())
+        );
+    }
+
+    #[test]
+    fn scala_chained_packages_join_and_package_object_is_skipped() {
+        let content = "package com.acme\npackage service\n\nclass X {}\n";
+        assert_eq!(
+            extract_package(content, Path::new("a.scala")),
+            Some("com.acme.service".to_string())
+        );
+        let pkg_obj = "package util\npackage object strings {\n  def slug = 1\n}\n";
+        assert_eq!(
+            extract_package(pkg_obj, Path::new("a.scala")),
+            Some("util".to_string())
+        );
+    }
+}

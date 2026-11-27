@@ -1,0 +1,82 @@
+use std::path::Path;
+
+use once_cell::sync::Lazy;
+use regex::Regex;
+use rustc_hash::{FxHashMap, FxHashSet};
+
+use diffctx_base::types::Fragment;
+use diffctx_config::config::weights::EDGE_WEIGHTS;
+
+use super::super::EdgeDict;
+use super::super::base::{self, EdgeBuilder, discover_by_refs};
+
+fn is_proto_file(path: &Path) -> bool {
+    base::has_ext(path, &[".proto"])
+}
+
+static IMPORT_RE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r#"(?m)^\s*import\s+(?:public\s+)?["']([^"']+)["']"#).unwrap());
+static MSG_RE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"(?m)^\s*(?:message|enum|service)\s+(\w+)").unwrap());
+static FIELD_TYPE_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"(?m)^\s*(?:repeated\s+|optional\s+|required\s+|map<\w+,\s*)?([A-Z]\w+)").unwrap()
+});
+static RPC_TYPE_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"(?:returns\s*\(|rpc\s+\w+\s*\()\s*(?:stream\s+)?([A-Z]\w+)").unwrap()
+});
+
+fn extract_imports(content: &str) -> FxHashSet<String> {
+    base::captures1(&IMPORT_RE, content).collect()
+}
+
+fn extract_defs(content: &str) -> FxHashSet<String> {
+    base::captures1(&MSG_RE, content).collect()
+}
+
+fn extract_type_refs(content: &str) -> FxHashSet<String> {
+    let mut refs: FxHashSet<String> = base::captures1(&FIELD_TYPE_RE, content).collect();
+    refs.extend(base::captures1(&RPC_TYPE_RE, content));
+    refs
+}
+
+pub(crate) struct ProtobufEdgeBuilder;
+
+impl EdgeBuilder for ProtobufEdgeBuilder {
+    fn build(&self, fragments: &[Fragment], repo_root: Option<&Path>) -> EdgeDict {
+        let Some(frags) = base::frags_where(fragments, |f| is_proto_file(Path::new(f.path())))
+        else {
+            return FxHashMap::default();
+        };
+
+        let import_w = EDGE_WEIGHTS["proto_import"].forward;
+        let msg_w = EDGE_WEIGHTS["proto_message_ref"].forward;
+        let rpc_w = EDGE_WEIGHTS["proto_service_rpc"].forward;
+        let reverse_factor = EDGE_WEIGHTS["proto_import"].reverse_factor;
+
+        let idx = base::FragmentIndex::new(fragments, repo_root);
+        let defs = base::DefIndex::new(&frags, reverse_factor, extract_defs);
+
+        let mut edges: EdgeDict = FxHashMap::default();
+
+        for f in &frags {
+            let self_defs = extract_defs(&f.content);
+            for imp in extract_imports(&f.content) {
+                base::link_by_name(&f.id, &imp, &idx, &mut edges, import_w, reverse_factor);
+            }
+            for tref in extract_type_refs(&f.content) {
+                if self_defs.contains(&tref) {
+                    continue;
+                }
+                let w = if RPC_TYPE_RE.captures_iter(&f.content).any(|c| c[1] == tref) {
+                    rpc_w
+                } else {
+                    msg_w
+                };
+                defs.link_one(&mut edges, &f.id, &tref, w);
+            }
+        }
+        edges
+    }
+
+    discover_by_refs!(is_proto_file, extract_imports);
+}

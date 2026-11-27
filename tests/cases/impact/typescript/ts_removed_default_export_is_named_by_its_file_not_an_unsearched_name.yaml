@@ -1,0 +1,33 @@
+name: ts_removed_default_export_is_named_by_its_file_not_an_unsearched_name
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [typescript, default-export, deleted-module, gap, rule-i]
+repo:
+  initial_files:
+    src/conf.ts: |
+      export default { retries: 3 };
+    src/getter.ts: |
+      export const get = () => 1;
+    src/keep.ts: |
+      export const keep = 1;
+    Dockerfile: |
+      FROM node:22-alpine
+      COPY package.json ./
+    package.json: |
+      { "name": "app" }
+  deleted_files:
+    - src/conf.ts
+    - src/getter.ts
+  commit_message: "drop the config and the getter modules"
+# An importer names the default export by the module's path, so the word `default` is
+# nothing to search as text for the removed `src/conf.ts`. The removed `get` is a real name,
+# too common to search as text where the Dockerfile and package.json could spell it: it
+# keeps `name_unsearched`.
+expect:
+  changed: ['src/conf.ts::default', 'src/getter.ts::get']
+  removed: ['src/conf.ts::default', 'src/getter.ts::get']
+  partial:
+    src/getter.ts::get:
+      calls: name_unsearched
+      reads: name_unsearched

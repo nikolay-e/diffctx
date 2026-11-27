@@ -1,0 +1,30 @@
+name: dockerfile_word_on_a_continued_run_line_is_no_stage_use
+mode: impact
+source: synthetic
+issue_state: closed
+tags:
+- dockerfile
+- absence-claim
+repo:
+  initial_files:
+    Dockerfile: |
+      FROM alpine:3.20 AS tools
+      RUN echo a
+
+      FROM alpine:3.20 AS final
+      RUN apk add --no-cache go && \
+          tools ./...
+      CMD ["true"]
+  changed_files:
+    Dockerfile: |
+      FROM alpine:3.20 AS tools
+      RUN echo b
+
+      FROM alpine:3.20 AS final
+      RUN apk add --no-cache go && \
+          tools ./...
+      CMD ["true"]
+  commit_message: Change a stage whose name a continued run line also spells
+expect:
+  callers:
+    tools: []

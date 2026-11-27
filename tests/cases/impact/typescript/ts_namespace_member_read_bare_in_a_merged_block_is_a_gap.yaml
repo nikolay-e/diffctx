@@ -1,0 +1,31 @@
+name: ts_namespace_member_read_bare_in_a_merged_block_is_a_gap
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [typescript, bare-name, declaration-merging, gap]
+repo:
+  initial_files:
+    package.json: |
+      {"name":"app","version":"1.0.0"}
+    tsconfig.json: |
+      {"compilerOptions":{"strict":true}}
+    src/util.ts: |
+      namespace Util {
+        export const cfg = { retries: 1 };
+      }
+    src/more.ts: |
+      namespace Util {
+        export function retries(): number {
+          return cfg.retries;
+        }
+      }
+  changed_files:
+    src/util.ts: |
+      namespace Util {
+        export const cfg = { retries: 2 };
+      }
+  commit_message: change
+expect:
+  changed: ['src/util.ts::cfg']
+  partial:
+    src/util.ts::cfg: {reads: unlanded}

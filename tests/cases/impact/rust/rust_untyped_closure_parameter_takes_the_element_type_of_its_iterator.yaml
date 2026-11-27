@@ -1,0 +1,87 @@
+name: rust_untyped_closure_parameter_takes_the_element_type_of_its_iterator
+mode: impact
+source: synthetic
+issue_state: open
+tags: [rust, closure, closure-parameter, loop-variable, receiver, decoy]
+repo:
+  initial_files:
+    Cargo.toml: |
+      [package]
+      name = "demo"
+      version = "0.1.0"
+      edition = "2021"
+    src/lib.rs: |
+      pub mod cell;
+      pub mod scan;
+      pub mod other;
+      pub mod other_scan;
+    src/cell.rs: |
+      pub struct Cell {
+          pub target: String,
+      }
+
+      impl Cell {
+          pub fn points_to(&self, name: &str) -> bool {
+              self.target == name
+          }
+      }
+    src/scan.rs: |
+      use crate::cell::Cell;
+
+      pub fn any_points_to(cells: &[Cell], name: &str) -> bool {
+          cells.iter().any(|cell| cell.points_to(name))
+      }
+
+      pub fn loop_points_to(cells: &Vec<Cell>, name: &str) -> bool {
+          for cell in cells {
+              if cell.points_to(name) {
+                  return true;
+              }
+          }
+          false
+      }
+
+      pub fn first_points_to(cell: Option<&Cell>, name: &str) -> bool {
+          cell.is_some_and(|c| c.points_to(name))
+      }
+    src/other.rs: |
+      pub struct Other {
+          pub target: String,
+      }
+
+      impl Other {
+          pub fn points_to(&self, name: &str) -> bool {
+              self.target.starts_with(name)
+          }
+      }
+    src/other_scan.rs: |
+      use crate::other::Other;
+
+      pub fn any_other(others: &[Other], name: &str) -> bool {
+          others.iter().any(|other| other.points_to(name))
+      }
+  changed_files:
+    src/cell.rs: |
+      pub struct Cell {
+          pub target: String,
+      }
+
+      impl Cell {
+          pub fn points_to(&self, name: &str) -> bool {
+              self.target.eq_ignore_ascii_case(name)
+          }
+      }
+  commit_message: "cell: points_to ignores case"
+expect:
+  changed: [src/cell.rs::points_to]
+  # The element of `&[Cell]`, `&Vec<Cell>` and `Option<&Cell>` is a `Cell`, so
+  # each closure parameter and loop variable is a `Cell` and its call is
+  # resolved; the same method name on `Other` is another type's.
+  relations:
+    - {from: "src/scan.rs::any_points_to", to: "src/cell.rs::points_to", kind: calls, resolution: resolved, site: 4}
+    - {from: "src/scan.rs::loop_points_to", to: "src/cell.rs::points_to", kind: calls, resolution: resolved, site: 9}
+    - {from: "src/scan.rs::first_points_to", to: "src/cell.rs::points_to", kind: calls, resolution: resolved, site: 17}
+  decoys:
+    "src/cell.rs::points_to": [src/other_scan.rs]
+  coverage:
+    "src/cell.rs::points_to": {calls: complete}

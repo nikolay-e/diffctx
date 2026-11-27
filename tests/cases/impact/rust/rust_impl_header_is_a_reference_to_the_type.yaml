@@ -1,0 +1,58 @@
+name: rust_impl_header_is_a_reference_to_the_type
+mode: impact
+source: synthetic
+issue_state: open
+tags: [rust, impl-header, type-use]
+repo:
+  initial_files:
+    Cargo.toml: |
+      [package]
+      name = "demo"
+      version = "0.1.0"
+      edition = "2021"
+    src/lib.rs: |
+      pub mod format;
+      pub mod run;
+    src/format.rs: |
+      pub trait Format {
+          fn line(&self) -> String;
+      }
+
+      #[derive(Default)]
+      pub struct Plain;
+
+      impl Format for Plain {
+          fn line(&self) -> String {
+              String::new()
+          }
+      }
+    src/run.rs: |
+      use crate::format::{Format, Plain};
+
+      pub fn emit() -> String {
+          let formatter = Plain::default();
+          formatter.line()
+      }
+  changed_files:
+    src/format.rs: |
+      pub trait Format {
+          fn line(&self) -> String;
+      }
+
+      #[derive(Default)]
+      pub struct Plain {
+          pub width: usize,
+      }
+
+      impl Format for Plain {
+          fn line(&self) -> String {
+              String::new()
+          }
+      }
+  commit_message: "format: Plain gets a width"
+expect:
+  exact: false
+  relations:
+    - {from: src/run.rs::emit, to: src/format.rs::Plain, kind: type_use, site: 4}
+    # The impl header names the changed type; no definition encloses it, so it is a use of the file's top level.
+    - {from: src/format.rs, to: src/format.rs::Plain, kind: type_use, site: 10}

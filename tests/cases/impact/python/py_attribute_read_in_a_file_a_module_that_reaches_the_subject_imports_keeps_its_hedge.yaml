@@ -1,0 +1,45 @@
+name: py_attribute_read_in_a_file_a_module_that_reaches_the_subject_imports_keeps_its_hedge
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [python, hedge, untyped-receiver, decoy]
+repo:
+  initial_files:
+    pkg/__init__.py: ""
+    pkg/opts.py: |
+      class Internals:
+          dns_lookup = None
+          retries = 1
+
+
+      class Options:
+          internals: Internals = Internals()
+    pkg/other.py: |
+      class Cache:
+          dns_lookup = "cache"
+
+
+      def lookup(cache):
+          return cache.dns_lookup
+    pkg/use.py: |
+      from pkg.opts import Options
+      from pkg.other import lookup
+
+
+      def resolve():
+          return lookup(Options().internals)
+  changed_files:
+    pkg/opts.py: |
+      class Internals:
+          dns_lookup = "system"
+          retries = 1
+
+
+      class Options:
+          internals: Internals = Internals()
+  commit_message: "opts: resolve names through the system"
+expect:
+  changed: [pkg/opts.py::Internals, pkg/opts.py::Internals.dns_lookup]
+  partial:
+    pkg/opts.py::Internals.dns_lookup:
+      reads: unlanded

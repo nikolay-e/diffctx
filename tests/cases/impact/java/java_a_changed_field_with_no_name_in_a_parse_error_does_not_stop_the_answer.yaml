@@ -1,0 +1,32 @@
+name: java_a_changed_field_with_no_name_in_a_parse_error_does_not_stop_the_answer
+mode: impact
+source: synthetic
+issue_state: open
+tags: [java, parse, coverage, nameless-declaration]
+repo:
+  initial_files:
+    src/main/java/app/Use.java: |
+      package app;
+
+      public class Use {
+          private final Lib.held= new Lib();
+
+          public int one() {
+              return 1;
+          }
+      }
+  changed_files:
+    src/main/java/app/Use.java: |
+      package app;
+
+      public class Use {
+          private final Lib.held= new Lib(1);
+
+          public int one() {
+              return 1;
+          }
+      }
+  commit_message: "use: the field with no name takes an argument"
+expect:
+  never_empty: true
+  discloses: true

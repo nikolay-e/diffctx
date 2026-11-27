@@ -1,0 +1,46 @@
+name: py_removed_defaulted_field_of_a_subclassed_dataclass_keeps_the_class_row
+mode: impact
+source: gh#400
+issue_state: closed
+tags: [python, removed-field, construction, control, dataclass, inheritance]
+repo:
+  initial_files:
+    svc/__init__.py: ""
+    svc/model.py: |
+      from dataclasses import dataclass
+
+
+      @dataclass
+      class Item:
+          id: int
+          size: int = 0
+          note: str = ""
+    svc/sub.py: |
+      from svc.model import Item
+
+
+      class Sub(Item):
+          pass
+    svc/make.py: |
+      from svc.sub import Sub
+
+
+      def build():
+          return Sub(1, 2)
+  changed_files:
+    svc/model.py: |
+      from dataclasses import dataclass
+
+
+      @dataclass
+      class Item:
+          id: int
+          note: str = ""
+  commit_message: "model: drop the size field"
+expect:
+  removed: [size]
+  # A subclass builds through the constructor the dataclass generates, so its
+  # constructions are not traced to the class: the subclass stays named, and the
+  # answer does not narrow what it cannot follow.
+  relations:
+    - {from: "svc/sub.py::Sub", to: "svc/model.py::Item", kind: type_use, resolution: resolved, site: 4}

@@ -1,0 +1,44 @@
+name: dockerfile_copy_from_by_name_reaches_the_stage_and_not_the_other
+mode: impact
+source: synthetic
+issue_state: closed
+tags:
+- dockerfile
+- copy-from
+- stage
+repo:
+  initial_files:
+    Dockerfile: |
+      FROM golang:1.22 AS build
+      WORKDIR /src
+      RUN go build -o /out/app ./cmd
+
+      FROM golang:1.22 AS tools
+      RUN go install example.com/lint@latest
+
+      FROM alpine:3.20 AS final
+      COPY --from=build /out/app /usr/local/bin/app
+  changed_files:
+    Dockerfile: |
+      FROM golang:1.22 AS build
+      WORKDIR /src
+      RUN go build -o /out/app ./cmd/app
+
+      FROM golang:1.22 AS tools
+      RUN go install example.com/lint@latest
+
+      FROM alpine:3.20 AS final
+      COPY --from=build /out/app /usr/local/bin/app
+  commit_message: Change copy from by name reaches the stage and not the other
+expect:
+  changed:
+  - Dockerfile::build
+  relations:
+  - from: Dockerfile::final
+    to: Dockerfile::build
+    kind: reads
+    resolution: resolved
+    site: 9
+  decoys:
+    Dockerfile::build:
+    - Dockerfile::tools

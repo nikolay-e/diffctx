@@ -1,0 +1,27 @@
+# The JDKs and Maven a JVM lane runs in a container, each by the checksum its publisher serves. Gradle builds that name
+# a Java toolchain other than the running JDK 21 (github-workflows-kt: 11) fail with "no locally installed toolchains
+# match" when none is installed and auto-provisioning is off; Maven builds that use maven-toolchains-plugin (HikariCP)
+# stop with "No toolchain ... configured" unless ~/.m2/toolchains.xml names a JDK per version. The same JDKs serve both.
+
+[maven]
+version = "3.9.16"
+url = "https://repo.maven.apache.org/maven2/org/apache/maven/apache-maven/{version}/apache-maven-{version}-bin.tar.gz"
+sha512 = "831a8591fe20c8243b1dbe7d71e3244f31d1665b0804b2e825e38cbbe5ce0cafb8338851f90780735568773e0a6cd07bbec107cda0b896b008b861075358b6f6"  # pragma: allowlist secret
+
+[[jdk]]
+toolchain = "1.8"
+directory = "jdk8u512-b09"
+url = "https://github.com/adoptium/temurin8-binaries/releases/download/jdk8u512-b09/OpenJDK8U-jdk_x64_linux_hotspot_8u512b09.tar.gz"
+sha256 = "fb3bfa869012419b562bb4235d0d83ec4f8c1dda62ae432ba20c6c3a7e43f7e4"  # pragma: allowlist secret
+
+[[jdk]]
+toolchain = "11"
+directory = "jdk-11.0.33+10"
+url = "https://github.com/adoptium/temurin11-binaries/releases/download/jdk-11.0.33%2B10/OpenJDK11U-jdk_x64_linux_hotspot_11.0.33_10.tar.gz"
+sha256 = "c4b8eaf56c93b95b689ffc08d155df1bcdbbffb666f8f71d21d97aedaea6f0ec"  # pragma: allowlist secret
+
+[[jdk]]
+toolchain = "17"
+directory = "jdk-17.0.21+9"
+url = "https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.21%2B9/OpenJDK17U-jdk_x64_linux_hotspot_17.0.21_9.tar.gz"
+sha256 = "8b9b611d917e3dfd8419d3566b5949226f69b052fed7e109c1368add1dfe8711"  # pragma: allowlist secret

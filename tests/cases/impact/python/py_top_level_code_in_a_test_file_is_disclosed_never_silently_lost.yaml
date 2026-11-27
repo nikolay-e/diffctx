@@ -1,0 +1,33 @@
+name: py_top_level_code_in_a_test_file_is_disclosed_never_silently_lost
+mode: impact
+source: fj#94
+issue_state: open
+tags: [python, module-level, test-file, changed-definition]
+repo:
+  initial_files:
+    tests/regression.py: |
+      def spectrum(n):
+          return n * 2
+
+
+      bins = []
+      for i in range(3):
+          bins.append(spectrum(i))
+      assert len(bins) == 3
+  changed_files:
+    tests/regression.py: |
+      def spectrum(n):
+          return n * 2
+
+
+      bins = []
+      for i in range(10):
+          bins.append(spectrum(i))
+      assert len(bins) == 10
+  commit_message: "regression: widen the spectrum loop"
+# The loop edit is code outside every definition of a test file: no caller to
+# lose, but the answer never reads as if the range changed nothing.
+expect:
+  changed: []
+  never_empty: true
+  discloses: true

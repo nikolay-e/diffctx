@@ -1,0 +1,26 @@
+name: web_phtml_template_inline_handler_names_the_script_function
+mode: impact
+source: synthetic
+tags: [web, inline-handler, template, false-absence]
+repo:
+  initial_files:
+    public/js/a.js: |
+      function doit(el) {
+        return 1;
+      }
+    views/form.phtml: |
+      <form>
+        <button onclick="doit(this)">save</button>
+      </form>
+  changed_files:
+    public/js/a.js: |
+      function doit(el) {
+        return 2;
+      }
+  commit_message: "ui: doit returns two"
+expect:
+  exact: false
+  discloses: true
+  no_negative_claims: true
+  relations:
+    - {from: views/form.phtml, to: public/js/a.js::doit, kind: calls, resolution: unresolved}

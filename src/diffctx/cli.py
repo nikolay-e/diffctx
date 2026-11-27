@@ -314,6 +314,8 @@ class ParsedArgs:
     diff_range: str | None = None
     symbol: str | None = None
     budget: int | None = None
+    unfold: bool = False
+    overflow: bool = False
     alpha: float = _DEFAULT_ALPHA
     tau: float | None = None
     scoring: str = _DEFAULT_SCORING
@@ -624,6 +626,25 @@ def _build_main_parser(prog: str = "diffctx", version: str = _BUILD_LABEL) -> ar
         ),
     )
     diff_group.add_argument(
+        "--unfold",
+        action="store_true",
+        default=False,
+        help=(
+            "Impact mode: list every row of a changed definition, each marked with the rule of the "
+            "folding table that would fold it, instead of counting the rows the change cannot have "
+            "affected in one line each"
+        ),
+    )
+    diff_group.add_argument(
+        "--overflow",
+        action="store_true",
+        default=False,
+        help=(
+            "Locate mode: list the ranked candidates the budget left out (up to 50, without bodies, "
+            "charged to the budget); their count is always stated"
+        ),
+    )
+    diff_group.add_argument(
         "--alpha",
         type=float,
         default=_UNSET,
@@ -673,9 +694,9 @@ def _build_main_parser(prog: str = "diffctx", version: str = _BUILD_LABEL) -> ar
         help=(
             "Output mode: pack = context with source bodies (default); "
             "locate = ranked navigation list with provenance reasons, JSON only "
-            "(diffctx.locate.v1; -f is ignored); "
+            "(diffctx.locate.v2; -f is ignored); "
             "impact = callers outside the diff, the tests guarding them and "
-            "cross-commit overlap, under 2k tokens (text by default, diffctx.impact.v1 JSON with -f json)"
+            "cross-commit overlap, under 2k tokens (text by default, diffctx.impact.v2 JSON with -f json)"
         ),
     )
     diff_group.add_argument(
@@ -704,7 +725,7 @@ def _build_main_parser(prog: str = "diffctx", version: str = _BUILD_LABEL) -> ar
             "Also embed the raw unified diff (git's own +/- text) ahead of the selected fragments. "
             "Additive only: selection is unchanged, and the diff does NOT count against --budget "
             "(the stderr token summary counts it, reporting the real output size). "
-            "Lock-file, ignored, and secret-like sections stay omitted. Python CLI only — the native binary has no such flag"
+            "Lock-file, ignored, and secret-like sections stay omitted. Pack mode only"
         ),
     )
     return parser
@@ -870,6 +891,8 @@ def _resolve_diff_params(args: argparse.Namespace) -> tuple[str | None, int | No
 
 
 def _validate_locate_mode(args: argparse.Namespace, mode: str) -> None:
+    if args.overflow and mode != "locate":
+        _exit_usage_error("--overflow applies to --mode locate only")
     if mode == "impact":
         if args.full:
             _exit_usage_error("--mode impact is incompatible with --full (impact walks the graph; --full bypasses it)")
@@ -886,10 +909,10 @@ def _validate_locate_mode(args: argparse.Namespace, mode: str) -> None:
     if args.with_raw_diff:
         _exit_usage_error("--mode locate emits no source; --with-raw-diff applies to pack mode only")
     if args.format is not _UNSET:
-        _warn(f"-f {args.format} ignored with --mode locate (locate emits diffctx.locate.v1 JSON)")
+        _warn(f"-f {args.format} ignored with --mode locate (locate emits diffctx.locate.v2 JSON)")
     inferred = _infer_format_from_output_file(args.output_file)
     if inferred and inferred != "json":
-        _warn(f"the '{args.output_file}' extension says {inferred}, but --mode locate writes diffctx.locate.v1 JSON")
+        _warn(f"the '{args.output_file}' extension says {inferred}, but --mode locate writes diffctx.locate.v2 JSON")
 
 
 def _build_tree_parsed_args(args: argparse.Namespace) -> ParsedArgs:
@@ -930,6 +953,8 @@ def _build_tree_parsed_args(args: argparse.Namespace) -> ParsedArgs:
         diff_range=diff_range,
         symbol=args.symbol,
         budget=budget,
+        unfold=args.unfold,
+        overflow=args.overflow,
         alpha=alpha,
         tau=tau,
         scoring=scoring,

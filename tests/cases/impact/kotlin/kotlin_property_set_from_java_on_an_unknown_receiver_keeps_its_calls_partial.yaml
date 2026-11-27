@@ -1,0 +1,43 @@
+name: kotlin_property_set_from_java_on_an_unknown_receiver_keeps_its_calls_partial
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [kotlin, java, jvm, absence-claim, neighbour-language, coverage]
+repo:
+  initial_files:
+    src/main/kotlin/shop/User.kt: |
+      package shop
+
+      class User {
+          var isActive: Boolean = false
+          var plain: Int = 0
+      }
+    src/main/java/shop/Admin.java: |
+      package shop;
+
+      import org.thirdparty.Session;
+
+      public class Admin {
+          public void enable(Session session) {
+              session.current().setActive(true);
+          }
+      }
+  changed_files:
+    src/main/kotlin/shop/User.kt: |
+      package shop
+
+      class User {
+          var isActive: Boolean = true
+          var plain: Int = 1
+      }
+  commit_message: "user: active and plain start set"
+expect:
+  exact: false
+  changed:
+    - src/main/kotlin/shop/User.kt::User.isActive
+    - src/main/kotlin/shop/User.kt::User.plain
+  # Java sees `isActive` as `isActive()` and `setActive(..)`: the call on a receiver
+  # of a type no file of the repository holds is a use the binding model cannot place.
+  # `plain` has no such use: the answer lists it with no row, as a definition nothing calls.
+  coverage:
+    src/main/kotlin/shop/User.kt::User.isActive: {calls: partial}

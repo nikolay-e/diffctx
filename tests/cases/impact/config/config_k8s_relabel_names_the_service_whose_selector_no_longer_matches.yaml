@@ -1,0 +1,61 @@
+name: config_k8s_relabel_names_the_service_whose_selector_no_longer_matches
+mode: impact
+source: synthetic
+issue_state: closed
+tags:
+- config
+- kubernetes
+- selector
+- candidate
+- stale
+repo:
+  initial_files:
+    k8s/web.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: web
+      spec:
+        template:
+          metadata:
+            labels:
+              app: web
+          spec:
+            containers: []
+    k8s/svc.yaml: |
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: web
+      spec:
+        selector:
+          app: web
+  changed_files:
+    k8s/web.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: web
+      spec:
+        template:
+          metadata:
+            labels:
+              app: web-v2
+          spec:
+            containers: []
+  commit_message: Change config k8s relabel names the service whose selector no longer matches
+expect:
+  relations:
+  - from: k8s/svc.yaml
+    to: k8s/web.yaml
+    kind: reads
+    resolution: candidate
+    site: 7
+  exact: true
+  partial:
+    # The Deployment controller of the cluster reads the pod template's labels
+    # and the API server applies them to the pods; selectors of objects applied
+    # from other repositories read them too. Only the readers in this repository
+    # are listed.
+    k8s/web.yaml::Deployment.apps/web:
+      reads: not_traced

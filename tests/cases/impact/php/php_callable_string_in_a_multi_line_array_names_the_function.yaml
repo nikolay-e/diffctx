@@ -1,0 +1,40 @@
+name: php_callable_string_in_a_multi_line_array_names_the_function
+mode: impact
+source: synthetic
+tags: [php, literal-name, callable-string, array-value, wordpress]
+repo:
+  initial_files:
+    src/handlers.php: |
+      <?php
+
+      function acme_list_items(): array
+      {
+          return [];
+      }
+    src/routes.php: |
+      <?php
+
+      $handlers = [
+          'acme_other_items',
+          'acme_list_items',
+      ];
+
+      function acme_count_all(): int
+      {
+          return count($GLOBALS['handlers']);
+      }
+  changed_files:
+    src/handlers.php: |
+      <?php
+
+      function acme_list_items(): array
+      {
+          return ['all'];
+      }
+  commit_message: "handlers: list every item"
+expect:
+  exact: false
+  discloses: true
+  no_negative_claims: true
+  relations:
+    - {from: src/routes.php, to: src/handlers.php::acme_list_items, kind: calls, resolution: unresolved}

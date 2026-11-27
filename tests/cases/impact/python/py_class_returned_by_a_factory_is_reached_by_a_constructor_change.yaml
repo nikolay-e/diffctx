@@ -1,0 +1,36 @@
+name: py_class_returned_by_a_factory_is_reached_by_a_constructor_change
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [python, oracle, init-reach, passes-as-value, local-class]
+repo:
+  initial_files:
+    counting/__init__.py: ""
+    counting/factory.py: |
+      def make_counter():
+          class Counter:
+              def __init__(self):
+                  self.count = 0
+
+          return Counter
+    counting/use.py: |
+      from counting.factory import make_counter
+
+      counter_class = make_counter()
+      counter = counter_class()
+  changed_files:
+    counting/factory.py: |
+      def make_counter():
+          class Counter:
+              def __init__(self):
+                  self.count = 1
+
+          return Counter
+  commit_message: "factory: counters start at one"
+expect:
+  relations:
+    - from: "counting/factory.py::make_counter"
+      to: "counting/factory.py::Counter"
+      kind: passes_as_value
+      resolution: resolved
+      site: 6

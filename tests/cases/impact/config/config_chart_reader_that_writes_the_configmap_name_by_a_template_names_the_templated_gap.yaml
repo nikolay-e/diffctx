@@ -1,0 +1,48 @@
+name: config_chart_reader_that_writes_the_configmap_name_by_a_template_names_the_templated_gap
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [config, helm, gap]
+repo:
+  initial_files:
+    chart/Chart.yaml: |
+      apiVersion: v2
+      name: demo
+      version: 0.1.0
+    chart/templates/cm.yaml: |
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: demo-cfg
+      data:
+        mode: a
+    chart/templates/deploy.yaml: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: demo
+      spec:
+        template:
+          spec:
+            containers:
+              - name: app
+                image: app
+                envFrom:
+                  - configMapRef:
+                      name: {{ .Release.Name }}-cfg
+  changed_files:
+    chart/templates/cm.yaml: |
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: demo-cfg
+      data:
+        mode: b
+  commit_message: change
+expect:
+  exact: false
+  changed: ['chart/templates/cm.yaml::ConfigMap/demo-cfg']
+  # The deployment names the configmap by a template: what it reads is not known
+  # until the chart is rendered, so the configmap's readers are not all found.
+  partial:
+    chart/templates/cm.yaml::ConfigMap/demo-cfg: {reads: [templated, not_traced]}

@@ -1,0 +1,43 @@
+name: chx_h_header_function_used_only_by_another_changed_function_is_folded
+mode: impact
+source: synthetic
+issue_state: closed
+tags:
+- cpp
+- out-of-line
+- header-extension
+repo:
+  initial_files:
+    include/app/eng.h: |
+      #pragma once
+
+      namespace app {
+      class Engine {
+      public:
+          int viaThis() const;
+          int viaArrow() const;
+      };
+      }
+    src/eng.cpp: |
+      #include "app/eng.h"
+
+      namespace app {
+      int Engine::viaThis() const { return viaArrow() + 1; }
+      int Engine::viaArrow() const { return 1; }
+      }
+  changed_files:
+    src/eng.cpp: |
+      #include "app/eng.h"
+
+      namespace app {
+      int Engine::viaThis() const { return viaArrow() + 2; }
+      int Engine::viaArrow() const { return 2; }
+      }
+  commit_message: Change two members where one calls the other
+expect:
+  changed:
+  - src/eng.cpp::Engine.viaThis
+  - src/eng.cpp::Engine.viaArrow
+  coverage:
+    src/eng.cpp::Engine.viaArrow:
+      calls: complete

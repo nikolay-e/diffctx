@@ -1,0 +1,44 @@
+name: py_field_pushed_down_into_one_subclass_is_removed_from_the_base
+mode: impact
+source: synthetic
+tags: [python, move, removed, fields, inheritance]
+repo:
+  initial_files:
+    base.py: |
+      class Base:
+          x: int
+    a.py: |
+      from base import Base
+
+
+      class A(Base):
+          pass
+    c.py: |
+      from base import Base
+
+
+      class C(Base):
+          def get(self):
+              return self.x
+    use.py: |
+      from base import Base
+
+
+      def go():
+          return Base().x
+  changed_files:
+    base.py: |
+      class Base:
+          pass
+    a.py: |
+      from base import Base
+
+
+      class A(Base):
+          x: int
+  commit_message: Push x down into A
+expect:
+  removed: ['base.py::Base.x']
+  relations:
+  - {from: 'c.py::C.get', to: 'base.py::Base.x', kind: reads, resolution: resolved}
+  - {from: 'use.py::go', to: 'base.py::Base.x', kind: reads, resolution: resolved}

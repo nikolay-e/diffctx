@@ -1,0 +1,563 @@
+use std::path::{Path, PathBuf};
+
+/// Same ambiguity bar as `CFamilySemanticWeights::max_files_per_name`.
+const MAX_FILES_PER_NAME: usize = 8;
+
+use once_cell::sync::Lazy;
+use regex::Regex;
+use rustc_hash::{FxHashMap, FxHashSet};
+
+use diffctx_base::types::{Fragment, FragmentId};
+use diffctx_config::config::edge_weights::SEMANTIC_DISCOVERY;
+use diffctx_config::config::extensions::RUST_EXTENSIONS;
+use diffctx_config::config::weights::EDGE_WEIGHTS;
+
+use super::super::EdgeDict;
+use super::super::base::{self, EdgeBuilder, add_edge, add_edges_from_ids};
+
+fn is_rust_file(path: &Path) -> bool {
+    RUST_EXTENSIONS.contains(diffctx_base::languages::file_ext(path).as_str())
+}
+
+static USE_RE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"(?m)^\s*use\s+([\w:]+(?:::\{[^}]+\})?)").unwrap());
+static MOD_RE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"(?m)^\s*(?:pub\s+)?mod\s+(\w+)\s*[;{]").unwrap());
+static TYPE_DEF_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"(?m)^\s*(?:pub(?:\([^)]*\))?\s+)?(?:struct|enum|trait|type|union)\s+([A-Z]\w*)")
+        .unwrap()
+});
+static FN_DEF_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"(?m)^\s*(?:pub(?:\([^)]*\))?\s+)?(?:async\s+)?fn\s+([a-z_]\w*)").unwrap()
+});
+static TYPE_REF_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"\b([A-Z]\w*)\b").unwrap());
+static FN_CALL_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"\b([a-z_]\w+)\s*[(<]").unwrap());
+/// Whole `a::b::c` paths; every adjacent pair is a (module, symbol) call so
+/// `crate::pricing::total(..)` names `pricing::total` and not only
+/// `crate::pricing`, which a pairwise regex stopped at.
+static PATH_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"\b\w+(?:::\w+)+").unwrap());
+static IMPL_RE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"(?m)^\s*impl(?:<[^>]*>)?\s+(\w+)\s+for\s+(\w+)").unwrap());
+static PUB_USE_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?m)^\s*pub\s+use\s+([\w:]+)").unwrap());
+
+static RUST_KEYWORDS: Lazy<FxHashSet<&str>> = Lazy::new(|| {
+    base::kw(concat!(
+        "if else for while loop match return break continue let mut ref fn pub mod use struct enum ",
+        "trait impl type where as in self super crate extern async await move unsafe const static ",
+        "dyn box true false Some None Ok Err vec println eprintln format write writeln panic assert ",
+        "assert_eq assert_ne debug_assert todo unimplemented unreachable cfg derive allow deny warn ",
+    ))
+});
+fn extract_uses(content: &str) -> FxHashSet<String> {
+    base::captures1(&USE_RE, content).collect()
+}
+
+fn extract_mods(content: &str) -> FxHashSet<String> {
+    base::captures1(&MOD_RE, content).collect()
+}
+
+fn extract_definitions(content: &str) -> (FxHashSet<String>, FxHashSet<String>) {
+    let funcs: FxHashSet<String> = base::captures1(&FN_DEF_RE, content).collect();
+    let types: FxHashSet<String> = base::captures1(&TYPE_DEF_RE, content).collect();
+    (funcs, types)
+}
+
+fn extract_trait_impls(content: &str) -> Vec<(String, String)> {
+    IMPL_RE
+        .captures_iter(content)
+        .map(|c| (c[1].to_string(), c[2].to_string()))
+        .collect()
+}
+
+fn extract_pub_uses(content: &str) -> Vec<String> {
+    base::captures1(&PUB_USE_RE, content).collect()
+}
+
+struct References {
+    type_refs: FxHashSet<String>,
+    /// Bare `name(`: a free function, resolved across files.
+    fn_calls: FxHashSet<String>,
+    /// `.name(`: a method on a receiver the reader cannot type, resolved
+    /// within the calling file only. Linking every `.get(` to every
+    /// `fn get` in reach put an unrelated `Counter::get` beside a cache
+    /// change once the module star stopped drowning it.
+    method_calls: FxHashSet<String>,
+    /// `Module::name`, resolved through the module.
+    path_calls: FxHashSet<(String, String)>,
+}
+
+fn extract_references(content: &str) -> References {
+    let type_refs: FxHashSet<String> = TYPE_REF_RE
+        .find_iter(content)
+        .map(|m| m.as_str())
+        .filter(|n| !RUST_KEYWORDS.contains(n))
+        .map(str::to_string)
+        .collect();
+    let mut fn_calls = FxHashSet::default();
+    let mut method_calls = FxHashSet::default();
+    for m in FN_CALL_RE.find_iter(content) {
+        let name = m.as_str()[..m.len() - 1].trim_end();
+        if RUST_KEYWORDS.contains(name) {
+            continue;
+        }
+        let before = &content[..m.start()];
+        // `fn name(` is the definition, not a call: matched here, every
+        // `fn new` endorsed every other `fn new` in reach.
+        if before.ends_with("::") || before.trim_end().ends_with("fn") {
+            continue;
+        }
+        if before.ends_with('.') {
+            method_calls.insert(name.to_string());
+        } else {
+            fn_calls.insert(name.to_string());
+        }
+    }
+    let path_calls: FxHashSet<(String, String)> = PATH_RE
+        .find_iter(content)
+        .flat_map(|m| {
+            let segments: Vec<&str> = m.as_str().split("::").collect();
+            segments
+                .windows(2)
+                .map(|w| (w[0].to_string(), w[1].to_string()))
+                .collect::<Vec<_>>()
+        })
+        .collect();
+    References {
+        type_refs,
+        fn_calls,
+        method_calls,
+        path_calls,
+    }
+}
+
+fn stem_to_mod_name(path: &Path) -> String {
+    let stem = base::file_stem_lower(path);
+    if stem == "mod" || stem == "lib" {
+        path.parent()
+            .and_then(|p| p.file_name())
+            .map(|n| n.to_string_lossy().to_lowercase())
+            .unwrap_or(stem)
+    } else {
+        stem
+    }
+}
+
+pub(crate) struct RustEdgeBuilder;
+
+impl EdgeBuilder for RustEdgeBuilder {
+    fn build(&self, fragments: &[Fragment], _repo_root: Option<&Path>) -> EdgeDict {
+        let Some(rust_frags) = base::frags_where(fragments, |f| is_rust_file(Path::new(f.path())))
+        else {
+            return FxHashMap::default();
+        };
+
+        let mod_weight = EDGE_WEIGHTS["rust_mod"].forward;
+        let use_weight = EDGE_WEIGHTS["rust_use"].forward;
+        let type_weight = EDGE_WEIGHTS["rust_type"].forward;
+        let fn_weight = EDGE_WEIGHTS["rust_fn"].forward;
+        let same_crate_weight = EDGE_WEIGHTS["rust_same_crate"].forward;
+        let reverse_factor = EDGE_WEIGHTS["rust_mod"].reverse_factor;
+
+        // A file's stem and its module name are file-level relations: they
+        // resolve to the file's representative fragment, as every other
+        // file-level edge does (#208), not to each of its fragments — that
+        // fan-out was 13.4M of the 15.8M edges on a polars-scale commit
+        // (#196).
+        let reps = base::file_representatives(rust_frags.iter().copied());
+        let mut name_to_frags: FxHashMap<String, Vec<FragmentId>> = FxHashMap::default();
+        let mut mod_to_frags: FxHashMap<String, Vec<FragmentId>> = FxHashMap::default();
+        let mut type_defs: FxHashMap<String, Vec<FragmentId>> = FxHashMap::default();
+        let mut fn_defs: FxHashMap<String, Vec<FragmentId>> = FxHashMap::default();
+        let mut def_files: FxHashMap<String, FxHashSet<&str>> = FxHashMap::default();
+        let mut name_files: FxHashMap<String, FxHashSet<&str>> = FxHashMap::default();
+        let mut mod_files: FxHashMap<String, FxHashSet<&str>> = FxHashMap::default();
+        let mut trait_impls: FxHashMap<FragmentId, Vec<(String, String)>> = FxHashMap::default();
+
+        for f in &rust_frags {
+            let path = Path::new(f.path());
+            let stem = base::file_stem_lower(path);
+            let is_rep = reps.get(f.path()) == Some(&f.id);
+            name_files.entry(stem.clone()).or_default().insert(f.path());
+            if is_rep {
+                name_to_frags
+                    .entry(stem.clone())
+                    .or_default()
+                    .push(f.id.clone());
+            }
+
+            let module_key = stem_to_mod_name(path);
+            mod_files
+                .entry(module_key.clone())
+                .or_default()
+                .insert(f.path());
+            if is_rep {
+                mod_to_frags
+                    .entry(module_key)
+                    .or_default()
+                    .push(f.id.clone());
+            }
+
+            let (funcs, types) = extract_definitions(&f.content);
+            for t in types {
+                let lower = t.to_lowercase();
+                def_files.entry(lower.clone()).or_default().insert(f.path());
+                type_defs.entry(lower).or_default().push(f.id.clone());
+            }
+            for func in funcs {
+                let lower = func.to_lowercase();
+                def_files.entry(lower.clone()).or_default().insert(f.path());
+                fn_defs.entry(lower).or_default().push(f.id.clone());
+            }
+
+            // `mod foo;` in this fragment makes it the declaration site of
+            // `foo`, one fragment per file.
+            for mod_name in extract_mods(&f.content) {
+                let key = mod_name.to_lowercase();
+                let files = mod_files.entry(key.clone()).or_default();
+                if files.insert(f.path()) {
+                    mod_to_frags.entry(key).or_default().push(f.id.clone());
+                }
+            }
+
+            let impls = extract_trait_impls(&f.content);
+            if !impls.is_empty() {
+                trait_impls.insert(f.id.clone(), impls);
+            }
+        }
+
+        // Re-export registration runs over the COMPLETE definition maps:
+        // inline in the loop above it saw only files iterated before the
+        // re-exporting one, so which `pub use` leaves resolved depended on
+        // file iteration order (#199). Registrations are collected before
+        // insertion so re-exporters do not shadow each other either.
+        let mut pub_use_regs: Vec<(String, FragmentId)> = Vec::new();
+        for f in &rust_frags {
+            for pub_use_path in extract_pub_uses(&f.content) {
+                let leaf_lower = pub_use_path.split("::").last().unwrap_or("").to_lowercase();
+                if leaf_lower.is_empty() || name_to_frags.contains_key(&leaf_lower) {
+                    continue;
+                }
+                let has_target = type_defs
+                    .get(&leaf_lower)
+                    .map_or(false, |v| v.iter().any(|fid| fid != &f.id))
+                    || fn_defs
+                        .get(&leaf_lower)
+                        .map_or(false, |v| v.iter().any(|fid| fid != &f.id));
+                if has_target {
+                    pub_use_regs.push((leaf_lower, f.id.clone()));
+                }
+            }
+        }
+        for (leaf_lower, fid) in pub_use_regs {
+            name_to_frags.entry(leaf_lower).or_default().push(fid);
+        }
+
+        let mut edges: EdgeDict = FxHashMap::default();
+        // Same ambiguity bar as CFamilySemanticWeights::max_files_per_name: a
+        // name defined in more files than this is vocabulary, not a
+        // dependency. Uncapped, the type/fn channels alone emitted 35.4M
+        // edges on a polars-scale commit (#196).
+        let name_capped = |name: &str| {
+            def_files
+                .get(name)
+                .is_some_and(|s| s.len() > MAX_FILES_PER_NAME)
+        };
+
+        for (impl_fid, pairs) in &trait_impls {
+            for (trait_name, _type_name) in pairs {
+                add_edges_from_ids(
+                    &mut edges,
+                    impl_fid,
+                    type_defs.get(&trait_name.to_lowercase()).unwrap_or(&vec![]),
+                    type_weight,
+                    reverse_factor,
+                );
+            }
+        }
+
+        for f in &rust_frags {
+            for pub_use_path in extract_pub_uses(&f.content) {
+                let leaf_lower = pub_use_path.split("::").last().unwrap_or("").to_lowercase();
+                for target_list in [type_defs.get(&leaf_lower), fn_defs.get(&leaf_lower)]
+                    .iter()
+                    .flatten()
+                {
+                    add_edges_from_ids(&mut edges, &f.id, *target_list, use_weight, reverse_factor);
+                }
+            }
+        }
+
+        let mut reported = 0u64;
+        for (i, rf) in rust_frags.iter().enumerate() {
+            if !diffctx_snapshot::resource::poll_emissions(
+                i,
+                256,
+                edges.len() as u64,
+                &mut reported,
+            ) {
+                break;
+            }
+            let References {
+                type_refs,
+                fn_calls,
+                method_calls,
+                path_calls,
+            } = extract_references(&rf.content);
+
+            for use_path in extract_uses(&rf.content) {
+                for part in use_path.split("::") {
+                    let part_lower = part.to_lowercase();
+                    for (files, frags) in
+                        [(&mod_files, &mod_to_frags), (&name_files, &name_to_frags)]
+                    {
+                        if files
+                            .get(&part_lower)
+                            .is_none_or(|fs| fs.len() <= MAX_FILES_PER_NAME)
+                        {
+                            let targets = frags
+                                .get(&part_lower)
+                                .map(Vec::as_slice)
+                                .unwrap_or_default();
+                            add_edges_from_ids(
+                                &mut edges,
+                                &rf.id,
+                                targets,
+                                use_weight,
+                                reverse_factor,
+                            );
+                        }
+                    }
+                }
+            }
+
+            for mod_name in extract_mods(&rf.content) {
+                for fid in name_to_frags
+                    .get(&mod_name.to_lowercase())
+                    .unwrap_or(&vec![])
+                {
+                    if fid != &rf.id {
+                        add_edge(&mut edges, &rf.id, fid, mod_weight, reverse_factor);
+                    }
+                }
+            }
+
+            for (names, defs, weight) in [
+                (&type_refs, &type_defs, type_weight),
+                (&fn_calls, &fn_defs, fn_weight),
+            ] {
+                for name in names {
+                    let lower = name.to_lowercase();
+                    if name_capped(&lower) {
+                        continue;
+                    }
+                    let targets = defs.get(&lower).map(Vec::as_slice).unwrap_or_default();
+                    add_edges_from_ids(&mut edges, &rf.id, targets, weight, reverse_factor);
+                }
+            }
+
+            for method in &method_calls {
+                for fid in fn_defs.get(&method.to_lowercase()).unwrap_or(&vec![]) {
+                    if fid != &rf.id && fid.path.as_ref() == rf.path() {
+                        add_edge(&mut edges, &rf.id, fid, fn_weight, reverse_factor);
+                    }
+                }
+            }
+
+            // `module::symbol` names one definition when the module has it;
+            // only a module without that symbol (a crate, an enum, a path
+            // the reader cannot see into) endorses the module as a file.
+            for (mod_name, symbol) in &path_calls {
+                let mod_lower = mod_name.to_lowercase();
+                let symbol_lower = symbol.to_lowercase();
+                let own_module = stem_to_mod_name(Path::new(rf.path()));
+                let in_module = |fid: &FragmentId| {
+                    if mod_lower == "self" || mod_lower == "super" {
+                        fid.path.as_ref() == rf.path()
+                    } else {
+                        stem_to_mod_name(Path::new(fid.path.as_ref())) == mod_lower
+                            || (mod_lower == own_module && fid.path.as_ref() == rf.path())
+                    }
+                };
+                let mut named = false;
+                for defs in [fn_defs.get(&symbol_lower), type_defs.get(&symbol_lower)]
+                    .into_iter()
+                    .flatten()
+                {
+                    for fid in defs {
+                        if fid != &rf.id && in_module(fid) {
+                            add_edge(&mut edges, &rf.id, fid, use_weight, reverse_factor);
+                            named = true;
+                        }
+                    }
+                }
+                if named {
+                    continue;
+                }
+                for fid in mod_to_frags.get(&mod_lower).unwrap_or(&vec![]) {
+                    if fid != &rf.id {
+                        add_edge(&mut edges, &rf.id, fid, use_weight, reverse_factor);
+                    }
+                }
+            }
+
+            // A crate root or module root shares its directory with the
+            // files it declares: a file-level relation between the root's
+            // representative and each sibling file's representative.
+            let stem = base::file_stem_lower(Path::new(rf.path()));
+            if (stem == "lib" || stem == "mod") && reps.get(rf.path()) == Some(&rf.id) {
+                let parent_dir = Path::new(rf.path()).parent();
+                for (other_path, other_rep) in &reps {
+                    if Path::new(other_path).parent() == parent_dir && other_rep != &rf.id {
+                        add_edge(
+                            &mut edges,
+                            &rf.id,
+                            other_rep,
+                            same_crate_weight,
+                            reverse_factor,
+                        );
+                    }
+                }
+            }
+        }
+
+        edges
+    }
+
+    fn discover_related_files(
+        &self,
+        changed: &[PathBuf],
+        candidates: &[PathBuf],
+        _repo_root: Option<&Path>,
+        file_cache: Option<&FxHashMap<PathBuf, String>>,
+    ) -> Vec<PathBuf> {
+        let rust_changed: Vec<&PathBuf> = changed.iter().filter(|f| is_rust_file(f)).collect();
+        if rust_changed.is_empty() {
+            return vec![];
+        }
+
+        let rust_candidates: Vec<PathBuf> = candidates
+            .iter()
+            .filter(|c| is_rust_file(c))
+            .cloned()
+            .collect();
+
+        let mut mod_name_to_files: FxHashMap<String, Vec<PathBuf>> = FxHashMap::default();
+        let mut file_uses: FxHashMap<PathBuf, FxHashSet<String>> = FxHashMap::default();
+        let mut file_mods: FxHashMap<PathBuf, FxHashSet<String>> = FxHashMap::default();
+
+        for candidate in &rust_candidates {
+            mod_name_to_files
+                .entry(stem_to_mod_name(candidate))
+                .or_default()
+                .push(candidate.clone());
+            if let Some(content) = base::read_file_cached(candidate, file_cache) {
+                file_uses.insert(candidate.clone(), extract_uses(&content));
+                file_mods.insert(candidate.clone(), extract_mods(&content));
+            }
+        }
+
+        let changed_set: FxHashSet<PathBuf> = changed.iter().cloned().collect();
+        let mut discovered: FxHashSet<PathBuf> = FxHashSet::default();
+        let mut frontier: FxHashSet<PathBuf> = rust_changed.iter().map(|f| (*f).clone()).collect();
+
+        for _ in 0..SEMANTIC_DISCOVERY.max_depth {
+            let skip: FxHashSet<PathBuf> = changed_set.union(&discovered).cloned().collect();
+            let frontier_mod_names: FxHashSet<String> =
+                frontier.iter().map(|f| stem_to_mod_name(f)).collect();
+
+            let mut forward_targets: FxHashSet<String> = FxHashSet::default();
+            for f in &frontier {
+                if let Some(uses) = file_uses.get(f) {
+                    for use_path in uses {
+                        for part in use_path.split("::") {
+                            forward_targets.insert(part.to_lowercase());
+                        }
+                    }
+                }
+                if let Some(mods) = file_mods.get(f) {
+                    for m in mods {
+                        forward_targets.insert(m.to_lowercase());
+                    }
+                }
+            }
+
+            let mut found: FxHashSet<PathBuf> = FxHashSet::default();
+
+            for target_name in &forward_targets {
+                for candidate in mod_name_to_files.get(target_name).unwrap_or(&vec![]) {
+                    if !skip.contains(candidate) && !found.contains(candidate) {
+                        found.insert(candidate.clone());
+                    }
+                }
+            }
+
+            for candidate in &rust_candidates {
+                if skip.contains(candidate) || found.contains(candidate) {
+                    continue;
+                }
+                let cand_mods = file_mods.get(candidate).cloned().unwrap_or_default();
+                if !cand_mods.is_disjoint(&frontier_mod_names) {
+                    found.insert(candidate.clone());
+                    continue;
+                }
+                if let Some(uses) = file_uses.get(candidate) {
+                    let use_parts: FxHashSet<String> = uses
+                        .iter()
+                        .flat_map(|p| p.split("::").map(|s| s.to_lowercase()))
+                        .collect();
+                    if !use_parts.is_disjoint(&frontier_mod_names) {
+                        found.insert(candidate.clone());
+                    }
+                }
+            }
+
+            if found.is_empty() {
+                break;
+            }
+            discovered.extend(found.iter().cloned());
+            frontier = found;
+        }
+
+        let mut result: Vec<PathBuf> = discovered.into_iter().collect();
+        result.sort();
+        result
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use diffctx_base::types::FragmentKind;
+
+    fn frag(path: &str, content: &str) -> Fragment {
+        Fragment {
+            id: FragmentId::new(std::sync::Arc::from(path), 1, 20),
+            kind: FragmentKind::Function,
+            content: std::sync::Arc::from(content),
+            identifiers: FxHashSet::default(),
+            token_count: 20,
+            symbol_name: None,
+        }
+    }
+
+    #[test]
+    fn pub_use_registration_does_not_depend_on_file_iteration_order() {
+        // The re-exporting file iterates FIRST, the defining file after it —
+        // exactly the order that dropped the registration before #199.
+        let facade = frag("src/facade.rs", "pub use detail::WidgetFactory;\n");
+        let detail = frag(
+            "src/z_detail.rs",
+            "pub struct WidgetFactory {\n    size: u32,\n}\n",
+        );
+        let consumer = frag(
+            "src/consumer.rs",
+            "use crate::api::WidgetFactory;\n\nfn run() {}\n",
+        );
+        let frags = vec![facade.clone(), detail, consumer.clone()];
+        let edges = RustEdgeBuilder.build(&frags, None);
+        assert!(
+            edges.contains_key(&(consumer.id.clone(), facade.id.clone())),
+            "a use of the re-exported leaf must resolve to the re-exporting file"
+        );
+    }
+}

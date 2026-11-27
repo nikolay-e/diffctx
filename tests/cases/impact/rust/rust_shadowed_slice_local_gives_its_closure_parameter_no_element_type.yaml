@@ -1,0 +1,63 @@
+name: rust_shadowed_slice_local_gives_its_closure_parameter_no_element_type
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [rust, closure, closure-parameter, receiver, shadowing, decoy]
+repo:
+  initial_files:
+    Cargo.toml: |
+      [package]
+      name = "demo"
+      version = "0.1.0"
+      edition = "2021"
+    src/lib.rs: |
+      pub mod cell;
+      pub mod other;
+      pub mod scan;
+    src/cell.rs: |
+      pub struct Cell {
+          pub target: String,
+      }
+
+      impl Cell {
+          pub fn points_to(&self, name: &str) -> bool {
+              self.target == name
+          }
+      }
+    src/other.rs: |
+      pub struct Other {
+          pub target: String,
+      }
+
+      impl Other {
+          pub fn points_to(&self, name: &str) -> bool {
+              self.target.starts_with(name)
+          }
+      }
+    src/scan.rs: |
+      use crate::cell::Cell;
+      use crate::other::Other;
+
+      pub fn shadowed(cells: &[Cell], others: &[Other], name: &str) -> bool {
+          let cells = others;
+          cells.iter().any(|cell| cell.points_to(name))
+      }
+  changed_files:
+    src/other.rs: |
+      pub struct Other {
+          pub target: String,
+      }
+
+      impl Other {
+          pub fn points_to(&self, name: &str) -> bool {
+              self.target.eq_ignore_ascii_case(name)
+          }
+      }
+  commit_message: "other: points_to ignores case"
+expect:
+  changed: [src/other.rs::points_to]
+  # `cells` is rebound to `others`, whose element type this table does not
+  # carry across a plain `let`: the closure parameter is not a `Cell`, and the
+  # call stays a possible one of the namesakes.
+  relations:
+    - {from: "src/scan.rs::shadowed", to: "src/other.rs::points_to", kind: calls, resolution: candidate, site: 6}

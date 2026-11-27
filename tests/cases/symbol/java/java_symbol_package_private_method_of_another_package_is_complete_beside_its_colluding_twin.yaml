@@ -1,0 +1,54 @@
+name: java_symbol_package_private_method_of_another_package_is_complete_beside_its_colluding_twin
+mode: symbol
+source: synthetic
+issue_state: open
+tags: [java, dispatch, library, open-world, package-private]
+repo:
+  initial_files:
+    pom.xml: |
+      <project><modelVersion>4.0.0</modelVersion><groupId>a</groupId><artifactId>a</artifactId><version>1</version></project>
+    src/main/java/lib4/collude/Demo.java: |
+      package lib4.collude;
+
+      public class Demo {
+          public static void interfaceCallSite(PotentialInterface pi) {
+              pi.method();
+          }
+      }
+    src/main/java/lib4/collude/PotentialInterface.java: |
+      package lib4.collude;
+
+      interface PotentialInterface {
+          void method();
+      }
+    src/main/java/lib4/collude/PotentialSuperclass.java: |
+      package lib4.collude;
+
+      class PotentialSuperclass {
+          public void method() {
+          }
+      }
+    src/main/java/lib4/internal/InternalClass.java: |
+      package lib4.internal;
+
+      class InternalClass {
+          public void method() {
+          }
+      }
+query:
+  symbol: method
+expect:
+  definitions:
+    - src/main/java/lib4/collude/PotentialInterface.java::PotentialInterface.method
+    - src/main/java/lib4/collude/PotentialSuperclass.java::PotentialSuperclass.method
+    - src/main/java/lib4/internal/InternalClass.java::InternalClass.method
+  relations:
+    - from: src/main/java/lib4/collude/Demo.java::Demo.interfaceCallSite
+      to: src/main/java/lib4/collude/PotentialInterface.java::PotentialInterface.method
+      kind: calls
+      resolution: resolved
+      site: 5
+  partial:
+    src/main/java/lib4/collude/PotentialSuperclass.java::PotentialSuperclass.method:
+      calls: not_traced
+      reads: not_traced

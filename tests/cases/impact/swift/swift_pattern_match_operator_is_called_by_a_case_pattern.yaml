@@ -1,0 +1,45 @@
+name: swift_pattern_match_operator_is_called_by_a_case_pattern
+mode: impact
+source: synthetic
+tags: [swift, operator, pattern, false-absence]
+repo:
+  initial_files:
+    Sources/Lib/Pat.swift: |
+      public struct Zero { public init() {} }
+      public struct Big { public init() {} }
+
+      public func ~= (pattern: Zero, value: Int) -> Bool {
+          return value == 0
+      }
+
+      public func ~= (pattern: Big, value: Int) -> Bool {
+          return value > 5
+      }
+    Sources/App/main.swift: |
+      import Lib
+
+      switch Int(CommandLine.arguments.count) {
+      case Zero(): print("zero")
+      case Big(): print("big")
+      default: break
+      }
+  changed_files:
+    Sources/Lib/Pat.swift: |
+      public struct Zero { public init() {} }
+      public struct Big { public init() {} }
+
+      public func ~= (pattern: Zero, value: Int) -> Bool {
+          return value == 0 || value == 1
+      }
+
+      public func ~= (pattern: Big, value: Int) -> Bool {
+          return value > 6
+      }
+  commit_message: "pattern: widen zero, narrow big"
+expect:
+  changed: [Sources/Lib/Pat.swift::~=]
+  discloses: true
+  no_negative_claims: true
+  partial:
+    Sources/Lib/Pat.swift::~=:
+      calls: not_traced

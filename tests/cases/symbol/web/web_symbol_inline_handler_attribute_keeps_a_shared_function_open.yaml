@@ -1,0 +1,30 @@
+name: web_symbol_inline_handler_attribute_keeps_a_shared_function_open
+mode: symbol
+source: synthetic
+issue_state: closed
+tags: [web, html, coverage]
+repo:
+  initial_files:
+    shared/telemetry.js: |
+      function installTelemetry(opts) {
+        return opts;
+      }
+    app/page.html: |
+      <!doctype html>
+      <html><body>
+      <script src="../shared/telemetry.js"></script>
+      <button onclick="installTelemetry({})">go</button>
+      </body></html>
+  commit_message: Add the page
+query:
+  symbol: installTelemetry
+expect:
+  definitions:
+  - shared/telemetry.js::installTelemetry
+  coverage:
+    shared/telemetry.js::installTelemetry:
+      calls: partial
+  partial:
+    shared/telemetry.js::installTelemetry:
+      calls: unlanded
+      reads: unlanded

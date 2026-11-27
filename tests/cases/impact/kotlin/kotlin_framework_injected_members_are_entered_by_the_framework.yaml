@@ -1,0 +1,64 @@
+name: kotlin_framework_injected_members_are_entered_by_the_framework
+mode: impact
+source: synthetic
+tags: [kotlin, entry-point, framework, annotation]
+repo:
+  initial_files:
+    src/main/kotlin/com/acme/wiring/Wiring.kt: |
+      package com.acme.wiring
+
+      import jakarta.inject.Inject
+      import org.springframework.beans.factory.annotation.Autowired
+      import org.springframework.web.bind.annotation.InitBinder
+
+      class Wiring {
+          private var state = 0
+
+          @Autowired
+          fun setDependency(dependency: Any) {
+              state = 1
+          }
+
+          @Inject
+          fun attachClock(clock: Any) {
+              state = 1
+          }
+
+          @InitBinder
+          fun bindDates(registry: Any) {
+              state = 1
+          }
+      }
+  changed_files:
+    src/main/kotlin/com/acme/wiring/Wiring.kt: |
+      package com.acme.wiring
+
+      import jakarta.inject.Inject
+      import org.springframework.beans.factory.annotation.Autowired
+      import org.springframework.web.bind.annotation.InitBinder
+
+      class Wiring {
+          private var state = 0
+
+          @Autowired
+          fun setDependency(dependency: Any) {
+              state = 2
+          }
+
+          @Inject
+          fun attachClock(clock: Any) {
+              state = 2
+          }
+
+          @InitBinder
+          fun bindDates(registry: Any) {
+              state = 2
+          }
+      }
+  commit_message: "wiring: state two"
+expect:
+  exact: false
+  entry_not_tested:
+    - setDependency
+    - attachClock
+    - bindDates

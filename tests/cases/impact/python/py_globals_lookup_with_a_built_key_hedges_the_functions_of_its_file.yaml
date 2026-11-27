@@ -1,0 +1,39 @@
+name: py_globals_lookup_with_a_built_key_hedges_the_functions_of_its_file
+mode: impact
+source: synthetic
+issue_state: open
+tags: [python, globals, dynamic-name, coverage]
+repo:
+  initial_files:
+    main.py: |
+      def handle_get():
+          pass
+
+
+      def handle_post():
+          pass
+
+
+      kind = "post"
+      globals()["handle_" + kind]()
+  changed_files:
+    main.py: |
+      def handle_get():
+          pass
+
+
+      def handle_post():
+          return 1
+
+
+      kind = "post"
+      globals()["handle_" + kind]()
+  commit_message: "main: post returns one"
+expect:
+  changed: [main.py::handle_post]
+  discloses: true
+  no_negative_claims: true
+  partial:
+    main.py::handle_post:
+      calls: not_traced
+      reads: not_traced

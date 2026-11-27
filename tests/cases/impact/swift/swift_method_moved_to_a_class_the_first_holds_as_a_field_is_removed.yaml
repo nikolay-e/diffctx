@@ -1,0 +1,38 @@
+name: swift_method_moved_to_a_class_the_first_holds_as_a_field_is_removed
+mode: impact
+source: synthetic
+tags: [swift, move, removed, collaborator]
+repo:
+  initial_files:
+    Sources/p/B.swift: |
+      class B {
+          func a() -> Int { return 1 }
+      }
+    Sources/p/A.swift: |
+      class A {
+          var b: B
+          init(b: B) { self.b = b }
+
+          func total() -> Int { return 2 }
+      }
+    Sources/p/use.swift: |
+      func go(x: A) -> Int {
+          return x.total()
+      }
+  changed_files:
+    Sources/p/B.swift: |
+      class B {
+          func a() -> Int { return 1 }
+
+          func total() -> Int { return 2 }
+      }
+    Sources/p/A.swift: |
+      class A {
+          var b: B
+          init(b: B) { self.b = b }
+      }
+  commit_message: Move total to the collaborator B
+expect:
+  removed: ['Sources/p/A.swift::A.total']
+  relations:
+  - {from: 'Sources/p/use.swift::go', to: 'Sources/p/A.swift::A.total', kind: calls, resolution: resolved}

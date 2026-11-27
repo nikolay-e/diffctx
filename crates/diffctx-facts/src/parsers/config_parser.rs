@@ -1,0 +1,112 @@
+use std::sync::Arc;
+
+use once_cell::sync::Lazy;
+use regex::Regex;
+
+use diffctx_base::types::{Fragment, FragmentId, FragmentKind, extract_identifiers};
+use diffctx_config::config::tokenization::TOKENIZATION;
+
+use super::FragmentationStrategy;
+
+// YAML and JSON are not here: both grammars sit in `lang-core`, so every
+// build that fragments at all hands them to tree-sitter first, and the regex
+// split below was measured unreachable across the whole corpus (0 of 2902
+// cases; every hit was `.toml`, which has no grammar).
+static TOML_SECTION_HEADER: Lazy<Regex> = Lazy::new(|| Regex::new(r"^\[").unwrap());
+
+pub(super) struct ConfigStrategy;
+
+impl FragmentationStrategy for ConfigStrategy {
+    fn can_handle(&self, path: &str, _content: &str) -> bool {
+        super::file_extension_lower(path) == ".toml"
+    }
+
+    fn fragment(&self, path: Arc<str>, content: &str) -> Vec<Fragment> {
+        split_at_top_level_pattern(path, content, &TOML_SECTION_HEADER)
+    }
+}
+
+fn split_at_top_level_pattern(path: Arc<str>, content: &str, pattern: &Regex) -> Vec<Fragment> {
+    let lines: Vec<&str> = content.split('\n').collect();
+    if lines.is_empty() {
+        return Vec::new();
+    }
+
+    let mut boundaries: Vec<usize> = Vec::new();
+    for (i, line) in lines.iter().enumerate() {
+        if pattern.is_match(line) {
+            boundaries.push(i);
+        }
+    }
+
+    if boundaries.len() < 2 {
+        return make_single_fragment(path, &lines);
+    }
+
+    let mut fragments: Vec<Fragment> = Vec::new();
+    for (idx, &start_idx) in boundaries.iter().enumerate() {
+        let end_idx = if idx + 1 < boundaries.len() {
+            boundaries[idx + 1] - 1
+        } else {
+            lines.len() - 1
+        };
+
+        let end_idx = trim_trailing_blanks(&lines, start_idx, end_idx);
+        let start_line = start_idx as u32 + 1;
+        let end_line = end_idx as u32 + 1;
+
+        let mut snippet = lines[start_idx..=end_idx].join("\n");
+        if snippet.trim().is_empty() {
+            continue;
+        }
+        if !snippet.ends_with('\n') {
+            snippet.push('\n');
+        }
+
+        let identifiers =
+            extract_identifiers(&snippet, TOKENIZATION.fragment_min_identifier_length);
+        fragments.push(Fragment {
+            id: FragmentId::new(Arc::clone(&path), start_line, end_line),
+            kind: FragmentKind::Chunk,
+            content: Arc::from(snippet),
+            identifiers,
+            token_count: 0,
+            symbol_name: None,
+        });
+    }
+
+    if fragments.is_empty() {
+        return make_single_fragment(path, &lines);
+    }
+    fragments
+}
+
+fn trim_trailing_blanks(lines: &[&str], start_idx: usize, mut end_idx: usize) -> usize {
+    while end_idx > start_idx && lines[end_idx].trim().is_empty() {
+        end_idx -= 1;
+    }
+    end_idx
+}
+
+fn make_single_fragment(path: Arc<str>, lines: &[&str]) -> Vec<Fragment> {
+    if lines.is_empty() {
+        return Vec::new();
+    }
+    let mut snippet = lines.join("\n");
+    if snippet.trim().is_empty() {
+        return Vec::new();
+    }
+    if !snippet.ends_with('\n') {
+        snippet.push('\n');
+    }
+    let end_line = lines.len() as u32;
+    let identifiers = extract_identifiers(&snippet, TOKENIZATION.fragment_min_identifier_length);
+    vec![Fragment {
+        id: FragmentId::new(path, 1, end_line),
+        kind: FragmentKind::Chunk,
+        content: Arc::from(snippet),
+        identifiers,
+        token_count: 0,
+        symbol_name: None,
+    }]
+}

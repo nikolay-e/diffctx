@@ -1,0 +1,116 @@
+use std::path::Path;
+
+use once_cell::sync::Lazy;
+use regex::Regex;
+use rustc_hash::{FxHashMap, FxHashSet};
+
+use diffctx_base::types::Fragment;
+use diffctx_config::config::weights::EDGE_WEIGHTS;
+
+use super::super::EdgeDict;
+use super::super::base::{self, EdgeBuilder, add_edges_from_ids, discover_by_refs};
+
+fn is_elixir_file(path: &Path) -> bool {
+    base::has_ext(path, &[".ex", ".exs"])
+}
+
+static ALIAS_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?m)^\s*alias\s+([\w.]+)").unwrap());
+static IMPORT_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?m)^\s*import\s+([\w.]+)").unwrap());
+static USE_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?m)^\s*use\s+([\w.]+)").unwrap());
+static REQUIRE_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?m)^\s*require\s+([\w.]+)").unwrap());
+static DEFMODULE_RE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"(?m)^\s*defmodule\s+([\w.]+)").unwrap());
+static DEF_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"(?m)^\s*(?:def|defp|defmacro|defmacrop|defguard|defdelegate)\s+([a-z_]\w*)")
+        .unwrap()
+});
+static BEHAVIOUR_RE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"(?m)^\s*@behaviour\s+([\w.]+)").unwrap());
+static MODULE_REF_RE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"\b([A-Z]\w*(?:\.[A-Z]\w*)*)\b").unwrap());
+
+fn extract_refs(content: &str) -> FxHashSet<String> {
+    let mut refs = FxHashSet::default();
+    for re in [
+        &*ALIAS_RE,
+        &*IMPORT_RE,
+        &*USE_RE,
+        &*REQUIRE_RE,
+        &*BEHAVIOUR_RE,
+    ] {
+        refs.extend(base::captures1(&re, content));
+    }
+    refs
+}
+
+fn extract_module_defs(content: &str) -> FxHashSet<String> {
+    base::captures1(&DEFMODULE_RE, content).collect()
+}
+
+fn extract_func_defs(content: &str) -> FxHashSet<String> {
+    base::captures1(&DEF_RE, content).collect()
+}
+
+pub(crate) struct ElixirEdgeBuilder;
+
+impl EdgeBuilder for ElixirEdgeBuilder {
+    fn build(&self, fragments: &[Fragment], _repo_root: Option<&Path>) -> EdgeDict {
+        let Some(frags) = base::frags_where(fragments, |f| is_elixir_file(Path::new(f.path())))
+        else {
+            return FxHashMap::default();
+        };
+
+        let use_w = EDGE_WEIGHTS["elixir_use"].forward;
+        let alias_w = EDGE_WEIGHTS["elixir_alias"].forward;
+        let behaviour_w = EDGE_WEIGHTS["elixir_behaviour"].forward;
+        let fn_w = EDGE_WEIGHTS["elixir_fn"].forward;
+        let reverse_factor = EDGE_WEIGHTS["elixir_use"].reverse_factor;
+
+        let mut module_to_frags: FxHashMap<String, Vec<_>> = FxHashMap::default();
+        let fns = base::DefIndex::new(&frags, reverse_factor, extract_func_defs);
+        for f in &frags {
+            for m in extract_module_defs(&f.content) {
+                let leaf = m.split('.').last().unwrap_or(&m).to_lowercase();
+                module_to_frags.entry(leaf).or_default().push(f.id.clone());
+                module_to_frags
+                    .entry(m.to_lowercase())
+                    .or_default()
+                    .push(f.id.clone());
+            }
+        }
+
+        let mut edges: EdgeDict = FxHashMap::default();
+
+        for f in &frags {
+            let self_fns = extract_func_defs(&f.content);
+            let refs = extract_refs(&f.content);
+            for r in &refs {
+                let leaf = r.split('.').last().unwrap_or(r).to_lowercase();
+                let full = r.to_lowercase();
+                let w = if BEHAVIOUR_RE.is_match(&format!("@behaviour {}", r)) {
+                    behaviour_w
+                } else if USE_RE.is_match(&format!("use {}", r)) {
+                    use_w
+                } else {
+                    alias_w
+                };
+                for key in [&leaf, &full] {
+                    if let Some(targets) = module_to_frags.get(key) {
+                        add_edges_from_ids(&mut edges, &f.id, targets, w, reverse_factor);
+                    }
+                }
+            }
+            for mref in MODULE_REF_RE.captures_iter(&f.content) {
+                let name = &mref[1];
+                let leaf = name.split('.').last().unwrap_or(name).to_lowercase();
+                if let Some(targets) = module_to_frags.get(&leaf) {
+                    add_edges_from_ids(&mut edges, &f.id, &targets, fn_w, reverse_factor);
+                }
+            }
+            fns.link_except(&mut edges, &f.id, &f.identifiers, &self_fns, fn_w);
+        }
+        edges
+    }
+
+    discover_by_refs!(is_elixir_file, extract_refs);
+}

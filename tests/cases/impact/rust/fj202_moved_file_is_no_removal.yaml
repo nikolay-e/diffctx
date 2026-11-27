@@ -1,0 +1,42 @@
+name: fj202_moved_file_is_no_removal
+mode: impact
+source: fj#202
+issue_state: open
+tags: [rust, rename, removed]
+repo:
+  initial_files:
+    src/resolve/family.rs: |
+      pub fn family_of(x: u32) -> u32 {
+          x + 1
+      }
+
+      pub fn name_of(x: u32) -> String {
+          format!("{}", x)
+      }
+    src/lib.rs: |
+      mod resolve {
+          pub mod family;
+      }
+
+      pub fn run() -> u32 {
+          resolve::family::family_of(1)
+      }
+  renamed_files:
+    src/resolve/family.rs: src/vocab/family.rs
+  changed_files:
+    src/lib.rs: |
+      mod vocab {
+          pub mod family;
+      }
+
+      pub fn run() -> u32 {
+          vocab::family::family_of(1)
+      }
+  commit_message: "move family into vocab"
+expect:
+  # a 100% rename moves its definitions: none is removed, none is a changed definition
+  removed: []
+  exact: false
+  changed: [src/lib.rs::run]
+  decoys:
+    src/vocab/family.rs::family_of: [src/resolve/family.rs]

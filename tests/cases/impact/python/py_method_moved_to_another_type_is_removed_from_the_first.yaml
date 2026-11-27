@@ -1,0 +1,40 @@
+name: py_method_moved_to_another_type_is_removed_from_the_first
+mode: impact
+source: synthetic
+tags: [python, move, removed]
+repo:
+  initial_files:
+    a.py: |
+      class Foo:
+          def a(self):
+              return 1
+
+          def total(self):
+              return 2
+
+
+      class Bar:
+          pass
+    use.py: |
+      from a import Foo
+
+
+      def go(f: Foo):
+          return f.total()
+  changed_files:
+    a.py: |
+      class Foo:
+          def a(self):
+              return 1
+
+
+      class Bar:
+          def total(self):
+              return 2
+  commit_message: Move total to Bar
+expect:
+  removed: ['a.py::Foo.total']
+  relations:
+  - {from: 'use.py::go', to: 'a.py::Foo.total', kind: calls, resolution: resolved}
+  partial:
+    'a.py::Foo.total': {calls: unlanded}

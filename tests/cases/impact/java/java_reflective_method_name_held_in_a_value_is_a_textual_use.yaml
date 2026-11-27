@@ -1,0 +1,119 @@
+name: java_reflective_method_name_held_in_a_value_is_a_textual_use
+mode: impact
+source: synthetic
+tags: [java, literal-name, reflection, constant]
+repo:
+  initial_files:
+    src/main/java/com/acme/lib/Lib.java: |
+      package com.acme.lib;
+
+      public class Lib {
+          public int viaConstant() {
+              return 1;
+          }
+
+          public int viaLocal() {
+              return 1;
+          }
+
+          public int viaComparison() {
+              return 1;
+          }
+
+          public int viaCase() {
+              return 1;
+          }
+
+          public int viaArray() {
+              return 1;
+          }
+
+      }
+    src/main/java/com/acme/app/Boot.java: |
+      package com.acme.app;
+
+      import com.acme.lib.Lib;
+      import java.lang.reflect.Method;
+
+      public class Boot {
+          private static final String METHOD = "viaConstant";
+
+          Object constant(Lib lib) throws Exception {
+              return Lib.class.getMethod(METHOD).invoke(lib);
+          }
+
+          Object local(Lib lib) throws Exception {
+              String name = "viaLocal";
+              return Lib.class.getMethod(name).invoke(lib);
+          }
+
+          boolean comparison(Method m) {
+              return m.getName() == "viaComparison";
+          }
+
+          int switched(String name) {
+              switch (name) {
+                  case "viaCase":
+                      return 1;
+                  default:
+                      return 0;
+              }
+          }
+
+          String[] array() {
+              String[] names = {"viaArray"};
+              return names;
+          }
+      }
+  changed_files:
+    src/main/java/com/acme/lib/Lib.java: |
+      package com.acme.lib;
+
+      public class Lib {
+          public int viaConstant() {
+              return 2;
+          }
+
+          public int viaLocal() {
+              return 2;
+          }
+
+          public int viaComparison() {
+              return 2;
+          }
+
+          public int viaCase() {
+              return 2;
+          }
+
+          public int viaArray() {
+              return 2;
+          }
+
+      }
+  commit_message: "lib: every method returns two"
+expect:
+  exact: false
+  discloses: true
+  no_negative_claims: true
+  relations:
+    - from: src/main/java/com/acme/app/Boot.java
+      to: src/main/java/com/acme/lib/Lib.java::viaConstant
+      kind: calls
+      resolution: unresolved
+    - from: src/main/java/com/acme/app/Boot.java
+      to: src/main/java/com/acme/lib/Lib.java::viaLocal
+      kind: calls
+      resolution: unresolved
+    - from: src/main/java/com/acme/app/Boot.java
+      to: src/main/java/com/acme/lib/Lib.java::viaComparison
+      kind: calls
+      resolution: unresolved
+    - from: src/main/java/com/acme/app/Boot.java
+      to: src/main/java/com/acme/lib/Lib.java::viaCase
+      kind: calls
+      resolution: unresolved
+    - from: src/main/java/com/acme/app/Boot.java
+      to: src/main/java/com/acme/lib/Lib.java::viaArray
+      kind: calls
+      resolution: unresolved

@@ -1,0 +1,169 @@
+name: java_framework_injected_members_are_entered_by_the_framework
+mode: impact
+source: synthetic
+tags: [java, entry-point, framework, annotation]
+repo:
+  initial_files:
+    src/main/java/com/acme/wiring/Wiring.java: |
+      package com.acme.wiring;
+
+      import com.fasterxml.jackson.annotation.JsonCreator;
+      import com.google.common.eventbus.Subscribe;
+      import dagger.Provides;
+      import jakarta.annotation.Resource;
+      import jakarta.inject.Inject;
+      import jakarta.persistence.PrePersist;
+      import org.aspectj.lang.annotation.Around;
+      import org.springframework.beans.factory.annotation.Autowired;
+      import org.springframework.beans.factory.annotation.Value;
+      import org.springframework.web.bind.annotation.InitBinder;
+      import org.springframework.web.bind.annotation.ModelAttribute;
+
+      public class Wiring {
+          private int state;
+
+          @Inject
+          public Wiring() {
+              state = 1;
+          }
+
+          @Autowired
+          public void setDependency(Object dependency) {
+              state = 1;
+          }
+
+          @Value("${app.limit}")
+          public void applyLimit(int limit) {
+              state = 1;
+          }
+
+          @Resource
+          public void setTemplate(Object template) {
+              state = 1;
+          }
+
+          @InitBinder
+          public void bindDates(Object registry) {
+              state = 1;
+          }
+
+          @ModelAttribute
+          public void addCommon(Object model) {
+              state = 1;
+          }
+
+          @Around("execution(* com.acme..*(..))")
+          public Object timed(Object joinPoint) {
+              return state + 1;
+          }
+
+          @Provides
+          public Object provideClock() {
+              return state + 1;
+          }
+
+          @Subscribe
+          public void onEvent(Object event) {
+              state = 1;
+          }
+
+          @PrePersist
+          public void stamp() {
+              state = 1;
+          }
+
+          @JsonCreator
+          public static Wiring fromJson(String json) {
+              int length = json.length();
+              return null;
+          }
+      }
+  changed_files:
+    src/main/java/com/acme/wiring/Wiring.java: |
+      package com.acme.wiring;
+
+      import com.fasterxml.jackson.annotation.JsonCreator;
+      import com.google.common.eventbus.Subscribe;
+      import dagger.Provides;
+      import jakarta.annotation.Resource;
+      import jakarta.inject.Inject;
+      import jakarta.persistence.PrePersist;
+      import org.aspectj.lang.annotation.Around;
+      import org.springframework.beans.factory.annotation.Autowired;
+      import org.springframework.beans.factory.annotation.Value;
+      import org.springframework.web.bind.annotation.InitBinder;
+      import org.springframework.web.bind.annotation.ModelAttribute;
+
+      public class Wiring {
+          private int state;
+
+          @Inject
+          public Wiring() {
+              state = 2;
+          }
+
+          @Autowired
+          public void setDependency(Object dependency) {
+              state = 2;
+          }
+
+          @Value("${app.limit}")
+          public void applyLimit(int limit) {
+              state = 2;
+          }
+
+          @Resource
+          public void setTemplate(Object template) {
+              state = 2;
+          }
+
+          @InitBinder
+          public void bindDates(Object registry) {
+              state = 2;
+          }
+
+          @ModelAttribute
+          public void addCommon(Object model) {
+              state = 2;
+          }
+
+          @Around("execution(* com.acme..*(..))")
+          public Object timed(Object joinPoint) {
+              return state + 2;
+          }
+
+          @Provides
+          public Object provideClock() {
+              return state + 2;
+          }
+
+          @Subscribe
+          public void onEvent(Object event) {
+              state = 2;
+          }
+
+          @PrePersist
+          public void stamp() {
+              state = 2;
+          }
+
+          @JsonCreator
+          public static Wiring fromJson(String json) {
+              int length = json.length() + 1;
+              return null;
+          }
+      }
+  commit_message: "wiring: state two"
+expect:
+  exact: false
+  entry_not_tested:
+    - setDependency
+    - fromJson
+    - applyLimit
+    - setTemplate
+    - bindDates
+    - addCommon
+    - timed
+    - provideClock
+    - onEvent
+    - stamp

@@ -1,0 +1,56 @@
+name: ts_call_inside_a_template_literal_substitution_is_a_caller
+mode: symbol
+source: gh#475
+issue_state: closed
+tags: [typescript, template-literal, jsx, smoke]
+repo:
+  initial_files:
+    src/lib/fmt.ts: |
+      export function formatBytes(bytes: number): string {
+        return `${bytes} B`;
+      }
+    src/lib/plain.ts: |
+      import { formatBytes } from './fmt';
+
+      export function plainTemplate(n: number): string {
+        return `size ${formatBytes(n)}`;
+      }
+    src/lib/sibling.ts: |
+      import { formatBytes } from './fmt';
+
+      export function sibling(n: number): string {
+        return formatBytes(n);
+      }
+    src/ui/Template.tsx: |
+      import { formatBytes } from '../lib/fmt';
+
+      export function Template({ n }: { n: number }) {
+        return <p>{n > 0 && ` · ${formatBytes(n)}`}</p>;
+      }
+    src/ui/Direct.tsx: |
+      import { formatBytes } from '../lib/fmt';
+
+      export function Direct({ n }: { n: number }) {
+        return <p>{formatBytes(n)}</p>;
+      }
+query:
+  symbol: formatBytes
+expect:
+  definitions: [src/lib/fmt.ts::formatBytes]
+  relations:
+    - from: "src/lib/plain.ts::plainTemplate"
+      to: "src/lib/fmt.ts::formatBytes"
+      kind: "calls"
+      resolution: "resolved"
+      site: 4
+    - from: "src/lib/sibling.ts::sibling"
+      to: "src/lib/fmt.ts::formatBytes"
+      kind: "calls"
+      resolution: "resolved"
+      site: 4
+    - from: "src/ui/Template.tsx::Template"
+      to: "src/lib/fmt.ts::formatBytes"
+      kind: "calls"
+      resolution: "resolved"
+      site: 4
+    - {from: "src/ui/Direct.tsx::Direct", to: "src/lib/fmt.ts::formatBytes", kind: calls, resolution: resolved, site: 4}

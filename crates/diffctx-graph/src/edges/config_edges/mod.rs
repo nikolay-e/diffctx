@@ -1,0 +1,21 @@
+mod build_system;
+mod cicd;
+mod docker;
+mod generic;
+mod helm;
+mod keys;
+mod kubernetes;
+
+use super::base::EdgeBuilder;
+
+pub(crate) fn get_config_builders() -> Vec<Box<dyn EdgeBuilder>> {
+    vec![
+        Box::new(generic::ConfigToCodeEdgeBuilder),
+        Box::new(cicd::CICDEdgeBuilder),
+        Box::new(docker::DockerEdgeBuilder),
+        Box::new(build_system::BuildSystemEdgeBuilder),
+        Box::new(helm::HelmEdgeBuilder),
+        Box::new(kubernetes::KubernetesEdgeBuilder),
+        Box::new(keys::KeyTableEdgeBuilder),
+    ]
+}

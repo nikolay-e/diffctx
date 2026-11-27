@@ -1,0 +1,36 @@
+name: ts_bundler_alias_namespace_import_across_projects_is_a_caller
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [typescript, manifests, workspace, absence-claim]
+repo:
+  initial_files:
+    libs/core/package.json: |
+      {"name":"@acme/core","version":"1.0.0"}
+    libs/core/src/money.ts: |
+      export function total(x: number): number {
+        return x;
+      }
+    apps/web/package.json: |
+      {"name":"@acme/web","version":"1.0.0"}
+    apps/web/webpack.config.js: |
+      module.exports = { resolve: { alias: { '@core': require('path').resolve(__dirname, '../../libs/core/src') } } };
+    apps/web/src/view.ts: |
+      import * as money from '@core/money';
+
+      export function show(x: number): number {
+        return money.total(x);
+      }
+  changed_files:
+    libs/core/src/money.ts: |
+      export function total(x: number): number {
+        return x + 0;
+      }
+  commit_message: change
+expect:
+  changed: ['libs/core/src/money.ts::total']
+  relations:
+  - {from: 'apps/web/src/view.ts::show', to: 'libs/core/src/money.ts::total', kind: calls, resolution: resolved}
+  exact: false
+  never_empty: true
+  no_negative_claims: true

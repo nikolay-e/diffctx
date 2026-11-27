@@ -1,0 +1,33 @@
+name: elixir_changed_function_is_named_where_a_sibling_calls_it
+mode: impact
+source: synthetic
+issue_state: closed
+tags:
+- tier3
+- elixir
+- false-absence
+repo:
+  initial_files:
+    lib/my_app/ledger.ex: |
+      defmodule MyApp.Ledger do
+        def post_entry(x) do
+          x
+        end
+      end
+    lib/my_app/web.ex: |
+      defmodule MyApp.Web do
+        def go, do: MyApp.Ledger.post_entry(1)
+      end
+  changed_files:
+    lib/my_app/ledger.ex: |
+      defmodule MyApp.Ledger do
+        def post_entry(x) do
+          x + 1
+        end
+      end
+  commit_message: Change elixir post_entry body
+expect:
+  never_empty: true
+  discloses: true
+  no_negative_claims: true
+  named_by: [lib/my_app/web.ex]

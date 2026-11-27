@@ -1,0 +1,67 @@
+name: py_removed_defaulted_field_written_with_brackets_keeps_only_the_sites_naming_it
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [python, removed-field, construction, control, decoy, dataclass]
+repo:
+  initial_files:
+    svc/__init__.py: ""
+    svc/model.py: |
+      from dataclasses import dataclass
+      from typing import Annotated
+
+      from pydantic import Field
+
+
+      @dataclass
+      class Item:
+          id: int
+          size: Annotated[int, Field(ge=0)] = 0
+          note: str = ""
+    svc/names_it.py: |
+      from svc.model import Item
+
+
+      def build():
+          return Item(id=1, size=2)
+    svc/after_list.py: |
+      from svc.model import Item
+
+
+      def build():
+          return Item(id=[1, 2], size=3)
+    svc/nested.py: |
+      from svc.model import Item
+
+
+      def build():
+          return Item(id=dict(a=1, size=2), note="n")
+    svc/others.py: |
+      from svc.model import Item
+
+
+      def build():
+          return Item(id=1, note="n")
+  changed_files:
+    svc/model.py: |
+      from dataclasses import dataclass
+      from typing import Annotated
+
+      from pydantic import Field
+
+
+      @dataclass
+      class Item:
+          id: int
+          note: str = ""
+  commit_message: "model: drop the size field"
+expect:
+  removed: [size]
+  # `size` has a default, though a bracket before it holds an `=`: only a
+  # construction that names it as its own keyword stays a site. A `size=` inside
+  # another argument's brackets names nothing of `Item`.
+  relations:
+    - {from: "svc/names_it.py::build", to: "svc/model.py::Item", kind: instantiates, resolution: resolved, site: 5}
+    - {from: "svc/after_list.py::build", to: "svc/model.py::Item", kind: instantiates, resolution: resolved, site: 5}
+  decoys:
+    "svc/model.py::Item": [svc/nested.py, svc/others.py]

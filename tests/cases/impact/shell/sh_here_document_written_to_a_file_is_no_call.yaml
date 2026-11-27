@@ -1,0 +1,27 @@
+name: sh_here_document_written_to_a_file_is_no_call
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [shell, here-document]
+repo:
+  initial_files:
+    lib.sh: |
+      check_disk() {
+        return 0
+      }
+    run.sh: |
+      #!/bin/sh
+      . ./lib.sh
+      cat > notes.txt <<EOF
+      run check_disk later
+      EOF
+  changed_files:
+    lib.sh: |
+      check_disk() {
+        return 1
+      }
+  commit_message: change
+expect:
+  changed: ['lib.sh::check_disk']
+  callers:
+    check_disk: []

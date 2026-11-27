@@ -1,0 +1,49 @@
+name: rs_trait_impl_for_a_primitive_type_called_through_the_type_is_a_caller
+mode: impact
+source: synthetic
+issue_state: open
+tags: [rust, trait, primitive]
+repo:
+  initial_files:
+    Cargo.toml: |
+      [package]
+      name = "app"
+      version = "0.1.0"
+      edition = "2021"
+    src/lib.rs: |
+      pub mod ext;
+      pub mod run;
+    src/ext.rs: |
+      pub trait Double {
+          fn double(&self) -> i32;
+      }
+
+      impl Double for i32 {
+          fn double(&self) -> i32 {
+              self * 2
+          }
+      }
+    src/run.rs: |
+      use crate::ext::Double;
+
+      pub fn go(x: i32) -> i32 {
+          x.double()
+      }
+  changed_files:
+    src/ext.rs: |
+      pub trait Double {
+          fn double(&self) -> i32;
+      }
+
+      impl Double for i32 {
+          fn double(&self) -> i32 {
+              self * 2 + 0
+          }
+      }
+  commit_message: change
+expect:
+  changed: ['src/ext.rs::double']
+  relations:
+  - {from: 'src/run.rs::go', to: 'src/ext.rs::double', kind: calls, resolution: resolved}
+  partial:
+    src/ext.rs::double: {calls: dispatched, reads: dispatched}

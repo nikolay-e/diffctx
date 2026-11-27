@@ -1,0 +1,34 @@
+name: ts_method_moved_to_another_type_is_removed_from_the_first
+mode: impact
+source: synthetic
+tags: [typescript, move, removed]
+repo:
+  initial_files:
+    a.ts: |
+      export class Foo {
+        a(): number { return 1; }
+
+        total(): number { return 2; }
+      }
+      export class Bar {}
+    use.ts: |
+      import { Foo } from './a';
+
+      export function go(f: Foo): number {
+        return f.total();
+      }
+  changed_files:
+    a.ts: |
+      export class Foo {
+        a(): number { return 1; }
+      }
+      export class Bar {
+        total(): number { return 2; }
+      }
+  commit_message: Move total to Bar
+expect:
+  removed: ['a.ts::Foo.total']
+  relations:
+  - {from: 'use.ts::go', to: 'a.ts::Foo.total', kind: calls, resolution: resolved}
+  partial:
+    'a.ts::Foo.total': {calls: unlanded}

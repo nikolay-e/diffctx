@@ -110,3 +110,50 @@ builders/openapi_external_ref
 # empty method and UserService; the real path (changed method -> its class ->
 # the class's users) needs the core lifted to its container.
 synthetic/balanced/suite-4/cross-module/bal4_crossmod_013_java_service_calls_repo
+
+# Impact and symbol corpus: cases seeded from an open issue are expected red.
+# These entries are predictions made without running the harness; reconcile them on the first run.
+# Each lists its issue; every line is dispositioned before the release.
+
+# Other languages, triaged.
+impact/rust/rust_constant_read_by_its_own_files_function  # gh#503 regression
+impact/other/csharp_record_method_has_a_caller  # gh#424 open
+impact/other/scala_same_file_caller_of_a_changed_method  # gh#604 open
+symbol/other/erlang_symbol_module_qualified_call_is_a_caller  # gh#616 open
+symbol/other/erlang_symbol_type_alias_is_a_definition  # gh#616 open: the `-type` definition is found; the spec's read of `price` is not traced
+impact/config/config_argo_workflow_field_reaches_the_referenced_template  # gh#689 open
+impact/config/config_lock_bump_names_the_moved_package_and_its_importers  # gh#620 open
+impact/config/config_shared_gradle_block_says_its_reach_is_not_analysed  # gh#516 open
+impact/web/web_astro_component_import_is_a_consumer  # gh#597 open
+impact/web/web_removed_css_rule_is_still_used_by_markup  # gh#631 open
+symbol/web/web_symbol_css_class_and_its_markup_uses  # gh#631 open: the rule is a definition now; no cell reads a class attribute of markup, so its reads stay a hedge
+symbol/sql/sql_call_in_a_host_code_string_is_a_candidate  # gh#459 open
+# Open tickets, cases added 2026-11-10 (each names its ticket in source:).
+impact/config/fj183_alert_rule_is_tested_by_the_rule_test_that_asserts_it  # fj#183 open
+impact/kotlin/kotlin_untested_callers_outside_the_diff_are_not_shed_under_a_small_budget
+
+# AC5 false-absence classes (tests stream, p5): the cases are red on the engine they were written
+# against and stay so until phase A's switch ("not established", never "no tests"): the callers
+# pair needs the occurrence accounting of its reads, the tests pair that of the test scopes (a
+# search that ends at a root nothing calls is closed today). They are the proof that those land;
+# each leaves this file when it passes.
+impact/typescript/ts_default_setting_a_getter_reads_by_its_key_is_a_reader  # fj#186 open
+impact/config/gh638_new_manifest_its_kustomization_does_not_list_is_flagged  # gh#638 open: a new manifest absent from the kustomization resources is not flagged, and the answer claims 0 callers
+impact/java/gh704_sole_implementor_called_through_a_subinterface_has_a_test_link  # gh#704 open: the call through the subinterface stays an unlanded gap with a site, not a candidate row
+impact/java/gh729_untracked_test_calling_a_changed_method_is_analysed  # gh#729 open: the answer states the edge as also_changed/used-by, which the oracle does not read as a relation
+impact/swift/fj156_framework_delegate_method_is_entered_by_the_framework  # fj#156 open: a delegate method is an unknown through NSObject, not entered by the framework
+symbol/config/gh336_prometheus_alert_name_is_a_definition_with_its_rule_test  # gh#336 open: the alert is a definition now; its promtool test is a hedged read (unlanded), no cell links rule tests to the rule they load
+symbol/python/gh482_dict_key_readers_across_languages_are_listed  # gh#482 open: readers of a dict key are not listed, only the unrelated function of that name
+symbol/python/gh718_loop_variable_over_an_annotated_list_is_typed  # gh#718 open: a loop variable over list[Frame] stays untyped, its reads are unresolved
+
+# Expectations corrected ahead of their engine fix: the engine still answers the way the old
+# expectation said; each row names what it answers wrongly.
+impact/config/config_k8s_namespace_keeps_the_other_namespace_out_of_the_readers  # the changed-value scan names a sibling ConfigMap's own `mode: fast` in another namespace (staging/configmap.yaml:7) as a candidate reference
+impact/config/config_k8s_referrer_without_a_namespace_reaches_every_namespace_as_a_candidate  # the changed-value scan names a sibling ConfigMap's own `mode: fast` (staging/configmap.yaml:7) as a candidate reference
+impact/typescript/au_ts_plain_name_as_an_index_key_is_named_not_empty  # `obj["total"](items)` on an `any` receiver is an unlanded gap at dispatch.ts:5, not a candidate row of `go`: the only caller is named by no relation
+impact/python/k4b_pytest_python_files_declare_check_modules_wherever_they_sit  # `smoke_b` in a declared check module is taken for a test function; pytest collects only `test*`
+impact/shell/sh_function_run_through_a_sudo_function_of_the_script_is_a_caller  # the script defines `sudo`: the word after it is a possible call, said so (partial), but no resolved caller is named
+impact/shell/sh_function_run_through_an_echo_function_of_the_script_is_a_caller  # the script defines `echo`: the word after it is a possible call, said so (partial), but no resolved caller is named
+impact/shell/sh_function_run_through_an_xargs_function_of_the_script_is_a_caller  # the script defines `xargs`: the word after it is a possible call, said so (partial), but no resolved caller is named
+impact/typescript/ts_global_augmentation_of_a_builtin_type_is_called_through_it  # the call on a `string` receiver is a candidate of the member the global augmentation declares (possibly called), not a resolved caller: a builtin receiver carries no type to pick `String` by
+impact/typescript/ts_namespace_merged_into_a_class_in_another_file_reads_its_member_bare  # `defaults` read bare in another file's body of a namespace merged into the class `Foo` is a hedged read, not a resolved caller: the file's scope does not hold the other file's member

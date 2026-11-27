@@ -1,0 +1,295 @@
+# Every pub item of diffctx-snapshot, as tests/public_api.rs reads it from the crate's src/.
+# A new item is red; so is a line the code no longer has: delete it. The count is capped by
+# public_items.diffctx-snapshot in budget.toml, which only goes down.
+candidate_files mod
+candidate_files::collect_candidate_files fn ( root_dir: &Path, included_set: &FxHashSet<PathBuf>, scope: &[String], ctx: &crate::resource::RunContext, ) -> Vec<PathBuf>
+candidate_files::normalize_path fn (path: &Path, root_dir: &Path) -> PathBuf
+diff_parse mod
+diff_parse::DiffNames struct derive(Default)
+diff_parse::DiffNames.changed field Vec<PathBuf>
+diff_parse::DiffNames.deleted field FxHashSet<PathBuf>
+diff_parse::DiffNames::rename_pairs fn (&self) -> Vec<(String, String)>
+diff_parse::DiffNames::renamed_sources fn (&self, repo_root: &Path) -> FxHashSet<PathBuf>
+diff_parse::diff_names fn ( repo_root: &Path, diff_range: Option<&str>, pathspec: &[String], ) -> Result<DiffNames>
+diff_parse::get_diff_text fn ( repo_root: &Path, diff_range: Option<&str>, pathspec: &[String], ) -> Result<String>
+diff_parse::get_untracked_files fn (repo_root: &Path, pathspec: &[String]) -> Result<Vec<PathBuf>>
+diff_parse::parse_diff fn ( repo_root: &Path, diff_range: Option<&str>, pathspec: &[String], ) -> Result<Vec<DiffHunk>>
+diff_parse::parse_hunks_from_diff_output fn (output: &str, repo_root: &Path) -> Vec<DiffHunk>
+diff_parse::parse_path_line fn (line: &str, repo_root: &Path) -> (&'static str, Option<PathBuf>)
+diff_parse::resolve_in_repo fn (repo_root: &Path, rel_path: &str) -> Option<PathBuf>
+grep mod
+grep::Grepped struct derive(Default)
+grep::Grepped.rows field Vec<T>
+grep::Grepped.withheld field Vec<String>
+grep::grep_code_words fn ( repo_root: &Path, source: &Source, words: &[String], rev: Option<&str>, per_file: usize, ) -> Result<Grepped<Row>>
+grep::grep_files_with_declaration fn ( repo_root: &Path, source: &Source, name: &str, pathspec: &[String], ) -> Result<Grepped<PathBuf>>
+grep::grep_files_with_word fn ( repo_root: &Path, source: &Source, word: &str, pathspec: &[String], ) -> Result<Grepped<PathBuf>>
+grep::grep_files_with_word_any_case fn ( repo_root: &Path, source: &Source, word: &str, pathspec: &[String], ) -> Result<Grepped<PathBuf>>
+grep::grep_lines fn ( repo_root: &Path, source: &Source, needles: &[String], rev: Option<&str>, ) -> Result<Grepped<Row>>
+grep::grep_lines_matching fn ( repo_root: &Path, source: &Source, pattern: &str, rev: Option<&str>, pathspec: &[&str], ) -> Result<Grepped<Row>>
+grep::grep_word_first_lines fn ( repo_root: &Path, source: &Source, word: &str, pathspec: &[String], ) -> Result<Grepped<Row>>
+resource mod
+resource::CoverageReport struct derive(Clone, Debug, Deserialize, JsonSchema, Serialize)
+resource::CoverageReport.capped field Vec<LimitReason>
+resource::CoverageReport.limited_files field Vec<LimitedFile>
+resource::CoverageReport.limits field Vec<LimitReason>
+resource::CoverageReport.lossy_files field Vec<String>
+resource::CoverageReport.resources field ResourceUsage
+resource::CoverageReport.status field CoverageStatus
+resource::CoverageReport.unknown field Vec<String>
+resource::CoverageReport::build fn ( ctx: &RunContext, extra: &[LimitReason], relevant: &dyn Fn(&str) -> bool, ) -> Option<Self>
+resource::CoverageStatus enum derive(Clone, Copy, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)
+resource::CoverageStatus::Complete variant Complete
+resource::CoverageStatus::Degraded variant Degraded
+resource::CoverageStatus::Partial variant Partial
+resource::CoverageStatus::as_str fn (self) -> &'static str
+resource::DEFAULT_MAX_CANDIDATE_FILES const usize
+resource::DEFAULT_MAX_EDGE_CONTRIBUTIONS const u64
+resource::DEFAULT_MAX_NEEDS const usize
+resource::DEFAULT_MAX_SOURCE_BYTES const u64
+resource::LimitReason enum derive(, Clone, Copy, Debug, Deserialize, Eq, JsonSchema, Ord, PartialEq, PartialOrd, Serialize)
+resource::LimitReason::Cancelled variant Cancelled
+resource::LimitReason::CandidateLimit variant CandidateLimit
+resource::LimitReason::Deadline variant Deadline
+resource::LimitReason::DiffusionTruncated variant DiffusionTruncated
+resource::LimitReason::DiscoveryTruncated variant DiscoveryTruncated
+resource::LimitReason::EdgeContributionLimit variant EdgeContributionLimit
+resource::LimitReason::EdgeLimit variant EdgeLimit
+resource::LimitReason::EvidenceBudgetExceeded variant EvidenceBudgetExceeded
+resource::LimitReason::FileTooLarge variant FileTooLarge
+resource::LimitReason::FragmentLimit variant FragmentLimit
+resource::LimitReason::NeedLimit variant NeedLimit
+resource::LimitReason::NonUtf8Content variant NonUtf8Content
+resource::LimitReason::ReadFailed variant ReadFailed
+resource::LimitReason::SanitizationRedaction variant SanitizationRedaction
+resource::LimitReason::SelectionBudgetExceeded variant SelectionBudgetExceeded
+resource::LimitReason::TotalByteLimit variant TotalByteLimit
+resource::LimitReason::stops_a_search fn (self) -> bool
+resource::LimitedFile struct derive(Clone, Debug, Deserialize, Eq, JsonSchema, Ord, PartialEq, PartialOrd, Serialize)
+resource::LimitedFile.path field String
+resource::LimitedFile.reason field LimitReason
+resource::ResourceBudget struct derive(Clone, Debug, Eq, JsonSchema, PartialEq, Serialize)
+resource::ResourceBudget.max_candidate_files field usize
+resource::ResourceBudget.max_changed_file_bytes field usize
+resource::ResourceBudget.max_edge_contributions field u64
+resource::ResourceBudget.max_file_bytes field usize
+resource::ResourceBudget.max_fragments_per_file field usize
+resource::ResourceBudget.max_needs field usize
+resource::ResourceBudget.max_out_edges_per_node field usize
+resource::ResourceBudget.max_source_bytes field u64
+resource::ResourceBudget.max_wall_secs field u64
+resource::ResourceBudget::resolve fn (timeout_secs: u64) -> Self
+resource::ResourceBudget::unbounded fn () -> Self
+resource::ResourceUsage struct derive(Clone, Debug, Default, Deserialize, Eq, JsonSchema, PartialEq, Serialize)
+resource::ResourceUsage.candidate_files field u64
+resource::ResourceUsage.edge_contributions field u64
+resource::ResourceUsage.final_edges field u64
+resource::ResourceUsage.parsed_files field u64
+resource::ResourceUsage.source_bytes field u64
+resource::RunContext struct derive(Clone)
+resource::RunContext::add_contributions fn (&self, n: u64) -> bool
+resource::RunContext::bounded fn <'a, I>(&'a self, items: I) -> impl Iterator<Item = I::Item> + 'a
+resource::RunContext::bounded_par fn <'a, I>( &'a self, items: I, ) -> impl rayon::iter::ParallelIterator<Item = I::Item> + 'a
+resource::RunContext::budget fn (&self) -> &ResourceBudget
+resource::RunContext::cancelled fn (&self) -> bool
+resource::RunContext::changed_lines fn (&self) -> Option<Arc<diffctx_base::changed_lines::ChangedLines>>
+resource::RunContext::charge_remaining fn (&self, total: u64) -> bool
+resource::RunContext::check fn (&self) -> bool
+resource::RunContext::enter fn (&self) -> ScopedContext
+resource::RunContext::for_run fn (timeout_secs: u64) -> Self
+resource::RunContext::io_limits fn (&self) -> (Option<Instant>, Arc<AtomicBool>)
+resource::RunContext::limited_by fn (&self, reason: LimitReason) -> rustc_hash::FxHashSet<String>
+resource::RunContext::limited_files fn (&self) -> Vec<LimitedFile>
+resource::RunContext::lossy_files fn (&self) -> Vec<String>
+resource::RunContext::new fn (budget: ResourceBudget) -> Self
+resource::RunContext::note fn (&self, reason: LimitReason)
+resource::RunContext::note_file fn (&self, reason: LimitReason, display_path: String)
+resource::RunContext::note_lossy fn (&self, display_path: String)
+resource::RunContext::note_withheld fn (&self, paths: Vec<String>)
+resource::RunContext::over_contributions fn (&self) -> bool
+resource::RunContext::reasons fn (&self) -> Vec<LimitReason>
+resource::RunContext::record_usage fn (&self, f: impl FnOnce(&mut ResourceUsage))
+resource::RunContext::scan fn <'a, I>(&'a self, items: I) -> impl Iterator<Item = I::Item> + 'a
+resource::RunContext::set_changed_lines fn (&self, lines: diffctx_base::changed_lines::ChangedLines)
+resource::RunContext::set_head_rev fn (&self, rev: Option<String>)
+resource::RunContext::set_source fn (&self, source: crate::source::Source)
+resource::RunContext::source fn (&self) -> crate::source::Source
+resource::RunContext::stops fn (&self) -> Vec<LimitReason>
+resource::RunContext::tripped fn (&self) -> bool
+resource::RunContext::unbounded fn () -> Self
+resource::RunContext::usage fn (&self) -> ResourceUsage
+resource::RunContext::withheld_count fn (&self) -> usize
+resource::RunNotes struct derive(Clone)
+resource::RunNotes::note fn (&self, reason: LimitReason)
+resource::ScopedContext impl Drop for ScopedContext
+resource::ScopedContext struct
+resource::TEST_DEADLINE_AFTER_POLLS_ENV const &str
+resource::TEST_DEADLINE_EXPIRED_ENV const &str
+resource::TEST_HOOK_CEILING_EXPIRED_ENV const &str
+resource::TEST_HOOK_CEILING_SECS_ENV const &str
+resource::TEST_LOSS_ENV const &str
+resource::TEST_READ_FAULT_ENV const &str
+resource::canonical_root fn (root: &std::path::Path) -> Option<std::path::PathBuf>
+resource::classify_limits fn ( ctx: &RunContext, extra: &[LimitReason], relevant: &dyn Fn(&str) -> bool, ) -> (Vec<LimitReason>, Vec<LimitReason>, Vec<LimitedFile>)
+resource::current_changed_lines fn () -> Option<Arc<diffctx_base::changed_lines::ChangedLines>>
+resource::current_check fn () -> bool
+resource::current_head_rev fn () -> Option<String>
+resource::current_source fn () -> crate::source::Source
+resource::memoized fn <T, E>( kind: &'static str, key: &std::path::Path, f: impl FnOnce() -> Result<T, E>, ) -> Result<T, E>
+resource::poll_current fn (i: usize, every: usize, produced: u64) -> bool
+resource::poll_current_every fn (i: usize, every: usize) -> bool
+resource::poll_emissions fn (i: usize, every: usize, emitted: u64, reported: &mut u64) -> bool
+resource::read_file_cached fn ( path: &std::path::Path, cache: Option<&rustc_hash::FxHashMap<std::path::PathBuf, String>>, ) -> Option<String>
+resource::reason_for fn (e: &crate::snapshot::SnapshotError) -> LimitReason
+resource::test_loss fn () -> Option<(String, usize)>
+resource::test_read_fault fn () -> Option<std::sync::Arc<crate::snapshot::ReadFault>>
+resource::with_cancel fn <T>(flag: Arc<AtomicBool>, f: impl FnOnce() -> T) -> T
+resource::with_changed_lines fn <T>( lines: Option<Arc<diffctx_base::changed_lines::ChangedLines>>, f: impl FnOnce() -> T, ) -> T
+resource::with_source fn <T>(source: &crate::source::Source, f: impl FnOnce() -> T) -> T
+snapshot mod
+snapshot use admission::{ Admission, AdmissionPolicy, Decision, IgnoreSource, Meta, NotAnalysedReason, UntrackedPolicy, WithholdReason, is_secret_path, }
+snapshot use changes::{Change, ChangeKind, ChangeSet, NamedChanges}
+snapshot use context::{AnalysisContext, ToolchainId}
+snapshot use diff::{diff_text, validate_pathspec}
+snapshot use error::{Result, SnapshotError}
+snapshot use git::{ DEFAULT_TIMEOUT_SECONDS, REPO_LOCATING_ENV, ReadFault, RunBudget, RunScope, enter_run, git_command, set_git_timeout, }
+snapshot use grep::{ Row, files_with_declaration, files_with_word, files_with_word_any_case, lines_matching, needle_lines, word_first_lines, word_lines, }
+snapshot use ignore::name_working_tree_changes
+snapshot use loss::{Loss, SideTag, Stage}
+snapshot use range::{ RangeSpec, commits, duration_base, is_staged_keyword, resolve, split_diff_range, staged, working_tree, }
+snapshot use reader::{Entry, Listing, Side, SnapshotReader}
+snapshot use repo::{ PlanStep, Refs, RepoRoot, StagedSnapshot, capture_planned, empty_tree_id, find_toplevel, index_tree, is_ancestor, is_git_repo, open, reflog_since, refs, rev_oid, }
+snapshot use run::{ commit_count, commit_message, commit_messages, hash_object_paths, run_git, run_git_or_none, run_git_z, }
+snapshot use types::{Bytes, ContentId, Cursor, Mode, Oid, RefName, ReflogEntry, Remote, RepoPath}
+snapshot use untracked::{Untracked, untracked}
+snapshot use workspace::WorkspaceModel
+snapshot::MAX_BLOB_READ_BYTES const u64
+snapshot::workspace mod
+snapshot::workspace use rust::{CrateKind, RustCrate, RustModule, Visibility}
+snapshot::workspace use source::ManifestSource
+snapshot::workspace::Alias struct derive(Clone, Debug, Eq, PartialEq)
+snapshot::workspace::Alias.pattern field String
+snapshot::workspace::Alias.targets field Vec<String>
+snapshot::workspace::Ecosystem enum derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)
+snapshot::workspace::Ecosystem::Cargo variant Cargo
+snapshot::workspace::Ecosystem::Go variant Go
+snapshot::workspace::Ecosystem::Gradle variant Gradle
+snapshot::workspace::Ecosystem::Maven variant Maven
+snapshot::workspace::Ecosystem::Node variant Node
+snapshot::workspace::Ecosystem::Other variant Other
+snapshot::workspace::Ecosystem::Python variant Python
+snapshot::workspace::Error impl fmt::Display for Error
+snapshot::workspace::Error impl std::error::Error for Error
+snapshot::workspace::Error struct derive(Debug)
+snapshot::workspace::Error.cause field BoxError
+snapshot::workspace::Error.path field String
+snapshot::workspace::Export struct derive(Clone, Debug, Eq, PartialEq)
+snapshot::workspace::Export.subpath field String
+snapshot::workspace::Export.target field String
+snapshot::workspace::ImportRoot struct derive(Clone, Debug, Eq, PartialEq)
+snapshot::workspace::ImportRoot.dir field String
+snapshot::workspace::ImportRoot.origin field RootOrigin
+snapshot::workspace::Package struct derive(Clone, Debug, Eq, PartialEq)
+snapshot::workspace::Package.name field String
+snapshot::workspace::Package.project field ProjectId
+snapshot::workspace::Project struct derive(Clone, Debug)
+snapshot::workspace::Project.aliases field Vec<Alias>
+snapshot::workspace::Project.base_urls field Vec<String>
+snapshot::workspace::Project.crates field Vec<RustCrate>
+snapshot::workspace::Project.declared field BTreeSet<ProjectId>
+snapshot::workspace::Project.dependencies_known field bool
+snapshot::workspace::Project.ecosystems field BTreeSet<Ecosystem>
+snapshot::workspace::Project.exports field Vec<Export>
+snapshot::workspace::Project.go_module field Option<String>
+snapshot::workspace::Project.id field ProjectId
+snapshot::workspace::Project.import_roots field Vec<ImportRoot>
+snapshot::workspace::Project.members field BTreeSet<ProjectId>
+snapshot::workspace::Project.names field Vec<(Ecosystem, String)>
+snapshot::workspace::Project.packages field Option<BTreeSet<String>>
+snapshot::workspace::Project.paths_incomplete field bool
+snapshot::workspace::Project.python_packages field BTreeSet<String>
+snapshot::workspace::Project.reexports field Vec<Reexport>
+snapshot::workspace::Project.root field String
+snapshot::workspace::Project.source_sets field Vec<SourceSet>
+snapshot::workspace::Project.weak field BTreeSet<ProjectId>
+snapshot::workspace::ProjectId struct derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)
+snapshot::workspace::Reexport struct derive(Clone, Debug, Eq, PartialEq)
+snapshot::workspace::Reexport.module field String
+snapshot::workspace::Reexport.name field String
+snapshot::workspace::Reexport.package field String
+snapshot::workspace::Result type std::result::Result<T, Error>
+snapshot::workspace::RootOrigin enum derive(Clone, Copy, Debug, Eq, PartialEq)
+snapshot::workspace::RootOrigin::Configured variant Configured
+snapshot::workspace::RootOrigin::Layout variant Layout
+snapshot::workspace::RootOrigin::Manifest variant Manifest
+snapshot::workspace::RootOrigin::SysPath variant SysPath
+snapshot::workspace::SourceSet struct derive(Clone, Debug, Eq, PartialEq)
+snapshot::workspace::SourceSet.dir field String
+snapshot::workspace::SourceSet.name field String
+snapshot::workspace::SourceSet.test field bool
+snapshot::workspace::WorkspaceModel struct derive(Default)
+snapshot::workspace::WorkspaceModel::depends fn (&self, user: ProjectId, used: ProjectId) -> bool
+snapshot::workspace::WorkspaceModel::import_roots fn (&self, project: ProjectId) -> &[ImportRoot]
+snapshot::workspace::WorkspaceModel::losses fn (&self) -> &[Loss]
+snapshot::workspace::WorkspaceModel::may_reference fn (&self, user_path: &str, used_path: &str) -> bool
+snapshot::workspace::WorkspaceModel::package_of fn (&self, path: &str) -> Option<Package>
+snapshot::workspace::WorkspaceModel::project fn (&self, id: ProjectId) -> &Project
+snapshot::workspace::WorkspaceModel::project_of fn (&self, path: &str) -> Option<ProjectId>
+snapshot::workspace::WorkspaceModel::projects fn (&self) -> &[Project]
+snapshot::workspace::WorkspaceModel::read fn (source: &dyn ManifestSource) -> Result<Self>
+snapshot::workspace::WorkspaceModel::rust_module fn (&self, path: &str) -> Option<(&RustCrate, &RustModule)>
+snapshot::workspace::WorkspaceModel::same_package fn (&self, a: &str, b: &str) -> bool
+snapshot::workspace::WorkspaceModel::share_workspace fn (&self, user: ProjectId, used: ProjectId) -> bool
+snapshot::workspace::WorkspaceModel::visible_import_roots fn (&self, project: ProjectId) -> Vec<&ImportRoot>
+snapshot::workspace::WorkspaceModel::weak_import_roots fn (&self, project: ProjectId) -> Vec<&ImportRoot>
+snapshot::workspace::dir_of fn (path: &str) -> &str
+snapshot::workspace::toml_at fn <'a>(table: &'a toml::Table, path: &[&str]) -> Option<&'a toml::Value>
+source mod
+source::Admitted enum derive(Clone, Copy, Debug, Eq, PartialEq)
+source::Admitted::Withheld variant Withheld(Why)
+source::Admitted::Yes variant Yes
+source::Analysis struct
+source::Analysis::at_working_tree fn ( root_dir: &Path, run: &crate::resource::RunContext, ) -> snap::Result<Arc<Self>>
+source::Analysis::head fn (self: &Arc<Self>) -> Source
+source::Analysis::is_working_tree_diff fn (&self) -> bool
+source::Analysis::open fn ( root_dir: &Path, spec: Option<&str>, run: &crate::resource::RunContext, ) -> snap::Result<Arc<Self>>
+source::Analysis::open_range fn ( root_dir: &Path, range: snap::RangeSpec, run: &crate::resource::RunContext, ) -> snap::Result<Arc<Self>>
+source::Analysis::range fn (&self) -> Option<&str>
+source::Analysis::staged fn (&self) -> Option<&snap::StagedSnapshot>
+source::Containment struct
+source::Containment::contains fn (&self, path: &Path) -> bool
+source::Containment::new fn (root: &Path) -> Self
+source::ListedBlob struct
+source::ListedBlob.oid field Option<String>
+source::ListedBlob.path field PathBuf
+source::ListedBlob.size field u64
+source::Listing struct
+source::Listing.blobs field Vec<ListedBlob>
+source::Listing.links field Vec<PathBuf>
+source::Listing.too_large field Vec<PathBuf>
+source::Listing::within fn <'a>( &'a self, root: &'a Path, scope: &'a [String], ) -> impl Iterator<Item = &'a ListedBlob> + 'a
+source::Source struct derive(Clone)
+source::Source::admitted fn (&self, path: &snap::RepoPath) -> Admitted
+source::Source::admitted_name fn (&self, name: &str) -> Admitted
+source::Source::base fn (&self) -> Self
+source::Source::empty fn () -> Self
+source::Source::fallback fn (&self) -> Option<Self>
+source::Source::list fn (&self) -> snap::Result<Arc<Listing>>
+source::Source::list_paths fn (&self, root: &Path) -> snap::Result<Vec<String>>
+source::Source::lost_a_read fn (&self) -> bool
+source::Source::may_reference fn (&self, user: &str, used: &str) -> bool
+source::Source::range fn (&self) -> Option<&str>
+source::Source::read fn (&self, abs_path: &Path) -> snap::Result<Option<Vec<u8>>>
+source::Source::read_bytes fn (&self, abs_path: &Path) -> Option<Vec<u8>>
+source::Source::read_lossy fn (&self, abs_path: &Path) -> snap::Result<Option<String>>
+source::Source::read_to_string fn (&self, abs_path: &Path) -> Option<String>
+source::Source::revision fn (&self) -> Option<&str>
+source::Source::unread_directories fn (&self) -> Vec<String>
+source::Source::withheld fn (&self, rels: &[String]) -> Vec<String>
+source::Source::withheld_among fn (&self, rels: &[String]) -> Vec<String>
+source::Why enum derive(Clone, Copy, Debug, Eq, PartialEq)
+source::Why::Gitignore variant Gitignore
+source::Why::Policy variant Policy
+source::Why::Secret variant Secret
+source::in_scope fn (root: &Path, path: &Path, scope: &[String]) -> bool
+source::is_secret_path fn (path: &Path) -> bool

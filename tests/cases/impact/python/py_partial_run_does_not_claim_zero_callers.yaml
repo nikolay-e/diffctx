@@ -1,0 +1,27 @@
+name: py_partial_run_does_not_claim_zero_callers
+mode: impact
+source: gh#505
+issue_state: open
+tags: [python, partial, deadline]
+repo:
+  initial_files:
+    shop/__init__.py: ""
+    shop/pricing.py: |
+      def total(items):
+          return sum(item.price for item in items)
+    shop/checkout.py: |
+      from shop.pricing import total
+
+
+      def charge(cart):
+          return total(cart.items) + 1
+  changed_files:
+    shop/pricing.py: |
+      def total(items):
+          return round(sum(item.price for item in items), 2)
+  commit_message: "pricing: round the total"
+query:
+  env: {DIFFCTX_TEST_DEADLINE_EXPIRED: "1"}
+expect:
+  discloses: true
+  no_negative_claims: true

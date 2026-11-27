@@ -1,0 +1,35 @@
+name: py_range_ending_before_a_file_does_not_list_that_files_definitions
+mode: impact
+source: fj#158
+issue_state: open
+tags: [python, past-range, working-tree, changed-definition, decoy]
+repo:
+  initial_files:
+    shop/__init__.py: ""
+    shop/pricing.py: |
+      def total(items):
+          return sum(items)
+    shop/checkout.py: |
+      from shop.pricing import total
+
+
+      def charge(items):
+          return total(items) + 1
+  changed_files:
+    shop/pricing.py: |
+      def total(items):
+          return sum(items) + 0
+  untracked_files:
+    shop/matching.py: |
+      def match(pattern, text):
+          return pattern in text
+
+
+      def search(pattern, texts):
+          return [t for t in texts if match(pattern, t)]
+  commit_message: "pricing: add zero"
+expect:
+  # shop/matching.py is not in the range's end tree: its definitions are no change
+  changed: [shop/pricing.py::total]
+  relations:
+    - {from: shop/checkout.py::charge, to: shop/pricing.py::total, kind: calls, resolution: resolved, site: 5}

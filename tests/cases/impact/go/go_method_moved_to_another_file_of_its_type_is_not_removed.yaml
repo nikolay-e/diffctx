@@ -1,0 +1,56 @@
+name: go_method_moved_to_another_file_of_its_type_is_not_removed
+mode: impact
+source: synthetic
+tags: [go, move, removed]
+repo:
+  initial_files:
+    go.mod: |
+      module p
+
+      go 1.21
+    main.go: |
+      package p
+
+      func Go(t T) int {
+      	return t.B()
+      }
+    a.go: |
+      package p
+
+      type T struct{}
+
+      func (t T) A() int {
+      	return 1
+      }
+
+      func (t T) B() int {
+      	return 2
+      }
+    b.go: |
+      package p
+
+      func (t T) C() int {
+      	return 3
+      }
+  changed_files:
+    a.go: |
+      package p
+
+      type T struct{}
+
+      func (t T) A() int {
+      	return 1
+      }
+    b.go: |
+      package p
+
+      func (t T) C() int {
+      	return 3
+      }
+
+      func (t T) B() int {
+      	return 2
+      }
+  commit_message: Move B to another file of T
+expect:
+  removed: []

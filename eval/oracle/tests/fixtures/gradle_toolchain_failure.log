@@ -1,0 +1,76 @@
+$ /work/gradlew --no-daemon --init-script /tmp/scip-java10224053357995347837/init-script.gradle -Dscip.targetroot=/work/build/scip-targetroot clean scipPrintDependencies scipCompileAll --no-configuration-cache
+Downloading https://services.gradle.org/distributions/gradle-8.12-bin.zip
+.............10%.............20%.............30%.............40%.............50%.............60%.............70%.............80%.............90%.............100%
+
+Welcome to Gradle 8.12!
+
+Here are the highlights of this release:
+ - Enhanced error and warning reporting with the Problems API
+ - File-system watching support on Alpine Linux
+ - Build and test Swift 6 libraries and apps
+
+For more details see https://docs.gradle.org/8.12/release-notes.html
+
+To honour the JVM settings for this build a single-use Daemon process will be forked. For more on this, please refer to https://docs.gradle.org/8.12/userguide/gradle_daemon.html#sec:disabling_the_daemon in the Gradle documentation.
+Daemon will be stopped at the end of the build
+Type-safe project accessors is an incubating feature.
+> Task :buildSrc:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :buildSrc:generateExternalPluginSpecBuilders
+> Task :buildSrc:extractPrecompiledScriptPluginPlugins
+> Task :buildSrc:compilePluginsBlocks
+> Task :buildSrc:generatePrecompiledScriptPluginAccessors
+> Task :buildSrc:generateScriptPluginAdapters
+> Task :buildSrc:pluginDescriptors
+> Task :buildSrc:processResources
+
+> Task :buildSrc:compileKotlin
+w: file:///work/buildSrc/src/main/kotlin/buildsrc/convention/kotlin-jvm-server.gradle.kts:39:5 'kotlinOptions(KotlinJvmOptionsDeprecated /* = KotlinJvmOptions */.() -> Unit): Unit' is deprecated. Please migrate to the compilerOptions DSL. More details are here: https://kotl.in/u1r8ln
+w: file:///work/buildSrc/src/main/kotlin/buildsrc/convention/kotlin-jvm.gradle.kts:39:5 'kotlinOptions(KotlinJvmOptionsDeprecated /* = KotlinJvmOptions */.() -> Unit): Unit' is deprecated. Please migrate to the compilerOptions DSL. More details are here: https://kotl.in/u1r8ln
+
+> Task :buildSrc:compileJava NO-SOURCE
+> Task :buildSrc:compileGroovy NO-SOURCE
+> Task :buildSrc:classes
+> Task :buildSrc:scipKotlinConfigs
+> Task :buildSrc:jar
+
+> Configure project :github-workflows-kt
+warning: Dokka Gradle plugin V1 is deprecated
+
+    Dokka Gradle plugin V1 is deprecated, and will be removed in Dokka version 2.1.0
+    Please migrate to Dokka Gradle plugin V2. This will require updating your project.
+    To learn about migrating read the migration guide https://kotl.in/dokka-gradle-migration
+
+    To start migrating to Dokka Gradle plugin V2 add
+        org.jetbrains.dokka.experimental.gradle.pluginMode=V2EnabledWithHelpers
+    into your project's `gradle.properties` file.
+
+    We would appreciate your feedback!
+     - Please report any feedback or problems https://kotl.in/dokka-issues
+     - Chat with the community visit #dokka in https://kotlinlang.slack.com/ (To sign up visit https://kotl.in/slack)
+
+
+[Incubating] Problems report is available at: file:///work/build/reports/problems/problems-report.html
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Could not determine the dependencies of task ':action-binding-generator:compileJava'.
+
+Deprecated Gradle features were used in this build, making it incompatible with Gradle 9.0.
+
+You can use '--warning-mode all' to show the individual deprecation warnings and determine if they come from your own scripts or plugins.
+
+For more on this, please refer to https://docs.gradle.org/8.12/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
+10 actionable tasks: 10 executed
+> Could not resolve all dependencies for configuration ':action-binding-generator:compileClasspath'.
+   > Failed to calculate the value of task ':action-binding-generator:compileJava' property 'javaCompiler'.
+      > Cannot find a Java installation on your machine matching this tasks requirements: {languageVersion=11, vendor=any vendor, implementation=vendor-specific} for LINUX on aarch64.
+         > No locally installed toolchains match and toolchain auto-provisioning is not enabled.
+
+* Try:
+> Learn more about toolchain auto-detection at https://docs.gradle.org/8.12/userguide/toolchains.html#sec:auto_detection.
+> Run with --stacktrace option to get the stack trace.
+> Run with --info or --debug option to get more log output.
+> Get more help at https://help.gradle.org.
+
+BUILD FAILED in 1m 36s

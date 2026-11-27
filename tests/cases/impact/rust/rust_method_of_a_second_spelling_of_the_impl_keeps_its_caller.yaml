@@ -1,0 +1,79 @@
+name: rust_method_of_a_second_spelling_of_the_impl_keeps_its_caller
+mode: impact
+source: synthetic
+tags: [rust, impl, inline-module, body-only]
+repo:
+  initial_files:
+    Cargo.toml: |
+      [package]
+      name = "fixture"
+      version = "0.1.0"
+      edition = "2021"
+    src/lib.rs: |
+      pub mod use_it;
+
+      pub mod m {
+          pub struct Foo;
+
+          impl Foo {
+              pub fn x(&self) -> i32 {
+                  1
+              }
+          }
+
+          impl crate::m::Foo {
+              pub fn y(&self) -> i32 {
+                  2
+              }
+          }
+
+          impl self::Foo {
+              pub fn z(&self) -> i32 {
+                  3
+              }
+          }
+      }
+    src/use_it.rs: |
+      use crate::m::Foo;
+
+      pub fn go_x(f: &Foo) -> i32 {
+          f.x()
+      }
+
+      pub fn go_y(f: &Foo) -> i32 {
+          f.y()
+      }
+
+      pub fn go_z(f: &Foo) -> i32 {
+          f.z()
+      }
+  changed_files:
+    src/lib.rs: |
+      pub mod use_it;
+
+      pub mod m {
+          pub struct Foo;
+
+          impl Foo {
+              pub fn x(&self) -> i32 {
+                  1
+              }
+          }
+
+          impl crate::m::Foo {
+              pub fn y(&self) -> i32 {
+                  4
+              }
+          }
+
+          impl self::Foo {
+              pub fn z(&self) -> i32 {
+                  3
+              }
+          }
+      }
+  commit_message: Change y in the impl of Foo spelled crate::m::Foo
+expect:
+  changed: ['src/lib.rs::y']
+  relations:
+  - {from: 'src/use_it.rs::go_y', to: 'src/lib.rs::Foo.y', kind: calls}

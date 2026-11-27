@@ -4,71 +4,21 @@
 //! lint stays meaningful. None of it is a stable library API — internals may
 //! change or disappear between releases without a semver signal.
 
-// Input: git plumbing and path handling.
-pub mod git;
-pub mod in_memory_harness;
-mod paths;
-
 // Change set: what the diff touched, cut into fragments.
-pub(crate) mod candidate_files;
-pub(crate) mod canon;
-pub mod change_class;
-pub(crate) mod changed_lines;
-pub(crate) mod container;
-pub(crate) mod excerpt;
-pub(crate) mod fragmentation;
-pub(crate) mod languages;
-pub(crate) mod parsers;
-pub(crate) mod signatures;
-pub(crate) mod testfiles;
 
 // Graph: relationships between fragments.
-pub(crate) mod edges;
-pub(crate) mod facts;
-pub(crate) mod graph;
-pub(crate) mod provenance;
 
 // Ranking: relevance of each candidate to the change.
-pub(crate) mod core;
-pub(crate) mod discovery;
-pub(crate) mod filtering;
-pub(crate) mod ppr;
-pub(crate) mod scoring;
-pub(crate) mod stopwords;
-pub(crate) mod token_corpus;
-pub mod tokenizer;
 
 // Selection: the budgeted greedy and its repairs.
-pub(crate) mod interval;
-pub(crate) mod postpass;
-pub(crate) mod select;
-pub(crate) mod utility;
 
 // Output.
 pub mod artifact;
-pub mod go_bindings;
+pub mod delivery;
 pub mod hook;
-pub mod impact;
-pub mod kotlin_bindings;
-pub(crate) mod lang;
-pub mod locate;
-pub mod render;
 
 // Orchestration and shared configuration.
-pub(crate) mod bindings;
-pub mod config;
-pub mod effective_config;
-pub mod mode;
-pub(crate) mod peak_rss;
 pub mod pipeline;
-pub mod profile;
-pub mod resource;
-pub mod run_provenance;
-pub mod sanitize;
-pub(crate) mod source;
-#[cfg(test)]
-pub(crate) mod test_rng;
-pub(crate) mod types;
 
 // `diffctx graph`: a side feature reachable only through the Python bindings.
 #[cfg(feature = "python")]

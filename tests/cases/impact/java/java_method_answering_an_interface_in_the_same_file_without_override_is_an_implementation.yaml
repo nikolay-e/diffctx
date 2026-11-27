@@ -1,0 +1,41 @@
+name: java_method_answering_an_interface_in_the_same_file_without_override_is_an_implementation
+mode: impact
+source: synthetic
+tags: [java, interface, implementation]
+repo:
+  initial_files:
+    src/main/java/demo/Shape.java: |
+      package demo;
+
+      public interface Shape {
+          double area();
+      }
+
+      class Square implements Shape {
+          public double area() {
+              return 1.0;
+          }
+      }
+  changed_files:
+    src/main/java/demo/Shape.java: |
+      package demo;
+
+      public interface Shape {
+          double area() throws Exception;
+      }
+
+      class Square implements Shape {
+          public double area() {
+              return 1.0;
+          }
+      }
+  commit_message: "shape: area may throw"
+expect:
+  exact: false
+  relations:
+    # Square sits in the interface's file, on lines the range leaves alone.
+    - from: src/main/java/demo/Shape.java::Square.area
+      to: src/main/java/demo/Shape.java::Shape.area
+      kind: overrides
+      resolution: resolved
+      site: 8

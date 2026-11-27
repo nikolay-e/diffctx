@@ -1,0 +1,35 @@
+name: py_class_assigned_then_called_through_a_parameter_is_reached_by_a_constructor_change
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [python, oracle, init-reach, passes-as-value, class-as-value]
+repo:
+  initial_files:
+    shop/__init__.py: ""
+    shop/pets.py: |
+      class Cat:
+          def __init__(self):
+              self.lives = 9
+    shop/build.py: |
+      from shop.pets import Cat
+
+
+      def build(kind):
+          return kind()
+
+
+      default_kind = Cat
+      pet = build(default_kind)
+  changed_files:
+    shop/pets.py: |
+      class Cat:
+          def __init__(self):
+              self.lives = 7
+  commit_message: "pets: a cat has seven lives"
+expect:
+  relations:
+    - from: "shop/build.py::default_kind"
+      to: "shop/pets.py::Cat"
+      kind: passes_as_value
+      resolution: resolved
+      site: 8

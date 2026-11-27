@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import asyncio
+import re
 import subprocess
+import threading
 
 import pytest
 
@@ -203,7 +205,7 @@ class TestGetDiffContext:
             {"repo_path": str(mcp_repo.path), "diff_ref": "HEAD~1..HEAD", "mode": "locate"},
         )
         doc = json.loads(_get_text(result))
-        assert doc["schema"] == "diffctx.locate.v1"
+        assert doc["schema"] == "diffctx.locate.v2"
         assert doc["items"]
         assert all(i["reasons"] for i in doc["items"])
 
@@ -213,11 +215,11 @@ class TestGetDiffContext:
 
         args = {"repo_path": str(mcp_repo.path), "mode": "locate"}
         clean = json.loads(_get_text(await server.call_tool("diffctx_context", args)))
-        assert clean["commit_message"] == "add subtract function"
+        assert clean["range"]["messages"][0] == "add subtract function"
 
         (mcp_repo.path / "src" / "extra.py").write_text("from calc import add\n\nX = add(2, 2)\n", encoding="utf-8")
         dirty = json.loads(_get_text(await server.call_tool("diffctx_context", args)))
-        assert dirty["changed_files"] == ["src/extra.py"]
+        assert dirty["inventory"]["changed"]["items"] == ["src/extra.py"]
 
     @pytest.mark.asyncio
     async def test_head_means_the_uncommitted_work_and_says_where_the_last_commit_is(self, server, mcp_repo):
@@ -244,22 +246,31 @@ class TestGetDiffContext:
         repo.add_file("one.py", "x = 1\n")
         repo.commit("first")
         doc = json.loads(_get_text(await server.call_tool("diffctx_context", {"repo_path": str(repo.path), "mode": "locate"})))
-        assert doc["schema"] == "diffctx.locate.v1"
-        assert doc.get("changed_files", []) == []
+        assert doc["schema"] == "diffctx.locate.v2"
+        assert doc.get("inventory", {}).get("changed", {}).get("items", []) == []
 
     @pytest.mark.asyncio
-    async def test_locate_keeps_the_overflow_count_but_not_the_list(self, server, mcp_repo):
+    async def test_locate_counts_the_overflow_and_lists_it_only_on_request(self, server, mcp_repo):
         import json
 
         from diffctx._native import build_locate
 
         engine = json.loads(build_locate(root_dir=mcp_repo.path, diff_range="HEAD~1..HEAD", budget_tokens=40, timeout=60))
-        assert engine["overflow"], "the fixture must overflow for this test to mean anything"
+        assert engine["overflow"]["total"], "the fixture must overflow for this test to mean anything"
 
         args = {"repo_path": str(mcp_repo.path), "diff_ref": "HEAD~1..HEAD", "mode": "locate", "budget_tokens": 40}
         doc = json.loads(_get_text(await server.call_tool("diffctx_context", args)))
-        assert "overflow" not in doc
-        assert doc["overflow_count"] == engine["overflow_count"]
+        assert not doc["overflow"].get("items")
+        assert doc["overflow"]["total"] == engine["overflow"]["total"]
+
+        asked = json.loads(_get_text(await server.call_tool("diffctx_context", {**args, "include_overflow": True})))
+        assert asked["overflow"]["total"] >= len(asked["overflow"].get("items", []))
+
+    @pytest.mark.asyncio
+    async def test_include_overflow_is_refused_outside_locate(self, server, mcp_repo):
+        args = {"repo_path": str(mcp_repo.path), "diff_ref": "HEAD~1..HEAD", "include_overflow": True}
+        with pytest.raises(ToolError, match="locate"):
+            await server.call_tool("diffctx_context", args)
 
     @pytest.mark.asyncio
     async def test_locate_rejects_include_raw_diff(self, server, mcp_repo):
@@ -281,7 +292,7 @@ class TestGetDiffContext:
         )
         text = _get_text(result)
         assert "clipboard unavailable" in text
-        assert '"diffctx.locate.v1"' in text
+        assert '"diffctx.locate.v2"' in text
 
     @pytest.mark.asyncio
     async def test_locate_respects_max_tokens_cap(self, server, mcp_repo):
@@ -291,7 +302,7 @@ class TestGetDiffContext:
         )
         text = _get_text(result)
         assert "exceeding max_tokens" in text
-        assert "diffctx.locate.v1" not in text
+        assert "diffctx.locate.v2" not in text
 
     @pytest.mark.asyncio
     async def test_invalid_mode_is_rejected(self, server, mcp_repo):
@@ -565,11 +576,11 @@ class TestBudgetTokensValidation:
                 "diff_ref": "HEAD~1..HEAD",
                 "mode": "locate",
                 "budget_tokens": -1,
-                "max_tokens": 50,
+                "max_tokens": 1,
             },
         )
         text = _get_text(result)
-        assert "exceeding max_tokens=50" in text
+        assert "exceeding max_tokens=1" in text
         assert "Nothing was returned" in text
 
 
@@ -580,9 +591,11 @@ class TestTokenBudgetGuardExecutes:
     the branch was dead code outside these tests.
 
     The class-level timeout overrides the global 10s: the diff-context legs
-    run the full parse+graph+selection pipeline over a 4000-function file at
+    run the full parse+graph+selection pipeline over a 1500-function file at
     an unlimited budget, which fits 10s locally but not on a loaded CI
-    runner sharing the box with xdist siblings."""
+    runner sharing the box with xdist siblings. 1500 stays under the 2000
+    changed definitions a file may hold before it is only named as over the
+    size cap (gh#619)."""
 
     pytestmark = pytest.mark.usefixtures("legacy_tools")
 
@@ -591,7 +604,7 @@ class TestTokenBudgetGuardExecutes:
         repo = Pygit2Repo(tmp_path / "big_file_repo")
         repo.add_file("small.py", "def noop():\n    return None\n")
         repo.commit("initial commit")
-        big_content = "\n".join(f"def func_{i}():\n    return {i}  # marker_{i}" for i in range(4000))
+        big_content = "\n".join(f"def func_{i}():\n    return {i}  # marker_{i}" for i in range(1500))
         repo.add_file("big.py", big_content)
         repo.commit("add big file")
         return repo
@@ -641,11 +654,11 @@ class TestTokenBudgetGuardExecutes:
                 "diff_ref": "HEAD~1..HEAD",
                 "mode": "locate",
                 "budget_tokens": -1,
-                "max_tokens": 100,
+                "max_tokens": 1,
             },
         )
         text = _get_text(result)
-        assert "exceeding max_tokens=100" in text
+        assert "exceeding max_tokens=1" in text
 
     @pytest.mark.asyncio
     async def test_diffctx_context_under_generous_budget_returns_content(self, server, big_file_repo):
@@ -848,9 +861,9 @@ class TestClipboardCopies:
         reply = _get_text(await server.call_tool("diffctx_context", {**args, "clipboard": True}))
 
         pasted = json.loads(self._pasted(sink))
-        assert pasted["schema"] == "diffctx.locate.v1"
-        assert pasted["item_count"] == len(pasted["items"]) > 0
-        assert reply == f"Copied locate JSON ({pasted['item_count']} items) to clipboard"
+        assert pasted["schema"] == "diffctx.locate.v2"
+        assert len(pasted["items"]) > 0
+        assert reply == f"Copied locate JSON ({len(pasted['items'])} items) to clipboard"
 
     @pytest.mark.asyncio
     async def test_the_pack_reply_counts_the_fragments_it_copied(self, server, mcp_repo, sink):
@@ -861,9 +874,9 @@ class TestClipboardCopies:
         reply = _get_text(await server.call_tool("diffctx_context", {**args, "clipboard": True}))
 
         assert self._pasted(sink) == inline
-        engine = build_diff_context(root_dir=mcp_repo.path, diff_range="HEAD~1..HEAD", budget_tokens=8000, timeout=60)
-        assert engine["fragment_count"] > 0
-        assert reply == f"Copied diff context ({engine['fragment_count']} fragments) to clipboard"
+        engine = build_diff_context(root_dir=mcp_repo.path, diff_range="HEAD~1..HEAD", timeout=60)
+        assert engine["fragments"]
+        assert reply == f"Copied diff context ({len(engine['fragments'])} fragments) to clipboard"
 
 
 class TestRepoPathWalksUpToRoot:
@@ -1108,7 +1121,13 @@ class TestPathsScopeAMonorepo:
     @pytest.mark.asyncio
     async def test_a_file_scope_analyses_that_file_alone_as_the_cli_does(self, server, monorepo):
         text = await self._ask(server, monorepo.path, paths=["svc_a/calc.py"])
-        assert "1 changed file(s), 0 caller(s)" in text
+        assert "1 changed file(s)" in text
+        # The scope holds one file; the files outside it that may call it were left
+        # out, so the answer claims no absence and says why: an
+        # absence needs a complete search.
+        assert "0 caller(s)" not in text
+        assert "nothing calls them" not in text
+        assert "file(s) outside the run's pathspecs were left out" in text
         assert "svc_a/main.py" not in text
 
     @pytest.mark.asyncio
@@ -1163,12 +1182,24 @@ class TestPathsScopeAMonorepo:
         with pytest.raises(ToolError, match="call again without paths"):
             await self._ask(server, monorepo.path, mode="locate", fragment_ids=["svc_a/calc.py:1-2"], paths=["svc_a"])
 
-    @pytest.mark.asyncio
-    @pytest.mark.parametrize("mode", ["impact", "locate", "pack"])
-    async def test_a_deadline_names_the_scoped_cli_form(self, server, monorepo, monkeypatch, mode):
+    @pytest.fixture
+    def engine_that_does_not_stop(self, monkeypatch):
+        """An engine that outlives its deadline and the grace behind it: the call
+        ends on the guard. The guard waits no grace here, so it is spent at once."""
         from diffctx.mcp import server as server_module
 
+        released = threading.Event()
         monkeypatch.setattr(server_module, "_DEFAULT_TIMEOUT_SECONDS", 0)
+        monkeypatch.setattr(server_module, "_ENGINE_GRACE_SECONDS", 0)
+        monkeypatch.setattr(server_module, "deliver", lambda **_: released.wait())
+        yield
+        released.set()
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("mode", ["impact", "locate", "pack"])
+    async def test_an_engine_that_does_not_stop_names_the_scoped_cli_form(
+        self, server, monorepo, engine_that_does_not_stop, mode
+    ):
         with pytest.raises(ToolError, match="exceeded the 0s deadline") as exc:
             await self._ask(server, monorepo.path, mode=mode)
         message = str(exc.value)
@@ -1177,10 +1208,7 @@ class TestPathsScopeAMonorepo:
         assert str(monorepo.path) not in message
 
     @pytest.mark.asyncio
-    async def test_a_deadline_on_a_scoped_call_names_the_paths_given(self, server, monorepo, monkeypatch):
-        from diffctx.mcp import server as server_module
-
-        monkeypatch.setattr(server_module, "_DEFAULT_TIMEOUT_SECONDS", 0)
+    async def test_a_guard_on_a_scoped_call_names_the_paths_given(self, server, monorepo, engine_that_does_not_stop):
         with pytest.raises(ToolError, match="exceeded the 0s deadline") as exc:
             await self._ask(server, monorepo.path, paths=["svc_a", "svc_b"])
         message = str(exc.value)
@@ -1189,14 +1217,30 @@ class TestPathsScopeAMonorepo:
         assert str(monorepo.path) not in message
 
     @pytest.mark.asyncio
-    async def test_a_symbol_deadline_names_the_scoped_symbol_form(self, server, monorepo, monkeypatch):
-        from diffctx.mcp import server as server_module
-
-        monkeypatch.setattr(server_module, "_DEFAULT_TIMEOUT_SECONDS", 0)
+    async def test_a_symbol_guard_names_the_scoped_symbol_form(self, server, monorepo, engine_that_does_not_stop):
         args = {"repo_path": str(monorepo.path), "symbol": "add", "paths": ["svc_a"]}
         with pytest.raises(ToolError, match="exceeded the 0s deadline") as exc:
             await server.call_tool("diffctx_context", args)
         assert "diffctx svc_a --symbol add" in str(exc.value)
+
+    @pytest.mark.asyncio
+    async def test_the_engines_partial_answer_at_its_deadline_reaches_the_caller(self, server, monorepo, monkeypatch):
+        """The engine's deadline is spent at its first poll, as when the range is
+        too large for the time it has: it answers with what it read and says so.
+        The guard around it has already reached the deadline it shares with the
+        engine, and waits the grace for exactly this answer."""
+        from diffctx.mcp import server as server_module
+
+        engine = server_module.deliver
+        monkeypatch.setenv("DIFFCTX_TEST_DEADLINE_EXPIRED", "1")
+        monkeypatch.setattr(server_module, "_DEFAULT_TIMEOUT_SECONDS", 0)
+        # An engine deadline of 0 would also spend the engine's git ceiling, which
+        # the knob leaves alone: the engine is given its default, the guard its 0.
+        monkeypatch.setattr(server_module, "deliver", lambda **kwargs: engine(**{**kwargs, "timeout": 300}))
+        text = await self._ask(server, monorepo.path, mode="impact")
+        # The engine lists every reason it stopped for, the cut discovery beside the
+        # deadline: the answer is partial and names the deadline among them.
+        assert re.search(r"\(partial: [^)]*\bdeadline\b", text), text
 
 
 class TestProgressiveDisclosure:
@@ -1248,7 +1292,7 @@ class TestProgressiveDisclosure:
                 },
             )
         )
-        assert "diffctx.locate.v1" not in text
+        assert "diffctx.locate.v2" not in text
         assert "def add(a, b):" in text
 
     @pytest.mark.asyncio
