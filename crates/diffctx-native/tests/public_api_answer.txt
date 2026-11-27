@@ -345,7 +345,7 @@ answer::v2::Unreached.role field Option<String>
 answer::v2::impact_v2_schema fn () -> serde_json::Value
 decide mod
 decide::changed mod
-decide::changed::Changed struct derive(Clone, Debug)
+decide::changed::Changed struct derive(Clone, Debug, Default)
 decide::changed::Changed.api field bool
 decide::changed::Changed.delta field Option<Delta>
 decide::changed::Changed.file field String
@@ -363,9 +363,9 @@ decide::changed::Changed::left_names fn (&self) -> impl Iterator<Item = &str>
 decide::changed::Changed::named_by_its_path fn (&self) -> bool
 decide::changed::Changed::new_parameters fn (&self) -> Vec<String>
 decide::changed::Changed::symbol fn (&self) -> Option<String>
-decide::changed::How enum derive(Clone, Copy, Debug, Eq, PartialEq)
+decide::changed::How enum derive(Clone, Copy, Debug, Default, Eq, PartialEq)
 decide::changed::How::Added variant Added
-decide::changed::How::Edited variant Edited { layout_only: bool }
+decide::changed::How::Edited variant Edited { layout_only: bool, }
 decide::changed::How::Removed variant Removed
 decide::coverage mod
 decide::coverage::Complete struct derive(Debug, Eq, PartialEq)
