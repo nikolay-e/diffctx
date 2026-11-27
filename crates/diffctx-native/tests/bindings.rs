@@ -855,7 +855,7 @@ fn go_callers_bind_through_the_package_and_the_stated_type() {
 /// read as a clean zero because only funcs and types counted as
 /// declarations (found with #491). Another package's own `MaxRetries`, a
 /// struct field, a string and a comment are no readers, and a constant
-/// moved to another file of its package is not removed.
+/// moved to another file of its package is not removed, only named as moved.
 #[test]
 fn removed_go_package_constants_name_the_readers_they_break() {
     let tmp = repo(
@@ -910,12 +910,24 @@ fn removed_go_package_constants_name_the_readers_they_break() {
     // Every cell lists what it removed by file and the line it had at the base
     // (`decide.rs`), not by name or by reader count.
     assert_eq!(removed, vec!["MaxRetries", "Backoff"], "{doc}");
-    assert!(
-        !doc["definitions"]
-            .as_array()
-            .into_iter()
-            .flatten()
-            .any(|c| c["symbol"] == "Moved"),
+    // A package is one module, so the move keeps its key; the answer still
+    // names it, as a move at its new file and never as a removal.
+    let moved: Vec<(&str, &str, Option<&str>)> = doc["definitions"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|c| c["symbol"] == "Moved")
+        .map(|c| {
+            (
+                c["path"].as_str().unwrap_or_default(),
+                c["change"]["kind"].as_str().unwrap_or_default(),
+                c["change"]["origin"].as_str(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        moved,
+        vec![("limits/moved.go", "edited", Some("moved"))],
         "{doc}"
     );
 }
