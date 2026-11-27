@@ -13,16 +13,24 @@ def _same(a: Node | None, b: Node) -> bool:
     return a is not None and a == b
 
 
-def leading_line(node: Node, extra: tuple[str, ...] = ()) -> int:
-    """First line of the attributes and doc comments that touch `node` from above, or its own first line."""
+def leading(node: Node, extra: tuple[str, ...] = ()) -> list[Node]:
+    """The attributes and doc comments that touch `node` from above, the nearest first."""
     first = node.start_point.row + 1
+    found: list[Node] = []
     sibling = node.prev_sibling
     while sibling is not None and (sibling.type in COMMENT_TYPES or sibling.type in extra):
         if sibling.end_point.row + 2 < first:
             break
         first = sibling.start_point.row + 1
+        found.append(sibling)
         sibling = sibling.prev_sibling
-    return first
+    return found
+
+
+def leading_line(node: Node, extra: tuple[str, ...] = ()) -> int:
+    """First line of the attributes and doc comments that touch `node` from above, or its own first line."""
+    above = leading(node, extra)
+    return above[-1].start_point.row + 1 if above else node.start_point.row + 1
 
 
 def first_of_type(node: Node, kind: str) -> Node | None:
@@ -108,6 +116,7 @@ class RustWalker(_Collector):
             fields(node, *RUST_SIGNATURE),
             first_line=leading_line(node, ("attribute_item",)),
             decorated=before is not None and before.type == "attribute_item",
+            attributes=[n for n in leading(node, ("attribute_item",)) if n.type == "attribute_item"],
         )
         body = node.child_by_field_name("body")
         inner = (*container, self.text(name))

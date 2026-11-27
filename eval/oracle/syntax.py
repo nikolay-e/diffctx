@@ -248,8 +248,10 @@ class _Collector:
         first_line: int | None = None,
         decorated: bool | None = None,
         label: str | None = None,
+        attributes: list[Node] | None = None,
     ) -> None:
-        """Record a definition; `first_line` pulls the extent up over attributes and doc comments that precede it."""
+        """Record a definition; `first_line` pulls the extent up over attributes and doc comments that precede it, and
+        `attributes` (nodes beside the extent, as Rust's) are part of what the definition is: changing one modifies it."""
         start, end = _lines(extent)
         start = min(start, first_line or start)
         signature = " ".join(b.decode("utf-8", "replace") for n in sig_nodes if n is not None for b in tokens(n, self.source))
@@ -264,7 +266,9 @@ class _Collector:
                 name_row=name_node.start_point.row,
                 name_col=name_node.start_point.column,
                 signature=signature,
-                body_hash=_digest(tokens(extent, self.source)),
+                body_hash=_digest(
+                    [t for a in reversed(attributes or ()) for t in tokens(a, self.source)] + tokens(extent, self.source)
+                ),
                 shape_hash=_digest(tokens(extent, self.source, name_node.start_byte)),
                 decorated=(
                     decorated
