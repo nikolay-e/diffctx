@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import replace
+from difflib import SequenceMatcher
 
 from changed import ChangedDefinition
 from compare import CONSTRUCTORS
@@ -78,8 +79,8 @@ def paired_head_definition(
     head: Snapshot, base: Snapshot, target: Definition, answered: list[str], removed: list[Definition] | None = None
 ) -> Definition | None:
     """The head definition the answer lists, new in the range, of the target's kind, whose body is the target's once the
-    name is set aside. One entry accounts for one removal: of the removals with that shape, the first by key takes the
-    first such entry by key, the second the second."""
+    name is set aside. One entry accounts for one removal: the removals with that shape and the entries are matched one to
+    one, the likeliest names first."""
     found: dict[str, Definition] = {}
     for key in answered:
         path = key.partition("::")[0]
@@ -88,9 +89,17 @@ def paired_head_definition(
             if candidate.key == key and candidate.key != target.key and candidate.key not in had:
                 if candidate.kind == target.kind and candidate.shape_hash == target.shape_hash:
                     found[key] = candidate
-    rivals = {d.key for d in removed or () if d.kind == target.kind and d.shape_hash == target.shape_hash} | {target.key}
-    place = sorted(rivals).index(target.key)
-    return None if place >= len(found) else found[sorted(found)[place]]
+    rivals = {d.key: d for d in removed or () if d.kind == target.kind and d.shape_hash == target.shape_hash}
+    rivals[target.key] = target
+    taken: dict[str, str] = {}
+    for _, rival, entry in sorted(
+        (-SequenceMatcher(None, r.name.casefold(), c.name.casefold()).ratio(), r.key, c.key)
+        for r in rivals.values()
+        for c in found.values()
+    ):
+        if rival not in taken and entry not in taken.values():
+            taken[rival] = entry
+    return found.get(taken.get(target.key, ""))
 
 
 def pairing(
