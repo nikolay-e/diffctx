@@ -5,7 +5,7 @@ use std::collections::HashMap;
 
 use diffctx_snapshot::resource::LimitReason;
 
-use diffctx_snapshot::snapshot::{Loss, NotAnalysedReason};
+use diffctx_snapshot::snapshot::{Loss, NotAnalysedReason, RepoPath, SideTag};
 
 use super::gap::{Gap, Reason};
 
@@ -105,5 +105,22 @@ impl Losses {
                 })
                 .map(|(_, reason, loss)| (*reason, loss))
         })
+    }
+}
+
+/// A file the run lost is unread by the occurrence account, whatever its facts say.
+pub(super) fn lost_in<'a>(
+    fixed: Option<&'a Losses>,
+    moving: &'a Losses,
+) -> impl Fn(&RepoPath) -> Option<Loss> + 'a {
+    move |file| match fixed {
+        None => Some(Loss::ReadFailed {
+            path: file.clone(),
+            side: SideTag::Head,
+        }),
+        Some(fixed) => (fixed
+            .about(file.as_str())
+            .or_else(|| moving.about(file.as_str())))
+        .map(|(_, loss)| loss.clone()),
     }
 }

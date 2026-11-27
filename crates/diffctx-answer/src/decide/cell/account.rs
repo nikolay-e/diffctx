@@ -8,21 +8,21 @@ use std::rc::Rc;
 
 use crate::fold::{self};
 
-use diffctx_facts::facts::{DefKey, DefKind, Fact, FileFacts, Name, Scope, facts_of};
+use diffctx_facts::facts::{DefKey, DefKind, Fact, Name, Scope, facts_of};
 
 use diffctx_occurrence::tokens::occurrence::debug::{Shadow, sink};
 
-use diffctx_occurrence::tokens::occurrence::{Index, Known, Standing, View};
+use diffctx_occurrence::tokens::occurrence::{Known, Standing, View};
 
 use diffctx_resolve::resolve::{Binding, Definition, Relation, Resolution, UnresolvedReason};
 
 use diffctx_resolve::vocabulary::family::{Family, Resolver};
 
-use diffctx_snapshot::snapshot::{Loss, RepoPath, SideTag};
+use diffctx_snapshot::snapshot::{RepoPath, SideTag};
 
 use super::super::gap::Gap;
 
-use super::super::losses::stopped_by;
+use super::super::losses::{lost_in, stopped_by};
 
 use super::super::verdict::{Accounting, Reach, Use, Verdict};
 
@@ -31,6 +31,7 @@ use super::super::changed::Changed;
 use super::super::cells::strands;
 
 use super::Cell;
+use super::Ground;
 use super::MAX_UNPLACED_LISTED;
 use super::REBOUND;
 use super::UNTYPED_RECEIVER;
@@ -138,28 +139,9 @@ impl Cell {
 
     fn account_occurrences(&self, changed: &Changed, gaps: &[Gap], write: bool) -> Accounting {
         let out = sink().filter(|_| write);
-        let files = self.shadow_files.get_or_init(|| {
-            let mut files: Vec<FileFacts> = self
-                .head
-                .read_paths()
-                .iter()
-                .flat_map(|path| {
-                    facts_of(&self.ctx, SideTag::Head, &self.cache, path)
-                        .into_iter()
-                        .flatten()
-                })
-                .collect();
-            files.sort_by(|a, b| a.path.cmp(&b.path));
-            files
-        });
-        let index = self.index.get_or_init(|| {
-            Rc::new(Index::new(
-                files,
-                self.head.bindings(),
-                self.head.definitions(),
-                &self.ctx.workspace,
-            ))
-        });
+        let Ground { files, index } = self
+            .ground
+            .get_or_init(|| Ground::read(&self.ctx, &self.cache, &self.head));
         let mut view = View::over(Rc::clone(index), files, self.head.bindings());
         // A base that could not be read leaves no removed definition to account:
         // `base_gap` says so in every relation.
@@ -204,19 +186,7 @@ impl Cell {
                 verdict.complete() && verdict.unused()
             });
         let (fixed, moving) = (self.fixed_losses(), self.moving_losses());
-        // A file the run lost is unread by the account, whatever its facts say.
-        let lost = |file: &RepoPath| {
-            let Some(fixed) = fixed else {
-                return Some(Loss::ReadFailed {
-                    path: file.clone(),
-                    side: SideTag::Head,
-                });
-            };
-            let found = fixed
-                .about(file.as_str())
-                .or_else(|| moving.about(file.as_str()));
-            found.map(|(_, loss)| loss.clone())
-        };
+        let lost = lost_in(fixed, &moving);
         #[cfg(debug_assertions)]
         let pathspec = |file: &str| within_scope(&self.scope, file);
         let shown: Vec<&dyn std::fmt::Display> = (gaps.iter())

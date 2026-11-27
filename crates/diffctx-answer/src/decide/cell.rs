@@ -14,7 +14,7 @@ use anyhow::Result;
 use crate::run_provenance::state::ScoredState;
 
 use diffctx_facts::facts::{
-    DefKey, DefKind, FactsCache, FileFacts, Language, ModulePath, ProjectId, Scope,
+    DefKey, DefKind, FactsCache, FileFacts, Language, ModulePath, ProjectId, Scope, facts_of,
 };
 
 use diffctx_occurrence::tokens::occurrence::debug::Written;
@@ -127,12 +127,10 @@ pub(crate) struct Cell {
     /// losses, the manifests it could not read, the files its listing set aside.
     /// `None` when the listing cannot be had again.
     fixed: OnceCell<Option<Losses>>,
-    /// The head's files the resolver read, for the shadow accounting.
-    shadow_files: OnceCell<Vec<FileFacts>>,
     /// What the shadow wrote already: `verdict` runs from several places.
     shadow_written: RefCell<Written>,
-    /// The head's bindings indexed for the occurrence account, once per cell.
-    index: OnceCell<Rc<Index>>,
+    /// The head as the occurrence account reads it, once per cell.
+    ground: OnceCell<Ground>,
     /// The occurrence account of each changed definition, once per cell: the
     /// answer asks for a definition's verdict from several places.
     accounted: RefCell<HashMap<DefKey, Rc<Accounting>>>,
@@ -262,6 +260,26 @@ pub(crate) fn modules_named(
         .collect()
 }
 
+/// The files the head resolver read, with their facts, and the index of its bindings.
+pub(crate) struct Ground {
+    pub(crate) files: Vec<FileFacts>,
+    pub(crate) index: Rc<Index>,
+}
+
+impl Ground {
+    pub(crate) fn read(ctx: &AnalysisContext, cache: &FactsCache, head: &Resolver) -> Self {
+        let mut files: Vec<FileFacts> = (head.read_paths().iter())
+            .flat_map(|path| (facts_of(ctx, SideTag::Head, cache, path).into_iter()).flatten())
+            .collect();
+        files.sort_by(|a, b| a.path.cmp(&b.path));
+        let index = Index::new(&files, head.bindings(), head.definitions(), &ctx.workspace);
+        Self {
+            files,
+            index: Rc::new(index),
+        }
+    }
+}
+
 impl Cell {
     /// Whether any file the answer is about is of the family: a changed file
     /// with its extension, or none and its shebang, or a queried name in one.
@@ -351,9 +369,8 @@ impl Cell {
             read,
             outside_group,
             fixed: OnceCell::new(),
-            shadow_files: OnceCell::new(),
             shadow_written: RefCell::default(),
-            index: OnceCell::new(),
+            ground: OnceCell::new(),
             accounted: RefCell::default(),
         };
         // A queried name has no diff: the lines a symbol run anchors its
@@ -385,9 +402,7 @@ impl Cell {
     fn injected_loss(&self) -> Option<Loss> {
         let (kind, at) = diffctx_snapshot::resource::test_loss()?;
         let group = self.family.group();
-        let Ok(listing) = self.cache.listing(&self.ctx.head) else {
-            return None;
-        };
+        let listing = self.cache.listing(&self.ctx.head).ok()?;
         let path = listing
             .entries
             .iter()
@@ -661,9 +676,7 @@ impl Cell {
     fn fixed_losses(&self) -> Option<&Losses> {
         self.fixed
             .get_or_init(|| {
-                let Ok(listing) = self.cache.listing(&self.ctx.head) else {
-                    return None;
-                };
+                let listing = self.cache.listing(&self.ctx.head).ok()?;
                 Some(Losses::of(
                     self.losses
                         .iter()
