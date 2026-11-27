@@ -1,0 +1,37 @@
+name: ts_untyped_member_read_and_call_of_a_removed_top_level_function_are_no_candidates
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [typescript, removed-definition, untyped-receiver, decoy]
+repo:
+  initial_files:
+    src/util.ts: |
+      export function legacy(a: number): number {
+        return a;
+      }
+
+      export function keep(a: number): number {
+        return a + 1;
+      }
+    src/report.ts: |
+      export function describe(err) {
+        return err.legacy;
+      }
+
+      export function run(obj) {
+        return obj.legacy(1);
+      }
+  changed_files:
+    src/util.ts: |
+      export function keep(a: number): number {
+        return a + 1;
+      }
+  commit_message: "util: drop legacy"
+expect:
+  removed: [legacy]
+  # A top-level function is not a member: `err.legacy` and `obj.legacy(1)` read a
+  # property or call a method of whatever `err` and `obj` are, never the function
+  # that was removed, so neither is named as a possible use of it.
+  exact: false
+  decoys:
+    "src/util.ts::legacy": [src/report.ts]

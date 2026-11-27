@@ -1,0 +1,31 @@
+name: py_removed_function_imported_and_never_used_keeps_its_import_as_the_caller
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [python, removed, import, absence-claim]
+repo:
+  initial_files:
+    legacy.py: |
+      def old_rate():
+          return 1
+
+
+      def rate():
+          return 2
+    consumer.py: |
+      from legacy import old_rate
+
+      LIMIT = 3
+  changed_files:
+    legacy.py: |
+      def rate():
+          return 2
+  commit_message: "legacy: drop old_rate"
+expect:
+  removed: [old_rate]
+  # The only line that names the removed function is its import, and nothing
+  # calls it there: that import still fails, so it is the caller the answer names
+  # (an import is dropped only where the same file uses the name too).
+  exact: false
+  relations:
+    - {from: consumer.py, to: legacy.py::old_rate, kind: imports, resolution: resolved, site: 1}
