@@ -1,10 +1,15 @@
 //! The `--symbol` answers: a symbol query parsed, a named symbol, a module or a local found.
 
+use std::ops::Range;
 use std::path::Path;
 
 use std::time::Instant;
 
 use crate::decide::{self};
+
+use diffctx_facts::facts::{FileFacts, Local, Scope, Span};
+
+use diffctx_occurrence::tokens::occurrence::{Sealed, account_local};
 
 use diffctx_resolve::vocabulary;
 
@@ -191,10 +196,8 @@ pub struct LocalOf {
     pub enclosing: String,
     pub line: u32,
     pub uses: Vec<LocalUse>,
-    /// The lines of its body that spell the name where no fact states a use.
-    pub unplaced: Vec<u32>,
-    /// The file was read in part.
-    pub lossy: bool,
+    /// What the occurrence accounting of its body made of each relation of use.
+    pub account: [Sealed; 6],
     /// The file looks a name up in its namespace (`locals()[key]`, `eval`, `exec`),
     /// which may be the local's.
     pub computed: bool,
@@ -269,13 +272,42 @@ pub fn symbol_local_output(root_dir: &Path, query: &str, locals: Vec<LocalOf>) -
     output
 }
 
+/// The sealed account of `local` over the body it lives in: the definition that encloses it, or the
+/// whole file at module level. `calls`, `hidden` and `beyond` are what the scope reading found.
+pub fn account_of_local(
+    file: &FileFacts,
+    text: &str,
+    local: &Local,
+    calls: &[Range<u32>],
+    hidden: &[(Range<u32>, Span)],
+    beyond: &[Range<u32>],
+) -> [Sealed; 6] {
+    let mut home = &local.enclosing;
+    while let Scope::Callback { parent, .. } = home {
+        home = parent;
+    }
+    let body = match home {
+        Scope::Def(key) => file
+            .blob
+            .defs()
+            .find(|d| d.local == *key)
+            .map(|d| d.span.bytes.clone()),
+        _ => None,
+    }
+    .unwrap_or(0..text.len() as u32);
+    account_local(file, text.as_bytes(), local, &body, calls, hidden, beyond)
+}
+
 /// One block per local: the answer of a `--symbol` no definition has, and what a name
 /// with definitions still owes for the locals that share it.
 pub fn local_blocks(locals: Vec<LocalOf>) -> Vec<ChangedSymbol> {
     locals
         .into_iter()
         .map(|local| {
-            let coverage = local_coverage(&local);
+            let gaps: Vec<_> = (local.computed.then_some(decide::gap::Gap::NotTraced))
+                .into_iter()
+                .collect();
+            let coverage = decide::coverage::Coverages::local(&local.account, &gaps);
             ChangedSymbol {
                 callers: local
                     .uses
@@ -305,37 +337,6 @@ pub fn local_blocks(locals: Vec<LocalOf>) -> Vec<ChangedSymbol> {
             }
         })
         .collect()
-}
-
-/// A local's uses all lie in its enclosing body: its calls and reads are complete unless the
-/// file was read in part, a use hands the local on (returned, stored, passed), where the
-/// receiver may call it, or the body spells the name where no use is stated.
-fn local_coverage(local: &LocalOf) -> decide::coverage::Coverages {
-    let handed: Vec<decide::gap::Site> = (local.uses.iter().filter(|u| !u.call))
-        .map(|u| u.line)
-        .chain(local.unplaced.iter().copied())
-        .map(|line| decide::gap::Site {
-            path: local.path.clone(),
-            line,
-            via: decide::gap::Via::Read,
-        })
-        .collect();
-    let mut gaps = Vec::new();
-    if local.lossy {
-        gaps.push(decide::gap::Gap::Unaccounted {
-            reason: decide::gap::Reason::Unparsed,
-            files: 1,
-        });
-    }
-    if local.computed {
-        gaps.push(decide::gap::Gap::NotTraced);
-    }
-    if !handed.is_empty() {
-        let uses = handed.len();
-        let sites = handed.into_iter().take(MAX_CANDIDATES_SHOWN).collect();
-        gaps.push(decide::gap::Gap::Candidates { uses, sites });
-    }
-    decide::coverage::Coverages::local(gaps)
 }
 
 /// Candidates shown per changed symbol before they are counted instead.

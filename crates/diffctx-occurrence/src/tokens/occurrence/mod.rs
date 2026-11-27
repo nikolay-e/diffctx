@@ -10,6 +10,7 @@ pub mod debug;
 #[cfg(debug_assertions)]
 pub mod identity;
 mod implicit;
+mod local;
 mod outcome;
 mod rows;
 mod scanner;
@@ -20,12 +21,13 @@ mod tests;
 use std::fmt;
 use std::ops::Range;
 
-use diffctx_facts::facts::{DefKey, ModulePath, Name, Scope, Span};
+use diffctx_facts::facts::{DefKey, DefKind, ModulePath, Name, Scope, Span};
 use diffctx_resolve::resolve::{CandidateReason, Relation, UnresolvedReason};
 use diffctx_snapshot::snapshot::{Loss, RepoPath};
 
 pub use diffctx_facts::facts::Lexical;
 pub use implicit::{Known, entered, implicit_kinds};
+pub use local::account_local;
 pub use outcome::{FileOutcomes, Index, View, admitted, counts_against, outcomes};
 pub use scanner::{Case, Scan, scan};
 pub use seal::{Accounted, Sealed, Settled, Settlement};
@@ -202,6 +204,9 @@ pub enum Witness {
     Namespace(Name),
     /// `local`: the site of a local of that name in a scope enclosing the occurrence.
     Local(Span),
+    /// `scope`: the site of the local the account is of; the occurrence lies where that local is not
+    /// in force (outside its body, in a closure beside it, a member of another object).
+    Scope(Span),
     /// `builtin`, an absence: no import of the file binds the name and the definition is not
     /// the file's own.
     Builtin(RepoPath),
@@ -243,6 +248,7 @@ impl Witness {
             Self::OtherDefinition(_) => "other_definition",
             Self::OtherModule(_) | Self::ModulePath(_) | Self::Namespace(_) => "other_module",
             Self::Local(_) => "local",
+            Self::Scope(_) => "scope",
             Self::Builtin(_) | Self::Compound(_) | Self::CommandWord(_) => "builtin",
             Self::ExternalModule(_) => "external_module",
             Self::ExternalName(_) => "external_name",
@@ -409,6 +415,19 @@ impl Account {
             alias_bound: None,
             too_common: None,
         }
+    }
+
+    /// The account of `relation` over the entries that stand against it for a definition of `kind`.
+    pub(crate) fn over(relation: Relation, kind: DefKind, entries: &[Entry]) -> Self {
+        let mut account = Self::new(relation);
+        account.entries = (entries.iter())
+            .filter(|entry| {
+                !matches!(entry.outcome, Outcome::Candidate(_))
+                    || counts_against(entry, kind, relation)
+            })
+            .cloned()
+            .collect();
+        account
     }
 
     /// `Complete` when nothing stands in the way: no candidate of the relation,

@@ -11,7 +11,7 @@ use diffctx_resolve::resolve::{Relation, UnresolvedReason};
 
 use super::gap::{Gap, Reason, Site, Via};
 use super::losses::{Effect, effect_of};
-use super::verdict::Verdict;
+use super::verdict::{Verdict, calls_of, reads_of};
 
 /// The witness that the search for a definition's uses covered everything that
 /// could name it. It has no public field, no `Default`, and it is neither `Copy` nor
@@ -171,8 +171,15 @@ impl Coverage {
         }
     }
 
+    /// Each relation's sealed account closed: the coverage of that relation.
+    pub(crate) fn close_all(seals: &[Sealed; 6], gaps: &[Gap]) -> [(Relation, Self); 6] {
+        seals
+            .each_ref()
+            .map(|sealed| (sealed.relation(), Self::close(sealed, gaps.to_vec())))
+    }
+
     /// What the run's own gaps leave of a coverage no definition's account stands behind: the
-    /// run's limits, a local whose every use lies in a body the answer lists.
+    /// run's limits.
     pub(crate) fn of_run(gaps: Vec<Gap>) -> Self {
         if gaps.is_empty() {
             Self::Complete(Complete(()))
@@ -271,13 +278,13 @@ impl Coverages {
         }
     }
 
-    /// The coverage of a local: every use of it lies in the body it is a local of, which the
-    /// answer lists, so the gaps are the ones that body leaves (a use that hands it on, a file
-    /// read in part).
-    pub(crate) fn local(gaps: Vec<Gap>) -> Self {
+    /// The coverage of a local: its account of the body it lives in, sealed like a definition's.
+    /// `gaps` are the ones the file leaves besides (a name the code computes).
+    pub(crate) fn local(seals: &[Sealed; 6], gaps: &[Gap]) -> Self {
+        let by_relation = Coverage::close_all(seals, gaps);
         Self {
-            calls: Coverage::of_run(gaps.clone()),
-            reads: Coverage::of_run(gaps),
+            calls: calls_of(&by_relation),
+            reads: reads_of(&by_relation),
         }
     }
 

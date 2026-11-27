@@ -687,18 +687,18 @@ impact::output::named_tests fn (tests: &[TestLink]) -> Vec<&TestLink>
 impact::output::reason_names fn (reasons: &[diffctx_snapshot::resource::LimitReason]) -> String
 impact::symbol mod
 impact::symbol::LocalOf struct derive(Debug)
+impact::symbol::LocalOf.account field [Sealed; 6]
 impact::symbol::LocalOf.computed field bool
 impact::symbol::LocalOf.enclosing field String
 impact::symbol::LocalOf.line field u32
-impact::symbol::LocalOf.lossy field bool
 impact::symbol::LocalOf.name field String
 impact::symbol::LocalOf.path field String
-impact::symbol::LocalOf.unplaced field Vec<u32>
 impact::symbol::LocalOf.uses field Vec<LocalUse>
 impact::symbol::LocalUse struct derive(Debug)
 impact::symbol::LocalUse.call field bool
 impact::symbol::LocalUse.inside field Option<String>
 impact::symbol::LocalUse.line field u32
+impact::symbol::account_of_local fn ( file: &FileFacts, text: &str, local: &Local, calls: &[Range<u32>], hidden: &[(Range<u32>, Span)], beyond: &[Range<u32>], ) -> [Sealed; 6]
 impact::symbol::is_textual fn (c: &Caller) -> bool
 impact::symbol::layout_only_names fn (output: &ImpactOutput) -> impl Iterator<Item = &str>
 impact::symbol::local_blocks fn (locals: Vec<LocalOf>) -> Vec<ChangedSymbol>

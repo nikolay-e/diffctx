@@ -16,6 +16,7 @@ tokens::occurrence mod
 tokens::occurrence use alias::{callee_of, close_aliases, value_use}
 tokens::occurrence use diffctx_facts::facts::Lexical
 tokens::occurrence use implicit::{Known, entered, implicit_kinds}
+tokens::occurrence use local::account_local
 tokens::occurrence use outcome::{FileOutcomes, Index, View, admitted, counts_against, outcomes}
 tokens::occurrence use scanner::{Case, Scan, scan}
 tokens::occurrence use seal::{Accounted, Sealed, Settled, Settlement}
@@ -122,6 +123,7 @@ tokens::occurrence::Witness::Namespace variant Namespace(Name)
 tokens::occurrence::Witness::OtherDefinition variant OtherDefinition(DefKey)
 tokens::occurrence::Witness::OtherModule variant OtherModule(RepoPath)
 tokens::occurrence::Witness::OtherProject variant OtherProject(RepoPath)
+tokens::occurrence::Witness::Scope variant Scope(Span)
 tokens::occurrence::Witness::Statement variant Statement(Name)
 tokens::occurrence::Witness::Unreached variant Unreached(RepoPath)
 tokens::occurrence::Witness::as_str fn (&self) -> &'static str
