@@ -15,7 +15,7 @@ use super::{FragmentationStrategy, create_code_gap_fragments, create_snippet};
 mod lang_config;
 mod node_kind;
 use lang_config::{LANG_CONFIGS, LangConfig, find_lang_config, find_lang_config_for};
-use node_kind::node_type_to_kind;
+pub(super) use node_kind::node_type_to_kind;
 
 const BODY_FIELD_NAMES: &[&str] = &["body", "block", "consequence"];
 const BODY_NODE_TYPES: &[&str] = &[
@@ -630,10 +630,6 @@ fn node_end_line(node: &Node) -> u32 {
     node.end_position().row as u32 + 1
 }
 
-fn is_definition_type(node_type: &str, definition_types: &[&str]) -> bool {
-    definition_types.contains(&node_type)
-}
-
 fn children<'a>(node: &Node<'a>) -> impl Iterator<Item = Node<'a>> + 'a {
     let node = *node;
     (0..node.child_count()).filter_map(move |i| node.child(i))
@@ -658,26 +654,6 @@ fn decorated_definition_kind(node: &Node) -> &'static str {
 
 fn is_container_kind(kind: &str) -> bool {
     CONTAINER_KINDS.contains(&kind)
-}
-
-fn adjust_start_for_ancestor(node: &Node, start: u32) -> u32 {
-    let mut ancestor = node.parent();
-    if let Some(ref a) = ancestor {
-        let a_type = a.kind();
-        if a_type != "export_statement" && a_type != "decorated_definition" {
-            ancestor = a.parent();
-        }
-    }
-    if let Some(a) = ancestor {
-        let a_type = a.kind();
-        if a_type == "export_statement" || a_type == "decorated_definition" {
-            let ancestor_start = node_start_line(&a);
-            if ancestor_start < start {
-                return ancestor_start;
-            }
-        }
-    }
-    start
 }
 
 fn unwrap_decorated<'a>(node: Node<'a>) -> Node<'a> {
@@ -726,7 +702,7 @@ fn unwrap_declarator<'a>(mut name_node: Node<'a>) -> Node<'a> {
     name_node
 }
 
-fn extract_symbol_name(node: &Node, source: &[u8]) -> Option<String> {
+fn extract_symbol_name(node: &Node, parent: Option<Node>, source: &[u8]) -> Option<String> {
     let unwrapped = unwrap_decorated(*node);
     for field_name in &["name", "declarator", "type"] {
         if let Some(name_node) = unwrapped.child_by_field_name(field_name) {
@@ -741,8 +717,12 @@ fn extract_symbol_name(node: &Node, source: &[u8]) -> Option<String> {
     // map — is named by its property (#473).
     if FUNCTION_CHILD_TYPES.contains(&unwrapped.kind()) || unwrapped.kind() == "function_expression"
     {
-        let key = unwrapped
-            .parent()
+        let up = if node.kind() == "decorated_definition" {
+            unwrapped.parent()
+        } else {
+            parent
+        };
+        let key = up
             .filter(|p| p.kind() == "pair")?
             .child_by_field_name("key")?;
         let text = std::str::from_utf8(&source[key.byte_range()]).ok()?;
@@ -758,39 +738,8 @@ fn find_body_node<'a>(node: &Node<'a>) -> Option<Node<'a>> {
         .or_else(|| children(node).find(|c| BODY_NODE_TYPES.contains(&c.kind())))
 }
 
-/// `k` in `for (let k = 1; k <= 20; k++)`: the loop's own counter, which no
-/// importer reaches and no call names, never a definition (Forgejo #94).
-/// `for (const x of xs)` has no declarator to begin with.
-fn is_loop_counter(node: &Node) -> bool {
-    let Some(declaration) = node
-        .parent()
-        .filter(|_| node.kind() == "variable_declarator")
-    else {
-        return false;
-    };
-    declaration.parent().is_some_and(|stmt| {
-        stmt.kind() == "for_statement"
-            && stmt
-                .child_by_field_name("initializer")
-                .is_some_and(|init| init.id() == declaration.id())
-    })
-}
-
 fn has_function_child(node: &Node) -> bool {
     children(node).any(|c| FUNCTION_CHILD_TYPES.contains(&c.kind()))
-}
-
-fn first_child_def_line(node: &Node, definition_types: &[&str], depth: u32) -> Option<u32> {
-    if depth > PARSERS.container_search_max_depth {
-        return None;
-    }
-    children(node).find_map(|child| {
-        if is_definition_type(child.kind(), definition_types) {
-            Some(node_start_line(&child))
-        } else {
-            first_child_def_line(&child, definition_types, depth + 1)
-        }
-    })
 }
 
 /// Kotlin through the fwcd grammar: names, scope and spans come from the
@@ -837,37 +786,51 @@ mod kotlin {
 /// One walk over one parse tree: the file being fragmented and what the
 /// walk has emitted so far. Every step used to thread these seven values
 /// through four mutually recursive functions.
-struct Walk<'a> {
+struct Walk<'a, 't> {
     source: &'a [u8],
     path: &'a Arc<str>,
     lines: &'a [&'a str],
-    definition_types: &'a [&'a str],
+    def_kinds: &'a [Option<&'static str>],
     kotlin: bool,
     fragments: Vec<Fragment>,
     covered: Vec<(u32, u32)>,
-    added_ends: FxHashSet<(String, u32)>,
+    added_ends: FxHashSet<(&'static str, u32)>,
     /// The body chunks emitted so far, by their lines.
     chunks: FxHashMap<(u32, u32), usize>,
+    ancestors: Vec<Node<'t>>,
+    cursors: Vec<tree_sitter::TreeCursor<'t>>,
 }
 
-impl<'a> Walk<'a> {
+impl<'a, 't> Walk<'a, 't> {
     fn new(
         source: &'a [u8],
         path: &'a Arc<str>,
         lines: &'a [&'a str],
         config: &'a LangConfig,
+        def_kinds: &'a [Option<&'static str>],
     ) -> Self {
         Self {
             source,
             path,
             lines,
-            definition_types: config.definition_types,
+            def_kinds,
             kotlin: config.ts_name == "kotlin",
             fragments: Vec::new(),
             covered: Vec::new(),
             added_ends: FxHashSet::default(),
             chunks: FxHashMap::default(),
+            ancestors: Vec::new(),
+            cursors: Vec::new(),
         }
+    }
+
+    fn parent(&self) -> Option<Node<'t>> {
+        self.ancestors.last().copied()
+    }
+
+    fn grandparent(&self) -> Option<Node<'t>> {
+        let len = self.ancestors.len();
+        (len >= 2).then(|| self.ancestors[len - 2])
     }
 
     fn push(&mut self, start: u32, end: u32, kind: &str, sym_name: Option<&str>) -> bool {
@@ -952,11 +915,11 @@ impl<'a> Walk<'a> {
 
     fn try_container_split(
         &mut self,
-        node: &Node,
+        node: &Node<'t>,
         depth: u32,
         start: u32,
         end: u32,
-        kind: &str,
+        kind: &'static str,
         sym_name: Option<&str>,
     ) -> bool {
         // For a `decorated_definition` the inner class/def node is itself a
@@ -964,7 +927,8 @@ impl<'a> Walk<'a> {
         // line as the "first child" and truncate the container header to the
         // decorator alone. Search from the unwrapped definition instead.
         let search_root = unwrap_decorated(*node);
-        let Some(first_child_start) = first_child_def_line(&search_root, self.definition_types, 0)
+        let Some(first_child_start) =
+            super::def_kinds::first_child_def_line(&search_root, self.def_kinds, 0)
         else {
             return false;
         };
@@ -972,13 +936,17 @@ impl<'a> Walk<'a> {
             return false;
         }
         self.push(start, first_child_start - 1, kind, sym_name);
-        self.added_ends.insert((kind.to_string(), end));
+        self.added_ends.insert((kind, end));
         self.recurse_children(node, depth);
         true
     }
 
-    fn handle_definition_node(&mut self, node: &Node, depth: u32) {
-        if (self.kotlin && kotlin::is_local_property(node)) || is_loop_counter(node) {
+    fn handle_definition_node(&mut self, node: &Node<'t>, mapped_kind: &'static str, depth: u32) {
+        let parent = self.parent();
+        let grandparent = self.grandparent();
+        if (self.kotlin && kotlin::is_local_property(node))
+            || super::def_kinds::is_loop_counter(node, parent, grandparent)
+        {
             self.recurse_children(node, depth);
             return;
         }
@@ -989,12 +957,14 @@ impl<'a> Walk<'a> {
             node_end_line(node)
         };
         let kind = if self.kotlin {
-            kotlin::kind(node).unwrap_or_else(|| node_type_to_kind(node.kind(), Some(node)))
+            kotlin::kind(node).unwrap_or(mapped_kind)
+        } else if node.kind() == "decorated_definition" {
+            decorated_definition_kind(node)
         } else {
-            node_type_to_kind(node.kind(), Some(node))
+            mapped_kind
         };
 
-        if self.added_ends.contains(&(kind.to_string(), end)) {
+        if self.added_ends.contains(&(kind, end)) {
             self.recurse_children(node, depth);
             return;
         }
@@ -1002,9 +972,9 @@ impl<'a> Walk<'a> {
         let sym_name = if self.kotlin {
             kotlin::symbol_name(node, self.source)
         } else {
-            extract_symbol_name(node, self.source)
+            extract_symbol_name(node, parent, self.source)
         };
-        let start = adjust_start_for_ancestor(node, start);
+        let start = super::def_kinds::adjust_start_for_ancestor(parent, grandparent, start);
 
         if is_container_kind(kind)
             && self.try_container_split(node, depth, start, end, kind, sym_name.as_deref())
@@ -1015,7 +985,7 @@ impl<'a> Walk<'a> {
         if end - start + 1 >= PARSERS.min_fragment_lines
             && self.push(start, end, kind, sym_name.as_deref())
         {
-            self.added_ends.insert((kind.to_string(), end));
+            self.added_ends.insert((kind, end));
         }
 
         if end - start + 1 > PARSERS.sub_fragment_threshold_lines {
@@ -1029,21 +999,33 @@ impl<'a> Walk<'a> {
         self.recurse_children(node, depth);
     }
 
-    fn extract_definitions(&mut self, node: &Node, depth: u32) {
+    fn extract_definitions(&mut self, node: &Node<'t>, depth: u32) {
         if depth > PARSERS.max_recursion_depth {
             return;
         }
-        if is_definition_type(node.kind(), self.definition_types) {
-            self.handle_definition_node(node, depth);
+        if let Some(mapped_kind) = self
+            .def_kinds
+            .get(usize::from(node.kind_id()))
+            .copied()
+            .flatten()
+        {
+            self.handle_definition_node(node, mapped_kind, depth);
         } else {
             self.recurse_children(node, depth);
         }
     }
 
-    fn recurse_children(&mut self, node: &Node, depth: u32) {
-        for child in children(node) {
+    fn recurse_children(&mut self, node: &Node<'t>, depth: u32) {
+        if node.child_count() == 0 {
+            return;
+        }
+        self.ancestors.push(*node);
+        let mut cursor = self.cursors.pop().unwrap_or_else(|| node.walk());
+        for child in node.children(&mut cursor) {
             self.extract_definitions(&child, depth + 1);
         }
+        self.cursors.push(cursor);
+        self.ancestors.pop();
     }
 }
 
@@ -1078,14 +1060,14 @@ impl FragmentationStrategy for TreeSitterStrategy {
             return Vec::new();
         };
         remember_outcome(content, outcome_of(&tree));
-        if config.ts_name == "kotlin" {
-            crate::facts::kotlin::record(&tree, content);
-        }
+        super::def_kinds::record_parsed(config.ts_name, &tree, content);
 
+        let def_kinds =
+            super::def_kinds::for_language(config.ts_name, &language, config.definition_types);
         let source = content.as_bytes();
         let lines: Vec<&str> = content.split('\n').collect();
 
-        let mut walk = Walk::new(source, &path, &lines, config);
+        let mut walk = Walk::new(source, &path, &lines, config, &def_kinds);
         walk.extract_definitions(&tree.root_node(), 0);
         let Walk {
             mut fragments,
@@ -1272,8 +1254,9 @@ fn fragment_embedded_source(
         return;
     };
 
+    let def_kinds = super::def_kinds::for_language(ts_name, &language, config.definition_types);
     let snippet_lines: Vec<&str> = snippet.split('\n').collect();
-    let mut walk = Walk::new(snippet.as_bytes(), path, &snippet_lines, config);
+    let mut walk = Walk::new(snippet.as_bytes(), path, &snippet_lines, config, &def_kinds);
     walk.extract_definitions(&tree.root_node(), 0);
     let embedded = walk.fragments;
 

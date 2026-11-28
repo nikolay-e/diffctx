@@ -53,15 +53,29 @@ pub use model::{
 
 /// The facts an extractor states about a file; `None` for a language none reads.
 pub fn local_facts(path: &str, text: &str) -> Option<BlobFacts> {
-    static REGISTRY: std::sync::OnceLock<Registry> = std::sync::OnceLock::new();
     let name = std::path::Path::new(path).file_name()?.to_str()?;
     let Ok(name) = diffctx_snapshot::snapshot::RepoPath::new(name) else {
         return None;
     };
-    let language = Language::detect(&name, text.as_bytes())?;
-    let extractor = REGISTRY.get_or_init(lang::builtin).get(language)?;
-    Some(extractor.extract(
-        text.as_bytes(),
-        &diffctx_snapshot::snapshot::RunBudget::default(),
-    ))
+    let bytes = text.as_bytes();
+    let language = Language::detect(&name, bytes)?;
+    let cache = FactsCache::user();
+    let extractor = cache.registry().get(language)?;
+    if let Ok(blob) = blob_oid(bytes) {
+        let key = CacheKey {
+            blob,
+            language,
+            build: cache.fingerprint(),
+            grammar: extractor.grammar(),
+            schema: SCHEMA,
+        };
+        if let Some(hit) = cache.get(&key) {
+            return Some((*hit).clone());
+        }
+        let mut extracted =
+            extractor.extract(bytes, &diffctx_snapshot::snapshot::RunBudget::default());
+        extracted.in_source_order();
+        return Some((*cache.put(&key, extracted)).clone());
+    }
+    Some(extractor.extract(bytes, &diffctx_snapshot::snapshot::RunBudget::default()))
 }

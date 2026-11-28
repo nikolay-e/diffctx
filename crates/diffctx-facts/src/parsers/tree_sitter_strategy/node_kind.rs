@@ -118,7 +118,10 @@ const NODE_TYPE_KEYWORDS: &[(&[&str], &str)] = &[
     (&["singleton_method"], "function"),
     (&["inherit"], "declaration"),
 ];
-pub(super) fn node_type_to_kind(node_type: &str, node: Option<&tree_sitter::Node>) -> &'static str {
+pub(in crate::parsers) fn node_type_to_kind(
+    node_type: &str,
+    node: Option<&tree_sitter::Node>,
+) -> &'static str {
     if node_type == "decorated_definition" {
         if let Some(n) = node {
             return super::decorated_definition_kind(n);
