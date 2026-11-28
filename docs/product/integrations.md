@@ -38,8 +38,21 @@ The server is published in the official MCP registry as
 # Claude Code plugin: the server, /diffctx:diffctx, /diffctx:impact and the commit hooks
 claude plugin marketplace add nikolay-e/diffctx
 claude plugin install diffctx@diffctx
-# server only
+
+# Antigravity plugin (App, CLI, IDE): the server, skills, rule and lifecycle hooks
+agy plugin install https://github.com/nikolay-e/diffctx/tree/main/plugins/diffctx
+
+# Codex plugin: the server, skills and hooks (trusted in /hooks)
+codex plugin marketplace add nikolay-e/diffctx
+codex plugin add diffctx@diffctx
+
+# Gemini CLI extension: the server, skills, context and hooks
+# (from the release after 1.20.0; before it, from a checkout: ./plugins/diffctx)
+gemini extensions install https://github.com/nikolay-e/diffctx
+
+# MCP server only
 claude mcp add diffctx -- uvx --from 'diffctx[mcp]' diffctx-mcp
+agy mcp add --env UV_ISOLATED=1 diffctx -- uvx --from 'diffctx[mcp]' diffctx-mcp
 codex mcp add diffctx -- uvx --from 'diffctx[mcp]' diffctx-mcp
 gemini mcp add diffctx uvx -- --from 'diffctx[mcp]' diffctx-mcp
 code --add-mcp '{"name":"diffctx","command":"uvx","args":["--from","diffctx[mcp]","diffctx-mcp"]}'
@@ -49,10 +62,14 @@ Every other stdio client takes the same server shape; only the file differs:
 
 | Client | Config file | Key |
 |---|---|---|
+| Antigravity (global / workspace) | `~/.gemini/config/mcp_config.json` / `.agents/mcp_config.json` | `mcpServers` |
 | Claude Code (project) | `.mcp.json` | `mcpServers` |
 | Claude Desktop | `claude_desktop_config.json` | `mcpServers` |
+| Codex | `~/.codex/config.toml` | `mcp_servers` (TOML table) |
+| Gemini CLI | `~/.gemini/settings.json` | `mcpServers` |
 | Cursor | `~/.cursor/mcp.json` | `mcpServers` |
 | Windsurf | `~/.codeium/windsurf/mcp_config.json` | `mcpServers` |
+| OpenCode | `opencode.json` | `mcp` (`type: "local"`, `command` array) |
 | Continue | `~/.continue/config.json` | `experimental.modelContextProtocolServers` (transport object) |
 | Zed | `~/.config/zed/settings.json` | `context_servers` (`command.path`) |
 

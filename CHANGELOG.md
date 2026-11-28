@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Official plugins for Antigravity, Codex and Gemini CLI in `plugins/diffctx`:
+  the MCP server, the `diffctx`, `diffctx-impact` and `diffctx-commit` skills,
+  a standing rule, and lifecycle hooks that hand the agent a commit's or a
+  push's impact, as the Claude Code plugin does. `agy plugin install
+  https://github.com/nikolay-e/diffctx/tree/main/plugins/diffctx`, `codex
+  plugin marketplace add nikolay-e/diffctx`, and `gemini extensions install
+  https://github.com/nikolay-e/diffctx`, which each release now serves.
+
 - Files that name the same environment variable or container image are linked
   across formats. A variable read in code (Python, JS/TS, Go, Rust,
   Java/Kotlin, Ruby, shell) meets the `.env`, compose, Kubernetes, Helm,

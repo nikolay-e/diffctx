@@ -23,6 +23,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 SRC_DIR = PROJECT_ROOT / "src"
 IMPACT_SCRIPT = PROJECT_ROOT / "plugin" / "hooks" / "diffctx-impact.sh"
 SESSION_SCRIPT = PROJECT_ROOT / "plugin" / "hooks" / "diffctx-session.sh"
+BRIDGE_SCRIPT = PROJECT_ROOT / "plugins" / "diffctx" / "scripts" / "diffctx-hook.py"
 
 
 @pytest.fixture
@@ -444,3 +445,280 @@ def test_a_launch_that_fails_leaves_a_line_in_the_hook_log(tmp_path, pending_cha
     assert line[2:6] == ["PreToolUse", "-", "-", "error:launch-1"]
     launched = re.search(r'uvx -q --offline "diffctx\[mcp\]==([0-9.]+)"', IMPACT_SCRIPT.read_text()).group(1)
     assert line[-1] == launched, "the line names the version that wrote it (#524)"
+
+
+def _agy_launcher(tmp_path: Path) -> Path:
+    if sys.platform == "win32":
+        launcher = tmp_path / "diffctx-hook.cmd"
+        launcher.write_text(f'@echo off\r\n"{sys.executable}" -m diffctx %*\r\n', encoding="utf-8")
+    else:
+        launcher = tmp_path / "diffctx-hook"
+        launcher.write_text(f'#!/bin/sh\nexec "{sys.executable}" -m diffctx "$@"\n', encoding="utf-8")
+        launcher.chmod(0o755)
+    return launcher
+
+
+def _bridge_run(
+    tmp_path: Path,
+    payload: dict,
+    *,
+    host: str = "agy",
+    gate: bool = False,
+    enabled: bool = True,
+    hook_bin: str | None = None,
+) -> dict:
+    launcher = _agy_launcher(tmp_path) if hook_bin is None else Path(hook_bin)
+    env = {
+        **os.environ,
+        "HOME": str(tmp_path),
+        "PYTHONPATH": str(SRC_DIR),
+        "DIFFCTX_CACHE_DIR": str(tmp_path / "cache" / "diffctx"),
+        "PLUGIN_DATA": str(tmp_path / "plugin-data"),
+        "DIFFCTX_HOOK_BIN": str(launcher),
+        "DIFFCTX_IMPACT_HOOK": "true" if enabled else "false",
+        "DIFFCTX_IMPACT_GATE": "true" if gate else "false",
+        "PYTHONIOENCODING": "cp1252",
+    }
+    proc = subprocess.run(
+        [sys.executable, str(BRIDGE_SCRIPT), host],
+        input=json.dumps(payload),
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        env=env,
+        timeout=120,
+        check=False,
+    )
+    assert proc.returncode == 0, proc.stderr
+    return json.loads(proc.stdout)
+
+
+def _agy_cmd_payload(
+    event: str,
+    cwd: Path,
+    command: str,
+    *,
+    conv: str = "conv-1",
+    call_id: str = "call-1",
+    error: str = "",
+) -> dict:
+    payload: dict = {
+        "conversationId": conv,
+        "workspacePaths": [str(cwd)],
+        "cwd": str(cwd),
+        "hookEventName": event,
+        "toolCall": {
+            "id": call_id,
+            "name": "run_command",
+            "args": {"CommandLine": command},
+        },
+    }
+    if error:
+        payload["error"] = error
+    return payload
+
+
+def test_agy_session_start_injects_context_and_respects_toggle(tmp_path):
+    on = _bridge_run(tmp_path, {"conversationId": "c1", "hookEventName": "SessionStart"})
+    msg = on["injectSteps"][0]["systemMessage"]["systemMessage"]
+    assert "a commit with no diffctx block is not a clean result" in msg
+    assert re.search(r"UV_ISOLATED=1 uvx diffctx==[0-9.]+ \. --diff --mode impact -f md", msg), msg
+
+    off = _bridge_run(tmp_path, {"conversationId": "c1", "hookEventName": "SessionStart"}, enabled=False)
+    assert off == {}
+
+
+def test_agy_commit_lifecycle_queues_on_post_tool_use_and_drains_once_on_post_invocation(tmp_path, pending_change):
+    cmd = "git commit -am vat"
+    pre = _bridge_run(tmp_path, _agy_cmd_payload("PreToolUse", pending_change, cmd))
+    assert pre == {"decision": "allow"}
+
+    _run(pending_change, cmd)
+    post = _bridge_run(tmp_path, _agy_cmd_payload("PostToolUse", pending_change, cmd))
+    assert post == {}, "Antigravity PostToolUse stdout contract is {}"
+
+    inv = _bridge_run(tmp_path, {"conversationId": "conv-1", "hookEventName": "PostInvocation"})
+    delivered = inv["injectSteps"][0]["systemMessage"]["systemMessage"]
+    assert "shop/checkout.py::charge" in delivered
+
+    again = _bridge_run(tmp_path, {"conversationId": "conv-1", "hookEventName": "PostInvocation"})
+    assert again == {}, "queued context drains atomically once"
+
+
+def test_agy_failed_command_that_committed_still_delivers_impact(tmp_path, pending_change):
+    cmd = "git commit -qam vat; git rev-parse --short HEAD no-such-ref"
+    assert _bridge_run(tmp_path, _agy_cmd_payload("PreToolUse", pending_change, cmd, conv="c-fail")) == {"decision": "allow"}
+    _run(pending_change, cmd)
+    post = _bridge_run(
+        tmp_path,
+        _agy_cmd_payload("PostToolUse", pending_change, cmd, conv="c-fail", error="exit status 128"),
+    )
+    assert post == {}
+    inv = _bridge_run(tmp_path, {"conversationId": "c-fail", "hookEventName": "PostInvocation"})
+    assert "shop/checkout.py::charge" in inv["injectSteps"][0]["systemMessage"]["systemMessage"]
+
+
+def test_agy_strict_gate_denies_with_impact_reason(tmp_path, pending_change):
+    staging = _bridge_run(
+        tmp_path,
+        _agy_cmd_payload("PreToolUse", pending_change, "git commit -am vat", conv="c-gate"),
+        gate=True,
+    )
+    assert staging["decision"] == "deny"
+    assert "as its own command" in staging["reason"]
+
+    _run(pending_change, "git add -A")
+    denied = _bridge_run(
+        tmp_path,
+        _agy_cmd_payload("PreToolUse", pending_change, "git commit -m vat", conv="c-gate"),
+        gate=True,
+    )
+    assert denied["decision"] == "deny"
+    assert "shop/checkout.py::charge" in denied["reason"]
+
+
+def test_agy_grep_search_delivers_callers_even_from_workspace_parent(tmp_path, pending_change):
+    workspace = tmp_path / "workspace-root"
+    workspace.mkdir()
+    payload = {
+        "conversationId": "c-grep",
+        "workspacePaths": [str(workspace)],
+        "cwd": str(workspace),
+        "hookEventName": "PostToolUse",
+        "toolCall": {
+            "id": "call-grep-1",
+            "name": "grep_search",
+            "args": {"Query": r"\btotal\b", "SearchPath": str(pending_change)},
+        },
+    }
+    assert _bridge_run(tmp_path, payload) == {}
+    inv = _bridge_run(tmp_path, {"conversationId": "c-grep", "hookEventName": "PostInvocation"})
+    assert "shop/checkout.py::charge" in inv["injectSteps"][0]["systemMessage"]["systemMessage"]
+
+
+def test_agy_workspace_parent_resolves_repo_and_linked_worktree(tmp_path, pending_change):
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("diffctx_hook_bridge", BRIDGE_SCRIPT)
+    mod = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    sys.modules[spec.name] = mod
+    try:
+        spec.loader.exec_module(mod)
+    finally:
+        del sys.modules[spec.name]
+    assert mod._matched_paths(mod._GIT_C_RE, r'git -C "C:\Users\runner\repo" status && git -C D:/work/wt diff') == [
+        r"C:\Users\runner\repo",
+        "D:/work/wt",
+    ]
+
+    workspace = tmp_path / "home-workspace"
+    workspace.mkdir()
+    wt = tmp_path / "wt-feature"
+    subprocess.run(
+        ["git", "-C", str(pending_change), "worktree", "add", "-b", "wt-branch", str(wt), "HEAD"],
+        check=True,
+        capture_output=True,
+    )
+    cmd = f'git -C "{pending_change}" status --short && git -C "{wt}" status --short'
+    assert _bridge_run(tmp_path, _agy_cmd_payload("PreToolUse", workspace, cmd, conv="c-wt")) == {"decision": "allow"}
+    assert _bridge_run(tmp_path, _agy_cmd_payload("PostToolUse", workspace, cmd, conv="c-wt")) == {}
+    inv = _bridge_run(tmp_path, {"conversationId": "c-wt", "hookEventName": "PostInvocation"})
+    delivered = inv.get("injectSteps", [{}])[0].get("systemMessage", {}).get("systemMessage", "")
+    assert "did not analyse this command in the repository it names" not in delivered
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="uses /usr/bin/false to simulate a failed launch")
+def test_agy_outside_repo_skips_launch_and_launch_error_logs_pinned_version(tmp_path, pending_change):
+    outside = tmp_path / "plain-dir"
+    outside.mkdir()
+    assert _bridge_run(tmp_path, _agy_cmd_payload("PreToolUse", outside, "ls -la", conv="c-out"), hook_bin="/usr/bin/false") == {
+        "decision": "allow"
+    }
+    assert not (tmp_path / "cache" / "diffctx" / "hook-runs.log").exists()
+
+    res = _bridge_run(
+        tmp_path,
+        _agy_cmd_payload("PreToolUse", pending_change, "git commit -am vat", conv="c-err"),
+        hook_bin="/usr/bin/false",
+    )
+    assert res == {"decision": "allow"}
+    line = (tmp_path / "cache" / "diffctx" / "hook-runs.log").read_text(encoding="utf-8").split()
+    assert line[2:6] == ["PreToolUse", "-", "-", "error:launch-1"]
+    pinned = re.search(r'SPEC = "diffctx\[mcp\]==([0-9.]+)"', BRIDGE_SCRIPT.read_text(encoding="utf-8")).group(1)
+    assert line[-1] == pinned
+
+
+def _claude_shaped(event: str, cwd: Path, tool: str, tool_input: dict, *, session: str, call_id: str | None) -> dict:
+    payload = {"session_id": session, "cwd": str(cwd), "hook_event_name": event, "tool_name": tool, "tool_input": tool_input}
+    if call_id is not None:
+        payload["tool_use_id"] = call_id
+    return payload
+
+
+def test_codex_commit_answers_in_claude_code_shape(tmp_path, pending_change):
+    session = _bridge_run(tmp_path, {"session_id": "cx", "hook_event_name": "SessionStart"}, host="codex")
+    assert "a commit with no diffctx block" in session["hookSpecificOutput"]["additionalContext"]
+    assert session["hookSpecificOutput"]["hookEventName"] == "SessionStart"
+
+    cmd = {"command": "git commit -am vat"}
+    pre = _bridge_run(
+        tmp_path, _claude_shaped("PreToolUse", pending_change, "Bash", cmd, session="cx", call_id="c1"), host="codex"
+    )
+    assert "permissionDecision" not in pre.get("hookSpecificOutput", {})
+    _run(pending_change, cmd["command"])
+    post = _bridge_run(
+        tmp_path, _claude_shaped("PostToolUse", pending_change, "Bash", cmd, session="cx", call_id="c1"), host="codex"
+    )
+    assert post["hookSpecificOutput"]["hookEventName"] == "PostToolUse", "Codex has no PostToolUseFailure"
+    assert "shop/checkout.py::charge" in post["hookSpecificOutput"]["additionalContext"]
+
+
+def test_codex_strict_gate_denies_through_permission_decision(tmp_path, pending_change):
+    _run(pending_change, "git add -A")
+    cmd = {"command": "git commit -m vat"}
+    denied = _bridge_run(
+        tmp_path,
+        _claude_shaped("PreToolUse", pending_change, "Bash", cmd, session="cx-gate", call_id="g1"),
+        host="codex",
+        gate=True,
+    )
+    assert denied["hookSpecificOutput"]["permissionDecision"] == "deny"
+    assert "shop/checkout.py::charge" in denied["hookSpecificOutput"]["permissionDecisionReason"]
+
+
+def test_gemini_commit_without_call_id_pairs_before_and_after_and_appends_to_the_tool_result(tmp_path, pending_change):
+    session = _bridge_run(tmp_path, {"session_id": "gm", "hook_event_name": "SessionStart"}, host="gemini")
+    assert "a commit with no diffctx block" in session["hookSpecificOutput"]["additionalContext"]
+
+    workspace = pending_change.parent
+    cmd = {"command": "git commit -am vat", "dir_path": pending_change.name}
+    before = _bridge_run(
+        tmp_path, _claude_shaped("BeforeTool", workspace, "run_shell_command", cmd, session="gm", call_id=None), host="gemini"
+    )
+    assert before == {}
+    _run(pending_change, cmd["command"])
+    after = _bridge_run(
+        tmp_path, _claude_shaped("AfterTool", workspace, "run_shell_command", cmd, session="gm", call_id=None), host="gemini"
+    )
+    assert after["hookSpecificOutput"]["hookEventName"] == "AfterTool"
+    assert "shop/checkout.py::charge" in after["hookSpecificOutput"]["additionalContext"]
+
+
+def test_gemini_grep_search_and_strict_gate(tmp_path, pending_change):
+    grep = {"pattern": r"\btotal\b", "dir_path": "shop"}
+    after = _bridge_run(
+        tmp_path, _claude_shaped("AfterTool", pending_change, "grep_search", grep, session="gg", call_id=None), host="gemini"
+    )
+    assert "shop/checkout.py::charge" in after["hookSpecificOutput"]["additionalContext"]
+
+    _run(pending_change, "git add -A")
+    cmd = {"command": "git commit -m vat"}
+    denied = _bridge_run(
+        tmp_path,
+        _claude_shaped("BeforeTool", pending_change, "run_shell_command", cmd, session="gg", call_id=None),
+        host="gemini",
+        gate=True,
+    )
+    assert denied["decision"] == "deny"
+    assert "shop/checkout.py::charge" in denied["reason"]

@@ -18,7 +18,7 @@ zero.
 
 ## Install
 
-diffctx is a command-line tool; the MCP server, the Claude Code plugin and the
+diffctx is a command-line tool; the MCP server, the agent plugins and the
 GitHub Action run the same engine.
 
 ### CLI
@@ -49,21 +49,33 @@ Registered as `io.github.nikolay-e/diffctx`.
 
 ```bash
 claude mcp add diffctx -- uvx --from 'diffctx[mcp]' diffctx-mcp
+agy mcp add --env UV_ISOLATED=1 diffctx -- uvx --from 'diffctx[mcp]' diffctx-mcp
 codex mcp add diffctx -- uvx --from 'diffctx[mcp]' diffctx-mcp
 gemini mcp add diffctx uvx -- --from 'diffctx[mcp]' diffctx-mcp
 ```
 
-Cursor, VS Code, Claude Desktop, Windsurf, Zed, Continue and the Python API:
-[integrations](docs/product/integrations.md).
+Antigravity, Cursor, VS Code, Claude Desktop, Windsurf, Zed, Continue and the
+Python API: [integrations](docs/product/integrations.md).
 
-### Claude Code plugin
+### Agent plugins
 
-The MCP server plus `/diffctx:impact` and hooks that run it on each commit and
-push.
+The MCP server plus impact/review skills, standing rules, and lifecycle hooks
+that inject a change's impact on commits, pushes, diffs and symbol searches.
 
 ```bash
+# Claude Code
 claude plugin marketplace add nikolay-e/diffctx
 claude plugin install diffctx@diffctx
+
+# Antigravity (App, CLI, IDE)
+agy plugin install https://github.com/nikolay-e/diffctx/tree/main/plugins/diffctx
+
+# Codex
+codex plugin marketplace add nikolay-e/diffctx
+codex plugin add diffctx@diffctx
+
+# Gemini CLI (from the release after 1.20.0)
+gemini extensions install https://github.com/nikolay-e/diffctx
 ```
 
 ### CI

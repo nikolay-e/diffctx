@@ -212,17 +212,28 @@ jobs:
           assert n == 1, "action.yml: diffctx-version default not found"
           act.write_text(s, encoding="utf-8")
 
-          plug = pathlib.Path("plugin/.claude-plugin/plugin.json")
-          doc = json.loads(plug.read_text(encoding="utf-8"))
-          doc["version"] = ver
-          plug.write_text(json.dumps(doc, indent=2) + "\n", encoding="utf-8")
+          for manifest in (
+              "plugin/.claude-plugin/plugin.json",
+              "plugins/diffctx/plugin.json",
+              "plugins/diffctx/gemini-extension.json",
+          ):
+              plug = pathlib.Path(manifest)
+              doc = json.loads(plug.read_text(encoding="utf-8"))
+              doc["version"] = ver
+              plug.write_text(json.dumps(doc, indent=2) + "\n", encoding="utf-8")
 
-          mcp = pathlib.Path("plugin/.mcp.json")
-          doc = json.loads(mcp.read_text(encoding="utf-8"))
-          args = doc["mcpServers"]["diffctx"]["args"]
-          [i] = [i for i, a in enumerate(args) if a.startswith("diffctx[mcp]==")]
-          args[i] = f"diffctx[mcp]=={ver}"
-          mcp.write_text(json.dumps(doc, indent=2) + "\n", encoding="utf-8")
+          for mcp_path in (
+              "plugin/.mcp.json",
+              "plugins/diffctx/mcp_config.json",
+              "plugins/diffctx/mcp.json",
+              "plugins/diffctx/gemini-extension.json",
+          ):
+              mcp = pathlib.Path(mcp_path)
+              doc = json.loads(mcp.read_text(encoding="utf-8"))
+              args = doc["mcpServers"]["diffctx"]["args"]
+              [i] = [i for i, a in enumerate(args) if a.startswith("diffctx[mcp]==")]
+              args[i] = f"diffctx[mcp]=={ver}"
+              mcp.write_text(json.dumps(doc, indent=2) + "\n", encoding="utf-8")
 
           # The hooks run the same pinned package, and the skills name it for
           # the no-MCP fallback; the version is written plainly in each: the
@@ -235,6 +246,10 @@ jobs:
               "plugin/skills/commit/SKILL.md",
               "plugin/skills/diffctx/SKILL.md",
               "plugin/skills/impact/SKILL.md",
+              "plugins/diffctx/scripts/diffctx-hook.py",
+              "plugins/diffctx/skills/diffctx-commit/SKILL.md",
+              "plugins/diffctx/skills/diffctx/SKILL.md",
+              "plugins/diffctx/skills/diffctx-impact/SKILL.md",
           ):
               p = pathlib.Path(hook)
               pin = re.compile(r"diffctx(\[mcp\])?==\d+\.\d+\.\d+")
@@ -314,6 +329,10 @@ jobs:
             server.json action.yml plugin/.claude-plugin/plugin.json plugin/.mcp.json plugin/pyproject.toml \
             plugin/hooks/diffctx-impact.sh plugin/hooks/diffctx-session.sh \
             plugin/skills/commit/SKILL.md plugin/skills/diffctx/SKILL.md plugin/skills/impact/SKILL.md \
+            plugins/diffctx/plugin.json plugins/diffctx/mcp_config.json plugins/diffctx/mcp.json \
+            plugins/diffctx/gemini-extension.json plugins/diffctx/scripts/diffctx-hook.py \
+            plugins/diffctx/skills/diffctx-commit/SKILL.md plugins/diffctx/skills/diffctx/SKILL.md \
+            plugins/diffctx/skills/diffctx-impact/SKILL.md \
             docs/product/github-action.md CITATION.cff \
             CHANGELOG.md
           if ! git diff --staged --quiet; then
@@ -1241,6 +1260,19 @@ jobs:
             -exec cp {} release-assets/ \;
           ls -la release-assets/
 
+      # `gemini extensions install https://github.com/<repo>` reads the latest
+      # release, and takes an asset whose name starts with the platform
+      # (`darwin.`, `linux.`, `win32.`) as the extension; without one it would
+      # unpack the whole source tree, which has no extension at its root.
+      - name: Package the Gemini CLI extension
+        working-directory: ./repo
+        run: |
+          for platform in darwin linux win32; do
+            git archive --format=tar.gz \
+              -o "../release-assets/${platform}.diffctx-gemini-extension.tar.gz" HEAD:plugins/diffctx
+          done
+          tar -tzf ../release-assets/linux.diffctx-gemini-extension.tar.gz | grep -qx 'gemini-extension.json'
+
       # An SBOM answers a different question than provenance does: not "who
       # built this" but "what is inside it". Both are needed to respond to a
       # published CVE without guessing.
@@ -1819,6 +1851,11 @@ jobs:
               # that forgot to move it fails here.
               git fetch --quiet --depth=1 origin "$COMMIT_SHA"
               pin=$(git show FETCH_HEAD:plugin/.mcp.json | jq -r '.mcpServers.diffctx.args[0]')
+              for agy_mcp in plugins/diffctx/mcp_config.json plugins/diffctx/mcp.json \
+                plugins/diffctx/gemini-extension.json; do
+                other=$(git show "FETCH_HEAD:${agy_mcp}" | jq -r '.mcpServers.diffctx.args[0]')
+                [[ "$other" == "$pin" ]] || { echo "::error::${agy_mcp} pin ${other} != ${pin}"; exit 1; }
+              done
               if [[ "$PRERELEASE" == true ]]; then
                 # The pin stays on the last release; the candidate is launched by an explicit pin of its own.
                 released=$(git show FETCH_HEAD:server.json | jq -r .version)
