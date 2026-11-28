@@ -12,8 +12,8 @@ use crate::fold::{self, Basis};
 
 use diffctx_facts::facts::{
     Def, DefChange, DefKey, DefKind, Delta, EntryKind, EntryPoint, Export, Fact, Framework, HeldAs,
-    HeldString, Import, ImportKind, Language, Lexical, Name, Origin, Scope, SemanticDef,
-    Visibility, facts_of, holds_data, members_of, semantic_changes,
+    HeldString, Import, ImportKind, Language, Lexical, Origin, Scope, SemanticDef, Visibility,
+    facts_of, holds_data, members_of, semantic_changes,
 };
 
 use diffctx_resolve::resolve::{Binding, Definition};
@@ -628,7 +628,9 @@ impl Cell {
     /// Whether a file of `file`'s directory, the Go package, references one of the calls
     /// that resolve a name given as a string.
     fn package_looks_up_by_name(&self, file: &str) -> bool {
-        let dir = |path: &str| path.rsplit_once('/').map(|(dir, _)| dir);
+        fn dir(path: &str) -> Option<&str> {
+            path.rsplit_once('/').map(|(dir, _)| dir)
+        }
         let target = dir(file);
         self.bindings_by_file
             .iter()

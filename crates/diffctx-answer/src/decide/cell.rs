@@ -3,7 +3,7 @@
 
 use std::cell::{OnceCell, RefCell};
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 
 use std::rc::Rc;
 
@@ -630,7 +630,9 @@ impl Cell {
         let Ok(base) = self.base() else {
             return None;
         };
-        let dir = |path: &str| path.rsplit_once('/').map(|(dir, _)| dir);
+        fn dir(path: &str) -> Option<&str> {
+            path.rsplit_once('/').map(|(dir, _)| dir)
+        }
         let go = self.family == Family::Go;
         let unit = |path: &str| path == file || (go && dir(path) == dir(file));
         let defined: FxHashSet<&DefKey> = base

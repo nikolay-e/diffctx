@@ -22,7 +22,7 @@ use super::dispatch::base_symbol;
 use super::mentions::{Naming, basename_of, commented, naming, path_search, starts_a_program};
 use super::removed::read_or_note;
 use super::rust;
-use super::{Cells, ScoredState, names_word};
+use super::{Cells, Fragment, ScoredState, names_word};
 
 mod spelling;
 pub(super) use spelling::{RunIndex, TestFilter, spelled_as_command};
