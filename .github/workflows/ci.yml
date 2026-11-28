@@ -32,8 +32,6 @@ name: diffctx CI
         required: false
       DHI_TOKEN:
         required: false
-      CODECOV_TOKEN:
-        required: false
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}
@@ -795,18 +793,6 @@ jobs:
       - name: Coverage report with threshold
         run: |
           coverage report --fail-under=40
-
-      - name: Upload coverage reports to Codecov
-        # Every OS uploads: platform-only branches (Windows paths, POSIX modes)
-        # are covered nowhere else, and Codecov merges the reports.
-        if: matrix.python-version == (matrix.os == 'macos-latest' && '3.11' || '3.12')
-        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5  # v7.1.1
-        with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          files: ./coverage.xml
-          flags: integration
-          fail_ci_if_error: false
-          verbose: true
 
   # ============================================================================
   # The landing page is a PWA; tests/test_publishing_manifests.py checks the
