@@ -67,8 +67,7 @@ pub use repo::{
     index_tree, is_ancestor, is_git_repo, open, reflog_since, refs, rev_oid,
 };
 pub use run::{
-    commit_count, commit_message, commit_messages, hash_object_paths, run_git, run_git_or_none,
-    run_git_z,
+    CommitLog, commit_log, commit_message, hash_object_paths, run_git, run_git_or_none, run_git_z,
 };
 pub use types::{Bytes, ContentId, Cursor, Mode, Oid, RefName, ReflogEntry, Remote, RepoPath};
 pub use untracked::{Untracked, untracked};
