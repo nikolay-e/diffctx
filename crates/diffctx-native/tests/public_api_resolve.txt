@@ -104,6 +104,10 @@ resolve::UnresolvedReason::UntypedRead variant UntypedRead
 resolve::UnresolvedReason::is_ours fn (self) -> bool
 resolve::UnresolvedReason::is_unknown fn (self) -> bool
 vocabulary mod
+vocabulary::Absence enum derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)
+vocabulary::Absence::Modelled variant Modelled
+vocabulary::Absence::Never variant Never
+vocabulary::Absence::Stated variant Stated
 vocabulary::RelationKind enum derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)
 vocabulary::RelationKind::ALL const [Self; 13]
 vocabulary::RelationKind::Calls variant Calls
@@ -121,6 +125,7 @@ vocabulary::RelationKind::TypeUse variant TypeUse
 vocabulary::RelationKind::Writes variant Writes
 vocabulary::RelationKind::name fn (self) -> &'static str
 vocabulary::RelationKind::parse fn (name: &str) -> Option<Self>
+vocabulary::absence_strength fn (path: &str, relation: RelationKind) -> Absence
 vocabulary::family mod
 vocabulary::family::Family enum derive(Clone, Copy, Debug, Eq, Hash, PartialEq)
 vocabulary::family::Family::ALL const [Self; 14]
@@ -180,6 +185,5 @@ vocabulary::family::Resolver::references_to fn (&self, key: &DefKey) -> Vec<&Bin
 vocabulary::family::Resolver::root_module fn (&self, file: &str) -> bool
 vocabulary::family::Resolver::serialized fn (&self, key: &DefKey) -> bool
 vocabulary::family::context_in fn ( root: &std::path::Path, limits: ( Option<std::time::Instant>, Arc<std::sync::atomic::AtomicBool>, ), range: Option<&str>, symbol: bool, ) -> Result<AnalysisContext>
-vocabulary::is_precise fn (language: &str, relation: &str) -> bool
 vocabulary::kind_of_use fn (relation: crate::resolve::Relation) -> RelationKind
 vocabulary::stated_kind_of fn (path: &str, kind: RelationKind) -> Option<&'static str>

@@ -2213,6 +2213,9 @@ fn a_language_without_a_model_never_claims_an_absence() {
         "No resolved static callers",
         "0 caller(s)",
         "no caller found",
+        "no static caller found among",
+        "no reference found among",
+        "(heuristic model)",
     ];
     for (path, symbol, base, change) in unmodelled {
         let tmp = repo(&[(path, base)], &[(path, change)]);
@@ -2496,7 +2499,10 @@ fn a_script_guard_and_a_program_main_are_entry_points_not_callers() {
         md.contains("no static test link:\n  - job.py::load"),
         "{md}"
     );
-    assert!(md.contains("nothing calls them"), "{md}");
+    assert!(
+        md.contains("no static caller found among the candidates (heuristic model)"),
+        "{md}"
+    );
 
     // A Rust `main` links to the test that runs the binary; one no test runs
     // keeps its negative claim (the link is modelled): a test that runs

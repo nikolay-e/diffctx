@@ -2096,6 +2096,17 @@
           "type": "integer",
           "format": "uint",
           "minimum": 0
+        },
+        "bound": {
+          "description": "What the answer's absence claims rest on, when it makes any: a zero count\nor an empty `unlisted.no_caller` is a fact of the repository under\n`precise` and the heuristic model's finding under `model`. `exact` and\n`complete` keep saying the static count is closed.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Bound"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       },
       "required": [
@@ -2107,6 +2118,14 @@
         "untested_callers",
         "files",
         "traced"
+      ]
+    },
+    "Bound": {
+      "description": "What an absence claim is bounded by.",
+      "type": "string",
+      "enum": [
+        "precise",
+        "model"
       ]
     },
     "Fit": {

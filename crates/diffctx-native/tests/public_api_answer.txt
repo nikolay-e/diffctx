@@ -74,6 +74,9 @@ answer::render::tail fn (out: &mut String, a: &Answer)
 answer::render::unanalysed fn (out: &mut String, doc: &ImpactV2)
 answer::render::untested_unlisted fn (out: &mut String, a: &Answer)
 answer::v2 mod
+answer::v2::Bound enum derive(Clone, Copy, Debug, Eq, JsonSchema, PartialEq, Serialize)
+answer::v2::Bound::Model variant Model
+answer::v2::Bound::Precise variant Precise
 answer::v2::Change struct derive(Clone, Debug, JsonSchema, Serialize)
 answer::v2::Change.delta field Option<Delta>
 answer::v2::Change.kind field ChangeKind
@@ -129,9 +132,6 @@ answer::v2::Delta.decorators field bool
 answer::v2::Delta.doc field bool
 answer::v2::Delta.signature field bool
 answer::v2::Delta.visibility field bool
-answer::v2::Entered struct derive(Clone, Debug, JsonSchema, Serialize)
-answer::v2::Entered.def field DefRef
-answer::v2::Entered.role field String
 answer::v2::Fit struct derive(Clone, Debug, Deserialize, JsonSchema, Serialize)
 answer::v2::Fit.asked field Option<u32>
 answer::v2::Fit.cap field u32
@@ -320,6 +320,7 @@ answer::v2::Standing::Candidate variant Candidate
 answer::v2::Standing::Name variant Name
 answer::v2::Standing::Resolved variant Resolved
 answer::v2::Summary struct derive(Clone, Debug, JsonSchema, Serialize)
+answer::v2::Summary.bound field Option<Bound>
 answer::v2::Summary.callers field Count
 answer::v2::Summary.definitions field usize
 answer::v2::Summary.files field usize
@@ -333,16 +334,20 @@ answer::v2::Tests struct derive(Clone, Debug, JsonSchema, Serialize)
 answer::v2::Tests.definitions_without_link field Count
 answer::v2::Tests.hops field usize
 answer::v2::Tests.known field bool
-answer::v2::Unlisted struct derive(Clone, Debug, Default, JsonSchema, Serialize)
-answer::v2::Unlisted.called_in_diff field Listing<Unreached>
-answer::v2::Unlisted.entered_by field Listing<Entered>
-answer::v2::Unlisted.layout_only field Listing<DefRef>
-answer::v2::Unlisted.no_caller field Listing<Unreached>
-answer::v2::Unlisted::is_empty fn (&self) -> bool
-answer::v2::Unreached struct derive(Clone, Debug, JsonSchema, Serialize)
-answer::v2::Unreached.def field DefRef
-answer::v2::Unreached.role field Option<String>
 answer::v2::impact_v2_schema fn () -> serde_json::Value
+answer::v2::unlisted mod
+answer::v2::unlisted::Entered struct derive(Clone, Debug, JsonSchema, Serialize)
+answer::v2::unlisted::Entered.def field DefRef
+answer::v2::unlisted::Entered.role field String
+answer::v2::unlisted::Unlisted struct derive(Clone, Debug, Default, JsonSchema, Serialize)
+answer::v2::unlisted::Unlisted.called_in_diff field Listing<Unreached>
+answer::v2::unlisted::Unlisted.entered_by field Listing<Entered>
+answer::v2::unlisted::Unlisted.layout_only field Listing<DefRef>
+answer::v2::unlisted::Unlisted.no_caller field Listing<Unreached>
+answer::v2::unlisted::Unlisted::is_empty fn (&self) -> bool
+answer::v2::unlisted::Unreached struct derive(Clone, Debug, JsonSchema, Serialize)
+answer::v2::unlisted::Unreached.def field DefRef
+answer::v2::unlisted::Unreached.role field Option<String>
 decide mod
 decide::changed mod
 decide::changed::Changed struct derive(Clone, Debug, Default)
