@@ -128,7 +128,7 @@ repos:
   # LINTING (Ruff for speed + correctness)
   # ============================================================================
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.17.5
+    rev: v0.17.6
     hooks:
       - id: ruff
         name: ruff (correctness-focused checks)
@@ -266,7 +266,7 @@ repos:
   # MARKDOWN LINTING
   # ============================================================================
   - repo: https://github.com/igorshubovych/markdownlint-cli
-    rev: v0.50.0
+    rev: v0.50.1
     hooks:
       - id: markdownlint
         name: Lint Markdown files
@@ -339,7 +339,7 @@ repos:
   # COMMIT MESSAGE QUALITY
   # ============================================================================
   - repo: https://github.com/commitizen-tools/commitizen
-    rev: v4.19.3
+    rev: v4.19.4
     hooks:
       - id: commitizen
         stages: [commit-msg]
