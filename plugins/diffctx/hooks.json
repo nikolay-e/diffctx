@@ -1,0 +1,42 @@
+{
+  "diffctx-impact": {
+    "SessionStart": [
+      {
+        "type": "command",
+        "command": "python3 ./scripts/diffctx-hook.py agy",
+        "timeout": 10
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "run_command",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ./scripts/diffctx-hook.py agy",
+            "timeout": 60
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "run_command|grep_search",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ./scripts/diffctx-hook.py agy",
+            "timeout": 60
+          }
+        ]
+      }
+    ],
+    "PostInvocation": [
+      {
+        "type": "command",
+        "command": "python3 ./scripts/diffctx-hook.py agy",
+        "timeout": 10
+      }
+    ]
+  }
+}

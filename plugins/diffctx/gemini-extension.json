@@ -1,0 +1,18 @@
+{
+  "name": "diffctx",
+  "version": "1.20.0",
+  "description": "Selects the minimum code an LLM needs to review a git diff — callers, guarding tests, and crossed contracts outside the diff.",
+  "contextFileName": "rules/diffctx.md",
+  "mcpServers": {
+    "diffctx": {
+      "command": "uvx",
+      "args": [
+        "diffctx[mcp]==1.20.0",
+        "mcp"
+      ],
+      "env": {
+        "UV_ISOLATED": "1"
+      }
+    }
+  }
+}

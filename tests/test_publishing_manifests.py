@@ -7,6 +7,7 @@ import re
 import sys
 import tomllib
 from pathlib import Path
+from typing import ClassVar
 
 import pytest
 import yaml
@@ -284,6 +285,123 @@ def _diffctx_hook_deadline() -> int:
     return int(re.search(r"HOOK_DEADLINE_SECS: u64 = (\d+)", source).group(1))
 
 
+class TestAgentPlugin:
+    """plugins/diffctx/ is the shared Agent Plugins 1.0 + Antigravity + Gemini CLI
+    bundle: Antigravity (`agy plugin install`), Codex (`.agents/plugins/marketplace.json`)
+    and Gemini CLI (`gemini-extension.json`) all read this directory."""
+
+    PLUGIN = PROJECT_ROOT / "plugins" / "diffctx"
+
+    def test_manifest_conforms_to_antigravity_and_agent_plugins_contracts(self):
+        manifest = _load("plugins/diffctx/plugin.json")
+        assert manifest["$schema"] == "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json"
+        assert re.fullmatch(r"^[a-z0-9]+(-[a-z0-9]+)*$", manifest["name"])
+        assert manifest["name"] == "diffctx"
+        assert manifest["displayName"] == "diffctx"
+        assert manifest["version"] == RELEASED
+        assert manifest["license"] == "LicenseRef-PolyForm-Shield-1.0.0"
+        assert (self.PLUGIN / manifest["logo"]).is_file()
+        assert 1 <= len(manifest["suggestedPrompts"]) <= 3
+        assert all(p.strip() for p in manifest["suggestedPrompts"])
+
+        ui = manifest["extensions"]["com.openai"]["interface"]
+        assert len(ui["shortDescription"]) <= 30
+        assert ui["category"] == "Developer Tools"
+        assert (self.PLUGIN / ui["logo"]).is_file()
+        assert (self.PLUGIN / ui["composerIcon"]).is_file()
+
+        [entry] = _load(".agents/plugins/marketplace.json")["plugins"]
+        assert entry["name"] == manifest["name"]
+        assert entry["source"] == {"source": "local", "path": "./plugins/diffctx"}
+        assert (PROJECT_ROOT / entry["source"]["path"] / "plugin.json").is_file()
+
+    @pytest.mark.parametrize(
+        "rel",
+        [
+            "plugins/diffctx/mcp_config.json",
+            "plugins/diffctx/mcp.json",
+            "plugins/diffctx/gemini-extension.json",
+        ],
+    )
+    def test_mcp_configs_pin_the_released_package(self, rel):
+        doc = _load(rel)
+        if "version" in doc:
+            assert doc["version"] == RELEASED
+        server = doc["mcpServers"]["diffctx"]
+        assert server["command"] == "uvx"
+        assert server["env"]["UV_ISOLATED"] == "1"
+        assert server["args"] == [f"diffctx[mcp]=={RELEASED}", "mcp"]
+
+    # Each host reads its own hook file; all of them run the one bridge with that host's row.
+    HOOK_FILES: ClassVar[dict[str, tuple[str, str, str]]] = {
+        "agy": ("hooks.json", "python3 ./scripts/diffctx-hook.py agy", "run_command"),
+        "codex": ("com.openai/hooks/hooks.json", 'python3 "${PLUGIN_ROOT}/scripts/diffctx-hook.py" codex', "Bash"),
+        "gemini": ("hooks/hooks.json", 'python3 "${extensionPath}${/}scripts${/}diffctx-hook.py" gemini', "run_shell_command"),
+    }
+
+    @pytest.mark.parametrize("host", sorted(HOOK_FILES))
+    def test_each_host_hook_file_runs_the_bridge_as_that_host(self, host):
+        rel, command, shell = self.HOOK_FILES[host]
+        doc = _load(f"plugins/diffctx/{rel}")
+        events = doc["diffctx-impact"] if host == "agy" else doc["hooks"]
+        handlers = []
+        for event, entries in events.items():
+            for entry in entries:
+                group = entry.get("hooks", [entry])
+                if "matcher" in entry and event not in ("SessionStart",):
+                    assert shell in entry["matcher"].split("|"), (host, event)
+                    assert all(h["timeout"] > _diffctx_hook_deadline() * (1000 if host == "gemini" else 1) for h in group)
+                handlers.extend(group)
+        assert handlers and all(h["command"] == command for h in handlers), host
+        if host == "codex":
+            assert _load("plugins/diffctx/plugin.json")["extensions"]["com.openai"]["hooks"] == f"./{rel}"
+
+    def test_bridge_script_pins_the_release_and_carries_no_host_paths(self):
+        script = self.PLUGIN / "scripts" / "diffctx-hook.py"
+        if sys.platform != "win32":
+            assert os.access(script, os.X_OK)
+        text = script.read_text(encoding="utf-8")
+        assert f'"diffctx[mcp]=={RELEASED}"' in text
+        assert f"uvx diffctx=={RELEASED} . --diff --mode impact -f md" in text
+        assert f"uvx diffctx=={RELEASED} . --symbol NAME -f md" in text
+        assert "import fcntl" not in text, "fcntl does not exist on Windows"
+        for forbidden in ("curl", "wget", "releases/download", "/Users/", "/home/"):
+            assert forbidden not in text, forbidden
+
+    def test_rule_and_gemini_context_match_and_carry_no_host_paths(self):
+        gemini = _load("plugins/diffctx/gemini-extension.json")
+        rule = self.PLUGIN / gemini["contextFileName"]
+        assert rule.is_file()
+        text = rule.read_text(encoding="utf-8")
+        assert text.startswith("---\ntrigger: always_on\n")
+        assert "`diffctx_context`" in text
+        assert "/Users/" not in text and "/home/" not in text
+
+    @pytest.mark.parametrize("skill_name", ["diffctx", "diffctx-impact", "diffctx-commit"])
+    def test_skills_match_folder_name_pin_release_and_reference_exported_tools(self, skill_name):
+        path = self.PLUGIN / "skills" / skill_name / "SKILL.md"
+        text = path.read_text(encoding="utf-8")
+        front = re.match(r"\A---\n(.*?)\n---\n", text, re.DOTALL)
+        assert front, skill_name
+        name_match = re.search(r"^name:\s*(\S+)\s*$", front.group(1), re.MULTILINE)
+        desc_match = re.search(r"^description:\s*(.+)$", front.group(1), re.MULTILINE)
+        assert name_match and name_match.group(1) == skill_name
+        assert desc_match and len(desc_match.group(1)) <= 1024
+        assert "/Users/" not in text and "/home/" not in text
+
+        specs = re.findall(r"uvx (diffctx\S*)", text)
+        assert specs, skill_name
+        assert all(spec == f"diffctx=={RELEASED}" for spec in specs), (skill_name, specs)
+
+        referenced = set(re.findall(r"`(diffctx_[a-z_]+|get_[a-z_]+)`", text))
+        assert referenced
+        pytest.importorskip("mcp")
+        from diffctx.mcp import server as mcp_server
+
+        exported = {t.name for t in mcp_server.mcp._tool_manager.list_tools()}
+        assert referenced <= exported, f"unknown tools referenced: {referenced - exported}"
+
+
 class TestDistributionPins:
     def test_glama_manifest_names_the_maintainer(self):
         assert "nikolay-e" in _load("glama.json")["maintainers"]
@@ -542,6 +660,7 @@ class TestLicenseSurfaces:
             assert "LICENSE.md" in wf_text, wf
             assert "LICENSE " not in wf_text, wf
         assert _load("plugin/.claude-plugin/plugin.json")["license"] == "LicenseRef-PolyForm-Shield-1.0.0"
+        assert _load("plugins/diffctx/plugin.json")["license"] == "LicenseRef-PolyForm-Shield-1.0.0"
         assert _load("bucket/diffctx.json")["license"] == {
             "identifier": "PolyForm-Shield-1.0.0",
             "url": "https://polyformproject.org/licenses/shield/1.0.0",
@@ -555,6 +674,7 @@ class TestLicenseSurfaces:
             "Dockerfile.eval",
             "README.md",
             "plugin/README.md",
+            "plugins/diffctx/README.md",
             "docs/index.html",
             "docs/llms.txt",
             "scripts/render_packaging.py",

@@ -1,0 +1,23 @@
+{
+  "name": "diffctx",
+  "description": "diffctx: the minimum code an LLM needs to review a git diff",
+  "owner": {
+    "name": "Nikolay Eremeev",
+    "email": "hello@nikolayeremeev.com"
+  },
+  "plugins": [
+    {
+      "name": "diffctx",
+      "source": {
+        "source": "local",
+        "path": "./plugins/diffctx"
+      },
+      "description": "Selects the minimum code an LLM needs to review a git diff",
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Developer Tools"
+    }
+  ]
+}

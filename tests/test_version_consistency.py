@@ -129,6 +129,12 @@ class TestWhatUsersPin:
     def test_claude_plugin_json_version(self):
         assert json.loads(_load_text("plugin/.claude-plugin/plugin.json"))["version"] == RELEASED
 
+    def test_agent_plugin_json_version(self):
+        assert json.loads(_load_text("plugins/diffctx/plugin.json"))["version"] == RELEASED
+
+    def test_gemini_extension_json_version(self):
+        assert json.loads(_load_text("plugins/diffctx/gemini-extension.json"))["version"] == RELEASED
+
     def test_action_yml_diffctx_version_default(self):
         data = yaml.safe_load(_load_text("action.yml"))
         assert str(data["inputs"]["diffctx-version"]["default"]) == RELEASED

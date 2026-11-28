@@ -1,0 +1,43 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "name": "diffctx-session",
+            "type": "command",
+            "command": "python3 \"${extensionPath}${/}scripts${/}diffctx-hook.py\" gemini",
+            "timeout": 10000
+          }
+        ]
+      }
+    ],
+    "BeforeTool": [
+      {
+        "matcher": "run_shell_command",
+        "hooks": [
+          {
+            "name": "diffctx-impact",
+            "type": "command",
+            "command": "python3 \"${extensionPath}${/}scripts${/}diffctx-hook.py\" gemini",
+            "timeout": 60000
+          }
+        ]
+      }
+    ],
+    "AfterTool": [
+      {
+        "matcher": "run_shell_command|grep_search",
+        "hooks": [
+          {
+            "name": "diffctx-impact",
+            "type": "command",
+            "command": "python3 \"${extensionPath}${/}scripts${/}diffctx-hook.py\" gemini",
+            "timeout": 60000
+          }
+        ]
+      }
+    ]
+  }
+}

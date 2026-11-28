@@ -35,8 +35,16 @@ current package, CLI, and repository are all `diffctx`.
 ## MCP server
 
 Stdio transport, read-only, published in the official MCP registry as
-`io.github.nikolay-e/diffctx`. Zero-install registration in Claude Code:
-`claude mcp add diffctx -- uvx --from 'diffctx[mcp]' diffctx-mcp`.
+`io.github.nikolay-e/diffctx`. Zero-install registration:
+- Claude Code: `claude mcp add diffctx -- uvx --from 'diffctx[mcp]' diffctx-mcp`
+  (plugin: `claude plugin marketplace add nikolay-e/diffctx` +
+  `claude plugin install diffctx@diffctx`)
+- Antigravity: `agy plugin install https://github.com/nikolay-e/diffctx/tree/main/plugins/diffctx`
+  (MCP only: `agy mcp add --env UV_ISOLATED=1 diffctx -- uvx --from 'diffctx[mcp]' diffctx-mcp`)
+- Codex: `codex plugin marketplace add nikolay-e/diffctx` +
+  `codex plugin add diffctx@diffctx`
+- Gemini CLI: `gemini mcp add diffctx uvx -- --from 'diffctx[mcp]' diffctx-mcp`
+  (extension: `gemini extensions install https://github.com/nikolay-e/diffctx`)
 Tool: `diffctx_context` — by default the callers, tests and contracts a diff
 reaches (`symbol` for a name without a diff); `mode=locate` ranks without
 bodies, `fragment_ids` fetches them, `mode=pack` returns the selected context. The pre-v3

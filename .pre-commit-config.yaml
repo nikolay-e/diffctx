@@ -272,10 +272,10 @@ repos:
         name: Lint Markdown files
         args: ['--fix']
         files: \.(md|markdown)$
-        # plugin/skills/ and plugin/evals/ hold model prompts and rubrics: frontmatter
-        # + instruction body, no document heading. CLAUDE.md is the one-line
-        # `@AGENTS.md` import adapter.
-        exclude: ^(plugin/(skills|evals)/|CLAUDE\.md$)
+        # plugin/skills/, plugin/evals/, and plugins/*/skills|rules hold model prompts,
+        # rubrics, and frontmatter-triggered rules with no leading H1. CLAUDE.md is
+        # the one-line `@AGENTS.md` import adapter.
+        exclude: ^(plugin/(skills|evals)/|plugins/[^/]+/(skills|rules)/|CLAUDE\.md$)
 
   # ============================================================================
   # RUST QUALITY (fmt, clippy, test, audit)
