@@ -960,62 +960,6 @@ fn scope_chain(
     }
 }
 
-/// The lines in the body a local sits in that spell its name in code where the
-/// extractor states no use of it, no declaration and no other binding of the
-/// name (`name.attr`, `nonlocal name`, a spelling no fact stands on): each may be
-/// a use the answer does not list.
-fn unplaced_spellings(
-    blob: &diffctx_facts::facts::BlobFacts,
-    text: &str,
-    name: &str,
-    enclosing: &diffctx_facts::facts::Scope,
-) -> Vec<u32> {
-    use diffctx_facts::facts::{Fact, Scope};
-    let mut home = enclosing;
-    while let Scope::Callback { parent, .. } = home {
-        home = parent;
-    }
-    let body = match home {
-        Scope::Def(key) => blob
-            .defs()
-            .find(|d| d.local == *key)
-            .map(|d| d.span.bytes.clone()),
-        _ => Some(0..text.len() as u32),
-    };
-    let Some(body) = body else {
-        return Vec::new();
-    };
-    let stated: Vec<std::ops::Range<u32>> = blob
-        .facts
-        .iter()
-        .filter_map(|fact| match fact {
-            Fact::Reference(r) if r.name.as_str() == name => Some(r.site.bytes.clone()),
-            Fact::LocalBinding(l) if l.name.as_str() == name => Some(l.site.bytes.clone()),
-            Fact::Definition(d) if d.local.name.as_str() == name => Some(d.name_span.bytes.clone()),
-            _ => None,
-        })
-        .collect();
-    let bytes = text.as_bytes();
-    let joins =
-        |byte: u8| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'$') || byte >= 0x80;
-    let mut lines: Vec<u32> = Vec::new();
-    let mut from = body.start as usize;
-    let end = (body.end as usize).min(bytes.len());
-    while let Some(at) = text.get(from..end).and_then(|rest| rest.find(name)) {
-        let start = from + at;
-        let stop = start + name.len();
-        from = stop;
-        let alone = (start == 0 || !joins(bytes[start - 1]))
-            && bytes.get(stop).is_none_or(|byte| !joins(*byte));
-        let at = start as u32;
-        if alone && blob.lexical_at(at).is_none() && !stated.iter().any(|site| site.contains(&at)) {
-            lines.push(1 + text[..start].matches('\n').count() as u32);
-        }
-    }
-    lines.dedup();
-    lines
-}
-
 /// Every definition that `name` is a local of (a nested function, class or
 /// closure that never leaves it), with each use of the name inside that
 /// definition: the answer to a `--symbol` no definition has. A use is a plain
@@ -1027,16 +971,27 @@ fn local_uses(
     name: &str,
     run: &diffctx_snapshot::resource::RunContext,
 ) -> Vec<diffctx_answer::impact::symbol::LocalOf> {
-    use diffctx_facts::facts::{Fact, LocalKind, Receiver};
+    use diffctx_facts::facts::{Fact, FileFacts, LocalKind, ModulePath, ProjectId, Receiver};
     let mut found: Vec<diffctx_answer::impact::symbol::LocalOf> = Vec::new();
     for file in files {
         let Some(text) = run.source().read_to_string(file) else {
             continue;
         };
         let display = diffctx_base::paths::display_rel_or_abs(root_dir, file);
-        let Some(blob) = diffctx_facts::facts::local_facts(&display, &text) else {
+        let Some(facts) = diffctx_facts::facts::local_facts(&display, &text) else {
             continue;
         };
+        let Ok(path) = snapshot::RepoPath::new(&display) else {
+            continue;
+        };
+        let read = FileFacts {
+            path,
+            project: ProjectId::default(),
+            module: ModulePath::default(),
+            blob: Arc::new(facts),
+            outdated_grammar: false,
+        };
+        let blob = &read.blob;
         let lines: Vec<&str> = text.split('\n').collect();
         let indent = |line: u32| {
             lines
@@ -1062,27 +1017,32 @@ fn local_uses(
                 format!("{display}::{}", home.join("."))
             };
             let mut uses: Vec<diffctx_answer::impact::symbol::LocalUse> = Vec::new();
+            let (mut calls, mut hidden, mut beyond) = (Vec::new(), Vec::new(), Vec::new());
             for r in blob.facts.iter().filter_map(|f| match f {
                 Fact::Reference(r) => Some(r),
                 _ => None,
             }) {
-                if r.name.as_str() != name
-                    || !r.qualifier.is_empty()
-                    || matches!(r.receiver, Receiver::SelfType)
-                {
+                if r.name.as_str() != name {
                     continue;
                 }
                 let (at, at_callbacks) = scope_chain(&r.enclosing);
-                let inside = at.starts_with(&home)
+                let inside = r.qualifier.is_empty()
+                    && !matches!(r.receiver, Receiver::SelfType)
+                    && at.starts_with(&home)
                     && (at.len() > home.len()
                         || home_callbacks.iter().all(|c| at_callbacks.contains(c)));
-                let hidden = locals.iter().any(|l2| {
+                if !inside {
+                    beyond.push(r.site.bytes.clone());
+                    continue;
+                }
+                let hider = locals.iter().find(|l2| {
                     l2.name.as_str() == name && l2.site != local.site && {
                         let (own, _) = scope_chain(&l2.enclosing);
                         own.len() > home.len() && at.starts_with(&own)
                     }
                 });
-                if !inside || hidden {
+                if let Some(hider) = hider {
+                    hidden.push((r.site.bytes.clone(), hider.site.clone()));
                     continue;
                 }
                 let line = r.site.lines.0;
@@ -1110,22 +1070,27 @@ fn local_uses(
                 } else {
                     None
                 };
+                let call = matches!(r.use_kind, diffctx_facts::facts::UseKind::Call);
+                if call {
+                    calls.push(r.site.bytes.clone());
+                }
                 uses.push(diffctx_answer::impact::symbol::LocalUse {
                     inside: inner.or_else(|| at.last().map(|s| s.to_string())),
                     line,
-                    call: matches!(r.use_kind, diffctx_facts::facts::UseKind::Call),
+                    call,
                 });
             }
             uses.sort_by_key(|u| u.line);
-            let unplaced = unplaced_spellings(&blob, &text, name, &local.enclosing);
+            let account = diffctx_answer::impact::symbol::account_of_local(
+                &read, &text, local, &calls, &hidden, &beyond,
+            );
             found.push(diffctx_answer::impact::symbol::LocalOf {
                 path: display.clone(),
                 name: name.to_string(),
                 enclosing,
                 line: local.site.lines.0,
                 uses,
-                unplaced,
-                lossy: !blob.losses.is_empty(),
+                account,
                 computed: blob
                     .facts
                     .iter()

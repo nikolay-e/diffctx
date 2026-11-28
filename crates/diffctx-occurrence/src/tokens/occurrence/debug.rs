@@ -15,7 +15,7 @@ use serde_json::json;
 use super::{
     Account, Accounted, Alias, AliasScope, Basis, Class, Entry, Implicit, Known, Occurrence,
     Outcome, Reason, Unread, ValuePlace, Verdict, View, Witness, admitted, callee_of,
-    close_aliases, counts_against, entered, implicit_kinds, outcomes, value_use,
+    close_aliases, entered, implicit_kinds, outcomes, value_use,
 };
 use crate::tokens::{Names, TokenIndex};
 use diffctx_facts::facts::{DefKind, FactsCache, FileFacts, Name, facts_of};
@@ -84,7 +84,7 @@ struct Found {
 }
 
 /// Whether `bytes` of `text` is a whole quoted string.
-fn quoted(text: &[u8], bytes: &std::ops::Range<u32>) -> bool {
+pub(super) fn quoted(text: &[u8], bytes: &std::ops::Range<u32>) -> bool {
     let (start, end) = (bytes.start as usize, bytes.end as usize);
     let open = start.checked_sub(1).and_then(|at| text.get(at));
     open.is_some_and(|quote| b"\"'`".contains(quote)) && text.get(end) == open
@@ -242,16 +242,7 @@ impl Shadow<'_> {
             )
         });
         for (relation, gaps) in pairs {
-            let mut account = Account::new(relation);
-            account.entries = found
-                .entries
-                .iter()
-                .filter(|entry| {
-                    !matches!(entry.outcome, Outcome::Candidate(_))
-                        || counts_against(entry, definition.kind, relation)
-                })
-                .cloned()
-                .collect();
+            let mut account = Account::over(relation, definition.kind, &found.entries);
             account.unread.clone_from(&unread);
             account.implicit.clone_from(&implicit);
             account.admits_calls = admits_calls;

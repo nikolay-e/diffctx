@@ -124,30 +124,14 @@ impl Verdict {
         &self.hedges
     }
 
-    /// What covered the search of one relation of use.
-    fn relation(&self, relation: Relation) -> &Coverage {
-        self.by_relation
-            .iter()
-            .find(|(r, _)| *r == relation)
-            .map_or(&self.by_relation[0].1, |(_, coverage)| coverage)
-    }
-
-    fn merged<const N: usize>(&self, relations: [Relation; N]) -> Coverage {
-        relations
-            .into_iter()
-            .map(|r| self.relation(r).clone())
-            .reduce(Coverage::both)
-            .unwrap_or_else(|| self.by_relation[0].1.clone())
-    }
-
     /// The calls of the definition: calls, constructions and overrides.
     pub(super) fn calls(&self) -> Coverage {
-        self.merged([Relation::Calls, Relation::Instantiates, Relation::Overrides])
+        calls_of(&self.by_relation)
     }
 
     /// The reads of the definition: reads, writes and a value passed on.
     pub(super) fn reads(&self) -> Coverage {
-        self.merged([Relation::Reads, Relation::Writes, Relation::PassesAsValue])
+        reads_of(&self.by_relation)
     }
 
     /// Every relation of use at once.
@@ -163,6 +147,35 @@ impl Verdict {
     pub(crate) fn complete(&self) -> bool {
         self.coverage().witness().is_some()
     }
+}
+
+fn merged<const N: usize>(
+    by_relation: &[(Relation, Coverage); 6],
+    relations: [Relation; N],
+) -> Coverage {
+    let of = |relation: Relation| {
+        (by_relation.iter().find(|(r, _)| *r == relation)).map_or(&by_relation[0].1, |(_, c)| c)
+    };
+    (relations.into_iter())
+        .map(|relation| of(relation).clone())
+        .reduce(Coverage::both)
+        .unwrap_or_else(|| by_relation[0].1.clone())
+}
+
+/// What covered the calls of a definition: calls, constructions and overrides.
+pub(super) fn calls_of(by_relation: &[(Relation, Coverage); 6]) -> Coverage {
+    merged(
+        by_relation,
+        [Relation::Calls, Relation::Instantiates, Relation::Overrides],
+    )
+}
+
+/// What covered the reads of a definition: reads, writes and a value passed on.
+pub(super) fn reads_of(by_relation: &[(Relation, Coverage); 6]) -> Coverage {
+    merged(
+        by_relation,
+        [Relation::Reads, Relation::Writes, Relation::PassesAsValue],
+    )
 }
 
 /// Which relations of a subject reach the definition.
