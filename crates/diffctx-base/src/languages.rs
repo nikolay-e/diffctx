@@ -215,17 +215,20 @@ pub static FILENAME_TO_LANGUAGE: Lazy<FxHashMap<&'static str, &'static str>> = L
 });
 
 pub fn file_ext(path: &Path) -> String {
-    path.extension().map_or_else(String::new, |e| {
-        let e = e.to_string_lossy();
-        let mut ext = String::with_capacity(e.len() + 1);
-        ext.push('.');
-        if e.is_ascii() {
-            ext.extend(e.chars().map(|c| c.to_ascii_lowercase()));
-        } else {
-            ext.push_str(&e.to_lowercase());
-        }
-        ext
-    })
+    let Some(ext) = path.extension() else {
+        return String::new();
+    };
+    let raw = ext.to_string_lossy();
+    let mut out = String::with_capacity(1 + raw.len());
+    out.push('.');
+    if raw.is_ascii() {
+        out.push_str(&raw);
+        out[1..].make_ascii_lowercase();
+    } else {
+        // Unicode lowering is context-sensitive (a final sigma), so it stays whole.
+        out.push_str(&raw.to_lowercase());
+    }
+    out
 }
 
 pub fn get_language_for_file(path: &str) -> Option<&'static str> {
@@ -347,6 +350,13 @@ pub fn runtime_of(path: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_extension_is_lowercased_as_a_whole_word() {
+        assert_eq!(file_ext(Path::new("a.PY")), ".py");
+        assert_eq!(file_ext(Path::new("a.ΑΣ")), ".ας");
+        assert_eq!(file_ext(Path::new("a")), "");
+    }
 
     #[test]
     fn known_extension_resolves_to_its_language() {

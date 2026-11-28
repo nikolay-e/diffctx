@@ -12,11 +12,13 @@ use once_cell::sync::Lazy;
 use regex::Regex;
 use rustc_hash::FxHashMap;
 
-use super::extract::{CodeLang, Kind, Lines, Mount, RawRecord, Role, Strength, bare, pattern};
+use super::extract::{
+    CodeLang, Kind, Lines, Mount, RawRecord, Role, Strength, pattern, raw_record,
+};
 use super::extract::{route_key, route_shape};
 
 fn record(key: String, role: Role, mechanism: &'static str, line: usize) -> RawRecord {
-    bare(Kind::Route, key, Strength::Strong, role, mechanism, line)
+    raw_record(Kind::Route, key, Strength::Strong, role, mechanism, line)
 }
 
 fn route(
@@ -231,7 +233,7 @@ fn consumers(lang: CodeLang, text: &str, lines: &Lines, out: &mut Vec<RawRecord>
         CodeLang::Jvm => &JVM_USE,
         _ => return,
     };
-    let consts = std::cell::LazyCell::new(|| constants(lang, text));
+    let mut consts: Option<Vec<(String, String)>> = None;
     for cap in re.captures_iter(text) {
         let Some(path) = ["path", "path2", "path3"].iter().find_map(|n| cap.name(n)) else {
             continue;
@@ -240,8 +242,9 @@ fn consumers(lang: CodeLang, text: &str, lines: &Lines, out: &mut Vec<RawRecord>
             .iter()
             .find_map(|n| cap.name(n))
             .map(|m| m.as_str());
+        let consts = consts.get_or_insert_with(|| constants(lang, text));
         out.extend(route(
-            &resolve(base, path.as_str(), &consts),
+            &resolve(base, path.as_str(), consts),
             Role::Read,
             "http-call",
             lines.of(path.start()),
@@ -407,24 +410,31 @@ static PY_MOUNT: Lazy<Regex> =
 
 fn python(text: &str, lines: &Lines, out: &mut Vec<RawRecord>) {
     let mut routers: FxHashMap<String, String> = FxHashMap::default();
-    for m in PY_ROUTER.captures_iter(text) {
-        let whole = m.get(0).expect("whole match");
-        let args = balanced(text, whole.end() - 1).unwrap_or_default();
-        routers.insert(m[1].to_string(), prefix_kwarg(args));
+    if text.contains("APIRouter(") || text.contains("Blueprint(") {
+        for m in PY_ROUTER.captures_iter(text) {
+            let whole = m.get(0).expect("whole match");
+            let args = balanced(text, whole.end() - 1).unwrap_or_default();
+            routers.insert(m[1].to_string(), prefix_kwarg(args));
+        }
     }
-    for cap in PY_DEF.captures_iter(text) {
-        let var = cap[1].rsplit('.').next().unwrap_or(&cap[1]);
-        let prefix = routers.get(var).map_or("", String::as_str);
-        let at = cap.get(2).expect("path group");
-        out.extend(route(
-            &join(prefix, at.as_str()),
-            Role::Set,
-            "route-decorator",
-            lines.of(at.start()),
-            Some(var),
-        ));
+    if text.contains('@') {
+        for cap in PY_DEF.captures_iter(text) {
+            let var = cap[1].rsplit('.').next().unwrap_or(&cap[1]);
+            let prefix = routers.get(var).map_or("", String::as_str);
+            let at = cap.get(2).expect("path group");
+            out.extend(route(
+                &join(prefix, at.as_str()),
+                Role::Set,
+                "route-decorator",
+                lines.of(at.start()),
+                Some(var),
+            ));
+        }
     }
-    let imported = std::cell::LazyCell::new(|| imports(CodeLang::Python, text));
+    if !text.contains("include_router(") && !text.contains("register_blueprint(") {
+        return;
+    }
+    let imported = imports(CodeLang::Python, text);
     for m in PY_MOUNT.find_iter(text) {
         let Some(args) = balanced(text, m.end() - 1) else {
             continue;
@@ -455,8 +465,10 @@ static APP_LIKE: Lazy<Regex> =
 
 fn javascript(text: &str, lines: &Lines, out: &mut Vec<RawRecord>) {
     let mut routers: FxHashMap<String, String> = FxHashMap::default();
-    for m in JS_ROUTER.captures_iter(text) {
-        routers.insert(m[1].to_string(), String::new());
+    if text.contains("Router(") {
+        for m in JS_ROUTER.captures_iter(text) {
+            routers.insert(m[1].to_string(), String::new());
+        }
     }
     for cap in JS_DEF.captures_iter(text) {
         let var = &cap[1];
@@ -472,7 +484,10 @@ fn javascript(text: &str, lines: &Lines, out: &mut Vec<RawRecord>) {
             Some(var),
         ));
     }
-    let imported = std::cell::LazyCell::new(|| imports(CodeLang::Js, text));
+    if !text.contains(".use(") {
+        return;
+    }
+    let mut imported: Option<Imports> = None;
     for m in JS_MOUNT.find_iter(text) {
         let Some(args) = balanced(text, m.end() - 1) else {
             continue;
@@ -485,9 +500,10 @@ fn javascript(text: &str, lines: &Lines, out: &mut Vec<RawRecord>) {
         if parts.len() < 2 {
             continue;
         }
+        let imported = imported.get_or_insert_with(|| imports(CodeLang::Js, text));
         out.push(mount(
             prefix,
-            mount_target(last, &routers, &imported),
+            mount_target(last, &routers, imported),
             lines.of(m.start()),
         ));
     }
@@ -511,6 +527,9 @@ static JVM_BARE: Lazy<Regex> =
     Lazy::new(|| pattern(r"(?m)@(?:Get|Post|Put|Delete|Patch)Mapping(?:\(\s*\))?[ \t]*$"));
 
 fn jvm(text: &str, lines: &Lines, out: &mut Vec<RawRecord>) {
+    if !text.contains('@') {
+        return;
+    }
     let classes: Vec<(usize, String)> = JVM_CLASS_MAPPING
         .captures_iter(text)
         .map(|c| {
@@ -570,11 +589,13 @@ static GO_DEF: Lazy<Regex> = Lazy::new(|| {
 
 fn go(text: &str, lines: &Lines, out: &mut Vec<RawRecord>) {
     let mut prefixes: FxHashMap<String, String> = FxHashMap::default();
-    for c in GO_GROUP.captures_iter(text) {
-        let own = c.get(3).or_else(|| c.get(4)).map_or("", |m| m.as_str());
-        let parent = prefixes.get(&c[2]).map_or("", String::as_str);
-        let full = join(parent, own);
-        prefixes.insert(c[1].to_string(), full);
+    if text.contains("Subrouter(") || text.contains(".Group(") {
+        for c in GO_GROUP.captures_iter(text) {
+            let own = c.get(3).or_else(|| c.get(4)).map_or("", |m| m.as_str());
+            let parent = prefixes.get(&c[2]).map_or("", String::as_str);
+            let full = join(parent, own);
+            prefixes.insert(c[1].to_string(), full);
+        }
     }
     for cap in GO_DEF.captures_iter(text) {
         let prefix = prefixes.get(&cap[1]).map_or("", String::as_str);

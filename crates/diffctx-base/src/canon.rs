@@ -10,11 +10,31 @@
 
 use rustc_hash::FxHashMap;
 
+fn is_plain_canon(name: &str) -> bool {
+    !name.is_empty()
+        && !name.starts_with('_')
+        && !name.ends_with('_')
+        && !name.contains("__")
+        && name
+            .bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_')
+}
+
 /// `maxPoolSize` -> `max pool size`; `HTTPServer` -> `http server`;
 /// `sha256Hash` -> `sha256 hash`. Digits stay with the letters before them.
 pub fn canon_tokens(name: &str) -> Vec<String> {
     let mut tokens: Vec<String> = Vec::new();
     for segment in name.split(|c: char| !c.is_alphanumeric()) {
+        if segment.is_empty() {
+            continue;
+        }
+        if segment
+            .bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit())
+        {
+            tokens.push(segment.to_string());
+            continue;
+        }
         let chars: Vec<char> = segment.chars().collect();
         let mut start = 0;
         for i in 1..chars.len() {
@@ -37,6 +57,9 @@ pub fn canon_tokens(name: &str) -> Vec<String> {
 
 /// The tokens joined by `_`; empty when the name holds no alphanumeric.
 pub fn canon_key(name: &str) -> String {
+    if is_plain_canon(name) {
+        return name.to_string();
+    }
     canon_tokens(name).join("_")
 }
 
@@ -104,13 +127,24 @@ fn for_each_run(text: &str, mut run: impl FnMut(&[(usize, usize)])) {
 /// run of words joined by single dots or dashes with its contiguous sub-runs.
 /// The same key may be offered more than once.
 pub fn for_each_name_key(text: &str, cache: &mut KeyCache, mut sink: impl FnMut(&str)) {
+    let mut keys: Vec<String> = Vec::new();
+    let mut joined = String::new();
     for_each_run(text, |segments| {
-        let keys: Vec<String> = segments
-            .iter()
-            .map(|&(s, e)| cache.key(&text[s..e]).to_string())
-            .collect();
+        if let [(s, e)] = segments {
+            let key = cache.key(&text[*s..*e]);
+            if !key.is_empty() {
+                sink(key);
+            }
+            return;
+        }
+        keys.clear();
+        keys.extend(
+            segments
+                .iter()
+                .map(|&(s, e)| cache.key(&text[s..e]).to_string()),
+        );
         for from in 0..keys.len() {
-            let mut joined = String::new();
+            joined.clear();
             for key in keys.iter().skip(from).take(MAX_RUN_SEGMENTS) {
                 if key.is_empty() {
                     break;
@@ -168,6 +202,27 @@ mod tests {
         assert_eq!(canon_key("V2Api"), "v2_api");
         assert_eq!(canon_key("__init__"), "init");
         assert_eq!(canon_key("___"), "");
+    }
+
+    #[test]
+    fn only_a_canonical_name_is_its_own_key() {
+        assert_eq!(canon_key("max_pool_size"), "max_pool_size");
+        assert_eq!(canon_key("sha256"), "sha256");
+        assert_eq!(canon_key("_max__pool_"), "max_pool");
+        assert_eq!(canon_key("max_Pool"), "max_pool");
+        assert_eq!(canon_key("naïve_name"), "naïve_name");
+        assert_eq!(canon_key(""), "");
+    }
+
+    #[test]
+    fn a_lone_word_offers_its_key_unless_it_has_none() {
+        let mut cache = KeyCache::default();
+        let mut keys = Vec::new();
+        for_each_name_key("x y1 _ Z", &mut cache, |k| keys.push(k.to_string()));
+        assert_eq!(
+            keys,
+            vec!["x".to_string(), "y1".to_string(), "z".to_string()]
+        );
     }
 
     #[test]
