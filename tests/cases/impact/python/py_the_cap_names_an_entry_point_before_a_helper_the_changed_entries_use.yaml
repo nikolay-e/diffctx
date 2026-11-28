@@ -1,0 +1,127 @@
+name: py_the_cap_names_an_entry_point_before_a_helper_the_changed_entries_use
+mode: impact
+source: synthetic
+issue_state: closed
+tags: [python, budget, shedding]
+query:
+  args: ["--budget", "1000"]
+repo:
+  initial_files:
+    app/use_render_title.py: |
+      from pkg.report import render_title
+
+
+      def use_render_title(x):
+          return render_title(x)
+    app/use_render_when.py: |
+      from pkg.report import render_when
+
+
+      def use_render_when(x):
+          return render_when(x)
+    app/use_render_rest.py: |
+      from pkg.report import render_rest
+
+
+      def use_render_rest(x):
+          return render_rest(x)
+    app/use_render_short.py: |
+      from pkg.report import render_short
+
+
+      def use_render_short(x):
+          return render_short(x)
+    pkg/legacy_snake.py: |
+      from pkg.report import _snake
+
+
+      def use_snake(x):
+          return _snake(x)
+    pkg/legacy_stamp.py: |
+      from pkg.report import _stamp
+
+
+      def use_stamp(x):
+          return _stamp(x)
+    pkg/legacy_second.py: |
+      from pkg.report import _second
+
+
+      def use_second(x):
+          return _second(x)
+    pkg/legacy_clip.py: |
+      from pkg.report import _clip
+
+
+      def use_clip(x):
+          return _clip(x)
+    pkg/report.py: |
+      def _snake(name):
+          return name.lower() + ""
+
+
+      def _stamp(name):
+          return str(name) + ""
+
+
+      def _second(name):
+          return name[1:] + ""
+
+
+      def _clip(name):
+          return name[:10] + ""
+
+
+      def render_title(name):
+          return _snake(name) + ""
+
+
+      def render_when(name):
+          return _snake(_stamp(name)) + ""
+
+
+      def render_rest(name):
+          return _second(name) + ""
+
+
+      def render_short(name):
+          return _clip(name) + ""
+  changed_files:
+    pkg/report.py: |
+      def _snake(name):
+          return name.lower() + "!"
+
+
+      def _stamp(name):
+          return str(name) + "!"
+
+
+      def _second(name):
+          return name[1:] + "!"
+
+
+      def _clip(name):
+          return name[:10] + "!"
+
+
+      def render_title(name):
+          return _snake(name) + "!"
+
+
+      def render_when(name):
+          return _snake(_stamp(name)) + "!"
+
+
+      def render_rest(name):
+          return _second(name) + "!"
+
+
+      def render_short(name):
+          return _clip(name) + "!"
+expect:
+  exact: false
+  relations:
+    - {from: app/use_render_title.py::use_render_title, to: pkg/report.py::render_title, kind: calls}
+    - {from: app/use_render_when.py::use_render_when, to: pkg/report.py::render_when, kind: calls}
+    - {from: app/use_render_rest.py::use_render_rest, to: pkg/report.py::render_rest, kind: calls}
+    - {from: app/use_render_short.py::use_render_short, to: pkg/report.py::render_short, kind: calls}
