@@ -136,12 +136,14 @@ pub(super) fn of(
         .or_else(|| {
             // The rows a text search lists are no resolution: the gap stands
             // beside them, and an empty list is never read as no caller.
-            (py.is_none() && is_code_file(core.path())).then(|| Unknown::NotModelled {
-                language: if core_lang.is_empty() {
-                    "this language"
-                } else {
-                    core_lang
-                },
+            (py.is_none() && c.class_use.is_none() && is_code_file(core.path())).then(|| {
+                Unknown::NotModelled {
+                    language: if core_lang.is_empty() {
+                        "this language"
+                    } else {
+                        core_lang
+                    },
+                }
             })
         });
     // An entry point is called by its runner or framework: the hedge for
