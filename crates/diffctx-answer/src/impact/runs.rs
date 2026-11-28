@@ -24,6 +24,9 @@ use super::removed::read_or_note;
 use super::rust;
 use super::{Cells, Fragment, ScoredState, names_word};
 
+mod spelling;
+pub(super) use spelling::{RunIndex, TestFilter, spelled_as_command};
+
 /// How a test runs code that no use of its own reaches: `file` as the fragments
 /// spell it, `symbol` the one function of the file that runs (none: the whole
 /// file runs), `tests` the lines of the tests that run it, as (file, line). No
@@ -33,17 +36,6 @@ pub(super) struct Run {
     pub(super) file: String,
     pub(super) symbol: Option<String>,
     pub(super) tests: Vec<(String, u32)>,
-}
-
-impl Run {
-    /// Whether the run enters `f`: its file, and its function when it names one.
-    pub(super) fn enters(&self, f: &Fragment) -> bool {
-        self.file == f.path()
-            && self
-                .symbol
-                .as_deref()
-                .is_none_or(|symbol| f.symbol_name.as_deref().map(base_symbol) == Some(symbol))
-    }
 }
 
 /// Every run the tests in view make, and the runs of the strings a changed
@@ -634,14 +626,6 @@ fn node_scripts(text: &str, dir: &str) -> Vec<Script> {
             function: None,
         })
         .collect()
-}
-
-/// The name as one quoted word, or the first word of a quoted command:
-/// `["mytool", "--flag"]`, `'mytool --flag'`.
-pub(super) fn spelled_as_command(text: &str, name: &str) -> bool {
-    ['"', '\'']
-        .into_iter()
-        .any(|q| text.contains(&format!("{q}{name}{q}")) || text.contains(&format!("{q}{name} ")))
 }
 
 /// The tests that run a console script: a test file with a line that starts or

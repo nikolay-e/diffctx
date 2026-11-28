@@ -2,9 +2,9 @@
 
 use std::cell::OnceCell;
 
-use std::collections::HashSet;
-
 use std::rc::Rc;
+
+use rustc_hash::FxHashSet;
 
 use crate::fold::{self};
 
@@ -290,7 +290,7 @@ impl Cell {
                 .key()
                 .is_some_and(|key| key.local.container.is_empty());
         let stranded = !found.is_empty();
-        let placed: HashSet<(&str, u32)> = (found.iter())
+        let placed: FxHashSet<(&str, u32)> = (found.iter())
             .map(|(b, _)| (b.file.as_str(), b.site.lines.0))
             .collect();
         let unplaced: Vec<&Binding> = (self.head.bindings().iter())
@@ -321,7 +321,7 @@ impl Cell {
             let standing = Standing::Candidate(UNTYPED_RECEIVER);
             found.extend(unplaced.into_iter().map(|b| (b, standing)));
         }
-        let used: HashSet<(&RepoPath, &Name)> = (found.iter())
+        let used: FxHashSet<(&RepoPath, &Name)> = (found.iter())
             .filter(|(b, _)| b.relation != Relation::Imports)
             .map(|(b, _)| (&b.file, &b.name))
             .collect();

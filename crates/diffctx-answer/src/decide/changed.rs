@@ -1,6 +1,6 @@
 //! A changed definition as the decision sees it: how it changed, its span, its bases and its hunks.
 
-use std::collections::HashMap;
+use rustc_hash::FxHashMap;
 
 use crate::fold::Basis;
 
@@ -198,4 +198,4 @@ impl Changed {
     }
 }
 
-pub(super) type Hunks = HashMap<String, Vec<(u32, u32)>>;
+pub(super) type Hunks = FxHashMap<String, Vec<(u32, u32)>>;

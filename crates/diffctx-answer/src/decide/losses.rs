@@ -1,7 +1,7 @@
 //! What a loss of the snapshot reader does to a claim: its effect, what stopped the run, and the losses
 //! a cell holds.
 
-use std::collections::HashMap;
+use rustc_hash::FxHashMap;
 
 use diffctx_snapshot::resource::LimitReason;
 
@@ -70,7 +70,7 @@ pub(super) fn stopped_by(losses: &[Loss]) -> Vec<LimitReason> {
 /// What a set of losses does, by where it lands.
 #[derive(Default)]
 pub(super) struct Losses {
-    files: HashMap<String, (Reason, Loss)>,
+    files: FxHashMap<String, (Reason, Loss)>,
     subtrees: Vec<(String, Reason, Loss)>,
 }
 

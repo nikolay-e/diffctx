@@ -1,17 +1,19 @@
 //! Reading what a range changed into changed definitions: the semantic changes, the moved declarations,
 //! the reshaped defaults.
 
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::BTreeMap;
 use std::ops::Range;
+use std::rc::Rc;
 
 use anyhow::Result;
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::fold::{self, Basis};
 
 use diffctx_facts::facts::{
-    Def, DefChange, DefKey, DefKind, Delta, EntryKind, Export, Fact, Framework, HeldAs, Import,
-    ImportKind, Language, Lexical, Origin, Scope, SemanticDef, Visibility, facts_of, holds_data,
-    members_of, semantic_changes,
+    Def, DefChange, DefKey, DefKind, Delta, EntryKind, EntryPoint, Export, Fact, Framework, HeldAs,
+    HeldString, Import, ImportKind, Language, Lexical, Origin, Scope, SemanticDef, Visibility,
+    facts_of, holds_data, members_of, semantic_changes,
 };
 
 use diffctx_resolve::resolve::{Binding, Definition};
@@ -74,7 +76,7 @@ impl Cell {
         // A file git renames byte for byte took its definitions along: their
         // place changed, nothing they say did (#593). The stale readers of the
         // old path are the file-level channel's.
-        let pure_moves: HashSet<(&RepoPath, &RepoPath)> = self
+        let pure_moves: FxHashSet<(&RepoPath, &RepoPath)> = self
             .ctx
             .changes
             .changes
@@ -101,14 +103,15 @@ impl Cell {
         // layout edit: a decorator may read the docstring (CLI help, routes). A
         // docstring edit lists its rows; a comment-only one is traced and its rows
         // fold as no code change (`basis_of`).
-        let mut decorated: HashSet<DefKey> = HashSet::new();
+        let mut decorated: FxHashSet<DefKey> = FxHashSet::default();
         for d in &python {
             if own_tokens_held(d) && self.decorated_at_head(d) {
                 decorated.insert(d.key.clone());
             }
         }
-        let entries: HashMap<&DefKey, &SemanticDef> = python.iter().map(|d| (&d.key, *d)).collect();
-        let mut wholes = HashMap::new();
+        let entries: FxHashMap<&DefKey, &SemanticDef> =
+            python.iter().map(|d| (&d.key, *d)).collect();
+        let mut wholes = FxHashMap::default();
         for d in python.iter().filter(|d| own_tokens_held(d)) {
             self.whole(d, &entries, &decorated, &mut wholes)?;
         }
@@ -552,21 +555,13 @@ impl Cell {
         let Ok(path) = RepoPath::new(file) else {
             return Vec::new();
         };
-        let Ok(Some(facts)) = facts_of(&self.ctx, SideTag::Head, &self.cache, &path) else {
+        let Some(strings) = self.held_strings_in(&path) else {
             return Vec::new();
         };
-        let mut held: Vec<(HeldAs, String)> = facts
-            .blob
-            .facts
+        let mut held: Vec<(HeldAs, String)> = strings
             .iter()
-            .filter_map(|fact| match fact {
-                Fact::HeldString(held)
-                    if (held.site.lines.0..=held.site.lines.1).contains(&line) =>
-                {
-                    Some((held.held.clone(), held.text.clone()))
-                }
-                _ => None,
-            })
+            .filter(|held| (held.site.lines.0..=held.site.lines.1).contains(&line))
+            .map(|held| (held.held.clone(), held.text.clone()))
             .collect();
         if self.family == Family::Go
             && held.iter().any(|(how, _)| *how == HeldAs::Callable)
@@ -576,6 +571,32 @@ impl Cell {
             held.retain(|(how, _)| *how != HeldAs::Callable);
         }
         held
+    }
+
+    fn held_strings_in(&self, path: &RepoPath) -> Option<Rc<Vec<HeldString>>> {
+        let known = self.held_strings.borrow().get(path).cloned();
+        if let Some(known) = known {
+            return known;
+        }
+        let Ok(facts) = facts_of(&self.ctx, SideTag::Head, &self.cache, path) else {
+            return None;
+        };
+        let strings = facts.map(|f| {
+            Rc::new(
+                f.blob
+                    .facts
+                    .iter()
+                    .filter_map(|fact| match fact {
+                        Fact::HeldString(held) => Some(held.clone()),
+                        _ => None,
+                    })
+                    .collect::<Vec<_>>(),
+            )
+        });
+        self.held_strings
+            .borrow_mut()
+            .insert(path.clone(), strings.clone());
+        strings
     }
 
     /// The head text of `file` and the byte ranges of its string literals, as the
@@ -607,15 +628,45 @@ impl Cell {
     /// Whether a file of `file`'s directory, the Go package, references one of the calls
     /// that resolve a name given as a string.
     fn package_looks_up_by_name(&self, file: &str) -> bool {
-        let dir = |path: &str| path.rsplit_once('/').map(|(dir, _)| dir.to_string());
+        fn dir(path: &str) -> Option<&str> {
+            path.rsplit_once('/').map(|(dir, _)| dir)
+        }
+        let target = dir(file);
         self.bindings_by_file
             .iter()
-            .filter(|(path, _)| dir(path) == dir(file))
+            .filter(|(path, _)| dir(path) == target)
             .flat_map(|(_, at)| at)
             .any(|&at| {
                 diffctx_facts::facts::lang::go::BY_NAME_LOOKUPS
                     .contains(&self.head.bindings()[at].name.as_str())
             })
+    }
+
+    fn framework_entries_in(&self, side: SideTag, path: &RepoPath) -> Option<Rc<Vec<EntryPoint>>> {
+        let key = (path.clone(), side);
+        let known = self.framework_entries.borrow().get(&key).cloned();
+        if let Some(known) = known {
+            return known;
+        }
+        let Ok(facts) = facts_of(&self.ctx, side, &self.cache, path) else {
+            return None;
+        };
+        let entries = facts.map(|f| {
+            Rc::new(
+                f.blob
+                    .facts
+                    .iter()
+                    .filter_map(|fact| match fact {
+                        Fact::EntryPoint(entry) if entry.framework.is_some() => Some(entry.clone()),
+                        _ => None,
+                    })
+                    .collect::<Vec<_>>(),
+            )
+        });
+        self.framework_entries
+            .borrow_mut()
+            .insert(key, entries.clone());
+        entries
     }
 
     /// The entries a framework makes of the definition at the head, by where it
@@ -631,15 +682,13 @@ impl Cell {
         let Some(def) = self.first_definition_at(file, name, lines) else {
             return Vec::new();
         };
-        let Ok(Some(facts)) = facts_of(&self.ctx, SideTag::Head, &self.cache, &def.file) else {
+        let Some(entries) = self.framework_entries_in(SideTag::Head, &def.file) else {
             return Vec::new();
         };
-        facts
-            .blob
-            .facts
+        entries
             .iter()
-            .filter_map(|fact| match fact {
-                Fact::EntryPoint(entry) if entry.target == Scope::Def(def.key.local.clone()) => {
+            .filter_map(|entry| match &entry.target {
+                Scope::Def(local) if *local == def.key.local => {
                     Some((entry.kind, entry.framework.clone()?))
                 }
                 _ => None,
@@ -659,23 +708,17 @@ impl Cell {
         let Ok(path) = RepoPath::new(file) else {
             return Vec::new();
         };
-        let Ok(Some(facts)) = facts_of(&self.ctx, SideTag::Base, &self.cache, &path) else {
+        let Some(entries) = self.framework_entries_in(SideTag::Base, &path) else {
             return Vec::new();
         };
-        facts
-            .blob
-            .facts
+        entries
             .iter()
-            .filter_map(|fact| match fact {
-                Fact::EntryPoint(entry)
-                    if matches!(&entry.target, Scope::Def(local) if local.name.as_str() == name)
-                        && entry.site.lines.0 <= lines.1
-                        && lines.0 <= entry.site.lines.1 =>
-                {
-                    Some((entry.kind, entry.framework.clone()?))
-                }
-                _ => None,
+            .filter(|entry| {
+                matches!(&entry.target, Scope::Def(local) if local.name.as_str() == name)
+                    && entry.site.lines.0 <= lines.1
+                    && lines.0 <= entry.site.lines.1
             })
+            .filter_map(|entry| Some((entry.kind, entry.framework.clone()?)))
             .collect()
     }
 
@@ -749,9 +792,9 @@ impl Cell {
     /// in a base of its class: it was lifted into that base and is the same
     /// field. Pushed down into a subclass it is gone for the base's other users.
     /// Annotation-only fields have no body to pair them by.
-    fn moved_declarations(&self, entries: &[&SemanticDef]) -> Result<HashSet<DefKey>> {
+    fn moved_declarations(&self, entries: &[&SemanticDef]) -> Result<FxHashSet<DefKey>> {
         if self.family != Family::Python {
-            return Ok(HashSet::new());
+            return Ok(FxHashSet::default());
         }
         struct Field<'a> {
             entry: &'a SemanticDef,
@@ -775,7 +818,7 @@ impl Cell {
                 into.push(Field { entry, declaration });
             }
         }
-        let mut moved = HashSet::new();
+        let mut moved = FxHashSet::default();
         for from in &gone {
             for to in added.iter().filter(|to| {
                 to.entry.key.local.name == from.entry.key.local.name
@@ -969,9 +1012,9 @@ impl Cell {
     fn whole(
         &self,
         d: &SemanticDef,
-        by_key: &HashMap<&DefKey, &SemanticDef>,
-        decorated: &HashSet<DefKey>,
-        out: &mut HashMap<DefKey, Whole>,
+        by_key: &FxHashMap<&DefKey, &SemanticDef>,
+        decorated: &FxHashSet<DefKey>,
+        out: &mut FxHashMap<DefKey, Whole>,
     ) -> Result<Whole> {
         if let Some(known) = out.get(&d.key) {
             return Ok(*known);
@@ -987,7 +1030,7 @@ impl Cell {
                 let once = |members: &[(DefKey, bool)], key: &DefKey| {
                     members.iter().filter(|(k, _)| k == key).count() == 1
                 };
-                let mut kept: HashSet<&DefKey> = HashSet::new();
+                let mut kept: FxHashSet<&DefKey> = FxHashSet::default();
                 let mut accounted = true;
                 let mut changed = false;
                 for (key, _) in before.iter().chain(&after) {

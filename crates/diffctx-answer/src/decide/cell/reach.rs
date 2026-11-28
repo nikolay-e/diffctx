@@ -32,7 +32,8 @@ impl Cell {
     /// Whether anything in `user_file` is bound to something in `used_file`.
     pub(crate) fn reaches(&self, user_file: &str, used_file: &str) -> bool {
         self.reaches
-            .contains(&(user_file.to_string(), used_file.to_string()))
+            .get(used_file)
+            .is_some_and(|users| users.contains(user_file))
     }
 
     /// The function or method of `file` that holds `line`, the innermost: the test
@@ -111,8 +112,9 @@ impl Cell {
         used_file: &'a str,
     ) -> impl Iterator<Item = &'a str> + 'a {
         self.reaches
-            .iter()
-            .filter(move |(_, used)| used == used_file)
-            .map(|(user, _)| user.as_str())
+            .get(used_file)
+            .into_iter()
+            .flatten()
+            .map(String::as_str)
     }
 }
